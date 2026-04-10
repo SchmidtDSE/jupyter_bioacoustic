@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jupyter-bioacoustic"
+version = "0.1.0"
+description = "JupyterLab bioacoustic audio review plugin"
+requires-python = ">=3.9"
+dependencies = ["jupyterlab>=4.0.0,<5"]
+
+[tool.hatch.build.targets.wheel]
+artifacts = ["jupyter_bioacoustic/labextension"]
+
+# --- pixi ---
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]
+
+[tool.pixi.dependencies]
+jupyterlab = ">=4.0,<5"
+nodejs = ">=18,<20"
+python = ">=3.11"
+numpy = "*"
+matplotlib = "*"
+pandas = "*"
+
+[tool.pixi.pypi-dependencies]
+jupyter-bioacoustic = { path = ".", editable = true }
+soundfile = "*"
+boto3 = "*"
+
+[tool.pixi.tasks.jlpm-install]
+cmd = "jlpm install"
+cwd = "jupyter_bioacoustic"
+
+[tool.pixi.tasks.build]
+cmd = "jlpm run build:lib && jlpm run build:labextension:dev"
+cwd = "jupyter_bioacoustic"
+depends-on = ["jlpm-install"]
+
+[tool.pixi.tasks.setup]
+# "jupyter labextension develop" is broken for this layout — develop.py does it manually.
+cmd = "pip install -e . && python develop.py"
+depends-on = ["build"]
+
+[tool.pixi.tasks.watch]
+cmd = "jlpm run watch:src"
+cwd = "jupyter_bioacoustic"
+
+[tool.pixi.tasks.lab]
+cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
+
+[tool.pixi.tasks.generate-data]
+cmd = "python generate_test_data.py"
