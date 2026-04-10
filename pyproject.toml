@@ -25,7 +25,6 @@ python = ">=3.11"
 numpy = "*"
 matplotlib = "*"
 pandas = "*"
-pip = "*"
 
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = { path = ".", editable = true }
@@ -43,7 +42,7 @@ depends-on = ["jlpm-install"]
 
 [tool.pixi.tasks.setup]
 # "jupyter labextension develop" is broken for this layout — develop.py does it manually.
-cmd = "python -m pip install -e . && python develop.py"
+cmd = "python -m ensurepip --upgrade && python -m pip install -e . && python develop.py"
 depends-on = ["build"]
 
 [tool.pixi.tasks.watch]
