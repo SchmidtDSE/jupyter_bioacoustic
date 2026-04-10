@@ -4,6 +4,56 @@ A jupyter plugin that allows users to validate bioacoustic models in the jupyter
 
 
 
+# Quick Start
+
+## Setup
+
+From the `jupyter_bioacoustic/` directory:
+
+```bash
+pixi run setup   # install deps, build TS, register extension
+pixi run lab     # launch JupyterLab
+```
+
+> After any TypeScript change: `pixi run build` then hard-refresh the browser.
+
+## Notebook usage
+
+```python
+import pandas as pd
+from jupyter_bioacoustic import JupyterAudio
+
+df = pd.read_csv('detections-test.csv')
+
+JupyterAudio(
+    data=df,
+    audio_path='/path/to/audio.flac',   # local path or s3://bucket/key
+    category_path='categories.csv',      # populates the verified-name dropdown
+    output='observations-test.csv',      # rows appended here on Verify
+).open()
+```
+
+This opens the Bioacoustic Reviewer panel in a split-right view alongside your notebook. You can also open it from the command palette: **Bioacoustic → Open Bioacoustic Reviewer**.
+
+## What the panel does
+
+| Section | What you can do |
+|---|---|
+| **Filter bar** | Expression-based filtering — `common_name = 'Barred owl' and confidence >= 0.5` |
+| **Detection table** | Sort by any column, paginate (5 / 10 / 20 / custom rows), click a row to select it |
+| **Info card** | Shows selected row's name, time range, confidence, rank — use Prev / Next to step through |
+| **Spectrogram player** | Mel spectrogram with buffer overlay, play/pause, click to seek |
+| **Verification form** | Mark `is_valid`, add notes, set signal start time; if invalid choose a corrected class and confidence |
+| **Skip / Verify** | Skip moves to the next row; Verify writes a row to `output` CSV and advances |
+
+## Test data
+
+Generate a fresh 25-row synthetic detections file:
+
+```bash
+pixi run generate-data
+```
+
 ---
 
 # Motivation
