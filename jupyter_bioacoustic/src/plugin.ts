@@ -709,7 +709,7 @@ class BioacousticWidget extends Widget {
       ].forEach(v => {
         const td = document.createElement('td');
         td.textContent = String(v);
-        td.style.cssText = `padding:4px 8px;font-size:12px;white-space:nowrap;`;
+        td.style.cssText = `padding:4px 8px;font-size:12px;white-space:nowrap;color:#cdd6f4;`;
         tr.appendChild(td);
       });
 
