@@ -17,6 +17,22 @@ pixi run lab     # launch JupyterLab
 
 > After any TypeScript change: `pixi run build` then hard-refresh the browser.
 
+## TEST DATA
+
+Dummy files for testing can be found on S3:
+
+- audio_file: [test.flac](https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/test.flac)
+- categories_file: [categories.csv](https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/categories.csv)
+- src_file: [detections-test.csv](https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/detections-test.csv)
+
+
+```bash
+# from working folder
+curl https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/test.flac
+curl https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/categories.csv
+curl https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/detections-test.csv
+```
+
 ## Notebook usage
 
 ```python
