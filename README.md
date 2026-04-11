@@ -2,8 +2,11 @@
 
 A jupyter plugin that allows users to validate bioacoustic models in the jupyterlab environment.
 
+![JupyterBioacoustic Plugin](assets/screenshot.png)
+
 ## TODO
 
+- [ ] generate (realtime) reports
 - [ ] generate (realtime) reports
 - [ ] avoid double verification
 
