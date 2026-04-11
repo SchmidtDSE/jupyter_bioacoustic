@@ -100,6 +100,7 @@ class BioacousticWidget extends Widget {
   private _infoCard!: HTMLDivElement;
 
   // ── DOM refs — player ───────────────────────────────────────
+  private _spectTypeSelect!: HTMLSelectElement;
   private _bufferInput!: HTMLInputElement;
   private _startInput!: HTMLInputElement;
   private _endInput!: HTMLInputElement;
@@ -339,6 +340,20 @@ class BioacousticWidget extends Widget {
       playerCtrls.appendChild(lbl);
       return inp;
     };
+
+    // Type dropdown (mel / plain)
+    const typeLbl = document.createElement('label');
+    typeLbl.style.cssText = labelStyle();
+    typeLbl.textContent = 'Type';
+    this._spectTypeSelect = document.createElement('select');
+    this._spectTypeSelect.style.cssText = selectStyle();
+    ['mel', 'plain'].forEach(v => {
+      const o = document.createElement('option');
+      o.value = o.textContent = v;
+      this._spectTypeSelect.appendChild(o);
+    });
+    typeLbl.appendChild(this._spectTypeSelect);
+    playerCtrls.appendChild(typeLbl);
 
     this._bufferInput = mkNumLabel('Buffer (s)', '5',  '50px');
     this._startInput  = mkNumLabel('Start (s)',  '0',  '70px');
@@ -891,16 +906,20 @@ class BioacousticWidget extends Widget {
       `_idx = _np.arange(_fft)[None,:] + _hop * _np.arange(_n_frames)[:,None]`,
       `_idx = _np.clip(_idx, 0, len(_mono) - 1)`,
       `_mag = _np.abs(_np.fft.rfft(_mono[_idx] * _win, axis=1)[:, :_fft//2]).T`,
-      `_f_min, _f_max = 80.0, _sr / 2.0`,
-      `_mel_pts = _np.linspace(2595*_np.log10(1+_f_min/700), 2595*_np.log10(1+_f_max/700), _n_mels+2)`,
-      `_hz_pts  = 700 * (10 ** (_mel_pts / 2595) - 1)`,
-      `_bin_pts = (_hz_pts / (_sr / 2.0) * (_fft // 2 - 1)).astype(int).clip(0, _fft // 2 - 1)`,
-      `_fb = _np.zeros((_n_mels, _fft // 2))`,
-      `for _m in range(1, _n_mels + 1):`,
-      `    _lo, _pk, _hi = _bin_pts[_m-1], _bin_pts[_m], _bin_pts[_m+1]`,
-      `    if _pk > _lo: _fb[_m-1, _lo:_pk] = (_np.arange(_lo, _pk) - _lo) / (_pk - _lo)`,
-      `    if _hi > _pk: _fb[_m-1, _pk:_hi] = (_hi - _np.arange(_pk, _hi)) / (_hi - _pk)`,
-      `_S = _fb @ _mag`,
+      ...(this._spectTypeSelect.value === 'mel' ? [
+        `_f_min, _f_max = 80.0, _sr / 2.0`,
+        `_mel_pts = _np.linspace(2595*_np.log10(1+_f_min/700), 2595*_np.log10(1+_f_max/700), _n_mels+2)`,
+        `_hz_pts  = 700 * (10 ** (_mel_pts / 2595) - 1)`,
+        `_bin_pts = (_hz_pts / (_sr / 2.0) * (_fft // 2 - 1)).astype(int).clip(0, _fft // 2 - 1)`,
+        `_fb = _np.zeros((_n_mels, _fft // 2))`,
+        `for _m in range(1, _n_mels + 1):`,
+        `    _lo, _pk, _hi = _bin_pts[_m-1], _bin_pts[_m], _bin_pts[_m+1]`,
+        `    if _pk > _lo: _fb[_m-1, _lo:_pk] = (_np.arange(_lo, _pk) - _lo) / (_pk - _lo)`,
+        `    if _hi > _pk: _fb[_m-1, _pk:_hi] = (_hi - _np.arange(_pk, _hi)) / (_hi - _pk)`,
+        `_S = _fb @ _mag`,
+      ] : [
+        `_S = _mag`,
+      ]),
       `_S_db   = 20 * _np.log10(_np.maximum(_S, 1e-10))`,
       `_S_db   = _np.clip(_S_db, _S_db.max() - 80, _S_db.max())`,
       `_S_norm = (_S_db - _S_db.min()) / max(float(_S_db.max() - _S_db.min()), 1e-10)`,
