@@ -7,8 +7,8 @@ A jupyter plugin that allows users to validate bioacoustic models in the jupyter
 ## TODO
 
 - [ ] generate (realtime) reports
-- [ ] generate (realtime) reports
 - [ ] avoid double verification
+- [ ] reload pause btn to pause
 
 ---
 
