@@ -1,47 +1,24 @@
 # JupyterBioacoustic
 
-A jupyter plugin that allows users to validate bioacoustic models in the jupyterlab environment.
+_A JupyterLab plugin for reviewing and verifying bioacoustic model detections._
 
 ![JupyterBioacoustic Plugin](assets/screenshot.png)
 
-## TODO
+Browse a table of model detections, play each clip with a mel spectrogram, and record your verification decisions — all without leaving the notebook.
 
-- [ ] generate (realtime) reports
-- [ ] avoid double verification
-- [ ] reload pause btn to pause
+**Table of Contents**
+
+- [Usage in a notebook](#usage-in-a-notebook)
+- [Motivation](#motivation)
+- [Install](#install)
+- [Dev](#dev)
+- [License](#license)
 
 ---
 
-# Quick Start
+## Usage in a notebook
 
-## Setup
-
-From the `jupyter_bioacoustic/` directory:
-
-```bash
-pixi run setup   # install deps, build TS, register extension
-pixi run lab     # launch JupyterLab
-```
-
-> After any TypeScript change: `pixi run build` then hard-refresh the browser.
-
-## TEST DATA
-
-Dummy files for testing can be found on S3:
-
-- audio_file: [test.flac](https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/test.flac)
-- categories_file: [categories.csv](https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/categories.csv)
-- src_file: [detections-test.csv](https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/detections-test.csv)
-
-
-```bash
-# from working folder
-curl https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/test.flac
-curl https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/categories.csv
-curl https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/detections-test.csv
-```
-
-## Notebook usage
+### Quick example
 
 ```python
 import pandas as pd
@@ -57,64 +34,175 @@ JupyterAudio(
 ).open()
 ```
 
-This opens the Bioacoustic Reviewer panel in a split-right view alongside your notebook. You can also open it from the command palette: **Bioacoustic → Open Bioacoustic Reviewer**.
+This opens the reviewer as a split-right panel alongside your notebook. You can also open it from the JupyterLab command palette: **Bioacoustic → Open Bioacoustic Reviewer**.
 
-## What the panel does
+To embed it directly below the cell instead:
+
+```python
+JupyterAudio(
+    data=df,
+    audio_path='/path/to/audio.flac',
+    category_path='categories.csv',
+    output='observations-test.csv',
+    inline=True,
+    height=900,      # px int, or a CSS string like '90vh'
+    width='100%',    # px int or CSS string
+).open()
+```
+
+### Parameters
+
+| parameter | type | default | description |
+|---|---|---|---|
+| `data` | DataFrame | — | Detection rows (see format below) |
+| `audio_path` | str | — | Local path or `s3://bucket/key` |
+| `category_path` | str | `''` | Path to `categories.csv` for the verified-name dropdown |
+| `output` | str | `''` | Path to output CSV; rows appended on Verify |
+| `inline` | bool | `False` | Embed below cell instead of opening a panel |
+| `width` | int \| str | `'100%'` | Inline widget width (int = px) |
+| `height` | int \| str | `900` | Inline widget height (int = px) |
+
+### Input data format
+
+| column | type | description |
+|---|---|---|
+| `id` | int | unique detection ID |
+| `common_name` | str | predicted species common name |
+| `scientific_name` | str | predicted species scientific name |
+| `confidence` | float | model confidence (0–1) |
+| `rank` | int | prediction rank |
+| `start_time` | float | detection start (seconds from file start) |
+| `end_time` | float | detection end (seconds) |
+
+### Output data format
+
+Each **Verify** click appends one row to `output`:
+
+| column | description |
+|---|---|
+| `detection_id` | `id` from the input row |
+| `is_valid` | `yes` or `no` |
+| `signal_start_time` | absolute position in the audio file (seconds) — set by clicking the spectrogram |
+| `notes` | free-text notes |
+| `verified_common_name` | corrected species name (empty if `is_valid = yes`) |
+| `verification_confidence` | `low` / `medium` / `high` (empty if `is_valid = yes`) |
+
+### What the panel does
 
 | Section | What you can do |
 |---|---|
-| **Filter bar** | Expression-based filtering — `common_name = 'Barred owl' and confidence >= 0.5` |
-| **Detection table** | Sort by any column, paginate (5 / 10 / 20 / custom rows), click a row to select it |
-| **Info card** | Shows selected row's name, time range, confidence, rank — use Prev / Next to step through |
-| **Spectrogram player** | Mel spectrogram with buffer overlay, play/pause, click to seek |
-| **Verification form** | Mark `is_valid`, add notes, set signal start time; if invalid choose a corrected class and confidence |
-| **Skip / Verify** | Skip moves to the next row; Verify writes a row to `output` CSV and advances |
+| **Filter bar** | Expression filtering: `common_name = 'Barred owl' and confidence >= 0.5` |
+| **Detection table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select |
+| **Info card** | Selected row: name, time range, confidence, rank · Prev / Next navigation |
+| **Spectrogram player** | Mel or plain STFT · buffer overlay · play/pause · click to seek and mark signal |
+| **Verification form** | `is_valid`, notes, signal start time · corrected class + confidence when invalid |
+| **Skip / Verify** | Skip advances without writing · Verify writes to `output` CSV and advances |
 
-## Test data
+### TODO
 
-Generate a fresh 25-row synthetic detections file:
+- [ ] Generate real-time progress/accuracy reports
+- [ ] Prevent double-verification of the same detection
+- [ ] Fix reload resetting pause button state
+
+---
+
+## Motivation
+
+Using JupyterGIS as a guide, it's interesting how we might work with bioacoustic data in JupyterLab — either as a plugin ecosystem or as a suite of standalone widgets.
+
+JupyterGIS's foundation is:
+
+- A schema for JSON objects that define what layers exist and the data/sources being displayed
+- Code that translates JSON into visual display, allows two-way communication between map layers and Python objects, computes GIS operations (merge / convex hull / simplify / ...), supports real-time collaboration, and turns map interactions into reproducible code
+
+**JupyterBioacoustic** overlaps many of these points, replacing maps with audio tools. If it grew into a full product it could start as a suite of interactive Jupyter plugins.
+
+1. An interactive detection table that lets you filter, sort, and select rows pointing to audio sources and time windows.
+2. A spectrogram player that displays the selected clip, plays audio, shows the predicted class, and lets you verify or correct it with notes, adjusted times, and a confidence rating. (Similar in spirit to [whombat](https://mbsantiago.github.io/whombat/) but targeted at verification rather than annotation.)
+3. *(Future)* Reporting tools — class distributions, confidence stats, progress through the review queue, running accuracy of verified data.
+4. *(Future)* Map integration — if detections carry geographic coordinates, display and filter them on an interactive map.
+
+---
+
+## Install
+
+### Requirements
+
+- Python ≥ 3.11
+- JupyterLab ≥ 4.0
+- [pixi](https://pixi.sh)
+
+### Setup
+
+```bash
+git clone <repo-url>
+cd jupyter_bioacoustic
+pixi run setup   # installs deps, builds TypeScript, registers the extension
+pixi run lab     # launches JupyterLab
+```
+
+### Test files
+
+Dummy files for testing are available on S3:
+
+```bash
+curl -O https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/test.flac
+curl -O https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/categories.csv
+curl -O https://dse-soundhub.s3.us-west-2.amazonaws.com/public/jupyter_bioacoustic/test_files/detections-test.csv
+```
+
+Or regenerate the synthetic detections locally:
 
 ```bash
 pixi run generate-data
 ```
 
+### S3 audio
+
+S3 URIs (`s3://bucket/key`) are supported via `boto3` — ensure your AWS credentials are configured before passing an S3 path as `audio_path`.
+
 ---
 
-# Motivation
- 
-Using JupyterGIS as a guide its interesting how we might work with bioacoustic data in Jupyterlab.  It could be an ecosystem like JupyterGIS but it could also be a (or a suite of) jupyter plugin(s).
+## Dev
 
-JupyterGIS's foundation is/will be:
+### Project structure
 
-* A schema/set of rules for JSON objects that define what layers exist, the data and data sources being displayed.
-* Code that:
-    * Translates JSON data into visual display.
-    * Allows for two-way communication between cells:
-        * Map layers can be translated to Python objects for calculation.
-        * Python objects can be translated to map layers.
-    * Computes GIS operations (merge / convex hull / simplify / ...).
-    * A pipe for real-time collaboration.
-    * A way to turn map interactions into reproducible code.
+```
+jupyter_bioacoustic/
+├── pyproject.toml                    # build config + pixi task definitions
+├── develop.py                        # labextension symlink helper
+├── generate_test_data.py             # generates detections-test.csv
+├── categories.csv                    # 51 species/class reference rows
+└── jupyter_bioacoustic/              # Python package + TypeScript source
+    ├── api.py                        # JupyterAudio class
+    ├── __init__.py
+    ├── package.json
+    ├── tsconfig.json
+    └── src/
+        ├── index.ts                  # plugin entry point
+        └── plugin.ts                 # full widget (table + player + form)
+```
 
-## JupyterBioacoustic/Audio/Something (name-to-be-changed)
+### Pixi tasks
 
-JupyterAudio would overlap on many of these points, replacing maps with audio tools. If it grew into a full-fledged product it could probably start as a (or suite of interactive) Jupyter plugin(s).
+| task | description |
+|---|---|
+| `pixi run setup` | full install: jlpm → tsc → labextension build → pip install → symlink |
+| `pixi run build` | rebuild TypeScript only (after source changes) |
+| `pixi run lab` | launch JupyterLab |
+| `pixi run watch` | watch TypeScript and recompile on change |
+| `pixi run generate-data` | regenerate `detections-test.csv` |
 
-A schema could be used for easy configuration but one could imagine it’s also possible to configure directly with parameters. Two way communication would be necessary between cells. The number of operations would be much smaller than needed for GIS – mainly various spectrogram generation but maybe others. Real time collaboration is probably not necessary. The reproducible code is probably not necessary but I need to think more.
+> After any TypeScript change: `pixi run build` then hard-refresh the browser.
 
-Thoughts for an initial product:
+### How the plugin works
 
-1. An interactive (dataframe-like) display that allows you to easily filter, order, search data, and select a row that points to an audio source and start time or bounding box.
-2. An interface that (for the selected data):
-    * Displays spectrograms of various (selectable) flavors.
-    * Plays the audio.
-    * Shows the predicted class (if predictions exist).
-    * Allows the user to verify if it was the correct class, select a new class, add notes, adjust start/end times and/or bounding box, etc..
-    * Writes the user data to a new dataset (connected to the original dataset by an ID column).
-    * Note: this is probably really similar to the tool Amy is using now for annotation (I think [https://mbsantiago.github.io/whombat/](https://mbsantiago.github.io/whombat/)). The use case described above is for verification but it could be used for annotation too.
-3. A set of "reporting/status" tools that display charts and graphs of various sorts, both on the original dataset and the verified dataset:
-    * Class distribution of original or verified data.
-    * Stats on confidence of predictions.
-    * Progress reports on how many have been classified — running accuracy of verified data.
-    * ....
-4. If the dataset has geographic information — be it points or districts/regions, etc. — we could also have an interactive map that allows us to select data within regions, or display stats (as described in section 3 above) for selected regions.
+`JupyterAudio.open()` serialises the DataFrame to JSON and stores it in kernel namespace variables (`_BA_DATA`, `_BA_AUDIO_PATH`, etc.), then uses `display(Javascript(...))` to trigger a JupyterLab command or attach a widget to a cell output div.
+
+The TypeScript `BioacousticWidget` reads those variables on attach, populates the table, and for each selected row runs a Python snippet in the kernel that uses `soundfile` (partial file seeking) + `numpy` + `matplotlib` to return a base64-encoded mel spectrogram PNG and WAV segment. No full audio files are ever loaded into the browser.
+
+---
+
+## License
+
+BSD 3-Clause
