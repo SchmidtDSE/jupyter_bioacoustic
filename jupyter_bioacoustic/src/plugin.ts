@@ -399,23 +399,28 @@ class BioacousticWidget extends Widget {
     // ── Verification form ────────────────────────────────────────
     const formSection = document.createElement('div');
     formSection.style.cssText =
-      `flex-shrink:0;padding:8px 12px;background:#181825;` +
-      `border-top:1px solid #313244;display:flex;flex-direction:column;gap:6px;`;
+      `flex-shrink:0;min-height:140px;padding:10px 14px 12px;background:#181825;` +
+      `border-top:1px solid #313244;display:flex;flex-direction:column;gap:10px;`;
+
+    const formTitle = document.createElement('div');
+    formTitle.textContent = 'REVIEW CLIP';
+    formTitle.style.cssText =
+      `font-size:11px;font-weight:700;letter-spacing:1.2px;color:#6c7086;`;
 
     const mkFormLabel = (text: string): HTMLLabelElement => {
       const lbl = document.createElement('label');
-      lbl.style.cssText = labelStyle() + `font-size:12px;`;
+      lbl.style.cssText = labelStyle() + `font-size:13px;gap:7px;`;
       lbl.textContent = text;
       return lbl;
     };
 
     // Row 1: primary fields
     const formRow1 = document.createElement('div');
-    formRow1.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;`;
+    formRow1.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
 
     const ivLbl = mkFormLabel('is_valid');
     this._isValidSelect = document.createElement('select');
-    this._isValidSelect.style.cssText = selectStyle();
+    this._isValidSelect.style.cssText = selectStyle() + `font-size:13px;`;
     [['', '— select —'], ['yes', 'yes'], ['no', 'no']].forEach(([val, label]) => {
       const o = document.createElement('option');
       o.value = val;
@@ -429,14 +434,14 @@ class BioacousticWidget extends Widget {
     this._notesInput = document.createElement('textarea');
     this._notesInput.rows = 1;
     this._notesInput.style.cssText =
-      inputStyle('200px') + `resize:vertical;vertical-align:middle;height:26px;`;
+      inputStyle('220px') + `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
     notesLbl.appendChild(this._notesInput);
 
     const sstLbl = mkFormLabel('signal_start (s)');
     this._signalStartInput = document.createElement('input');
     this._signalStartInput.type = 'number';
     this._signalStartInput.step = '0.01';
-    this._signalStartInput.style.cssText = inputStyle('85px');
+    this._signalStartInput.style.cssText = inputStyle('90px') + `font-size:13px;`;
     sstLbl.appendChild(this._signalStartInput);
 
     formRow1.append(ivLbl, notesLbl, sstLbl);
@@ -444,16 +449,16 @@ class BioacousticWidget extends Widget {
     // Row 2: secondary form (hidden until is_valid = no)
     this._secondaryForm = document.createElement('div');
     this._secondaryForm.style.cssText =
-      `display:none;align-items:center;gap:10px;flex-wrap:wrap;`;
+      `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
 
     const vnLbl = mkFormLabel('verified name');
     this._verifiedNameSelect = document.createElement('select');
-    this._verifiedNameSelect.style.cssText = selectStyle() + `max-width:240px;`;
+    this._verifiedNameSelect.style.cssText = selectStyle() + `font-size:13px;max-width:260px;`;
     vnLbl.appendChild(this._verifiedNameSelect);
 
     const vcLbl = mkFormLabel('verif. confidence');
     this._verificationConfSelect = document.createElement('select');
-    this._verificationConfSelect.style.cssText = selectStyle();
+    this._verificationConfSelect.style.cssText = selectStyle() + `font-size:13px;`;
     ['low', 'medium', 'high'].forEach(v => {
       const o = document.createElement('option');
       o.value = o.textContent = v;
@@ -463,23 +468,26 @@ class BioacousticWidget extends Widget {
 
     this._secondaryForm.append(vnLbl, vcLbl);
 
-    // Row 3: action buttons
+    // Row 3: divider + action buttons
+    const formDivider = document.createElement('div');
+    formDivider.style.cssText = `border-top:1px solid #313244;margin:0 -2px;`;
+
     const formBtns = document.createElement('div');
-    formBtns.style.cssText = `display:flex;align-items:center;gap:8px;`;
+    formBtns.style.cssText = `display:flex;align-items:center;gap:10px;padding-top:2px;`;
 
     const skipBtn = document.createElement('button');
     skipBtn.textContent = 'Skip →';
-    skipBtn.style.cssText = btnStyle();
+    skipBtn.style.cssText = btnStyle() + `font-size:13px;`;
     skipBtn.addEventListener('click', () => this._onSkip());
 
     this._verifyBtn = document.createElement('button');
     this._verifyBtn.textContent = '✓ Verify';
-    this._verifyBtn.style.cssText = btnStyle(true) + `opacity:0.4;`;
+    this._verifyBtn.style.cssText = btnStyle(true) + `font-size:13px;opacity:0.4;`;
     this._verifyBtn.disabled = true;
     this._verifyBtn.addEventListener('click', () => void this._onVerify());
 
     formBtns.append(skipBtn, this._verifyBtn);
-    formSection.append(formRow1, this._secondaryForm, formBtns);
+    formSection.append(formTitle, formRow1, this._secondaryForm, formDivider, formBtns);
 
     // ── Assemble widget ──────────────────────────────────────────
     this.node.append(

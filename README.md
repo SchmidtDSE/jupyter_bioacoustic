@@ -2,7 +2,12 @@
 
 A jupyter plugin that allows users to validate bioacoustic models in the jupyterlab environment.
 
+## TODO
 
+- [ ] generate (realtime) reports
+- [ ] avoid double verification
+
+---
 
 # Quick Start
 
