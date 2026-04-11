@@ -1155,6 +1155,16 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
     // Expose app so Python's display(Javascript(...)) can reach it
     (window as any)._bioacousticApp = app;
 
+    // Inline mode: attach a widget instance to an existing container div
+    (window as any)._bioacousticOpenInline = (divId: string) => {
+      const container = document.getElementById(divId);
+      if (!container) return;
+      const widget = new BioacousticWidget(tracker);
+      // Fill the container completely
+      widget.node.style.cssText += `position:absolute;inset:0;`;
+      Widget.attach(widget, container);
+    };
+
     app.commands.addCommand('bioacoustic:open', {
       label: 'Open Bioacoustic Reviewer',
       execute: () => {
