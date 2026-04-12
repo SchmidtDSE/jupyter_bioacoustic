@@ -6,6 +6,27 @@ _A JupyterLab plugin for reviewing and verifying bioacoustic model detections._
 
 Browse a table of model detections, play each clip with a mel spectrogram, and record your verification decisions — all without leaving the notebook.
 
+**Detection table.** An interactive list of model detections that lets you:
+- Sort by any column (species name, confidence, rank, time)
+- Filter with expression syntax — `common_name = 'Barred Owl' and confidence >= 0.5`
+- Paginate through large result sets with configurable page size
+- Select any row to load the corresponding audio clip and jump to the verification form
+
+**Spectrogram player.** A visual audio player built around the selected detection's time window:
+- Renders a mel spectrogram or plain STFT of the clipped audio segment
+- Adjustable buffer window — pads the detection with context on either side
+- Semi-transparent overlay marks the region outside the model's detection window
+- Click anywhere on the spectrogram to seek and mark a signal start time
+- Play/pause with a real-time position indicator drawn over the spectrogram
+
+**Verification form.** A structured review interface for recording decisions against each detection:
+- Mark a detection as valid or invalid
+- Select an alternative species from a configurable category list when the model is wrong
+- Set a verification confidence level (low / medium / high)
+- Add free-text notes
+- Record a precise signal start time by clicking the spectrogram
+- Skip a detection without writing, or Verify to append a row to the output CSV and advance
+
 **Table of Contents**
 
 - [Usage in a notebook](#usage-in-a-notebook)
@@ -45,8 +66,6 @@ JupyterAudio(
     category_path='categories.csv',
     output='observations-test.csv',
     inline=True,
-    height=900,      # px int, or a CSS string like '90vh'
-    width='100%',    # px int or CSS string
 ).open()
 ```
 
@@ -189,7 +208,7 @@ jupyter_bioacoustic/
 |---|---|
 | `pixi run setup` | full install: jlpm → tsc → labextension build → pip install → symlink |
 | `pixi run build` | rebuild TypeScript only (after source changes) |
-| `pixi run lab` | launch JupyterLab |
+| `pixi run lab`   | launch JupyterLab |
 | `pixi run watch` | watch TypeScript and recompile on change |
 | `pixi run generate-data` | regenerate `detections-test.csv` |
 
