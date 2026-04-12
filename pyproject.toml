@@ -30,6 +30,7 @@ pandas = "*"
 jupyter-bioacoustic = { path = ".", editable = true }
 soundfile = "*"
 boto3 = "*"
+pyyaml = "*"
 
 [tool.pixi.tasks.jlpm-install]
 cmd = "jlpm install"
