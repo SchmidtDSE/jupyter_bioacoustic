@@ -98,6 +98,30 @@ JupyterAudio(
 ).open()
 ```
 
+### Config file
+
+Any parameter can be set in a JSON or YAML file and loaded with the `config` argument. Explicitly passed arguments always take precedence over config file values, so you can keep shared settings in a file and override per-session in the notebook.
+
+```yaml
+# config.yaml
+data: 'detections.csv'
+audio_path: 'recordings/site-a.flac'
+category_path: 'categories.csv'
+prediction_column: 'common_name'
+display_columns: ['confidence', 'rank']
+output: 'observations.jsonl'
+```
+
+```python
+# everything from config
+JupyterAudio(config='config.yaml').open()
+
+# override audio_path for a different recording
+JupyterAudio(audio_path='recordings/site-b.flac', config='config.yaml').open()
+```
+
+Supported config formats: `.json`, `.yaml`, `.yml`. A path with no extension is assumed to be YAML.
+
 ### Parameters
 
 | parameter | type | default | description |
@@ -112,6 +136,7 @@ JupyterAudio(
 | `inline` | bool | `False` | Embed below cell instead of opening a panel |
 | `width` | int \| str | `'100%'` | Inline widget width (int = px) |
 | `height` | int \| str | `900` | Inline widget height (int = px) |
+| `config` | str | `None` | Path to a JSON or YAML config file. Any parameter above can be set here; explicit arguments override file values. |
 
 ### Features
 
