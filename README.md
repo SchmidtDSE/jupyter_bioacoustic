@@ -48,6 +48,12 @@ Browse a table of audio clips, play each one with a mel spectrogram, and record 
 
 Set `prediction_column` to the name of the column in your DataFrame that holds the model's predicted class. The widget will display that prediction in the player, and the form will ask you to confirm or correct it.
 
+![Annotate Form](assets/form-review.png)
+
+![Annotate Form](assets/form-review-yes.png)
+
+![Annotate Form](assets/form-review-no.png)
+
 ```python
 import pandas as pd
 from jupyter_bioacoustic import JupyterAudio
@@ -66,7 +72,10 @@ JupyterAudio(
 
 ### Annotation mode
 
+
 Omit `prediction_column` (or leave it as the default `''`). No predicted class is shown in the player and the form asks you to assign a class, confidence, and start time from scratch.
+
+![Annotate Form](assets/form-annotate.png)
 
 ```python
 JupyterAudio(
