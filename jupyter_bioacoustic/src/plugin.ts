@@ -10,12 +10,9 @@ import { Widget } from '@lumino/widgets';
 
 interface Detection {
   id: number;
-  common_name: string;
-  scientific_name: string;
-  confidence: number;
-  rank: number;
   start_time: number;
   end_time: number;
+  [key: string]: any;
 }
 
 interface FilterClause {
@@ -73,6 +70,10 @@ class BioacousticWidget extends Widget {
   private _categoryPath = '';
   private _outputPath = '';
 
+  // ── Mode state ──────────────────────────────────────────────
+  private _predictionCol = '';      // empty = annotation mode
+  private _displayCols: string[] = [];
+
   // ── Player state ────────────────────────────────────────────
   private _specBitmap: ImageBitmap | null = null;
   private _segLoadStart = 0;    // absolute audio start of loaded segment (start_time - buffer, ≥ 0)
@@ -90,6 +91,8 @@ class BioacousticWidget extends Widget {
   private _filterInput!: HTMLInputElement;
 
   // ── DOM refs — table ────────────────────────────────────────
+  private _tableCols: Array<{ key: string; label: string }> = [];
+  private _thead!: HTMLTableSectionElement;
   private _tableBody!: HTMLTableSectionElement;
   private _pageInfo!: HTMLSpanElement;
   private _pageSizeSelect!: HTMLSelectElement;
@@ -112,11 +115,16 @@ class BioacousticWidget extends Widget {
   private _audio!: HTMLAudioElement;
 
   // ── DOM refs — form ─────────────────────────────────────────
+  private _formTitle!: HTMLDivElement;
+  private _isValidLbl!: HTMLLabelElement;
   private _isValidSelect!: HTMLSelectElement;
   private _notesInput!: HTMLTextAreaElement;
+  private _signalStartLbl!: HTMLLabelElement;
   private _signalStartInput!: HTMLInputElement;
   private _secondaryForm!: HTMLDivElement;
+  private _verifiedNameLbl!: HTMLLabelElement;
   private _verifiedNameSelect!: HTMLSelectElement;
+  private _verificationConfLbl!: HTMLLabelElement;
   private _verificationConfSelect!: HTMLSelectElement;
   private _verifyBtn!: HTMLButtonElement;
 
@@ -196,11 +204,11 @@ class BioacousticWidget extends Widget {
     const table = document.createElement('table');
     table.style.cssText = `width:100%;border-collapse:collapse;font-size:12px;`;
 
-    const thead = document.createElement('thead');
-    thead.style.cssText = `background:#181825;position:sticky;top:0;z-index:1;`;
+    this._thead = document.createElement('thead');
+    this._thead.style.cssText = `background:#181825;position:sticky;top:0;z-index:1;`;
 
-    const headerRow = document.createElement('tr');
-    const COLS: Array<{ key: string; label: string }> = [
+    // Default cols — rebuilt in _configureFormForMode once mode is known
+    this._tableCols = [
       { key: 'id',          label: 'ID' },
       { key: 'common_name', label: 'Common Name' },
       { key: 'confidence',  label: 'Conf' },
@@ -208,36 +216,9 @@ class BioacousticWidget extends Widget {
       { key: 'start_time',  label: 'Start (s)' },
       { key: 'end_time',    label: 'End (s)' },
     ];
-    COLS.forEach(({ key, label }) => {
-      const th = document.createElement('th');
-      th.dataset.col = key;
-      th.style.cssText =
-        `padding:5px 8px;text-align:left;color:#89b4fa;font-size:11px;` +
-        `cursor:pointer;user-select:none;white-space:nowrap;` +
-        `border-bottom:2px solid #313244;`;
-      th.addEventListener('click', () => {
-        if (this._sortCol === key) {
-          this._sortAsc = !this._sortAsc;
-        } else {
-          this._sortCol = key;
-          this._sortAsc = true;
-        }
-        // Update sort indicators
-        thead.querySelectorAll('th').forEach(t => {
-          const col = (t as HTMLElement).dataset.col;
-          const arrow = col === this._sortCol ? (this._sortAsc ? ' ▲' : ' ▼') : '';
-          t.textContent = COLS.find(c => c.key === col)!.label + arrow;
-        });
-        this._page = 0;
-        this._applyFilterAndSort();
-        this._renderTable();
-      });
-      th.textContent = label;
-      headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
+    this._rebuildTableHeader();
     this._tableBody = document.createElement('tbody');
-    table.append(thead, this._tableBody);
+    table.append(this._thead, this._tableBody);
     tableWrap.appendChild(table);
 
     // ── Pagination bar ───────────────────────────────────────────
@@ -417,9 +398,9 @@ class BioacousticWidget extends Widget {
       `flex-shrink:0;min-height:140px;padding:10px 14px 12px;background:#181825;` +
       `border-top:1px solid #313244;display:flex;flex-direction:column;gap:10px;`;
 
-    const formTitle = document.createElement('div');
-    formTitle.textContent = 'REVIEW CLIP';
-    formTitle.style.cssText =
+    this._formTitle = document.createElement('div');
+    this._formTitle.textContent = 'REVIEW CLIP';
+    this._formTitle.style.cssText =
       `font-size:11px;font-weight:700;letter-spacing:1.2px;color:#6c7086;`;
 
     const mkFormLabel = (text: string): HTMLLabelElement => {
@@ -433,7 +414,7 @@ class BioacousticWidget extends Widget {
     const formRow1 = document.createElement('div');
     formRow1.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
 
-    const ivLbl = mkFormLabel('is_valid');
+    this._isValidLbl = mkFormLabel('is_valid');
     this._isValidSelect = document.createElement('select');
     this._isValidSelect.style.cssText = selectStyle() + `font-size:13px;`;
     [['', '— select —'], ['yes', 'yes'], ['no', 'no']].forEach(([val, label]) => {
@@ -443,7 +424,7 @@ class BioacousticWidget extends Widget {
       this._isValidSelect.appendChild(o);
     });
     this._isValidSelect.addEventListener('change', () => this._onIsValidChange());
-    ivLbl.appendChild(this._isValidSelect);
+    this._isValidLbl.appendChild(this._isValidSelect);
 
     const notesLbl = mkFormLabel('notes');
     this._notesInput = document.createElement('textarea');
@@ -452,26 +433,26 @@ class BioacousticWidget extends Widget {
       inputStyle('220px') + `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
     notesLbl.appendChild(this._notesInput);
 
-    const sstLbl = mkFormLabel('signal_start (s)');
+    this._signalStartLbl = mkFormLabel('signal_start (s)');
     this._signalStartInput = document.createElement('input');
     this._signalStartInput.type = 'number';
     this._signalStartInput.step = '0.01';
     this._signalStartInput.style.cssText = inputStyle('90px') + `font-size:13px;`;
-    sstLbl.appendChild(this._signalStartInput);
+    this._signalStartLbl.appendChild(this._signalStartInput);
 
-    formRow1.append(ivLbl, notesLbl, sstLbl);
+    formRow1.append(this._isValidLbl, notesLbl, this._signalStartLbl);
 
     // Row 2: secondary form (hidden until is_valid = no)
     this._secondaryForm = document.createElement('div');
     this._secondaryForm.style.cssText =
       `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
 
-    const vnLbl = mkFormLabel('verified name');
+    this._verifiedNameLbl = mkFormLabel('verified name');
     this._verifiedNameSelect = document.createElement('select');
     this._verifiedNameSelect.style.cssText = selectStyle() + `font-size:13px;max-width:260px;`;
-    vnLbl.appendChild(this._verifiedNameSelect);
+    this._verifiedNameLbl.appendChild(this._verifiedNameSelect);
 
-    const vcLbl = mkFormLabel('verif. confidence');
+    this._verificationConfLbl = mkFormLabel('verif. confidence');
     this._verificationConfSelect = document.createElement('select');
     this._verificationConfSelect.style.cssText = selectStyle() + `font-size:13px;`;
     ['low', 'medium', 'high'].forEach(v => {
@@ -479,9 +460,9 @@ class BioacousticWidget extends Widget {
       o.value = o.textContent = v;
       this._verificationConfSelect.appendChild(o);
     });
-    vcLbl.appendChild(this._verificationConfSelect);
+    this._verificationConfLbl.appendChild(this._verificationConfSelect);
 
-    this._secondaryForm.append(vnLbl, vcLbl);
+    this._secondaryForm.append(this._verifiedNameLbl, this._verificationConfLbl);
 
     // Row 3: divider + action buttons
     const formDivider = document.createElement('div');
@@ -502,7 +483,7 @@ class BioacousticWidget extends Widget {
     this._verifyBtn.addEventListener('click', () => void this._onVerify());
 
     formBtns.append(skipBtn, this._verifyBtn);
-    formSection.append(formTitle, formRow1, this._secondaryForm, formDivider, formBtns);
+    formSection.append(this._formTitle, formRow1, this._secondaryForm, formDivider, formBtns);
 
     // ── Assemble widget ──────────────────────────────────────────
     this.node.append(
@@ -553,6 +534,8 @@ class BioacousticWidget extends Widget {
         `  'audio_path': _BA_AUDIO_PATH,\n` +
         `  'category_path': _BA_CATEGORY_PATH,\n` +
         `  'output': _BA_OUTPUT,\n` +
+        `  'prediction_col': _BA_PREDICTION_COL,\n` +
+        `  'display_cols': _BA_DISPLAY_COLS,\n` +
         `}))`
       );
     } catch (e: any) {
@@ -560,7 +543,10 @@ class BioacousticWidget extends Widget {
       return;
     }
 
-    let cfg: { data: string; audio_path: string; category_path: string; output: string };
+    let cfg: {
+      data: string; audio_path: string; category_path: string; output: string;
+      prediction_col: string; display_cols: string;
+    };
     try {
       cfg = JSON.parse(raw);
     } catch {
@@ -568,9 +554,12 @@ class BioacousticWidget extends Widget {
       return;
     }
 
-    this._audioPath    = cfg.audio_path;
-    this._categoryPath = cfg.category_path;
-    this._outputPath   = cfg.output;
+    this._audioPath      = cfg.audio_path;
+    this._categoryPath   = cfg.category_path;
+    this._outputPath     = cfg.output;
+    this._predictionCol  = cfg.prediction_col;
+    this._displayCols    = JSON.parse(cfg.display_cols) as string[];
+    this._configureFormForMode();
 
     try {
       this._rows = JSON.parse(cfg.data) as Detection[];
@@ -605,7 +594,81 @@ class BioacousticWidget extends Widget {
       await this._loadAudio();
     }
 
-    this._setStatus(`✓ ${this._rows.length} detections loaded`);
+    const noun = this._predictionCol ? 'detections' : 'clips';
+    this._setStatus(`✓ ${this._rows.length} ${noun} loaded`);
+  }
+
+  private _configureFormForMode(): void {
+    // Rebuild table columns based on mode
+    const baseCols = [
+      { key: 'id', label: 'ID' },
+      { key: 'start_time', label: 'Start (s)' },
+      { key: 'end_time', label: 'End (s)' },
+    ];
+    const extraCols = this._displayCols.map(k => ({ key: k, label: k }));
+
+    if (this._predictionCol) {
+      // Verification mode — show prediction col + display_cols in table
+      const predLabel = this._predictionCol.replace(/_/g, ' ');
+      this._tableCols = [
+        { key: 'id', label: 'ID' },
+        { key: this._predictionCol, label: predLabel },
+        ...extraCols,
+        { key: 'start_time', label: 'Start (s)' },
+        { key: 'end_time', label: 'End (s)' },
+      ];
+      this._rebuildTableHeader();
+      return;
+    }
+
+    // Annotation mode
+    this._tableCols = [...baseCols, ...extraCols];
+    this._rebuildTableHeader();
+
+    this._formTitle.textContent = 'ANNOTATE CLIP';
+    this._isValidLbl.style.display = 'none';
+    this._signalStartLbl.childNodes[0].textContent = 'start_time (s)';
+    this._verifiedNameLbl.childNodes[0].textContent = 'common_name';
+    this._verificationConfLbl.childNodes[0].textContent = 'confidence';
+    // Show secondary form permanently (no is_valid gate)
+    this._secondaryForm.style.display = 'flex';
+    this._verifyBtn.textContent = '✓ Submit';
+    // Submit is always enabled in annotation mode
+    this._verifyBtn.disabled = false;
+    this._verifyBtn.style.opacity = '1';
+    this._signalTimeDisplay.textContent = 'click spectrogram to set start_time';
+  }
+
+  private _rebuildTableHeader(): void {
+    this._thead.innerHTML = '';
+    const headerRow = document.createElement('tr');
+    this._tableCols.forEach(({ key, label }) => {
+      const th = document.createElement('th');
+      th.dataset.col = key;
+      th.style.cssText =
+        `padding:5px 8px;text-align:left;color:#89b4fa;font-size:11px;` +
+        `cursor:pointer;user-select:none;white-space:nowrap;` +
+        `border-bottom:2px solid #313244;`;
+      th.textContent = label;
+      th.addEventListener('click', () => {
+        if (this._sortCol === key) {
+          this._sortAsc = !this._sortAsc;
+        } else {
+          this._sortCol = key;
+          this._sortAsc = true;
+        }
+        this._thead.querySelectorAll('th').forEach(t => {
+          const col = (t as HTMLElement).dataset.col!;
+          const entry = this._tableCols.find(c => c.key === col);
+          if (entry) t.textContent = entry.label + (col === this._sortCol ? (this._sortAsc ? ' ▲' : ' ▼') : '');
+        });
+        this._page = 0;
+        this._applyFilterAndSort();
+        this._renderTable();
+      });
+      headerRow.appendChild(th);
+    });
+    this._thead.appendChild(headerRow);
   }
 
   private _populateCategoryDropdown(): void {
@@ -699,14 +762,11 @@ class BioacousticWidget extends Widget {
           ? `background:#2d3f5e;`
           : `background:${i % 2 === 0 ? '#1e1e2e' : '#252538'};`);
 
-      [
-        row.id,
-        row.common_name,
-        row.confidence.toFixed(3),
-        row.rank,
-        row.start_time.toFixed(2),
-        row.end_time.toFixed(2),
-      ].forEach(v => {
+      this._tableCols.forEach(({ key }) => {
+        const raw = row[key];
+        const v   = typeof raw === 'number' && !Number.isInteger(raw)
+          ? raw.toFixed(key === 'confidence' ? 3 : 2)
+          : raw ?? '—';
         const td = document.createElement('td');
         td.textContent = String(v);
         td.style.cssText = `padding:4px 8px;font-size:12px;white-space:nowrap;color:#cdd6f4;`;
@@ -747,10 +807,6 @@ class BioacousticWidget extends Widget {
     // ── Info card ──
     this._infoCard.innerHTML = '';
 
-    const nameSpan = document.createElement('span');
-    nameSpan.style.cssText = `font-size:13px;font-weight:600;color:#cdd6f4;flex-shrink:0;`;
-    nameSpan.textContent = row.common_name;
-
     const sep = () => {
       const s = document.createElement('span');
       s.style.cssText = `color:#45475a;font-size:11px;flex-shrink:0;`;
@@ -758,17 +814,38 @@ class BioacousticWidget extends Widget {
       return s;
     };
 
-    const timeSpan = document.createElement('span');
-    timeSpan.style.cssText = `font-size:12px;color:#a6adc8;flex-shrink:0;`;
-    timeSpan.textContent = `${this._fmtTime(row.start_time)} – ${this._fmtTime(row.end_time)}`;
+    const mkChip = (text: string, color: string) => {
+      const s = document.createElement('span');
+      s.style.cssText = `font-size:12px;color:${color};flex-shrink:0;`;
+      s.textContent = text;
+      return s;
+    };
 
-    const confSpan = document.createElement('span');
-    confSpan.style.cssText = `font-size:12px;color:#a6e3a1;flex-shrink:0;`;
-    confSpan.textContent = `conf: ${row.confidence.toFixed(3)}`;
+    const items: HTMLElement[] = [];
 
-    const rankSpan = document.createElement('span');
-    rankSpan.style.cssText = `font-size:12px;color:#cba6f7;flex-shrink:0;`;
-    rankSpan.textContent = `rank: ${row.rank}`;
+    // Always show time range
+    items.push(mkChip(
+      `${this._fmtTime(row.start_time)} – ${this._fmtTime(row.end_time)}`,
+      '#a6adc8'
+    ));
+
+    // Verification mode: show prediction column value prominently
+    if (this._predictionCol && row[this._predictionCol] !== undefined) {
+      const nameSpan = document.createElement('span');
+      nameSpan.style.cssText = `font-size:13px;font-weight:600;color:#cdd6f4;flex-shrink:0;`;
+      nameSpan.textContent = String(row[this._predictionCol]);
+      items.unshift(nameSpan);  // prepend before time range
+    }
+
+    // Extra display columns
+    const colColors = ['#a6e3a1', '#cba6f7', '#fab387', '#89dceb', '#f38ba8'];
+    this._displayCols.forEach((col, i) => {
+      if (row[col] === undefined) return;
+      const val = typeof row[col] === 'number' && !Number.isInteger(row[col])
+        ? (row[col] as number).toFixed(3)
+        : String(row[col]);
+      items.push(mkChip(`${col}: ${val}`, colColors[i % colColors.length]));
+    });
 
     const spacer = document.createElement('span');
     spacer.style.flex = '1';
@@ -797,8 +874,14 @@ class BioacousticWidget extends Widget {
       }
     });
 
-    this._infoCard.append(nameSpan, sep(), timeSpan, sep(), confSpan, sep(), rankSpan,
-                          spacer, prevBtn, nextBtn);
+    // Interleave separators between items
+    const cardChildren: HTMLElement[] = [];
+    items.forEach((el, i) => {
+      cardChildren.push(el);
+      if (i < items.length - 1) cardChildren.push(sep());
+    });
+    cardChildren.push(spacer, prevBtn, nextBtn);
+    this._infoCard.append(...cardChildren);
 
     // Re-render table so selected row is highlighted
     this._renderTable();
@@ -1022,23 +1105,33 @@ class BioacousticWidget extends Widget {
     const signalTime = absTime;                            // absolute position in audio file
 
     this._signalStartInput.value = signalTime.toFixed(2);
+    const posStr = `${posInClip >= 0 ? '+' : ''}${posInClip.toFixed(2)}s`;
+    const label  = this._predictionCol ? 'signal' : 'start_time';
     this._signalTimeDisplay.textContent =
-      `⏱ ${this._fmtTime(signalTime)}  (pos: ${posInClip >= 0 ? '+' : ''}${posInClip.toFixed(2)}s)`;
+      `⏱ ${this._fmtTime(signalTime)}  (${label} pos: ${posStr})`;
   }
 
   // ─── Form ────────────────────────────────────────────────────
 
   private _resetForm(row?: Detection): void {
-    this._isValidSelect.value = '';
-    this._notesInput.value    = '';
+    this._notesInput.value       = '';
     this._signalStartInput.value = row ? row.start_time.toFixed(2) : '';
-    this._secondaryForm.style.display = 'none';
-    this._verifyBtn.disabled    = true;
-    this._verifyBtn.style.opacity = '0.4';
-    this._signalTimeDisplay.textContent = 'click spectrogram to mark signal';
+
+    if (this._predictionCol) {
+      // Verification mode
+      this._isValidSelect.value = '';
+      this._secondaryForm.style.display = 'none';
+      this._verifyBtn.disabled    = true;
+      this._verifyBtn.style.opacity = '0.4';
+      this._signalTimeDisplay.textContent = 'click spectrogram to mark signal';
+    } else {
+      // Annotation mode — secondary form stays visible, button always enabled
+      this._signalTimeDisplay.textContent = 'click spectrogram to set start_time';
+    }
   }
 
   private _onIsValidChange(): void {
+    if (!this._predictionCol) return;   // annotation mode: no is_valid
     const val = this._isValidSelect.value;
     this._secondaryForm.style.display = val === 'no' ? 'flex' : 'none';
     this._verifyBtn.disabled      = val === '';
@@ -1049,25 +1142,52 @@ class BioacousticWidget extends Widget {
     const row = this._filtered[this._selectedIdx];
     if (!row || !this._outputPath) return;
 
-    const isValid        = this._isValidSelect.value;
-    const notes          = this._notesInput.value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
-    const signalStart    = parseFloat(this._signalStartInput.value) || row.start_time;
-    const verifiedName   = isValid === 'no' ? this._verifiedNameSelect.value : '';
-    const verifConf      = isValid === 'no' ? this._verificationConfSelect.value : '';
-    const esc            = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const outPath        = esc(this._outputPath);
+    const esc         = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const notes       = this._notesInput.value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+    const signalStart = parseFloat(this._signalStartInput.value) || row.start_time;
+    const outPath     = esc(this._outputPath);
 
+    let cols: string[];
+    let rowDict: string;
+
+    if (this._predictionCol) {
+      // Verification mode
+      const isValid      = this._isValidSelect.value;
+      const verifiedName = isValid === 'no' ? this._verifiedNameSelect.value : '';
+      const verifConf    = isValid === 'no' ? this._verificationConfSelect.value : '';
+      cols = ['detection_id', 'is_valid', 'signal_start_time', 'notes',
+              'verified_common_name', 'verification_confidence'];
+      rowDict = [
+        `{`,
+        `  'detection_id':            ${row.id},`,
+        `  'is_valid':                '${isValid}',`,
+        `  'signal_start_time':       ${signalStart.toFixed(4)},`,
+        `  'notes':                   '${notes}',`,
+        `  'verified_common_name':    '${esc(verifiedName)}',`,
+        `  'verification_confidence': '${esc(verifConf)}',`,
+        `}`,
+      ].join('\n');
+    } else {
+      // Annotation mode
+      const commonName = this._verifiedNameSelect.value;
+      const confidence = this._verificationConfSelect.value;
+      cols = ['detection_id', 'start_time', 'common_name', 'confidence', 'notes'];
+      rowDict = [
+        `{`,
+        `  'detection_id': ${row.id},`,
+        `  'start_time':   ${signalStart.toFixed(4)},`,
+        `  'common_name':  '${esc(commonName)}',`,
+        `  'confidence':   '${esc(confidence)}',`,
+        `  'notes':        '${notes}',`,
+        `}`,
+      ].join('\n');
+    }
+
+    const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
     const code = [
       `import csv as _csv, os as _os`,
-      `_cols = ['detection_id','is_valid','signal_start_time','notes','verified_common_name','verification_confidence']`,
-      `_row  = {`,
-      `  'detection_id':            ${row.id},`,
-      `  'is_valid':                '${isValid}',`,
-      `  'signal_start_time':       ${signalStart.toFixed(4)},`,
-      `  'notes':                   '${notes}',`,
-      `  'verified_common_name':    '${esc(verifiedName)}',`,
-      `  'verification_confidence': '${esc(verifConf)}',`,
-      `}`,
+      `_cols = ${colsPy}`,
+      `_row  = ${rowDict}`,
       `_exists = _os.path.exists('${outPath}')`,
       `with open('${outPath}', 'a', newline='') as _f:`,
       `  _w = _csv.DictWriter(_f, fieldnames=_cols)`,
@@ -1076,9 +1196,10 @@ class BioacousticWidget extends Widget {
       `print('ok')`,
     ].join('\n');
 
+    const verb = this._predictionCol ? 'Verified' : 'Annotated';
     try {
       await this._execPython(code);
-      this._setStatus(`✓ Verified detection ${row.id} → ${this._outputPath}`);
+      this._setStatus(`✓ ${verb} clip ${row.id} → ${this._outputPath}`);
     } catch (e: any) {
       this._setStatus(`❌ Write failed: ${String(e.message ?? e)}`, true);
       return;
