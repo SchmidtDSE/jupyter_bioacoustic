@@ -1,31 +1,33 @@
 # JupyterBioacoustic
 
-_A JupyterLab plugin for reviewing and verifying bioacoustic model detections._
+_A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 
 ![JupyterBioacoustic Plugin](assets/screenshot.png)
 
-Browse a table of model detections, play each clip with a mel spectrogram, and record your verification decisions — all without leaving the notebook.
+Browse a table of audio clips, play each one with a mel spectrogram, and record verification decisions or annotations — all without leaving the notebook. The same widget operates in two modes: **Bioacoustic Reviewer** for validating model detections, and **Bioacoustic Annotator** for labelling clips from scratch.
 
-**Detection table.** An interactive list of model detections that lets you:
-- Sort by any column (species name, confidence, rank, time)
-- Filter with expression syntax — `common_name = 'Barred Owl' and confidence >= 0.5`
+**Clip table.** An interactive list of clips or detections that lets you:
+- Sort by any column and filter with expression syntax — `common_name = 'Barred Owl' and confidence >= 0.5`
 - Paginate through large result sets with configurable page size
-- Select any row to load the corresponding audio clip and jump to the verification form
+- Select any row to load the corresponding audio clip and jump to the form
 
-**Spectrogram player.** A visual audio player built around the selected detection's time window:
+**Spectrogram player.** A visual audio player built around the selected clip's time window:
 - Renders a mel spectrogram or plain STFT of the clipped audio segment
-- Adjustable buffer window — pads the detection with context on either side
-- Semi-transparent overlay marks the region outside the model's detection window
+- Adjustable buffer window — pads the clip with context on either side
+- Semi-transparent overlay marks the region outside the clip window
+- Displays the predicted class (reviewer) or any metadata you choose (annotator) in an info card
 - Click anywhere on the spectrogram to seek and mark a signal start time
 - Play/pause with a real-time position indicator drawn over the spectrogram
 
-**Verification form.** A structured review interface for recording decisions against each detection:
-- Mark a detection as valid or invalid
-- Select an alternative species from a configurable category list when the model is wrong
-- Set a verification confidence level (low / medium / high)
-- Add free-text notes
-- Record a precise signal start time by clicking the spectrogram
-- Skip a detection without writing, or Verify to append a row to the output CSV and advance
+**Reviewer form** (verification mode — `prediction_column` set):
+- Confirm a detection as valid or mark it as invalid
+- When invalid: select a corrected species from a configurable category list and set a confidence level
+- Add free-text notes and a precise signal start time; click Verify to write the row and advance
+
+**Annotator form** (annotation mode — no `prediction_column`):
+- Assign a species / class from the category list and set a confidence level
+- Set a start time by clicking the spectrogram; add free-text notes
+- Click Submit to write the row and advance
 
 **Table of Contents**
 
@@ -169,7 +171,7 @@ JupyterGIS's foundation is:
 **JupyterBioacoustic** overlaps many of these points, replacing maps with audio tools. If it grew into a full product it could start as a suite of interactive Jupyter plugins.
 
 1. An interactive detection table that lets you filter, sort, and select rows pointing to audio sources and time windows.
-2. A spectrogram player that displays the selected clip, plays audio, shows the predicted class, and lets you verify or correct it with notes, adjusted times, and a confidence rating. (Similar in spirit to [whombat](https://mbsantiago.github.io/whombat/) but targeted at verification rather than annotation.)
+2. A spectrogram player that displays the selected clip, plays audio, and supports both verification (confirm or correct a model prediction) and annotation (assign a class from scratch). Similar in spirit to [whombat](https://mbsantiago.github.io/whombat/).
 3. *(Future)* Reporting tools — class distributions, confidence stats, progress through the review queue, running accuracy of verified data.
 4. *(Future)* Map integration — if detections carry geographic coordinates, display and filter them on an interactive map.
 
