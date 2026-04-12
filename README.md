@@ -10,12 +10,13 @@ Browse a table of audio clips, play each one with a mel spectrogram, and record 
 - Sort by any column and filter with expression syntax — `common_name = 'Barred Owl' and confidence >= 0.5`
 - Paginate through large result sets with configurable page size
 - Select any row to load the corresponding audio clip and jump to the form
+- Control which columns appear with `data_columns`
 
 **Spectrogram player.** A visual audio player built around the selected clip's time window:
 - Renders a mel spectrogram or plain STFT of the clipped audio segment
 - Adjustable buffer window — pads the clip with context on either side
 - Semi-transparent overlay marks the region outside the clip window
-- Displays the predicted class (reviewer) or any metadata you choose (annotator) in an info card
+- Displays the predicted class (reviewer) or any metadata you choose (annotator) in an info card, controlled by `display_columns`
 - Click anywhere on the spectrogram to seek and mark a signal start time
 - Play/pause with a real-time position indicator drawn over the spectrogram
 
@@ -46,13 +47,13 @@ Browse a table of audio clips, play each one with a mel spectrogram, and record 
 
 ### Verification mode
 
-Set `prediction_column` to the name of the column in your DataFrame that holds the model's predicted class. The widget will display that prediction in the player, and the form will ask you to confirm or correct it.
+Set `prediction_column` to the name of the column in your DataFrame that holds the model's predicted class. The widget opens as **Bioacoustic Reviewer**, displays that prediction in the player info card, and the form asks you to confirm or correct it.
 
-![Annotate Form](assets/form-review.png)
+![Review Form](assets/form-review.png)
 
-![Annotate Form](assets/form-review-yes.png)
+![Review Form — valid](assets/form-review-yes.png)
 
-![Annotate Form](assets/form-review-no.png)
+![Review Form — invalid](assets/form-review-no.png)
 
 ```python
 import pandas as pd
@@ -64,16 +65,15 @@ JupyterAudio(
     data=df,
     audio_path='test.flac',
     category_path='categories.csv',
-    prediction_column='common_name',
-    display_columns=['confidence', 'start_time'],
-    output='observations-test.csv',
+    prediction_column='common_name',    # enables verification mode
+    display_columns=['confidence', 'rank'],  # shown in player info card
+    output='observations.jsonl',
 ).open()
 ```
 
 ### Annotation mode
 
-
-Omit `prediction_column` (or leave it as the default `''`). No predicted class is shown in the player and the form asks you to assign a class, confidence, and start time from scratch.
+Omit `prediction_column`. The widget opens as **Bioacoustic Annotator** — no predicted class is shown and the form asks you to assign a class, confidence, and start time from scratch.
 
 ![Annotate Form](assets/form-annotate.png)
 
@@ -82,25 +82,57 @@ JupyterAudio(
     data=clips_df,
     audio_path='test.flac',
     category_path='categories.csv',
-    output='annotations-test.csv',
+    display_columns=['region', 'aru_id'],  # metadata shown in player info card
+    output='annotations.jsonl',
 ).open()
 ```
 
-`display_columns` works in annotation mode too — useful for showing metadata (site ID, recorder unit, region, etc.) in the player info card:
+### Loading data from a file
+
+`data` accepts a file path string as well as a DataFrame. The format is inferred from the extension:
 
 ```python
 JupyterAudio(
-    data=clips_df,
+    data='detections.csv',          # or .parquet, .jsonl, .ndjson
     audio_path='test.flac',
     category_path='categories.csv',
-    display_columns=['region', 'aru_id'],
-    output='annotations-test.csv',
+    prediction_column='common_name',
+    output='observations.jsonl',
 ).open()
+```
+
+### Customising the clip table columns
+
+By default the table shows the prediction column (if set), any `display_columns`, plus `id`, `start_time`, and `end_time`. Use `data_columns` to specify exactly which columns appear and in what order:
+
+```python
+JupyterAudio(
+    data='detections.csv',
+    audio_path='test.flac',
+    prediction_column='common_name',
+    data_columns=['id', 'common_name', 'confidence', 'start_time', 'end_time', 'rank'],
+    output='observations.jsonl',
+).open()
+```
+
+### Output file format
+
+The output format is inferred from the file extension. Any unrecognised extension (including no extension) writes line-delimited JSON:
+
+```python
+# line-delimited JSON (default)
+JupyterAudio(..., output='observations.jsonl').open()
+
+# CSV
+JupyterAudio(..., output='observations.csv').open()
+
+# Parquet
+JupyterAudio(..., output='observations.parquet').open()
 ```
 
 ### Config file
 
-Any parameter can be set in a JSON or YAML file and loaded with the `config` argument. Explicitly passed arguments always take precedence over config file values, so you can keep shared settings in a file and override per-session in the notebook.
+Any parameter can be set in a JSON or YAML config file and loaded with the `config` argument. Explicitly passed arguments always take precedence over config file values, so you can keep shared settings in a file and override per-session in the notebook.
 
 ```yaml
 # config.yaml
@@ -113,14 +145,31 @@ output: 'observations.jsonl'
 ```
 
 ```python
-# everything from config
+# load everything from config
 JupyterAudio(config='config.yaml').open()
 
-# override audio_path for a different recording
+# override audio_path for a different recording; everything else from config
 JupyterAudio(audio_path='recordings/site-b.flac', config='config.yaml').open()
 ```
 
 Supported config formats: `.json`, `.yaml`, `.yml`. A path with no extension is assumed to be YAML.
+
+### Embedding inline
+
+By default the widget opens as a split-right panel. Set `inline=True` to embed it directly below the notebook cell instead:
+
+```python
+JupyterAudio(
+    data=df,
+    audio_path='test.flac',
+    category_path='categories.csv',
+    prediction_column='common_name',
+    output='observations.jsonl',
+    inline=True,
+    height=900,    # px, or a CSS string like '90vh'
+    width='100%',
+).open()
+```
 
 ### Parameters
 
@@ -129,13 +178,13 @@ Supported config formats: `.json`, `.yaml`, `.yml`. A path with no extension is 
 | `data` | DataFrame or str | — | Rows with at minimum `id`, `start_time`, `end_time`. Pass a file path (`.csv`, `.parquet`, `.jsonl`, `.ndjson`) to load directly. |
 | `audio_path` | str | — | Local path or `s3://bucket/key` |
 | `category_path` | str | `''` | Path to `categories.csv` for the class dropdown |
-| `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl`/`.ndjson`. Defaults to line-delimited JSON for any other extension. |
+| `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl` / `.ndjson`, or line-delimited JSON for any other extension. |
 | `prediction_column` | str | `''` | Column holding the model's predicted class — enables verification mode |
 | `display_columns` | list\[str\] | `[]` | Extra columns to show in the player info card |
-| `data_columns` | list\[str\] | `[]` | Ordered list of columns to display in the clip table. Overrides the default column selection. |
+| `data_columns` | list\[str\] | `[]` | Ordered list of columns to display in the clip table; overrides the default column selection |
 | `inline` | bool | `False` | Embed below cell instead of opening a panel |
-| `width` | int \| str | `'100%'` | Inline widget width (int = px) |
-| `height` | int \| str | `900` | Inline widget height (int = px) |
+| `width` | int \| str | `'100%'` | Inline widget width (px int or CSS string) |
+| `height` | int \| str | `900` | Inline widget height (px int or CSS string) |
 | `config` | str | `None` | Path to a JSON or YAML config file. Any parameter above can be set here; explicit arguments override file values. |
 
 ### Features
@@ -143,13 +192,12 @@ Supported config formats: `.json`, `.yaml`, `.yml`. A path with no extension is 
 | Section | What you can do |
 |---|---|
 | **Filter bar** | Expression filtering: `common_name = 'Barred owl' and confidence >= 0.5` |
-| **Clip table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select |
-| **Info card** | Shows time range · prediction (verification mode) · any `display_columns` · Prev / Next |
-| **Spectrogram player** | Mel or plain STFT · buffer overlay · play/pause · click to seek and mark signal |
-| **Form (verification)** | `is_valid`, notes, signal start time · corrected class + confidence when invalid |
-| **Form (annotation)** | start_time, class (from category list), confidence, notes |
-| **Skip / Verify / Submit** | Skip advances without writing · Verify/Submit writes to `output` CSV and advances |
-
+| **Clip table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select · columns set by `data_columns` |
+| **Info card** | Time range · prediction value (verification) · any `display_columns` · Prev / Next navigation |
+| **Spectrogram player** | Mel or plain STFT · adjustable buffer · buffer overlay · play/pause · click to seek and mark signal |
+| **Form (verification)** | `is_valid` · notes · signal start time · corrected class + confidence when invalid · Verify button |
+| **Form (annotation)** | start_time · class from category list · confidence · notes · Submit button |
+| **Skip / Verify / Submit** | Skip advances without writing · Verify/Submit appends a row to the output file and advances |
 
 ---
 
@@ -219,7 +267,7 @@ JupyterGIS's foundation is:
 
 **JupyterBioacoustic** overlaps many of these points, replacing maps with audio tools. If it grew into a full product it could start as a suite of interactive Jupyter plugins.
 
-1. An interactive detection table that lets you filter, sort, and select rows pointing to audio sources and time windows.
+1. An interactive clip table that lets you filter, sort, and select rows pointing to audio sources and time windows.
 2. A spectrogram player that displays the selected clip, plays audio, and supports both verification (confirm or correct a model prediction) and annotation (assign a class from scratch). Similar in spirit to [whombat](https://mbsantiago.github.io/whombat/).
 3. *(Future)* Reporting tools — class distributions, confidence stats, progress through the review queue, running accuracy of verified data.
 4. *(Future)* Map integration — if detections carry geographic coordinates, display and filter them on an interactive map.
