@@ -73,6 +73,7 @@ class BioacousticWidget extends Widget {
   // ── Mode state ──────────────────────────────────────────────
   private _predictionCol = '';      // empty = annotation mode
   private _displayCols: string[] = [];
+  private _dataCols: string[] = [];  // explicit table columns (overrides auto)
 
   // ── Player state ────────────────────────────────────────────
   private _specBitmap: ImageBitmap | null = null;
@@ -537,6 +538,7 @@ class BioacousticWidget extends Widget {
         `  'output': _BA_OUTPUT,\n` +
         `  'prediction_col': _BA_PREDICTION_COL,\n` +
         `  'display_cols': _BA_DISPLAY_COLS,\n` +
+        `  'data_cols': _BA_DATA_COLS,\n` +
         `}))`
       );
     } catch (e: any) {
@@ -546,7 +548,7 @@ class BioacousticWidget extends Widget {
 
     let cfg: {
       data: string; audio_path: string; category_path: string; output: string;
-      prediction_col: string; display_cols: string;
+      prediction_col: string; display_cols: string; data_cols: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -560,6 +562,7 @@ class BioacousticWidget extends Widget {
     this._outputPath     = cfg.output;
     this._predictionCol  = cfg.prediction_col;
     this._displayCols    = JSON.parse(cfg.display_cols) as string[];
+    this._dataCols       = JSON.parse(cfg.data_cols) as string[];
     this._configureFormForMode();
 
     try {
@@ -600,31 +603,39 @@ class BioacousticWidget extends Widget {
   }
 
   private _configureFormForMode(): void {
-    // Rebuild table columns based on mode
-    const baseCols = [
-      { key: 'id', label: 'ID' },
-      { key: 'start_time', label: 'Start (s)' },
-      { key: 'end_time', label: 'End (s)' },
-    ];
-    const extraCols = this._displayCols.map(k => ({ key: k, label: k }));
+    const prettify = (k: string) =>
+      k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-    if (this._predictionCol) {
-      // Verification mode — show prediction col + display_cols in table
-      const predLabel = this._predictionCol.replace(/_/g, ' ');
-      this._tableCols = [
+    if (this._dataCols.length > 0) {
+      // Explicit column list supplied by caller — use as-is
+      this._tableCols = this._dataCols.map(k => ({ key: k, label: prettify(k) }));
+    } else {
+      // Auto-build from mode + display_cols
+      const baseCols = [
         { key: 'id', label: 'ID' },
-        { key: this._predictionCol, label: predLabel },
-        ...extraCols,
         { key: 'start_time', label: 'Start (s)' },
         { key: 'end_time', label: 'End (s)' },
       ];
-      this._rebuildTableHeader();
+      const extraCols = this._displayCols.map(k => ({ key: k, label: prettify(k) }));
+
+      if (this._predictionCol) {
+        this._tableCols = [
+          { key: 'id', label: 'ID' },
+          { key: this._predictionCol, label: prettify(this._predictionCol) },
+          ...extraCols,
+          { key: 'start_time', label: 'Start (s)' },
+          { key: 'end_time', label: 'End (s)' },
+        ];
+      } else {
+        this._tableCols = [...baseCols, ...extraCols];
+      }
+    }
+    this._rebuildTableHeader();
+
+    if (this._predictionCol) {
+      // Verification mode — form layout unchanged
       return;
     }
-
-    // Annotation mode
-    this._tableCols = [...baseCols, ...extraCols];
-    this._rebuildTableHeader();
 
     this._titleEl.textContent = 'Bioacoustic Annotator';
     this.title.label = 'Bioacoustic Annotator';
@@ -1186,19 +1197,7 @@ class BioacousticWidget extends Widget {
       ].join('\n');
     }
 
-    const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
-    const code = [
-      `import csv as _csv, os as _os`,
-      `_cols = ${colsPy}`,
-      `_row  = ${rowDict}`,
-      `_exists = _os.path.exists('${outPath}')`,
-      `with open('${outPath}', 'a', newline='') as _f:`,
-      `  _w = _csv.DictWriter(_f, fieldnames=_cols)`,
-      `  if not _exists: _w.writeheader()`,
-      `  _w.writerow(_row)`,
-      `print('ok')`,
-    ].join('\n');
-
+    const code = this._buildOutputCode(cols, rowDict);
     const verb = this._predictionCol ? 'Verified' : 'Annotated';
     try {
       await this._execPython(code);
@@ -1209,6 +1208,50 @@ class BioacousticWidget extends Widget {
     }
 
     this._onSkip();
+  }
+
+  private _buildOutputCode(cols: string[], rowDict: string): string {
+    const esc     = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const outPath = esc(this._outputPath);
+    const ext     = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
+
+    if (ext === 'csv') {
+      const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
+      return [
+        `import csv as _csv, os as _os`,
+        `_cols = ${colsPy}`,
+        `_row  = ${rowDict}`,
+        `_exists = _os.path.exists('${outPath}')`,
+        `with open('${outPath}', 'a', newline='') as _f:`,
+        `  _w = _csv.DictWriter(_f, fieldnames=_cols)`,
+        `  if not _exists: _w.writeheader()`,
+        `  _w.writerow(_row)`,
+        `print('ok')`,
+      ].join('\n');
+    }
+
+    if (ext === 'parquet') {
+      return [
+        `import pandas as _pd, os as _os`,
+        `_row  = ${rowDict}`,
+        `_new  = _pd.DataFrame([_row])`,
+        `if _os.path.exists('${outPath}'):`,
+        `  _existing = _pd.read_parquet('${outPath}')`,
+        `  _pd.concat([_existing, _new], ignore_index=True).to_parquet('${outPath}', index=False)`,
+        `else:`,
+        `  _new.to_parquet('${outPath}', index=False)`,
+        `print('ok')`,
+      ].join('\n');
+    }
+
+    // Default: line-delimited JSON (.jsonl / .ndjson / anything else)
+    return [
+      `import json as _json`,
+      `_row  = ${rowDict}`,
+      `with open('${outPath}', 'a') as _f:`,
+      `  _f.write(_json.dumps(_row) + '\\n')`,
+      `print('ok')`,
+    ].join('\n');
   }
 
   private _onSkip(): void {

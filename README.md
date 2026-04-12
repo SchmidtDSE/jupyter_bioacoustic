@@ -102,12 +102,13 @@ JupyterAudio(
 
 | parameter | type | default | description |
 |---|---|---|---|
-| `data` | DataFrame | — | Rows with at minimum `id`, `start_time`, `end_time` |
+| `data` | DataFrame or str | — | Rows with at minimum `id`, `start_time`, `end_time`. Pass a file path (`.csv`, `.parquet`, `.jsonl`, `.ndjson`) to load directly. |
 | `audio_path` | str | — | Local path or `s3://bucket/key` |
 | `category_path` | str | `''` | Path to `categories.csv` for the class dropdown |
-| `output` | str | `''` | Path to output CSV; rows appended on Verify / Submit |
+| `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl`/`.ndjson`. Defaults to line-delimited JSON for any other extension. |
 | `prediction_column` | str | `''` | Column holding the model's predicted class — enables verification mode |
 | `display_columns` | list\[str\] | `[]` | Extra columns to show in the player info card |
+| `data_columns` | list\[str\] | `[]` | Ordered list of columns to display in the clip table. Overrides the default column selection. |
 | `inline` | bool | `False` | Embed below cell instead of opening a panel |
 | `width` | int \| str | `'100%'` | Inline widget width (int = px) |
 | `height` | int \| str | `900` | Inline widget height (int = px) |
@@ -131,18 +132,34 @@ JupyterAudio(
 
 ### Input
 
-The only required columns are `id`, `start_time`, and `end_time`. All other columns are optional — include whatever your model produces or your clips DataFrame contains.
+Pass either a pandas DataFrame or a file path string. The only required columns are `id`, `start_time`, and `end_time`; all other columns are optional.
 
 | column | type | description |
 |---|---|---|
 | `id` | int | unique clip / detection ID |
 | `start_time` | float | clip start (seconds from file start) |
 | `end_time` | float | clip end (seconds) |
-| *(any others)* | — | available for `prediction_column` and `display_columns` |
+| *(any others)* | — | available for `prediction_column`, `display_columns`, `data_columns` |
 
-### Output — verification mode
+Supported input file formats (when `data` is a path string):
 
-Each **Verify** click appends one row:
+| extension | format |
+|---|---|
+| `.csv` | comma-separated values |
+| `.parquet` | Apache Parquet |
+| `.jsonl`, `.ndjson` | line-delimited JSON |
+
+### Output
+
+Format is inferred from the `output` file extension. Line-delimited JSON is the default for any unrecognised extension.
+
+| extension | format |
+|---|---|
+| `.csv` | comma-separated values (header written on first row) |
+| `.parquet` | Apache Parquet (read-concat-write on each append) |
+| `.jsonl`, `.ndjson`, *(other)* | line-delimited JSON — one JSON object per line |
+
+#### Verification mode — columns written on each **Verify**
 
 | column | description |
 |---|---|
@@ -153,9 +170,7 @@ Each **Verify** click appends one row:
 | `verified_common_name` | corrected species name (empty if `is_valid = yes`) |
 | `verification_confidence` | `low` / `medium` / `high` (empty if `is_valid = yes`) |
 
-### Output — annotation mode
-
-Each **Submit** click appends one row:
+#### Annotation mode — columns written on each **Submit**
 
 | column | description |
 |---|---|
