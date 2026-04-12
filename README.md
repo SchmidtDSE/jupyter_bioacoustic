@@ -40,19 +40,11 @@ Browse a table of model detections, play each clip with a mel spectrogram, and r
 
 ## Usage
 
-The `JupyterAudio` provides a single method `.open()` that opens up the panel. It's parameters are: 
+`JupyterAudio` supports two modes controlled by the `prediction_column` parameter.
 
-| parameter | type | default | description |
-|---|---|---|---|
-| `data` | DataFrame | — | Detection rows (see format below) |
-| `audio_path` | str | — | Local path or `s3://bucket/key` |
-| `category_path` | str | `''` | Path to `categories.csv` for the verified-name dropdown |
-| `output` | str | `''` | Path to output CSV; rows appended on Verify |
-| `inline` | bool | `False` | Embed below cell instead of opening a panel |
-| `width` | int \| str | `'100%'` | Inline widget width (int = px) |
-| `height` | int \| str | `900` | Inline widget height (int = px) |
+### Verification mode
 
-Here is an example:
+Set `prediction_column` to the name of the column in your DataFrame that holds the model's predicted class. The widget will display that prediction in the player, and the form will ask you to confirm or correct it.
 
 ```python
 import pandas as pd
@@ -62,55 +54,84 @@ df = pd.read_csv('detections-test.csv')
 
 JupyterAudio(
     data=df,
-    audio_path='/path/to/audio.flac',   # local path or s3://bucket/key
-    category_path='categories.csv',      # populates the verified-name dropdown
-    output='observations-test.csv',      # rows appended here on Verify
+    audio_path='test.flac',
+    category_path='categories.csv',
+    prediction_column='common_name',
+    display_columns=['confidence', 'start_time'],
+    output='observations-test.csv',
 ).open()
 ```
 
-To embed it directly below the cell instead set `inline=True`:
+### Annotation mode
+
+Omit `prediction_column` (or leave it as the default `''`). No predicted class is shown in the player and the form asks you to assign a class, confidence, and start time from scratch.
 
 ```python
 JupyterAudio(
-    data=df,
-    audio_path='/path/to/audio.flac',
+    data=clips_df,
+    audio_path='test.flac',
     category_path='categories.csv',
-    output='observations-test.csv',
-    inline=True,
+    output='annotations-test.csv',
 ).open()
 ```
+
+`display_columns` works in annotation mode too — useful for showing metadata (site ID, recorder unit, region, etc.) in the player info card:
+
+```python
+JupyterAudio(
+    data=clips_df,
+    audio_path='test.flac',
+    category_path='categories.csv',
+    display_columns=['region', 'aru_id'],
+    output='annotations-test.csv',
+).open()
+```
+
+### Parameters
+
+| parameter | type | default | description |
+|---|---|---|---|
+| `data` | DataFrame | — | Rows with at minimum `id`, `start_time`, `end_time` |
+| `audio_path` | str | — | Local path or `s3://bucket/key` |
+| `category_path` | str | `''` | Path to `categories.csv` for the class dropdown |
+| `output` | str | `''` | Path to output CSV; rows appended on Verify / Submit |
+| `prediction_column` | str | `''` | Column holding the model's predicted class — enables verification mode |
+| `display_columns` | list\[str\] | `[]` | Extra columns to show in the player info card |
+| `inline` | bool | `False` | Embed below cell instead of opening a panel |
+| `width` | int \| str | `'100%'` | Inline widget width (int = px) |
+| `height` | int \| str | `900` | Inline widget height (int = px) |
 
 ### Features
 
 | Section | What you can do |
 |---|---|
 | **Filter bar** | Expression filtering: `common_name = 'Barred owl' and confidence >= 0.5` |
-| **Detection table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select |
-| **Info card** | Selected row: name, time range, confidence, rank · Prev / Next navigation |
+| **Clip table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select |
+| **Info card** | Shows time range · prediction (verification mode) · any `display_columns` · Prev / Next |
 | **Spectrogram player** | Mel or plain STFT · buffer overlay · play/pause · click to seek and mark signal |
-| **Verification form** | `is_valid`, notes, signal start time · corrected class + confidence when invalid |
-| **Skip / Verify** | Skip advances without writing · Verify writes to `output` CSV and advances |
+| **Form (verification)** | `is_valid`, notes, signal start time · corrected class + confidence when invalid |
+| **Form (annotation)** | start_time, class (from category list), confidence, notes |
+| **Skip / Verify / Submit** | Skip advances without writing · Verify/Submit writes to `output` CSV and advances |
 
 
 ---
 
 ## Data Schema
 
-### Input data format
+### Input
+
+The only required columns are `id`, `start_time`, and `end_time`. All other columns are optional — include whatever your model produces or your clips DataFrame contains.
 
 | column | type | description |
 |---|---|---|
-| `id` | int | unique detection ID |
-| `common_name` | str | predicted species common name |
-| `scientific_name` | str | predicted species scientific name |
-| `confidence` | float | model confidence (0–1) |
-| `rank` | int | prediction rank |
-| `start_time` | float | detection start (seconds from file start) |
-| `end_time` | float | detection end (seconds) |
+| `id` | int | unique clip / detection ID |
+| `start_time` | float | clip start (seconds from file start) |
+| `end_time` | float | clip end (seconds) |
+| *(any others)* | — | available for `prediction_column` and `display_columns` |
 
-### Output data format
+### Output — verification mode
 
-Each **Verify** click appends one row to `output`:
+Each **Verify** click appends one row:
 
 | column | description |
 |---|---|
@@ -120,6 +141,18 @@ Each **Verify** click appends one row to `output`:
 | `notes` | free-text notes |
 | `verified_common_name` | corrected species name (empty if `is_valid = yes`) |
 | `verification_confidence` | `low` / `medium` / `high` (empty if `is_valid = yes`) |
+
+### Output — annotation mode
+
+Each **Submit** click appends one row:
+
+| column | description |
+|---|---|
+| `detection_id` | `id` from the input row |
+| `start_time` | signal start position (seconds) — set by clicking the spectrogram |
+| `common_name` | species / class selected from the category list |
+| `confidence` | `low` / `medium` / `high` |
+| `notes` | free-text notes |
 
 
 ---

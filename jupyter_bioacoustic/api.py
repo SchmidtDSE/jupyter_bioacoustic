@@ -10,6 +10,7 @@ Usage (inline below cell):
                  output='observations-test.csv', inline=True, height=900).open()
 """
 
+import json
 import uuid
 
 from IPython import get_ipython
@@ -23,6 +24,8 @@ class JupyterAudio:
         audio_path: str,
         category_path: str = '',
         output: str = '',
+        prediction_column: str = '',
+        display_columns: 'list[str] | None' = None,
         inline: bool = False,
         width: 'int | str' = '100%',
         height: 'int | str' = 900,
@@ -31,14 +34,24 @@ class JupyterAudio:
         Parameters
         ----------
         data : pandas.DataFrame
-            Detection rows with columns: id, common_name, scientific_name,
-            confidence, rank, start_time, end_time.
+            Rows with at minimum: id, start_time, end_time.
         audio_path : str
             Local path or s3:// URI to the audio file.
         category_path : str
-            Path to categories.csv (used to populate the verified-name dropdown).
+            Path to categories.csv (used to populate the name dropdown).
         output : str
-            Path to the output CSV where observations are appended on Verify.
+            Path to the output CSV where rows are appended on Verify/Submit.
+        prediction_column : str
+            Name of the column in ``data`` that holds the model's predicted
+            class (e.g. ``'common_name'``).  When set, the widget operates in
+            **verification mode**: the predicted class is displayed in the
+            player and the form asks is_valid / verified name / confidence.
+            When empty (default), the widget operates in **annotation mode**:
+            the form asks for start_time / class / confidence / notes.
+        display_columns : list of str, optional
+            Extra columns from ``data`` to display in the player info card,
+            in addition to (verification mode) or instead of (annotation mode)
+            the prediction column.
         inline : bool
             If True, embed the widget below the cell instead of opening a
             split-right panel. Default False.
@@ -53,6 +66,8 @@ class JupyterAudio:
         self._audio_path = audio_path
         self._category_path = category_path
         self._output = output
+        self._prediction_column = prediction_column
+        self._display_columns = display_columns or []
         self._inline = inline
         self._width = width
         self._height = height
@@ -70,6 +85,8 @@ class JupyterAudio:
         ip.user_ns['_BA_AUDIO_PATH'] = self._audio_path
         ip.user_ns['_BA_CATEGORY_PATH'] = self._category_path
         ip.user_ns['_BA_OUTPUT'] = self._output
+        ip.user_ns['_BA_PREDICTION_COL'] = self._prediction_column
+        ip.user_ns['_BA_DISPLAY_COLS'] = json.dumps(self._display_columns)
 
         if self._inline:
             self._open_inline()
