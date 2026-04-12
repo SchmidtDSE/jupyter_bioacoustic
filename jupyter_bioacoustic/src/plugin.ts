@@ -87,6 +87,7 @@ class BioacousticWidget extends Widget {
   private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── DOM refs — header/filter ────────────────────────────────
+  private _titleEl!: HTMLSpanElement;
   private _statusEl!: HTMLSpanElement;
   private _filterInput!: HTMLInputElement;
 
@@ -132,7 +133,7 @@ class BioacousticWidget extends Widget {
     super();
     this._tracker = tracker;
     this.id = `jp-bioacoustic-${_counter++}`;
-    this.title.label = '🔬 Bioacoustic';
+    this.title.label = 'Bioacoustic Reviewer';
     this.title.closable = true;
     this._buildUI();
   }
@@ -150,16 +151,16 @@ class BioacousticWidget extends Widget {
     const header = document.createElement('div');
     header.style.cssText = barStyle() + `border-bottom:1px solid #313244;`;
 
-    const titleEl = document.createElement('span');
-    titleEl.textContent = '🔬 Bioacoustic Reviewer';
-    titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
+    this._titleEl = document.createElement('span');
+    this._titleEl.textContent = 'Bioacoustic Reviewer';
+    this._titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
 
     this._statusEl = document.createElement('span');
     this._statusEl.style.cssText =
       `flex:1;text-align:right;font-size:11px;color:#a6e3a1;` +
       `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
     this._statusEl.textContent = 'Loading…';
-    header.append(titleEl, this._statusEl);
+    header.append(this._titleEl, this._statusEl);
 
     // ── Filter bar ───────────────────────────────────────────────
     const filterBar = document.createElement('div');
@@ -625,6 +626,8 @@ class BioacousticWidget extends Widget {
     this._tableCols = [...baseCols, ...extraCols];
     this._rebuildTableHeader();
 
+    this._titleEl.textContent = 'Bioacoustic Annotator';
+    this.title.label = 'Bioacoustic Annotator';
     this._formTitle.textContent = 'ANNOTATE CLIP';
     this._isValidLbl.style.display = 'none';
     this._signalStartLbl.childNodes[0].textContent = 'start_time (s)';
