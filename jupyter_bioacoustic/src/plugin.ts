@@ -563,7 +563,6 @@ class BioacousticWidget extends Widget {
     this._predictionCol  = cfg.prediction_col;
     this._displayCols    = JSON.parse(cfg.display_cols) as string[];
     this._dataCols       = JSON.parse(cfg.data_cols) as string[];
-    this._configureFormForMode();
 
     try {
       this._rows = JSON.parse(cfg.data) as Detection[];
@@ -572,6 +571,7 @@ class BioacousticWidget extends Widget {
       return;
     }
 
+    this._configureFormForMode();   // needs _rows for "show all columns" default
     this._applyFilterAndSort();
     this._renderTable();
 
@@ -609,6 +609,9 @@ class BioacousticWidget extends Widget {
     if (this._dataCols.length > 0) {
       // Explicit column list supplied by caller — use as-is
       this._tableCols = this._dataCols.map(k => ({ key: k, label: prettify(k) }));
+    } else if (this._rows.length > 0 && !this._predictionCol && this._displayCols.length === 0) {
+      // No guidance at all — show every column present in the data
+      this._tableCols = Object.keys(this._rows[0]).map(k => ({ key: k, label: prettify(k) }));
     } else {
       // Auto-build from mode + display_cols
       const baseCols = [

@@ -181,7 +181,7 @@ JupyterAudio(
 | `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl` / `.ndjson`, or line-delimited JSON for any other extension. |
 | `prediction_column` | str | `''` | Column holding the model's predicted class — enables verification mode |
 | `display_columns` | list\[str\] | `[]` | Extra columns to show in the player info card |
-| `data_columns` | list\[str\] | `[]` | Ordered list of columns to display in the clip table; overrides the default column selection |
+| `data_columns` | list\[str\] | `[]` | Ordered list of columns to display in the clip table. When empty and no `prediction_column` or `display_columns` are set, all columns in the data are shown. |
 | `inline` | bool | `False` | Embed below cell instead of opening a panel |
 | `width` | int \| str | `'100%'` | Inline widget width (px int or CSS string) |
 | `height` | int \| str | `900` | Inline widget height (px int or CSS string) |
