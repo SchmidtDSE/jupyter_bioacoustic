@@ -29,7 +29,8 @@ Browse a table of model detections, play each clip with a mel spectrogram, and r
 
 **Table of Contents**
 
-- [Usage in a notebook](#usage-in-a-notebook)
+- [Usage](#usage)
+- [Data Schema](#data-schema)
 - [Motivation](#motivation)
 - [Install](#install)
 - [Dev](#dev)
@@ -37,9 +38,21 @@ Browse a table of model detections, play each clip with a mel spectrogram, and r
 
 ---
 
-## Usage in a notebook
+## Usage
 
-### Quick example
+The `JupyterAudio` provides a single method `.open()` that opens up the panel. It's parameters are: 
+
+| parameter | type | default | description |
+|---|---|---|---|
+| `data` | DataFrame | — | Detection rows (see format below) |
+| `audio_path` | str | — | Local path or `s3://bucket/key` |
+| `category_path` | str | `''` | Path to `categories.csv` for the verified-name dropdown |
+| `output` | str | `''` | Path to output CSV; rows appended on Verify |
+| `inline` | bool | `False` | Embed below cell instead of opening a panel |
+| `width` | int \| str | `'100%'` | Inline widget width (int = px) |
+| `height` | int \| str | `900` | Inline widget height (int = px) |
+
+Here is an example:
 
 ```python
 import pandas as pd
@@ -55,9 +68,7 @@ JupyterAudio(
 ).open()
 ```
 
-This opens the reviewer as a split-right panel alongside your notebook. You can also open it from the JupyterLab command palette: **Bioacoustic → Open Bioacoustic Reviewer**.
-
-To embed it directly below the cell instead:
+To embed it directly below the cell instead set `inline=True`:
 
 ```python
 JupyterAudio(
@@ -69,17 +80,21 @@ JupyterAudio(
 ).open()
 ```
 
-### Parameters
+### Features
 
-| parameter | type | default | description |
-|---|---|---|---|
-| `data` | DataFrame | — | Detection rows (see format below) |
-| `audio_path` | str | — | Local path or `s3://bucket/key` |
-| `category_path` | str | `''` | Path to `categories.csv` for the verified-name dropdown |
-| `output` | str | `''` | Path to output CSV; rows appended on Verify |
-| `inline` | bool | `False` | Embed below cell instead of opening a panel |
-| `width` | int \| str | `'100%'` | Inline widget width (int = px) |
-| `height` | int \| str | `900` | Inline widget height (int = px) |
+| Section | What you can do |
+|---|---|
+| **Filter bar** | Expression filtering: `common_name = 'Barred owl' and confidence >= 0.5` |
+| **Detection table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select |
+| **Info card** | Selected row: name, time range, confidence, rank · Prev / Next navigation |
+| **Spectrogram player** | Mel or plain STFT · buffer overlay · play/pause · click to seek and mark signal |
+| **Verification form** | `is_valid`, notes, signal start time · corrected class + confidence when invalid |
+| **Skip / Verify** | Skip advances without writing · Verify writes to `output` CSV and advances |
+
+
+---
+
+## Data Schema
 
 ### Input data format
 
@@ -106,22 +121,6 @@ Each **Verify** click appends one row to `output`:
 | `verified_common_name` | corrected species name (empty if `is_valid = yes`) |
 | `verification_confidence` | `low` / `medium` / `high` (empty if `is_valid = yes`) |
 
-### What the panel does
-
-| Section | What you can do |
-|---|---|
-| **Filter bar** | Expression filtering: `common_name = 'Barred owl' and confidence >= 0.5` |
-| **Detection table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select |
-| **Info card** | Selected row: name, time range, confidence, rank · Prev / Next navigation |
-| **Spectrogram player** | Mel or plain STFT · buffer overlay · play/pause · click to seek and mark signal |
-| **Verification form** | `is_valid`, notes, signal start time · corrected class + confidence when invalid |
-| **Skip / Verify** | Skip advances without writing · Verify writes to `output` CSV and advances |
-
-### TODO
-
-- [ ] Generate real-time progress/accuracy reports
-- [ ] Prevent double-verification of the same detection
-- [ ] Fix reload resetting pause button state
 
 ---
 
