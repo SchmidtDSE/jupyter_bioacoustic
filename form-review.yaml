@@ -1,0 +1,36 @@
+pass_value:
+  source_column: id
+  column: detection_id
+
+is_valid_form:
+  - is_valid_select: true
+  - textbox:
+      label: notes
+      column: notes
+  - time_select:
+      label: signal_start (s)
+      column: signal_start_time
+      init_value: start_time
+
+no_form:
+  - select:
+      label: verified name
+      column: verified_common_name
+      required: true
+      items:
+        path: categories.csv
+        value: common_name
+  - select:
+      label: verif. confidence
+      column: verification_confidence
+      items:
+        - low
+        - medium
+        - high
+
+submission_buttons:
+  line: true
+  next:
+    label: Skip
+  submit:
+    label: Verify
