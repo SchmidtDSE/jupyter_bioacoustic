@@ -73,6 +73,8 @@ class BioacousticWidget extends Widget {
   private _predictionCol = '';
   private _displayCols: string[] = [];
   private _dataCols: string[] = [];
+  private _captureLabel = '';   // empty = hidden
+  private _captureDir = '';
 
   // ── Player state ────────────────────────────────────────────
   private _specBitmap: ImageBitmap | null = null;
@@ -114,6 +116,7 @@ class BioacousticWidget extends Widget {
   private _timeDisplay!: HTMLSpanElement;
   private _signalTimeDisplay!: HTMLSpanElement;
   private _audio!: HTMLAudioElement;
+  private _captureBtn!: HTMLButtonElement;
 
   // ── DOM refs — form ─────────────────────────────────────────
   private _formSection!: HTMLDivElement;
@@ -376,6 +379,12 @@ class BioacousticWidget extends Widget {
     ctrNote.style.cssText = `font-size:10px;color:#6c7086;white-space:nowrap;`;
     playerCtrls.appendChild(ctrNote);
 
+    this._captureBtn = document.createElement('button');
+    this._captureBtn.textContent = 'Capture';
+    this._captureBtn.style.cssText = btnStyle() + `display:none;margin-left:auto;`;
+    this._captureBtn.addEventListener('click', () => void this._onCapture());
+    playerCtrls.appendChild(this._captureBtn);
+
     // ── Spectrogram canvas ───────────────────────────────────────
     this._canvasContainer = document.createElement('div');
     this._canvasContainer.style.cssText =
@@ -484,6 +493,8 @@ class BioacousticWidget extends Widget {
         `  'display_cols': _BA_DISPLAY_COLS,\n` +
         `  'data_cols': _BA_DATA_COLS,\n` +
         `  'form_config': _BA_FORM_CONFIG,\n` +
+        `  'capture': _BA_CAPTURE,\n` +
+        `  'capture_dir': _BA_CAPTURE_DIR,\n` +
         `}))`
       );
     } catch (e: any) {
@@ -494,7 +505,7 @@ class BioacousticWidget extends Widget {
     let cfg: {
       data: string; audio_path: string; category_path: string; output: string;
       prediction_col: string; display_cols: string; data_cols: string;
-      form_config: string;
+      form_config: string; capture: string; capture_dir: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -510,6 +521,12 @@ class BioacousticWidget extends Widget {
     this._displayCols    = JSON.parse(cfg.display_cols) as string[];
     this._dataCols       = JSON.parse(cfg.data_cols) as string[];
     this._formConfig     = JSON.parse(cfg.form_config);
+    this._captureLabel   = cfg.capture ?? '';
+    this._captureDir     = cfg.capture_dir ?? '';
+    if (this._captureLabel) {
+      this._captureBtn.textContent = this._captureLabel;
+      this._captureBtn.style.display = '';
+    }
 
     try {
       this._rows = JSON.parse(cfg.data) as Detection[];
@@ -525,7 +542,7 @@ class BioacousticWidget extends Widget {
     this._renderTable();
 
     if (this._filtered.length > 0) {
-      this._selectRow(0, false);
+      this._selectRow(0);
       await this._loadAudio();
     }
 
@@ -2081,6 +2098,8 @@ class BioacousticWidget extends Widget {
     const outPath = esc(this._outputPath);
     const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
 
+    const mkdirLine = `import os as _os; _d=_os.path.dirname('${outPath}');\nif _d: _os.makedirs(_d, exist_ok=True)`;
+
     const cols = Object.keys(values);
     const pyRepr = (val: any): string => {
       if (val === null || val === undefined) return 'None';
@@ -2093,6 +2112,7 @@ class BioacousticWidget extends Widget {
     if (ext === 'csv') {
       const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
       return [
+        mkdirLine,
         `import csv as _csv, os as _os`,
         `_cols = ${colsPy}`,
         `_row  = ${rowDict}`,
@@ -2107,6 +2127,7 @@ class BioacousticWidget extends Widget {
 
     if (ext === 'parquet') {
       return [
+        mkdirLine,
         `import pandas as _pd, os as _os`,
         `_row  = ${rowDict}`,
         `_new  = _pd.DataFrame([_row])`,
@@ -2120,6 +2141,7 @@ class BioacousticWidget extends Widget {
     }
 
     return [
+      mkdirLine,
       `import json as _json`,
       `_row  = ${rowDict}`,
       `with open('${outPath}', 'a') as _f:`,
@@ -2141,6 +2163,79 @@ class BioacousticWidget extends Widget {
       this._selectRow(this._selectedIdx + 1);
       this._ensurePageShowsSelected();
       void this._loadAudio();
+    }
+  }
+
+  // ─── Capture ─────────────────────────────────────────────────
+
+  private _buildCaptureFilename(): string {
+    const row = this._filtered[this._selectedIdx];
+    if (!row) return 'spectrogram.png';
+    const parts: string[] = [];
+    if (this._predictionCol && row[this._predictionCol] !== undefined) {
+      parts.push(String(row[this._predictionCol]));
+    }
+    for (const col of this._displayCols) {
+      if (row[col] !== undefined) {
+        const v = typeof row[col] === 'number' && !Number.isInteger(row[col])
+          ? (row[col] as number).toFixed(3) : String(row[col]);
+        parts.push(`${col}_${v}`);
+      }
+    }
+    if (!parts.length) parts.push(`clip_${row.id}`);
+    return parts.join('.')
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[:.]+/g, '_')
+      .replace(/[^a-z0-9._-]/g, '') + '.png';
+  }
+
+  private async _onCapture(): Promise<void> {
+    if (!this._specBitmap) return;
+    const defaultName = this._buildCaptureFilename();
+    const suggested = this._captureDir
+      ? `${this._captureDir}/${defaultName}` : defaultName;
+    const filename = prompt('Save spectrogram as:', suggested);
+    if (!filename) return;
+
+    // Render a clean capture canvas (spec + overlays, no playhead)
+    const W = this._canvas.width, H = this._canvas.height;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = W; offscreen.height = H;
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(this._specBitmap, 0, 0, W, H);
+
+    // Buffer overlay
+    if (this._segDuration > 0) {
+      const dsf = Math.max(0, (this._detectionStart - this._segLoadStart) / this._segDuration);
+      const def = Math.min(1, (this._detectionEnd - this._segLoadStart) / this._segDuration);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      if (dsf > 0) ctx.fillRect(0, 0, Math.floor(dsf * W), H);
+      if (def < 1) { const rx = Math.ceil(def * W); ctx.fillRect(rx, 0, W - rx, H); }
+    }
+
+    // Annotation overlays
+    this._renderAnnotation(ctx, W, H);
+
+    // Convert to blob and save via kernel
+    const dataUrl = offscreen.toDataURL('image/png');
+    const b64 = dataUrl.split(',')[1];
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    try {
+      await this._execPython(
+        `import base64 as _b64, os as _os\n` +
+        `_p = '${esc(filename)}'\n` +
+        `_d = _os.path.dirname(_p)\n` +
+        `if _d: _os.makedirs(_d, exist_ok=True)\n` +
+        `with open(_p, 'wb') as _f:\n` +
+        `    _f.write(_b64.b64decode('${b64}'))\n` +
+        `print('ok')`
+      );
+      this._setStatus(`✓ Saved ${filename}`);
+    } catch (e: any) {
+      this._setStatus(`❌ Save failed: ${String(e.message ?? e)}`, true);
     }
   }
 
