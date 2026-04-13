@@ -7,10 +7,12 @@ is_valid_form:
   - textbox:
       label: notes
       column: notes
-  - time_select:
-      label: signal_start (s)
-      column: signal_start_time
-      init_value: start_time
+  - annotation:
+      start_time:
+        label: signal start
+        column: signal_start_time
+        source_value: start_time
+      tools: time_select
 
 no_form:
   - select:
