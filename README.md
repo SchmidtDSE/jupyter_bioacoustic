@@ -166,6 +166,20 @@ JupyterAudio(
 ).open()
 ```
 
+### Accessing data
+
+The `JupyterAudio` instance exposes the input and output data directly:
+
+```python
+ja = JupyterAudio(data=df, audio_path='test.flac', output='reviews.jsonl', form_config='form.yaml')
+ja.open()
+
+ja.source       # the input DataFrame passed as data=
+ja.output()     # the output file as a DataFrame (cached, reloads after each submit)
+```
+
+`ja.output()` lazy-loads the output file and caches the result. The cache is automatically invalidated each time the widget's submit button is pressed, so the next call re-reads the file.
+
 ### Parameters
 
 | parameter | type | default | description |
@@ -175,7 +189,7 @@ JupyterAudio(
 | `audio_column` | str | `''` | Column in `data` containing per-row audio file paths. Rows with empty values fall back to `audio_path`. At least one of `audio_path` or `audio_column` is required. |
 | `category_path` | str | `''` | Path to `categories.csv` for the class dropdown |
 | `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl` / `.ndjson`, or line-delimited JSON for any other extension. Parent directories are created automatically. |
-| `prediction_column` | str | `''` | Column holding the model's predicted class — enables verification mode |
+| `prediction_column` | str | `''` | Column holding the model's predicted class. Sets title to "Bioacoustic Reviewer", shows the value in the info card, and uses it in capture filenames. |
 | `display_columns` | list\[str\] | `[]` | Extra columns to show in the player info card |
 | `data_columns` | list\[str\] | `[]` | Ordered list of columns to display in the clip table. When empty and no `prediction_column` or `display_columns` are set, all columns in the data are shown. |
 | `inline` | bool | `False` | Embed below cell instead of opening a panel |
