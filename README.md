@@ -185,8 +185,9 @@ JupyterAudio(
 | `inline` | bool | `False` | Embed below cell instead of opening a panel |
 | `width` | int \| str | `'100%'` | Inline widget width (px int or CSS string) |
 | `height` | int \| str | `900` | Inline widget height (px int or CSS string) |
+| `form_config` | dict or str | `None` | Form layout config — a Python dict, or a path to a YAML/JSON file. May also be included in `config` (see below). When omitted, no form is shown and the widget is a pure visualizer/player. See [Configurable Forms](#configurable-forms) below. |
 | `config` | str | `None` | Path to a JSON or YAML config file. Any parameter above can be set here; explicit arguments override file values. |
-| `form_config` | dict or str | `None` | Form layout config — a Python dict, or a path to a YAML/JSON file. When omitted, no form is shown and the widget is a pure visualizer/player. See [Configurable Forms](#configurable-forms) below. |
+
 
 ### Configurable Forms
 
