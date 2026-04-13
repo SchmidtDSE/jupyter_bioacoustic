@@ -158,7 +158,7 @@ JupyterAudio(
 | `data` | DataFrame or str | — | Rows with at minimum `id`, `start_time`, `end_time`. Pass a file path (`.csv`, `.parquet`, `.jsonl`, `.ndjson`) to load directly. |
 | `audio_path` | str | — | Local path or `s3://bucket/key` |
 | `category_path` | str | `''` | Path to `categories.csv` for the class dropdown |
-| `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl` / `.ndjson`, or line-delimited JSON for any other extension. |
+| `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl` / `.ndjson`, or line-delimited JSON for any other extension. Parent directories are created automatically. |
 | `prediction_column` | str | `''` | Column holding the model's predicted class — enables verification mode |
 | `display_columns` | list\[str\] | `[]` | Extra columns to show in the player info card |
 | `data_columns` | list\[str\] | `[]` | Ordered list of columns to display in the clip table. When empty and no `prediction_column` or `display_columns` are set, all columns in the data are shown. |
@@ -166,6 +166,8 @@ JupyterAudio(
 | `width` | int \| str | `'100%'` | Inline widget width (px int or CSS string) |
 | `height` | int \| str | `900` | Inline widget height (px int or CSS string) |
 | `form_config` | dict or str | `None` | Form layout config — a Python dict, or a path to a YAML/JSON file. May also be included in `config` (see below). When omitted, no form is shown and the widget is a pure visualizer/player. See [Configurable Forms](#configurable-forms) below. |
+| `capture` | bool or str | `True` | Show a Capture button to save spectrogram PNGs. `False` hides it. A string sets the button label (e.g. `'Save Spectrogram'`). |
+| `capture_dir` | str | `''` | Directory prefix for capture filenames. Created automatically if it doesn't exist. |
 | `config` | str | `None` | Path to a JSON or YAML config file. Any parameter above can be set here; explicit arguments override file values. |
 
 
