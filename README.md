@@ -81,6 +81,21 @@ JupyterAudio(
 ).open()
 ```
 
+### Per-row audio files
+
+If each row points to a different audio file, use `audio_column` instead of (or alongside) `audio_path`:
+
+```python
+# Each row has its own file path in the 'file' column
+JupyterAudio(
+    data='detections.csv',
+    audio_column='file',               # column containing audio paths
+    audio_path='fallback.flac',        # optional fallback for empty values
+).open()
+```
+
+Rows with a non-empty value in the audio column use that path. Rows with empty/null values fall back to `audio_path`. At least one of the two must be set.
+
 ### Customising the clip table columns
 
 By default the table shows the prediction column (if set), any `display_columns`, plus `id`, `start_time`, and `end_time`. Use `data_columns` to specify exactly which columns appear and in what order:
