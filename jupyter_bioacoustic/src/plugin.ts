@@ -134,6 +134,10 @@ class BioacousticWidget extends Widget {
   private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
   private _timeSelectDefs: Array<{ col: string; initValue: any }> = [];
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
+  private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
+  private _submittedCount = 0;
+  private _validCount = 0;
+  private _progressEls: HTMLSpanElement[] = [];
 
   constructor(tracker: INotebookTracker) {
     super();
@@ -347,13 +351,13 @@ class BioacousticWidget extends Widget {
     this._endInput    = mkNumLabel('End (s)',    '12', '70px');
 
     const loadBtn = document.createElement('button');
-    loadBtn.textContent = 'Load';
+    loadBtn.textContent = 'Update';
     loadBtn.style.cssText = btnStyle(true);
     loadBtn.addEventListener('click', () => void this._loadAudio());
     playerCtrls.appendChild(loadBtn);
 
     const ctrNote = document.createElement('span');
-    ctrNote.textContent = '← re-load after changes';
+    ctrNote.textContent = '← update after changes';
     ctrNote.style.cssText = `font-size:10px;color:#6c7086;white-space:nowrap;`;
     playerCtrls.appendChild(ctrNote);
 
@@ -555,6 +559,10 @@ class BioacousticWidget extends Widget {
     this._inputRefs.clear();
     this._timeSelectDefs = [];
     this._sourceValueFields = [];
+    this._passValueDefs = [];
+    this._submittedCount = 0;
+    this._validCount = 0;
+    this._progressEls = [];
 
     const cfg = this._formConfig;
     // Set title from mode regardless of form config
@@ -572,61 +580,63 @@ class BioacousticWidget extends Widget {
     }
     this._formSection.style.display = 'flex';
 
-    // Top-level title
-    if (cfg.title) {
-      this._appendTitle(String(cfg.title), this._dynFormEl);
-    }
+    // Iterate keys in order so pass_value position controls output column order
+    for (const key of Object.keys(cfg)) {
+      if (key === 'title') {
+        this._appendTitleEntry(cfg.title, this._dynFormEl);
 
-    if ('is_valid_form' in cfg) {
+      } else if (key === 'progress_tracker') {
+        this._appendProgressTracker(this._dynFormEl);
 
-      const isValidDiv = document.createElement('div');
-      isValidDiv.dataset.formSection = 'is_valid_form';
-      isValidDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
-      await this._buildFormSection(cfg.is_valid_form ?? [], isValidDiv);
-      this._dynFormEl.appendChild(isValidDiv);
+      } else if (key === 'pass_value') {
+        this._registerPassValue(cfg.pass_value);
 
-      if (cfg.yes_form) {
+      } else if (key === 'is_valid_form') {
+        const isValidDiv = document.createElement('div');
+        isValidDiv.dataset.formSection = 'is_valid_form';
+        isValidDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
+        await this._buildFormSection(cfg.is_valid_form ?? [], isValidDiv);
+        this._dynFormEl.appendChild(isValidDiv);
+
+      } else if (key === 'yes_form') {
         this._yesFormEl = document.createElement('div');
         this._yesFormEl.dataset.formSection = 'yes_form';
         this._yesFormEl.style.cssText = `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
         await this._buildFormSection(cfg.yes_form, this._yesFormEl);
         this._dynFormEl.appendChild(this._yesFormEl);
-      }
 
-      if (cfg.no_form) {
+      } else if (key === 'no_form') {
         this._noFormEl = document.createElement('div');
         this._noFormEl.dataset.formSection = 'no_form';
         this._noFormEl.style.cssText = `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
         await this._buildFormSection(cfg.no_form, this._noFormEl);
         this._dynFormEl.appendChild(this._noFormEl);
-      }
 
-      // Wire is_valid_select → show/hide subforms
-      if (this._isValidEl) {
-        const isValidEl = this._isValidEl;
-        isValidEl.addEventListener('change', () => {
-          const val = isValidEl.value;
-          if (this._yesFormEl) {
-            this._yesFormEl.style.display = val === String(this._isValidYesVal) ? 'flex' : 'none';
-          }
-          if (this._noFormEl) {
-            this._noFormEl.style.display = val === String(this._isValidNoVal) ? 'flex' : 'none';
-          }
-          this._validateForm();
-        });
-      }
-    } else if ('annotate_form' in cfg) {
-      // no hardcoded title — use 'title' element in form config
+      } else if (key === 'annotate_form') {
+        const annotateDiv = document.createElement('div');
+        annotateDiv.dataset.formSection = 'annotate_form';
+        annotateDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
+        await this._buildFormSection(cfg.annotate_form ?? [], annotateDiv);
+        this._dynFormEl.appendChild(annotateDiv);
 
-      const annotateDiv = document.createElement('div');
-      annotateDiv.dataset.formSection = 'annotate_form';
-      annotateDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
-      await this._buildFormSection(cfg.annotate_form ?? [], annotateDiv);
-      this._dynFormEl.appendChild(annotateDiv);
+      } else if (key === 'submission_buttons') {
+        await this._buildSubmissionButtons(cfg.submission_buttons);
+      }
     }
 
-    if (cfg.submission_buttons) {
-      await this._buildSubmissionButtons(cfg.submission_buttons);
+    // Wire is_valid_select → show/hide subforms
+    if (this._isValidEl) {
+      const isValidEl = this._isValidEl;
+      isValidEl.addEventListener('change', () => {
+        const val = isValidEl.value;
+        if (this._yesFormEl) {
+          this._yesFormEl.style.display = val === String(this._isValidYesVal) ? 'flex' : 'none';
+        }
+        if (this._noFormEl) {
+          this._noFormEl.style.display = val === String(this._isValidNoVal) ? 'flex' : 'none';
+        }
+        this._validateForm();
+      });
     }
 
     this._validateForm();
@@ -637,8 +647,12 @@ class BioacousticWidget extends Widget {
       if (!item || typeof item !== 'object') continue;
       const [type] = Object.keys(item);
       const config = item[type];
-      if (type === 'title') {
-        this._appendTitle(String(config), container);
+      if (type === 'pass_value') {
+        this._registerPassValue(config);
+      } else if (type === 'title') {
+        this._appendTitleEntry(config, container);
+      } else if (type === 'progress_tracker') {
+        this._appendProgressTracker(container);
       } else if (type === 'break') {
         container.appendChild(document.createElement('br'));
       } else if (type === 'line') {
@@ -931,8 +945,12 @@ class BioacousticWidget extends Widget {
     btnContainer.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px;`;
 
     for (const [key, val] of Object.entries(cfg)) {
-      if (key === 'title') {
-        this._appendTitle(String(val), this._dynFormEl);
+      if (key === 'pass_value') {
+        this._registerPassValue(val);
+      } else if (key === 'title') {
+        this._appendTitleEntry(val, this._dynFormEl);
+      } else if (key === 'progress_tracker') {
+        this._appendProgressTracker(this._dynFormEl);
       } else if (key === 'line') {
         const d = document.createElement('div');
         d.style.cssText = `border-top:1px solid #313244;margin:0 -2px;`;
@@ -1034,27 +1052,90 @@ class BioacousticWidget extends Widget {
       }
     }
 
+    // Apply pass_value fields
+    for (const { sourceCol, col } of this._passValueDefs) {
+      this._formValues[col] = row[sourceCol] ?? null;
+    }
+
     const label = this._predictionCol ? 'signal' : 'start_time';
     this._signalTimeDisplay.textContent = `click spectrogram to mark ${label}`;
 
     this._validateForm();
   }
 
+  private _registerPassValue(config: any): void {
+    if (typeof config === 'string') {
+      this._passValueDefs.push({ sourceCol: config, col: config });
+      this._formValues[config] = null;
+    } else if (config && typeof config === 'object') {
+      const sourceCol = config.source_column;
+      const col = config.column ?? sourceCol;
+      this._passValueDefs.push({ sourceCol, col });
+      this._formValues[col] = null;
+    }
+  }
+
   private _collectFormValues(): Record<string, any> {
-    const row = this._filtered[this._selectedIdx];
-    return { detection_id: row?.id ?? null, ...this._formValues };
+    return { ...this._formValues };
   }
 
   private _cssSize(val: any): string {
     return typeof val === 'number' ? `${val}px` : String(val);
   }
 
-  private _appendTitle(text: string, container: HTMLElement): void {
+  private _appendTitleEntry(config: any, container: HTMLElement): void {
+    if (!config) return;
+    const isObj = typeof config === 'object';
+    const text = isObj ? (config.value ?? '') : String(config);
+    const withProgress = isObj && config.progress_tracker === true;
+
     const d = document.createElement('div');
-    d.textContent = text;
     d.style.cssText =
-      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#6c7086;`;
+      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#6c7086;` +
+      `display:flex;align-items:baseline;`;
+
+    const span = document.createElement('span');
+    span.textContent = text;
+    d.appendChild(span);
+
+    if (withProgress) {
+      const spacer = document.createElement('span');
+      spacer.style.flex = '1';
+      d.append(spacer, this._createProgressEl());
+    }
+
     container.appendChild(d);
+  }
+
+  private _appendProgressTracker(container: HTMLElement): void {
+    const d = document.createElement('div');
+    d.style.cssText = `width:100%;`;
+    d.appendChild(this._createProgressEl());
+    container.appendChild(d);
+  }
+
+  private _createProgressEl(): HTMLSpanElement {
+    const el = document.createElement('span');
+    el.style.cssText =
+      `font-size:11px;font-weight:400;letter-spacing:0;color:#6c7086;` +
+      `font-family:ui-monospace,monospace;`;
+    this._progressEls.push(el);
+    this._updateProgress();
+    return el;
+  }
+
+  private _updateProgress(): void {
+    const total = this._rows.length;
+    const n = this._submittedCount;
+    const verb = this._isValidEl ? 'reviewed' : 'annotated';
+    let text = `${n}/${total} ${verb}`;
+    if (this._isValidEl && n > 0) {
+      const pct = Math.round((this._validCount / n) * 100);
+      text += `, accuracy ${pct}%`;
+    }
+    for (const el of this._progressEls) {
+      el.textContent = text;
+    }
   }
 
   // ─── Table header ────────────────────────────────────────────
@@ -1533,6 +1614,11 @@ class BioacousticWidget extends Widget {
       this._setStatus(`❌ Write failed: ${String(e.message ?? e)}`, true);
       return;
     }
+    this._submittedCount++;
+    if (this._isValidEl && this._formValues[this._isValidCol] === String(this._isValidYesVal)) {
+      this._validCount++;
+    }
+    this._updateProgress();
     this._onSkip();
   }
 
