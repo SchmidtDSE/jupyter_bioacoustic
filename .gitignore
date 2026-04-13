@@ -33,6 +33,7 @@ observations-test.csv
 test.flac
 detections-test.csv
 *yarn*
+tools/*
 
 #***************************************************************************
 # Mac
