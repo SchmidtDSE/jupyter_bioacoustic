@@ -122,7 +122,6 @@ class BioacousticWidget extends Widget {
   // ── Form state ──────────────────────────────────────────────
   private _formConfig: any = null;
   private _formValues: Record<string, any> = {};
-  private _timeSelectInputs: Map<string, HTMLInputElement> = new Map();
   private _isValidEl: HTMLSelectElement | null = null;
   private _isValidYesVal: any = 'yes';
   private _isValidNoVal: any = 'no';
@@ -132,7 +131,6 @@ class BioacousticWidget extends Widget {
   private _submitBtns: HTMLButtonElement[] = [];
   private _requiredInputs: Array<{ col: string; el: HTMLElement }> = [];
   private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
-  private _timeSelectDefs: Array<{ col: string; initValue: any }> = [];
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
   private _sessionCount = 0;
@@ -140,6 +138,21 @@ class BioacousticWidget extends Widget {
   private _fileCount = 0;
   private _fileValid = 0;
   private _progressEls: HTMLSpanElement[] = [];
+
+  // ── Annotation tool state ───────────────────────────────────
+  private _annotConfig: {
+    startTime?: { col: string; sourceValue?: string };
+    endTime?: { col: string; sourceValue?: string };
+    minFreq?: { col: string };
+    maxFreq?: { col: string };
+    tools: string[];
+  } | null = null;
+  private _activeTool = '';
+  private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number } | null = null;
+  private _annotInputs: Map<string, HTMLInputElement> = new Map();
+  private _sampleRate = 0;
+  private _freqMin = 0;
+  private _freqMax = 0;
 
   constructor(tracker: INotebookTracker) {
     super();
@@ -370,7 +383,10 @@ class BioacousticWidget extends Widget {
 
     this._canvas = document.createElement('canvas');
     this._canvas.style.cssText = `display:block;width:100%;height:100%;`;
-    this._canvas.addEventListener('click', e => void this._onCanvasClick(e));
+    this._canvas.addEventListener('mousedown', e => this._onCanvasMouseDown(e));
+    this._canvas.addEventListener('mousemove', e => this._onCanvasMouseMove(e));
+    this._canvas.addEventListener('mouseup', () => this._onCanvasMouseUp());
+    this._canvas.addEventListener('mouseleave', () => this._onCanvasMouseUp());
     this._canvasContainer.appendChild(this._canvas);
 
     // ── Playback bar ─────────────────────────────────────────────
@@ -552,7 +568,6 @@ class BioacousticWidget extends Widget {
   private async _buildForm(): Promise<void> {
     this._dynFormEl.innerHTML = '';
     this._formValues = {};
-    this._timeSelectInputs.clear();
     this._isValidEl = null;
     this._isValidCol = 'is_valid';
     this._yesFormEl = null;
@@ -560,9 +575,13 @@ class BioacousticWidget extends Widget {
     this._submitBtns = [];
     this._requiredInputs = [];
     this._inputRefs.clear();
-    this._timeSelectDefs = [];
     this._sourceValueFields = [];
     this._passValueDefs = [];
+    this._annotConfig = null;
+    this._activeTool = '';
+    this._annotDrag = null;
+    this._annotInputs.clear();
+    this._canvasContainer.style.cursor = 'default';
     this._sessionCount = 0;
     this._sessionValid = 0;
     this._fileCount = 0;
@@ -658,6 +677,8 @@ class BioacousticWidget extends Widget {
         this._appendTitleEntry(config, container);
       } else if (type === 'progress_tracker') {
         this._appendProgressTracker(container);
+      } else if (type === 'annotation') {
+        this._buildAnnotationElement(config, container);
       } else if (type === 'break') {
         container.appendChild(document.createElement('br'));
       } else if (type === 'line') {
@@ -799,21 +820,6 @@ class BioacousticWidget extends Widget {
       lbl.appendChild(sel);
       container.appendChild(lbl);
       return;  // early return — change handler wired in _buildForm
-
-    } else if (type === 'time_select') {
-      const inp = document.createElement('input');
-      inp.type = 'number';
-      inp.step = '0.01';
-      inp.style.cssText =
-        inputStyle(cfg.width ? this._cssSize(cfg.width) : '90px') + `font-size:13px;`;
-      inp.addEventListener('input', () => {
-        this._formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
-        this._validateForm();
-      });
-      this._timeSelectInputs.set(col, inp);
-      this._timeSelectDefs.push({ col, initValue: cfg.init_value });
-      this._formValues[col] = null;
-      inputEl = inp;
 
     } else {
       return;
@@ -994,6 +1000,110 @@ class BioacousticWidget extends Widget {
     this._dynFormEl.appendChild(btnContainer);
   }
 
+  private _buildAnnotationElement(config: any, container: HTMLElement): void {
+    if (!config || typeof config !== 'object') return;
+
+    const ac: typeof this._annotConfig = { tools: [] };
+
+    // Parse field configs
+    if (config.start_time) {
+      const c = typeof config.start_time === 'string' ? { column: config.start_time } : config.start_time;
+      const col = c.column ?? c.label ?? 'start_time';
+      ac.startTime = { col, sourceValue: c.source_value };
+      this._formValues[col] = null;
+    }
+    if (config.end_time) {
+      const c = typeof config.end_time === 'string' ? { column: config.end_time } : config.end_time;
+      const col = c.column ?? c.label ?? 'end_time';
+      ac.endTime = { col, sourceValue: c.source_value };
+      this._formValues[col] = null;
+    }
+    if (config.min_frequency) {
+      const c = typeof config.min_frequency === 'string' ? { column: config.min_frequency } : config.min_frequency;
+      const col = c.column ?? c.label ?? 'min_frequency';
+      ac.minFreq = { col };
+      this._formValues[col] = null;
+    }
+    if (config.max_frequency) {
+      const c = typeof config.max_frequency === 'string' ? { column: config.max_frequency } : config.max_frequency;
+      const col = c.column ?? c.label ?? 'max_frequency';
+      ac.maxFreq = { col };
+      this._formValues[col] = null;
+    }
+
+    // Parse tools
+    const rawTools = config.tools;
+    if (typeof rawTools === 'string') {
+      ac.tools = [rawTools];
+    } else if (Array.isArray(rawTools)) {
+      ac.tools = rawTools.filter((t: any) => typeof t === 'string');
+    } else {
+      ac.tools = ['time_select'];
+    }
+
+    this._annotConfig = ac;
+    this._activeTool = ac.tools[0] ?? '';
+    this._canvasContainer.style.cursor = 'crosshair';
+
+    // Build UI: tool selector (if multiple) + value inputs
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `display:flex;align-items:center;gap:12px;flex-wrap:wrap;`;
+
+    if (ac.tools.length > 1) {
+      const lbl = document.createElement('label');
+      lbl.style.cssText = labelStyle() + `font-size:13px;gap:7px;`;
+      lbl.textContent = 'tool';
+      const sel = document.createElement('select');
+      sel.style.cssText = selectStyle() + `font-size:13px;`;
+      ac.tools.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t;
+        o.textContent = t.replace(/_/g, ' ');
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', () => {
+        this._activeTool = sel.value;
+        this._renderFrame();
+      });
+      lbl.appendChild(sel);
+      wrapper.appendChild(lbl);
+    }
+
+    // Value inputs
+    const mkInput = (field: string, label: string, unit = ''): void => {
+      const lbl = document.createElement('label');
+      lbl.style.cssText = labelStyle() + `font-size:12px;gap:5px;`;
+      lbl.textContent = label;
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.step = field.includes('Freq') ? '1' : '0.01';
+      inp.style.cssText = inputStyle('80px') + `font-size:12px;`;
+      inp.readOnly = false;
+      inp.addEventListener('input', () => {
+        const v = inp.value === '' ? null : parseFloat(inp.value);
+        this._setAnnotValue(field, v);
+        this._renderFrame();
+      });
+      if (unit) {
+        const u = document.createElement('span');
+        u.textContent = unit;
+        u.style.cssText = `color:#6c7086;font-size:10px;`;
+        lbl.append(inp, u);
+      } else {
+        lbl.appendChild(inp);
+      }
+      this._annotInputs.set(field, inp);
+      wrapper.appendChild(lbl);
+    };
+
+    if (ac.startTime) mkInput('startTime', config.start_time?.label ?? 'start', 's');
+    if (ac.endTime) mkInput('endTime', config.end_time?.label ?? 'end', 's');
+    if (ac.minFreq) mkInput('minFreq', config.min_frequency?.label ?? 'min freq', 'Hz');
+    if (ac.maxFreq) mkInput('maxFreq', config.max_frequency?.label ?? 'max freq', 'Hz');
+
+    container.appendChild(wrapper);
+  }
+
   private _validateForm(): void {
     const allSatisfied = this._requiredInputs.every(({ col, el }) => {
       const section = el.closest('[data-form-section]') as HTMLElement | null;
@@ -1040,21 +1150,21 @@ class BioacousticWidget extends Widget {
       }
     }
 
-    // Apply time_select init_value
-    for (const { col, initValue } of this._timeSelectDefs) {
-      const inp = this._timeSelectInputs.get(col);
-      if (!inp) continue;
-      if (typeof initValue === 'string' && row[initValue] !== undefined) {
-        const v = parseFloat(String(row[initValue]));
-        inp.value = v.toFixed(2);
-        this._formValues[col] = v;
-      } else if (typeof initValue === 'number') {
-        inp.value = initValue.toFixed(2);
-        this._formValues[col] = initValue;
-      } else {
-        inp.value = row.start_time != null ? row.start_time.toFixed(2) : '';
-        this._formValues[col] = row.start_time ?? null;
+    // Apply annotation fields from row
+    if (this._annotConfig) {
+      const ac = this._annotConfig;
+      if (ac.startTime) {
+        const sv = ac.startTime.sourceValue;
+        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.start_time;
+        this._setAnnotValue('startTime', v);
       }
+      if (ac.endTime) {
+        const sv = ac.endTime.sourceValue;
+        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.end_time;
+        this._setAnnotValue('endTime', v);
+      }
+      if (ac.minFreq) this._setAnnotValue('minFreq', null);
+      if (ac.maxFreq) this._setAnnotValue('maxFreq', null);
     }
 
     // Apply pass_value fields
@@ -1062,8 +1172,9 @@ class BioacousticWidget extends Widget {
       this._formValues[col] = row[sourceCol] ?? null;
     }
 
-    const label = this._predictionCol ? 'signal' : 'start_time';
-    this._signalTimeDisplay.textContent = `click spectrogram to mark ${label}`;
+    this._signalTimeDisplay.textContent = this._annotConfig
+      ? 'drag on spectrogram to annotate'
+      : '';
 
     this._validateForm();
   }
@@ -1471,7 +1582,7 @@ class BioacousticWidget extends Widget {
 
     this._setStatus('Running Python (soundfile + numpy + matplotlib)…');
 
-    let result: { spec: string; wav: string; duration: number };
+    let result: { spec: string; wav: string; duration: number; sample_rate: number; freq_min: number; freq_max: number };
     try {
       const raw = await this._execPython(this._buildPythonCode(this._audioPath, loadStart, loadDur));
       result = JSON.parse(raw) as typeof result;
@@ -1481,6 +1592,9 @@ class BioacousticWidget extends Widget {
     }
 
     this._segDuration = result.duration;
+    this._sampleRate = result.sample_rate;
+    this._freqMin = result.freq_min;
+    this._freqMax = result.freq_max;
 
     this._setStatus('Decoding spectrogram…');
     try {
@@ -1558,6 +1672,7 @@ class BioacousticWidget extends Widget {
         `    if _hi > _pk: _fb[_m-1, _pk:_hi] = (_hi - _np.arange(_pk, _hi)) / (_hi - _pk)`,
         `_S = _fb @ _mag`,
       ] : [
+        `_f_min, _f_max = 0.0, _sr / 2.0`,
         `_S = _mag`,
       ]),
       `_S_db   = 20 * _np.log10(_np.maximum(_S, 1e-10))`,
@@ -1577,6 +1692,9 @@ class BioacousticWidget extends Widget {
       `  'spec': _b64.b64encode(_pb.getvalue()).decode(),`,
       `  'wav':  _b64.b64encode(_wb.getvalue()).decode(),`,
       `  'duration': float(_actual_dur),`,
+      `  'sample_rate': int(_sr),`,
+      `  'freq_min': float(_f_min) if '_f_min' in dir() else 0.0,`,
+      `  'freq_max': float(_f_max) if '_f_max' in dir() else float(_sr / 2),`,
       `}))`,
     ].join('\n');
   }
@@ -1620,6 +1738,8 @@ class BioacousticWidget extends Widget {
       ctx.closePath(); ctx.fill();
     }
 
+    this._renderAnnotation(ctx, W, H);
+
     const absNow = this._segLoadStart + this._audio.currentTime;
     const absEnd = this._segLoadStart + this._segDuration;
     this._timeDisplay.textContent = `${this._fmtTime(absNow)} / ${this._fmtTime(absEnd)}`;
@@ -1644,29 +1764,292 @@ class BioacousticWidget extends Widget {
     }
   }
 
-  private async _onCanvasClick(e: MouseEvent): Promise<void> {
-    if (!this._specBitmap || this._segDuration === 0) return;
+  // ─── Canvas mouse interaction (annotation tools) ──────────
+
+  private _canvasXY(e: MouseEvent): { cx: number; cy: number } {
     const rect = this._canvas.getBoundingClientRect();
-    const frac  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    return {
+      cx: (e.clientX - rect.left) * (this._canvas.width / rect.width),
+      cy: (e.clientY - rect.top) * (this._canvas.height / rect.height),
+    };
+  }
 
-    this._audio.currentTime = frac * this._segDuration;
-    this._renderFrame();
-
-    const absTime   = this._segLoadStart + frac * this._segDuration;
-    const posInClip = absTime - this._detectionStart;
-    const signalTime = absTime;
-
-    // Update all time_select inputs
-    for (const [col, inp] of this._timeSelectInputs) {
-      inp.value = signalTime.toFixed(2);
-      this._formValues[col] = signalTime;
+  private _timeToX(t: number): number {
+    return ((t - this._segLoadStart) / this._segDuration) * this._canvas.width;
+  }
+  private _xToTime(x: number): number {
+    return this._segLoadStart + (x / this._canvas.width) * this._segDuration;
+  }
+  private _freqToY(f: number): number {
+    const H = this._canvas.height;
+    let frac: number;
+    if (this._spectTypeSelect.value === 'mel') {
+      const melMin = 2595 * Math.log10(1 + this._freqMin / 700);
+      const melMax = 2595 * Math.log10(1 + this._freqMax / 700);
+      const mel = 2595 * Math.log10(1 + f / 700);
+      frac = (melMax - melMin) > 0 ? (mel - melMin) / (melMax - melMin) : 0;
+    } else {
+      frac = (this._freqMax - this._freqMin) > 0
+        ? (f - this._freqMin) / (this._freqMax - this._freqMin) : 0;
     }
-    this._validateForm();
+    return H * (1 - frac);
+  }
+  private _yToFreq(y: number): number {
+    const H = this._canvas.height;
+    const frac = 1 - y / H;
+    if (this._spectTypeSelect.value === 'mel') {
+      const melMin = 2595 * Math.log10(1 + this._freqMin / 700);
+      const melMax = 2595 * Math.log10(1 + this._freqMax / 700);
+      const mel = melMin + frac * (melMax - melMin);
+      return 700 * (Math.pow(10, mel / 2595) - 1);
+    }
+    return this._freqMin + frac * (this._freqMax - this._freqMin);
+  }
 
-    const posStr = `${posInClip >= 0 ? '+' : ''}${posInClip.toFixed(2)}s`;
-    const label  = this._predictionCol ? 'signal' : 'start_time';
-    this._signalTimeDisplay.textContent =
-      `⏱ ${this._fmtTime(signalTime)}  (${label} pos: ${posStr})`;
+  private _setAnnotValue(field: string, val: number | null): void {
+    const ac = this._annotConfig;
+    if (!ac) return;
+    let col: string | undefined;
+    if (field === 'startTime') col = ac.startTime?.col;
+    else if (field === 'endTime') col = ac.endTime?.col;
+    else if (field === 'minFreq') col = ac.minFreq?.col;
+    else if (field === 'maxFreq') col = ac.maxFreq?.col;
+    if (!col) return;
+    this._formValues[col] = val;
+    const inp = this._annotInputs.get(field);
+    if (inp) inp.value = val != null ? val.toFixed(2) : '';
+    this._validateForm();
+  }
+
+  private _onCanvasMouseDown(e: MouseEvent): void {
+    if (!this._annotConfig || !this._specBitmap || this._segDuration === 0) return;
+    const { cx, cy } = this._canvasXY(e);
+    const ac = this._annotConfig;
+    const tool = this._activeTool;
+    const GRAB = 10;
+
+    if (tool === 'time_select') {
+      const t = this._xToTime(cx);
+      this._setAnnotValue('startTime', t);
+      this._annotDrag = { target: 'start' };
+    } else if (tool === 'start_end_time_select') {
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      const sx = st != null ? this._timeToX(st) : -Infinity;
+      const ex = et != null ? this._timeToX(et) : Infinity;
+      if (Math.abs(cx - sx) <= GRAB && Math.abs(cx - sx) <= Math.abs(cx - ex)) {
+        this._annotDrag = { target: 'start' };
+      } else if (Math.abs(cx - ex) <= GRAB) {
+        this._annotDrag = { target: 'end' };
+      } else if (cx < (sx + ex) / 2) {
+        this._setAnnotValue('startTime', this._xToTime(cx));
+        this._annotDrag = { target: 'start' };
+      } else {
+        this._setAnnotValue('endTime', this._xToTime(cx));
+        this._annotDrag = { target: 'end' };
+      }
+    } else if (tool === 'bounding_box') {
+      // Check if near an existing edge
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
+      const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+      if (st != null && et != null && flo != null && fhi != null) {
+        const sx = this._timeToX(st), ex = this._timeToX(et);
+        const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
+        const inY = cy >= yhi - GRAB && cy <= ylo + GRAB;
+        const inX = cx >= sx - GRAB && cx <= ex + GRAB;
+        if (inY && Math.abs(cx - sx) <= GRAB) { this._annotDrag = { target: 'box-left' }; return; }
+        if (inY && Math.abs(cx - ex) <= GRAB) { this._annotDrag = { target: 'box-right' }; return; }
+        if (inX && Math.abs(cy - yhi) <= GRAB) { this._annotDrag = { target: 'box-top' }; return; }
+        if (inX && Math.abs(cy - ylo) <= GRAB) { this._annotDrag = { target: 'box-bottom' }; return; }
+      }
+      // Start new box — store anchor for the fixed corner
+      const t = this._xToTime(cx);
+      const f = this._yToFreq(cy);
+      this._setAnnotValue('startTime', t);
+      this._setAnnotValue('endTime', t);
+      this._setAnnotValue('minFreq', f);
+      this._setAnnotValue('maxFreq', f);
+      this._annotDrag = { target: 'box-corner', anchorTime: t, anchorFreq: f };
+    }
+
+    this._renderFrame();
+    this._updateAnnotDisplay();
+  }
+
+  private _onCanvasMouseMove(e: MouseEvent): void {
+    if (!this._annotConfig || !this._specBitmap || this._segDuration === 0) return;
+    const { cx, cy } = this._canvasXY(e);
+    const ac = this._annotConfig;
+
+    if (!this._annotDrag) {
+      // Update cursor based on proximity to handles
+      this._updateAnnotCursor(cx, cy);
+      return;
+    }
+
+    const t = Math.max(this._segLoadStart, Math.min(
+      this._segLoadStart + this._segDuration, this._xToTime(cx)));
+    const f = Math.max(0, this._yToFreq(Math.max(0, Math.min(this._canvas.height, cy))));
+    const tgt = this._annotDrag.target;
+
+    if (tgt === 'start') {
+      const endCol = ac.endTime?.col;
+      const endVal = endCol ? this._formValues[endCol] : Infinity;
+      if (this._activeTool === 'start_end_time_select' && endVal != null) {
+        this._setAnnotValue('startTime', Math.min(t, endVal));
+      } else {
+        this._setAnnotValue('startTime', t);
+      }
+    } else if (tgt === 'end') {
+      const startCol = ac.startTime?.col;
+      const startVal = startCol ? this._formValues[startCol] : -Infinity;
+      if (startVal != null) this._setAnnotValue('endTime', Math.max(t, startVal));
+    } else if (tgt === 'box-corner') {
+      const at = this._annotDrag.anchorTime ?? t;
+      const af = this._annotDrag.anchorFreq ?? f;
+      this._setAnnotValue('startTime', Math.min(at, t));
+      this._setAnnotValue('endTime', Math.max(at, t));
+      this._setAnnotValue('minFreq', Math.min(af, f));
+      this._setAnnotValue('maxFreq', Math.max(af, f));
+    } else if (tgt === 'box-left') {
+      const endCol = ac.endTime?.col;
+      const endVal = endCol ? this._formValues[endCol] : Infinity;
+      if (endVal != null) this._setAnnotValue('startTime', Math.min(t, endVal));
+    } else if (tgt === 'box-right') {
+      const startCol = ac.startTime?.col;
+      const startVal = startCol ? this._formValues[startCol] : -Infinity;
+      if (startVal != null) this._setAnnotValue('endTime', Math.max(t, startVal));
+    } else if (tgt === 'box-top') {
+      const loCol = ac.minFreq?.col;
+      const loVal = loCol ? this._formValues[loCol] : 0;
+      if (loVal != null) this._setAnnotValue('maxFreq', Math.max(f, loVal));
+    } else if (tgt === 'box-bottom') {
+      const hiCol = ac.maxFreq?.col;
+      const hiVal = hiCol ? this._formValues[hiCol] : Infinity;
+      if (hiVal != null) this._setAnnotValue('minFreq', Math.min(f, hiVal));
+    }
+
+    this._renderFrame();
+    this._updateAnnotDisplay();
+  }
+
+  private _onCanvasMouseUp(): void {
+    this._annotDrag = null;
+  }
+
+  private _updateAnnotCursor(cx: number, cy: number): void {
+    const ac = this._annotConfig;
+    if (!ac) return;
+    const GRAB = 10;
+    const tool = this._activeTool;
+
+    if (tool === 'time_select') {
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      if (st != null && Math.abs(cx - this._timeToX(st)) <= GRAB) {
+        this._canvasContainer.style.cursor = 'ew-resize';
+        return;
+      }
+    } else if (tool === 'start_end_time_select') {
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      if ((st != null && Math.abs(cx - this._timeToX(st)) <= GRAB) ||
+          (et != null && Math.abs(cx - this._timeToX(et)) <= GRAB)) {
+        this._canvasContainer.style.cursor = 'ew-resize';
+        return;
+      }
+    } else if (tool === 'bounding_box') {
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
+      const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+      if (st != null && et != null && flo != null && fhi != null) {
+        const sx = this._timeToX(st), ex = this._timeToX(et);
+        const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
+        const inY = cy >= yhi - GRAB && cy <= ylo + GRAB;
+        const inX = cx >= sx - GRAB && cx <= ex + GRAB;
+        if (inY && (Math.abs(cx - sx) <= GRAB || Math.abs(cx - ex) <= GRAB)) {
+          this._canvasContainer.style.cursor = 'ew-resize'; return;
+        }
+        if (inX && (Math.abs(cy - yhi) <= GRAB || Math.abs(cy - ylo) <= GRAB)) {
+          this._canvasContainer.style.cursor = 'ns-resize'; return;
+        }
+      }
+    }
+    this._canvasContainer.style.cursor = 'crosshair';
+  }
+
+  private _updateAnnotDisplay(): void {
+    const ac = this._annotConfig;
+    if (!ac) return;
+    const parts: string[] = [];
+    const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+    const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+    if (st != null) parts.push(this._fmtTime(st));
+    if (et != null) parts.push(`– ${this._fmtTime(et)}`);
+    const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
+    const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+    if (flo != null && fhi != null) parts.push(`${Math.round(flo)}–${Math.round(fhi)} Hz`);
+    this._signalTimeDisplay.textContent = parts.length ? `⏱ ${parts.join(' ')}` : '';
+  }
+
+  private _renderAnnotation(ctx: CanvasRenderingContext2D, W: number, H: number): void {
+    const ac = this._annotConfig;
+    if (!ac || this._segDuration === 0) return;
+    const tool = this._activeTool;
+
+    if (tool === 'time_select') {
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      if (st == null) return;
+      const x = this._timeToX(st);
+      ctx.strokeStyle = 'rgba(137,180,250,0.85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      ctx.fillStyle = '#89b4fa';
+      ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10);
+      ctx.closePath(); ctx.fill();
+    } else if (tool === 'start_end_time_select') {
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      if (st != null && et != null) {
+        const sx = this._timeToX(st), ex = this._timeToX(et);
+        ctx.fillStyle = 'rgba(137,180,250,0.08)';
+        ctx.fillRect(sx, 0, ex - sx, H);
+      }
+      if (st != null) {
+        const x = this._timeToX(st);
+        ctx.strokeStyle = 'rgba(166,227,161,0.85)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        ctx.fillStyle = '#a6e3a1';
+        ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10);
+        ctx.closePath(); ctx.fill();
+      }
+      if (et != null) {
+        const x = this._timeToX(et);
+        ctx.strokeStyle = 'rgba(243,139,168,0.85)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        ctx.fillStyle = '#f38ba8';
+        ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10);
+        ctx.closePath(); ctx.fill();
+      }
+    } else if (tool === 'bounding_box') {
+      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
+      const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+      if (st == null || et == null || flo == null || fhi == null) return;
+      const sx = this._timeToX(st), ex = this._timeToX(et);
+      const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
+      ctx.fillStyle = 'rgba(137,180,250,0.1)';
+      ctx.fillRect(sx, yhi, ex - sx, ylo - yhi);
+      ctx.strokeStyle = 'rgba(137,180,250,0.85)'; ctx.lineWidth = 2;
+      ctx.strokeRect(sx, yhi, ex - sx, ylo - yhi);
+      ctx.fillStyle = '#89b4fa';
+      for (const [px, py] of [[sx,yhi],[ex,yhi],[sx,ylo],[ex,ylo]]) {
+        ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
   }
 
   // ─── Form actions ────────────────────────────────────────────
