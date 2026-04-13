@@ -2,37 +2,32 @@
 
 _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 
-![JupyterBioacoustic Plugin](assets/screenshot.png)
-
-Browse a table of audio clips, play each one with a mel spectrogram, and record verification decisions or annotations — all without leaving the notebook. The same widget operates in two modes: **Bioacoustic Reviewer** for validating model detections, and **Bioacoustic Annotator** for labelling clips from scratch.
+Browse a table of audio clips, play each one with a mel spectrogram, and optionally record verification decisions or annotations — all without leaving the notebook. The form layout is fully configurable via YAML; without a form config the widget is a pure visualizer/player.
 
 **Clip table.** An interactive list of clips or detections that lets you:
 - Sort by any column and filter with expression syntax — `common_name = 'Barred Owl' and confidence >= 0.5`
 - Paginate through large result sets with configurable page size
-- Select any row to load the corresponding audio clip and jump to the form
+- Select any row to load the corresponding audio clip
 - Control which columns appear with `data_columns`
 
 **Spectrogram player.** A visual audio player built around the selected clip's time window:
 - Renders a mel spectrogram or plain STFT of the clipped audio segment
 - Adjustable buffer window — pads the clip with context on either side
 - Semi-transparent overlay marks the region outside the clip window
-- Displays the predicted class (reviewer) or any metadata you choose (annotator) in an info card, controlled by `display_columns`
+- Displays metadata in an info card, controlled by `prediction_column` and `display_columns`
 - Click anywhere on the spectrogram to seek and mark a signal start time
 - Play/pause with a real-time position indicator drawn over the spectrogram
 
-**Reviewer form** (verification mode — `prediction_column` set):
-- Confirm a detection as valid or mark it as invalid
-- When invalid: select a corrected species from a configurable category list and set a confidence level
-- Add free-text notes and a precise signal start time; click Verify to write the row and advance
-
-**Annotator form** (annotation mode — no `prediction_column`):
-- Assign a species / class from the category list and set a confidence level
-- Set a start time by clicking the spectrogram; add free-text notes
-- Click Submit to write the row and advance
+**Configurable form.** Define your own review or annotation form via a YAML config:
+- Build review forms with `is_valid_select`, conditional `yes_form`/`no_form` sections, and any combination of selects, textboxes, checkboxes, number inputs, and time selects
+- Build annotation forms with any fields you need
+- Load select options from inline lists, CSV/Parquet/JSONL/YAML files, or integer ranges
+- Output is written to CSV, Parquet, or line-delimited JSON on each submit
 
 **Table of Contents**
 
 - [Usage](#usage)
+- [Configurable Forms](#configurable-forms)
 - [Data Schema](#data-schema)
 - [Motivation](#motivation)
 - [Install](#install)
@@ -43,17 +38,7 @@ Browse a table of audio clips, play each one with a mel spectrogram, and record 
 
 ## Usage
 
-`JupyterAudio` supports two modes controlled by the `prediction_column` parameter.
-
-### Verification mode
-
-Set `prediction_column` to the name of the column in your DataFrame that holds the model's predicted class. The widget opens as **Bioacoustic Reviewer**, displays that prediction in the player info card, and the form asks you to confirm or correct it.
-
-![Review Form](assets/form-review.png)
-
-![Review Form — valid](assets/form-review-yes.png)
-
-![Review Form — invalid](assets/form-review-no.png)
+### Basic usage
 
 ```python
 import pandas as pd
@@ -61,31 +46,26 @@ from jupyter_bioacoustic import JupyterAudio
 
 df = pd.read_csv('detections-test.csv')
 
+# Visualizer/player only (no form)
 JupyterAudio(
     data=df,
     audio_path='test.flac',
-    category_path='categories.csv',
-    prediction_column='common_name',    # enables verification mode
-    display_columns=['confidence', 'rank'],  # shown in player info card
+    prediction_column='common_name',
+    display_columns=['confidence', 'rank'],
+).open()
+
+# With a review form
+JupyterAudio(
+    data=df,
+    audio_path='test.flac',
+    prediction_column='common_name',
+    display_columns=['confidence', 'rank'],
+    form_config='form-review.yaml',
     output='observations.jsonl',
 ).open()
 ```
 
-### Annotation mode
-
-Omit `prediction_column`. The widget opens as **Bioacoustic Annotator** — no predicted class is shown and the form asks you to assign a class, confidence, and start time from scratch.
-
-![Annotate Form](assets/form-annotate.png)
-
-```python
-JupyterAudio(
-    data=clips_df,
-    audio_path='test.flac',
-    category_path='categories.csv',
-    display_columns=['region', 'aru_id'],  # metadata shown in player info card
-    output='annotations.jsonl',
-).open()
-```
+![JupyterBioacoustic Plugin](assets/screenshot.png)
 
 ### Loading data from a file
 
@@ -374,9 +354,7 @@ For the full specification with all options, see [CONFIG_FORMS.md](CONFIG_FORMS.
 | **Clip table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select · columns set by `data_columns` |
 | **Info card** | Time range · prediction value (verification) · any `display_columns` · Prev / Next navigation |
 | **Spectrogram player** | Mel or plain STFT · adjustable buffer · buffer overlay · play/pause · click to seek and mark signal |
-| **Form (verification)** | `is_valid` · notes · signal start time · corrected class + confidence when invalid · Verify button |
-| **Form (annotation)** | start_time · class from category list · confidence · notes · Submit button |
-| **Skip / Verify / Submit** | Skip advances without writing · Verify/Submit appends a row to the output file and advances |
+| **Configurable form** | Fully driven by YAML config — any combination of selects, textboxes, checkboxes, number/time inputs, with conditional sections and custom submission buttons |
 
 ---
 
@@ -411,26 +389,7 @@ Format is inferred from the `output` file extension. Line-delimited JSON is the 
 | `.parquet` | Apache Parquet (read-concat-write on each append) |
 | `.jsonl`, `.ndjson`, *(other)* | line-delimited JSON — one JSON object per line |
 
-#### Verification mode — columns written on each **Verify**
-
-| column | description |
-|---|---|
-| `detection_id` | `id` from the input row |
-| `is_valid` | `yes` or `no` |
-| `signal_start_time` | absolute position in the audio file (seconds) — set by clicking the spectrogram |
-| `notes` | free-text notes |
-| `verified_common_name` | corrected species name (empty if `is_valid = yes`) |
-| `verification_confidence` | `low` / `medium` / `high` (empty if `is_valid = yes`) |
-
-#### Annotation mode — columns written on each **Submit**
-
-| column | description |
-|---|---|
-| `detection_id` | `id` from the input row |
-| `start_time` | signal start position (seconds) — set by clicking the spectrogram |
-| `common_name` | species / class selected from the category list |
-| `confidence` | `low` / `medium` / `high` |
-| `notes` | free-text notes |
+Output columns are determined by the `form_config`. Each submit writes `detection_id` (the `id` from the selected input row) plus one column per form element, using the element's `column` (or `label`) as the column name.
 
 
 ---
