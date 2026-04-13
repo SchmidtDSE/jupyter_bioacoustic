@@ -2122,6 +2122,8 @@ class BioacousticWidget extends Widget {
       this._sessionValid++;
     }
     this._updateProgress();
+    // Invalidate Python-side output cache
+    void this._execPython('if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()').catch(() => {});
     this._onSkip();
   }
 
