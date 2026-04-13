@@ -63,24 +63,23 @@ class BioacousticWidget extends Widget {
   private _sortAsc = true;
   private _page = 0;
   private _pageSize = 10;
-  private _selectedIdx = -1;  // index into _filtered
+  private _selectedIdx = -1;
   private _filterExpr = '';
-  private _categories: string[] = [];
   private _audioPath = '';
   private _categoryPath = '';
   private _outputPath = '';
 
   // ── Mode state ──────────────────────────────────────────────
-  private _predictionCol = '';      // empty = annotation mode
+  private _predictionCol = '';
   private _displayCols: string[] = [];
-  private _dataCols: string[] = [];  // explicit table columns (overrides auto)
+  private _dataCols: string[] = [];
 
   // ── Player state ────────────────────────────────────────────
   private _specBitmap: ImageBitmap | null = null;
-  private _segLoadStart = 0;    // absolute audio start of loaded segment (start_time - buffer, ≥ 0)
-  private _segDuration = 0;     // duration of loaded audio
-  private _detectionStart = 0;  // row.start_time
-  private _detectionEnd = 0;    // row.end_time
+  private _segLoadStart = 0;
+  private _segDuration = 0;
+  private _detectionStart = 0;
+  private _detectionEnd = 0;
   private _bufferSec = 5;
   private _playing = false;
   private _rafId = 0;
@@ -117,18 +116,24 @@ class BioacousticWidget extends Widget {
   private _audio!: HTMLAudioElement;
 
   // ── DOM refs — form ─────────────────────────────────────────
-  private _formTitle!: HTMLDivElement;
-  private _isValidLbl!: HTMLLabelElement;
-  private _isValidSelect!: HTMLSelectElement;
-  private _notesInput!: HTMLTextAreaElement;
-  private _signalStartLbl!: HTMLLabelElement;
-  private _signalStartInput!: HTMLInputElement;
-  private _secondaryForm!: HTMLDivElement;
-  private _verifiedNameLbl!: HTMLLabelElement;
-  private _verifiedNameSelect!: HTMLSelectElement;
-  private _verificationConfLbl!: HTMLLabelElement;
-  private _verificationConfSelect!: HTMLSelectElement;
-  private _verifyBtn!: HTMLButtonElement;
+  private _formSection!: HTMLDivElement;
+  private _dynFormEl!: HTMLDivElement;
+
+  // ── Form state ──────────────────────────────────────────────
+  private _formConfig: any = null;
+  private _formValues: Record<string, any> = {};
+  private _timeSelectInputs: Map<string, HTMLInputElement> = new Map();
+  private _isValidEl: HTMLSelectElement | null = null;
+  private _isValidYesVal: any = 'yes';
+  private _isValidNoVal: any = 'no';
+  private _isValidCol = 'is_valid';
+  private _yesFormEl: HTMLDivElement | null = null;
+  private _noFormEl: HTMLDivElement | null = null;
+  private _submitBtns: HTMLButtonElement[] = [];
+  private _requiredInputs: Array<{ col: string; el: HTMLElement }> = [];
+  private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
+  private _timeSelectDefs: Array<{ col: string; initValue: any }> = [];
+  private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
 
   constructor(tracker: INotebookTracker) {
     super();
@@ -324,7 +329,6 @@ class BioacousticWidget extends Widget {
       return inp;
     };
 
-    // Type dropdown (mel / plain)
     const typeLbl = document.createElement('label');
     typeLbl.style.cssText = labelStyle();
     typeLbl.textContent = 'Type';
@@ -394,105 +398,23 @@ class BioacousticWidget extends Widget {
       this._renderFrame();
     });
 
-    // ── Verification form ────────────────────────────────────────
-    const formSection = document.createElement('div');
-    formSection.style.cssText =
+    // ── Form section (hidden until form_config is provided) ─────
+    this._formSection = document.createElement('div');
+    this._formSection.style.cssText =
       `flex-shrink:0;min-height:140px;padding:10px 14px 12px;background:#181825;` +
-      `border-top:1px solid #313244;display:flex;flex-direction:column;gap:10px;`;
+      `border-top:1px solid #313244;display:none;flex-direction:column;gap:10px;`;
 
-    this._formTitle = document.createElement('div');
-    this._formTitle.textContent = 'REVIEW CLIP';
-    this._formTitle.style.cssText =
-      `font-size:11px;font-weight:700;letter-spacing:1.2px;color:#6c7086;`;
+    this._dynFormEl = document.createElement('div');
+    this._dynFormEl.style.cssText = `display:flex;flex-direction:column;gap:10px;`;
 
-    const mkFormLabel = (text: string): HTMLLabelElement => {
-      const lbl = document.createElement('label');
-      lbl.style.cssText = labelStyle() + `font-size:13px;gap:7px;`;
-      lbl.textContent = text;
-      return lbl;
-    };
-
-    // Row 1: primary fields
-    const formRow1 = document.createElement('div');
-    formRow1.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
-
-    this._isValidLbl = mkFormLabel('is_valid');
-    this._isValidSelect = document.createElement('select');
-    this._isValidSelect.style.cssText = selectStyle() + `font-size:13px;`;
-    [['', '— select —'], ['yes', 'yes'], ['no', 'no']].forEach(([val, label]) => {
-      const o = document.createElement('option');
-      o.value = val;
-      o.textContent = label;
-      this._isValidSelect.appendChild(o);
-    });
-    this._isValidSelect.addEventListener('change', () => this._onIsValidChange());
-    this._isValidLbl.appendChild(this._isValidSelect);
-
-    const notesLbl = mkFormLabel('notes');
-    this._notesInput = document.createElement('textarea');
-    this._notesInput.rows = 1;
-    this._notesInput.style.cssText =
-      inputStyle('220px') + `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
-    notesLbl.appendChild(this._notesInput);
-
-    this._signalStartLbl = mkFormLabel('signal_start (s)');
-    this._signalStartInput = document.createElement('input');
-    this._signalStartInput.type = 'number';
-    this._signalStartInput.step = '0.01';
-    this._signalStartInput.style.cssText = inputStyle('90px') + `font-size:13px;`;
-    this._signalStartLbl.appendChild(this._signalStartInput);
-
-    formRow1.append(this._isValidLbl, notesLbl, this._signalStartLbl);
-
-    // Row 2: secondary form (hidden until is_valid = no)
-    this._secondaryForm = document.createElement('div');
-    this._secondaryForm.style.cssText =
-      `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
-
-    this._verifiedNameLbl = mkFormLabel('verified name');
-    this._verifiedNameSelect = document.createElement('select');
-    this._verifiedNameSelect.style.cssText = selectStyle() + `font-size:13px;max-width:260px;`;
-    this._verifiedNameLbl.appendChild(this._verifiedNameSelect);
-
-    this._verificationConfLbl = mkFormLabel('verif. confidence');
-    this._verificationConfSelect = document.createElement('select');
-    this._verificationConfSelect.style.cssText = selectStyle() + `font-size:13px;`;
-    ['low', 'medium', 'high'].forEach(v => {
-      const o = document.createElement('option');
-      o.value = o.textContent = v;
-      this._verificationConfSelect.appendChild(o);
-    });
-    this._verificationConfLbl.appendChild(this._verificationConfSelect);
-
-    this._secondaryForm.append(this._verifiedNameLbl, this._verificationConfLbl);
-
-    // Row 3: divider + action buttons
-    const formDivider = document.createElement('div');
-    formDivider.style.cssText = `border-top:1px solid #313244;margin:0 -2px;`;
-
-    const formBtns = document.createElement('div');
-    formBtns.style.cssText = `display:flex;align-items:center;gap:10px;padding-top:2px;`;
-
-    const skipBtn = document.createElement('button');
-    skipBtn.textContent = 'Skip →';
-    skipBtn.style.cssText = btnStyle() + `font-size:13px;`;
-    skipBtn.addEventListener('click', () => this._onSkip());
-
-    this._verifyBtn = document.createElement('button');
-    this._verifyBtn.textContent = '✓ Verify';
-    this._verifyBtn.style.cssText = btnStyle(true) + `font-size:13px;opacity:0.4;`;
-    this._verifyBtn.disabled = true;
-    this._verifyBtn.addEventListener('click', () => void this._onVerify());
-
-    formBtns.append(skipBtn, this._verifyBtn);
-    formSection.append(this._formTitle, formRow1, this._secondaryForm, formDivider, formBtns);
+    this._formSection.append(this._dynFormEl);
 
     // ── Assemble widget ──────────────────────────────────────────
     this.node.append(
       header, filterBar, tableWrap, pagBar,
       this._infoCard,
       playerCtrls, this._canvasContainer, playBar,
-      this._audio, formSection
+      this._audio, this._formSection
     );
   }
 
@@ -539,6 +461,7 @@ class BioacousticWidget extends Widget {
         `  'prediction_col': _BA_PREDICTION_COL,\n` +
         `  'display_cols': _BA_DISPLAY_COLS,\n` +
         `  'data_cols': _BA_DATA_COLS,\n` +
+        `  'form_config': _BA_FORM_CONFIG,\n` +
         `}))`
       );
     } catch (e: any) {
@@ -549,6 +472,7 @@ class BioacousticWidget extends Widget {
     let cfg: {
       data: string; audio_path: string; category_path: string; output: string;
       prediction_col: string; display_cols: string; data_cols: string;
+      form_config: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -563,6 +487,7 @@ class BioacousticWidget extends Widget {
     this._predictionCol  = cfg.prediction_col;
     this._displayCols    = JSON.parse(cfg.display_cols) as string[];
     this._dataCols       = JSON.parse(cfg.data_cols) as string[];
+    this._formConfig     = JSON.parse(cfg.form_config);
 
     try {
       this._rows = JSON.parse(cfg.data) as Detection[];
@@ -571,28 +496,11 @@ class BioacousticWidget extends Widget {
       return;
     }
 
-    this._configureFormForMode();   // needs _rows for "show all columns" default
+    this._configureFormForMode();
+    await this._buildForm();
     this._applyFilterAndSort();
     this._renderTable();
 
-    // Load categories for the verified-name dropdown
-    if (this._categoryPath) {
-      try {
-        const p = this._categoryPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        const catJson = await this._execPython(
-          `import csv as _csv, json as _j\n` +
-          `with open('${p}') as _f:\n` +
-          `    _rows = list(_csv.DictReader(_f))\n` +
-          `print(_j.dumps([r['common_name'] for r in _rows]))`
-        );
-        this._categories = JSON.parse(catJson) as string[];
-      } catch {
-        this._categories = [];
-      }
-    }
-    this._populateCategoryDropdown();
-
-    // Auto-select first row and load audio
     if (this._filtered.length > 0) {
       this._selectRow(0, false);
       await this._loadAudio();
@@ -607,20 +515,16 @@ class BioacousticWidget extends Widget {
       k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
     if (this._dataCols.length > 0) {
-      // Explicit column list supplied by caller — use as-is
       this._tableCols = this._dataCols.map(k => ({ key: k, label: prettify(k) }));
     } else if (this._rows.length > 0 && !this._predictionCol && this._displayCols.length === 0) {
-      // No guidance at all — show every column present in the data
       this._tableCols = Object.keys(this._rows[0]).map(k => ({ key: k, label: prettify(k) }));
     } else {
-      // Auto-build from mode + display_cols
       const baseCols = [
         { key: 'id', label: 'ID' },
         { key: 'start_time', label: 'Start (s)' },
         { key: 'end_time', label: 'End (s)' },
       ];
       const extraCols = this._displayCols.map(k => ({ key: k, label: prettify(k) }));
-
       if (this._predictionCol) {
         this._tableCols = [
           { key: 'id', label: 'ID' },
@@ -634,27 +538,526 @@ class BioacousticWidget extends Widget {
       }
     }
     this._rebuildTableHeader();
+  }
 
+  // ─── Dynamic form builder ────────────────────────────────────
+
+  private async _buildForm(): Promise<void> {
+    this._dynFormEl.innerHTML = '';
+    this._formValues = {};
+    this._timeSelectInputs.clear();
+    this._isValidEl = null;
+    this._isValidCol = 'is_valid';
+    this._yesFormEl = null;
+    this._noFormEl = null;
+    this._submitBtns = [];
+    this._requiredInputs = [];
+    this._inputRefs.clear();
+    this._timeSelectDefs = [];
+    this._sourceValueFields = [];
+
+    const cfg = this._formConfig;
+    // Set title from mode regardless of form config
     if (this._predictionCol) {
-      // Verification mode — form layout unchanged
+      this._titleEl.textContent = 'Bioacoustic Reviewer';
+      this.title.label = 'Bioacoustic Reviewer';
+    } else {
+      this._titleEl.textContent = 'Bioacoustic Annotator';
+      this.title.label = 'Bioacoustic Annotator';
+    }
+
+    if (!cfg) {
+      this._formSection.style.display = 'none';
+      return;
+    }
+    this._formSection.style.display = 'flex';
+
+    // Top-level title
+    if (cfg.title) {
+      this._appendTitle(String(cfg.title), this._dynFormEl);
+    }
+
+    if ('is_valid_form' in cfg) {
+
+      const isValidDiv = document.createElement('div');
+      isValidDiv.dataset.formSection = 'is_valid_form';
+      isValidDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
+      await this._buildFormSection(cfg.is_valid_form ?? [], isValidDiv);
+      this._dynFormEl.appendChild(isValidDiv);
+
+      if (cfg.yes_form) {
+        this._yesFormEl = document.createElement('div');
+        this._yesFormEl.dataset.formSection = 'yes_form';
+        this._yesFormEl.style.cssText = `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
+        await this._buildFormSection(cfg.yes_form, this._yesFormEl);
+        this._dynFormEl.appendChild(this._yesFormEl);
+      }
+
+      if (cfg.no_form) {
+        this._noFormEl = document.createElement('div');
+        this._noFormEl.dataset.formSection = 'no_form';
+        this._noFormEl.style.cssText = `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
+        await this._buildFormSection(cfg.no_form, this._noFormEl);
+        this._dynFormEl.appendChild(this._noFormEl);
+      }
+
+      // Wire is_valid_select → show/hide subforms
+      if (this._isValidEl) {
+        const isValidEl = this._isValidEl;
+        isValidEl.addEventListener('change', () => {
+          const val = isValidEl.value;
+          if (this._yesFormEl) {
+            this._yesFormEl.style.display = val === String(this._isValidYesVal) ? 'flex' : 'none';
+          }
+          if (this._noFormEl) {
+            this._noFormEl.style.display = val === String(this._isValidNoVal) ? 'flex' : 'none';
+          }
+          this._validateForm();
+        });
+      }
+    } else if ('annotate_form' in cfg) {
+      // no hardcoded title — use 'title' element in form config
+
+      const annotateDiv = document.createElement('div');
+      annotateDiv.dataset.formSection = 'annotate_form';
+      annotateDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
+      await this._buildFormSection(cfg.annotate_form ?? [], annotateDiv);
+      this._dynFormEl.appendChild(annotateDiv);
+    }
+
+    if (cfg.submission_buttons) {
+      await this._buildSubmissionButtons(cfg.submission_buttons);
+    }
+
+    this._validateForm();
+  }
+
+  private async _buildFormSection(elements: any[], container: HTMLElement): Promise<void> {
+    for (const item of elements) {
+      if (!item || typeof item !== 'object') continue;
+      const [type] = Object.keys(item);
+      const config = item[type];
+      if (type === 'title') {
+        this._appendTitle(String(config), container);
+      } else if (type === 'break') {
+        container.appendChild(document.createElement('br'));
+      } else if (type === 'line') {
+        const d = document.createElement('div');
+        d.style.cssText = `border-top:1px solid #313244;width:100%;margin:2px 0;`;
+        container.appendChild(d);
+      } else if (type === 'text') {
+        const d = document.createElement('div');
+        d.style.cssText = `color:#a6adc8;font-size:11px;width:100%;`;
+        d.textContent = String(config);
+        container.appendChild(d);
+      } else {
+        await this._buildInputElement(type, config, container);
+      }
+    }
+  }
+
+  private async _buildInputElement(
+    type: string,
+    rawConfig: any,
+    container: HTMLElement
+  ): Promise<void> {
+    const cfg = (rawConfig === true || rawConfig === null || rawConfig === undefined) ? {} : rawConfig;
+
+    let labelText: string;
+    let col: string;
+    let required: boolean;
+
+    if (type === 'is_valid_select') {
+      col = cfg.column ?? 'is_valid';
+      labelText = cfg.label ?? 'is_valid';
+      required = true;
+    } else {
+      labelText = cfg.label ?? type;
+      col = cfg.column ?? labelText;
+      required = cfg.required ?? false;
+    }
+
+    const lbl = document.createElement('label');
+    lbl.style.cssText = labelStyle() + `font-size:13px;gap:7px;`;
+    lbl.textContent = labelText;
+
+    let inputEl: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+    if (type === 'textbox') {
+      if (cfg.multiline) {
+        const ta = document.createElement('textarea');
+        ta.rows = 1;
+        ta.style.cssText =
+          inputStyle(cfg.width ? this._cssSize(cfg.width) : '220px') +
+          `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
+        ta.addEventListener('input', () => { this._formValues[col] = ta.value; this._validateForm(); });
+        inputEl = ta;
+      } else {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.style.cssText =
+          inputStyle(cfg.width ? this._cssSize(cfg.width) : '220px') + `font-size:13px;`;
+        inp.addEventListener('input', () => { this._formValues[col] = inp.value; this._validateForm(); });
+        inputEl = inp;
+      }
+      this._formValues[col] = cfg.default ?? '';
+
+    } else if (type === 'select') {
+      const sel = document.createElement('select');
+      sel.style.cssText = selectStyle() + `font-size:13px;max-width:260px;`;
+      if (cfg.width) sel.style.width = this._cssSize(cfg.width);
+      const emptyOpt = document.createElement('option');
+      emptyOpt.value = ''; emptyOpt.textContent = '— select —';
+      sel.appendChild(emptyOpt);
+      const items = await this._loadSelectItems(cfg.items);
+      items.forEach(([v, l]) => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = l;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', () => { this._formValues[col] = sel.value; this._validateForm(); });
+      this._formValues[col] = cfg.default ?? '';
+      inputEl = sel;
+
+    } else if (type === 'checkbox') {
+      const inp = document.createElement('input');
+      inp.type = 'checkbox';
+      inp.checked = Boolean(cfg.default);
+      inp.addEventListener('change', () => {
+        this._formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+        this._validateForm();
+      });
+      this._formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+      inputEl = inp;
+
+    } else if (type === 'number') {
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      if (cfg.min !== undefined) inp.min = String(cfg.min);
+      if (cfg.max !== undefined) inp.max = String(cfg.max);
+      if (cfg.step !== undefined) inp.step = String(cfg.step);
+      if (cfg.placeholder) inp.placeholder = String(cfg.placeholder);
+      if (cfg.value !== undefined) inp.value = String(cfg.value);
+      inp.style.cssText =
+        inputStyle(cfg.width ? this._cssSize(cfg.width) : '80px') + `font-size:13px;`;
+      inp.addEventListener('input', () => {
+        this._formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
+        this._validateForm();
+      });
+      this._formValues[col] = cfg.value ?? null;
+      inputEl = inp;
+
+    } else if (type === 'is_valid_select') {
+      const sel = document.createElement('select');
+      sel.style.cssText = selectStyle() + `font-size:13px;`;
+
+      let yesLabel = 'yes', yesVal: any = 'yes';
+      let noLabel = 'no', noVal: any = 'no';
+      if (typeof cfg.yes === 'string') { yesLabel = yesVal = cfg.yes; }
+      else if (cfg.yes && typeof cfg.yes === 'object') {
+        yesLabel = cfg.yes.label ?? 'yes'; yesVal = cfg.yes.value ?? 'yes';
+      }
+      if (typeof cfg.no === 'string') { noLabel = noVal = cfg.no; }
+      else if (cfg.no && typeof cfg.no === 'object') {
+        noLabel = cfg.no.label ?? 'no'; noVal = cfg.no.value ?? 'no';
+      }
+
+      [['', '— select —'], [String(yesVal), yesLabel], [String(noVal), noLabel]].forEach(([v, l]) => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = l;
+        sel.appendChild(o);
+      });
+
+      this._isValidEl = sel;
+      this._isValidYesVal = yesVal;
+      this._isValidNoVal = noVal;
+      this._isValidCol = col;
+
+      sel.addEventListener('change', () => { this._formValues[col] = sel.value; this._validateForm(); });
+      this._formValues[col] = '';
+      this._requiredInputs.push({ col, el: sel });
+      this._inputRefs.set(col, sel);
+      lbl.appendChild(sel);
+      container.appendChild(lbl);
+      return;  // early return — change handler wired in _buildForm
+
+    } else if (type === 'time_select') {
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.step = '0.01';
+      inp.style.cssText =
+        inputStyle(cfg.width ? this._cssSize(cfg.width) : '90px') + `font-size:13px;`;
+      inp.addEventListener('input', () => {
+        this._formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
+        this._validateForm();
+      });
+      this._timeSelectInputs.set(col, inp);
+      this._timeSelectDefs.push({ col, initValue: cfg.init_value });
+      this._formValues[col] = null;
+      inputEl = inp;
+
+    } else {
       return;
     }
 
-    this._titleEl.textContent = 'Bioacoustic Annotator';
-    this.title.label = 'Bioacoustic Annotator';
-    this._formTitle.textContent = 'ANNOTATE CLIP';
-    this._isValidLbl.style.display = 'none';
-    this._signalStartLbl.childNodes[0].textContent = 'start_time (s)';
-    this._verifiedNameLbl.childNodes[0].textContent = 'common_name';
-    this._verificationConfLbl.childNodes[0].textContent = 'confidence';
-    // Show secondary form permanently (no is_valid gate)
-    this._secondaryForm.style.display = 'flex';
-    this._verifyBtn.textContent = '✓ Submit';
-    // Submit is always enabled in annotation mode
-    this._verifyBtn.disabled = false;
-    this._verifyBtn.style.opacity = '1';
-    this._signalTimeDisplay.textContent = 'click spectrogram to set start_time';
+    if (cfg.source_value) {
+      this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
+    }
+    if (required) this._requiredInputs.push({ col, el: inputEl });
+    this._inputRefs.set(col, inputEl);
+    lbl.appendChild(inputEl);
+    container.appendChild(lbl);
   }
+
+  private async _loadSelectItems(items: any): Promise<Array<[string, string]>> {
+    if (!items) return [];
+
+    if (Array.isArray(items)) {
+      return items.map(item => {
+        if (typeof item === 'string') return [item, item] as [string, string];
+        if (typeof item === 'object' && item !== null) {
+          const [k] = Object.keys(item);
+          return [k, String(item[k])] as [string, string];
+        }
+        return [String(item), String(item)] as [string, string];
+      });
+    }
+
+    if (typeof items === 'string') {
+      return this._loadSelectItemsFromFile(items);
+    }
+
+    if (typeof items === 'object') {
+      if ('max' in items) {
+        const min = items.min ?? 0;
+        const max = items.max;
+        const step = items.step ?? 1;
+        const result: Array<[string, string]> = [];
+        for (let i = min; i <= max; i += step) result.push([String(i), String(i)]);
+        return result;
+      }
+      if ('path' in items) {
+        return this._loadSelectItemsFromFile(items.path, items.value, items.label);
+      }
+    }
+
+    return [];
+  }
+
+  private async _loadSelectItemsFromFile(
+    path: string,
+    valueCol?: string,
+    labelCol?: string
+  ): Promise<Array<[string, string]>> {
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const p = esc(path);
+    const ext = path.split('.').pop()?.toLowerCase() ?? '';
+    let code: string;
+
+    if (ext === 'csv') {
+      if (valueCol) {
+        const v = esc(valueCol);
+        const l = labelCol ? esc(labelCol) : v;
+        code = [
+          `import csv as _csv, json as _j`,
+          `with open('${p}') as _f:`,
+          `    _rows = list(_csv.DictReader(_f))`,
+          `print(_j.dumps([[r['${v}'], r.get('${l}', r['${v}'])] for r in _rows]))`,
+        ].join('\n');
+      } else {
+        code = [
+          `import csv as _csv, json as _j`,
+          `with open('${p}') as _f:`,
+          `    _rd = _csv.reader(_f)`,
+          `    _rows = [r for r in _rd if r]`,
+          `print(_j.dumps([[r[0], r[1] if len(r)>1 else r[0]] for r in _rows]))`,
+        ].join('\n');
+      }
+    } else if (ext === 'parquet') {
+      const v = valueCol ? `'${esc(valueCol)}'` : 'None';
+      const l = labelCol ? `'${esc(labelCol)}'` : 'None';
+      code = [
+        `import pandas as _pd, json as _j`,
+        `_df = _pd.read_parquet('${p}')`,
+        `_vc = ${v} or _df.columns[0]`,
+        `_lc = ${l} or _vc`,
+        `print(_j.dumps([[str(r[_vc]), str(r[_lc])] for _,r in _df.iterrows()]))`,
+      ].join('\n');
+    } else if (ext === 'jsonl' || ext === 'ndjson') {
+      const v = valueCol ? `'${esc(valueCol)}'` : 'None';
+      const l = labelCol ? `'${esc(labelCol)}'` : 'None';
+      code = [
+        `import json as _j`,
+        `_rows = [_j.loads(line) for line in open('${p}') if line.strip()]`,
+        `_vc = ${v} or (list(_rows[0].keys())[0] if _rows else 'value')`,
+        `_lc = ${l} or _vc`,
+        `print(_j.dumps([[str(r[_vc]), str(r.get(_lc, r[_vc]))] for r in _rows]))`,
+      ].join('\n');
+    } else if (ext === 'yaml' || ext === 'yml') {
+      const v = valueCol ? `'${esc(valueCol)}'` : 'None';
+      const l = labelCol ? `'${esc(labelCol)}'` : 'None';
+      code = [
+        `import yaml as _y, json as _j`,
+        `_data = _y.safe_load(open('${p}'))`,
+        `_vc = ${v} or (list(_data.keys())[0] if isinstance(_data, dict) else 'value')`,
+        `_lc = ${l} or _vc`,
+        `if isinstance(_data, dict):`,
+        `    _vals = _data.get(_vc, [])`,
+        `    _lbls = _data.get(_lc, _vals)`,
+        `    print(_j.dumps([[str(_vals[i]), str(_lbls[i])] for i in range(min(len(_vals),len(_lbls)))]))`,
+        `else:`,
+        `    print(_j.dumps([[str(x), str(x)] for x in _data]))`,
+      ].join('\n');
+    } else {
+      // Plain text: one value per line, or "value, label" per line
+      code = [
+        `import json as _j`,
+        `_lines = [ln.rstrip('\\n') for ln in open('${p}') if ln.strip()]`,
+        `_rows = [[p[0].strip(), p[1].strip() if len(p)>1 else p[0].strip()] for p in [ln.split(',',1) for ln in _lines]]`,
+        `print(_j.dumps(_rows))`,
+      ].join('\n');
+    }
+
+    try {
+      const result = await this._execPython(code);
+      return JSON.parse(result) as Array<[string, string]>;
+    } catch {
+      return [];
+    }
+  }
+
+  private async _buildSubmissionButtons(cfg: any): Promise<void> {
+    const btnContainer = document.createElement('div');
+    btnContainer.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px;`;
+
+    for (const [key, val] of Object.entries(cfg)) {
+      if (key === 'title') {
+        this._appendTitle(String(val), this._dynFormEl);
+      } else if (key === 'line') {
+        const d = document.createElement('div');
+        d.style.cssText = `border-top:1px solid #313244;margin:0 -2px;`;
+        this._dynFormEl.appendChild(d);
+      } else if (key === 'break') {
+        this._dynFormEl.appendChild(document.createElement('br'));
+      } else if (key === 'text') {
+        const d = document.createElement('div');
+        d.style.cssText = `color:#a6adc8;font-size:11px;`;
+        d.textContent = String(val);
+        this._dynFormEl.appendChild(d);
+      } else {
+        const btnCfg = (val === true) ? {} : (val as any);
+        const btn = document.createElement('button');
+        if (key === 'previous') {
+          btn.textContent = btnCfg.label ?? '◀ Prev';
+          btn.style.cssText = btnStyle() + `font-size:13px;`;
+          btn.addEventListener('click', () => this._onPrev());
+        } else if (key === 'next') {
+          const showIcon = btnCfg.icon !== false;
+          btn.textContent = (btnCfg.label ?? 'Skip') + (showIcon ? ' →' : '');
+          btn.style.cssText = btnStyle() + `font-size:13px;`;
+          btn.addEventListener('click', () => this._onSkip());
+        } else if (key === 'submit') {
+          const showIcon = btnCfg.icon !== false;
+          btn.textContent = (showIcon ? '✓ ' : '') + (btnCfg.label ?? 'Submit');
+          btn.style.cssText = btnStyle(true) + `font-size:13px;opacity:0.4;`;
+          btn.disabled = true;
+          btn.addEventListener('click', () => void this._onVerify());
+          this._submitBtns.push(btn);
+        }
+        btnContainer.appendChild(btn);
+      }
+    }
+
+    this._dynFormEl.appendChild(btnContainer);
+  }
+
+  private _validateForm(): void {
+    const allSatisfied = this._requiredInputs.every(({ col, el }) => {
+      const section = el.closest('[data-form-section]') as HTMLElement | null;
+      if (section && section.style.display === 'none') return true;
+      const val = this._formValues[col];
+      return val !== null && val !== undefined && val !== '';
+    });
+    this._submitBtns.forEach(btn => {
+      btn.disabled = !allSatisfied;
+      btn.style.opacity = allSatisfied ? '1' : '0.4';
+    });
+  }
+
+  private _updateFormFromRow(row: Detection): void {
+    // Reset is_valid select and hide subforms
+    if (this._isValidEl) {
+      this._isValidEl.value = '';
+      this._formValues[this._isValidCol] = '';
+    }
+    if (this._yesFormEl) this._yesFormEl.style.display = 'none';
+    if (this._noFormEl) this._noFormEl.style.display = 'none';
+
+    // Reset all tracked inputs to empty (skip is_valid — already reset above)
+    for (const [col, el] of this._inputRefs) {
+      if (col === this._isValidCol) continue;
+      if (el instanceof HTMLInputElement && el.type === 'checkbox') {
+        el.checked = false;
+        this._formValues[col] = false;
+      } else {
+        (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value = '';
+        this._formValues[col] = '';
+      }
+    }
+
+    // Apply source_value fields
+    for (const { col, sourceCol } of this._sourceValueFields) {
+      const val = row[sourceCol];
+      if (val !== undefined) {
+        const el = this._inputRefs.get(col);
+        if (el) {
+          (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value = String(val);
+          this._formValues[col] = val;
+        }
+      }
+    }
+
+    // Apply time_select init_value
+    for (const { col, initValue } of this._timeSelectDefs) {
+      const inp = this._timeSelectInputs.get(col);
+      if (!inp) continue;
+      if (typeof initValue === 'string' && row[initValue] !== undefined) {
+        const v = parseFloat(String(row[initValue]));
+        inp.value = v.toFixed(2);
+        this._formValues[col] = v;
+      } else if (typeof initValue === 'number') {
+        inp.value = initValue.toFixed(2);
+        this._formValues[col] = initValue;
+      } else {
+        inp.value = row.start_time != null ? row.start_time.toFixed(2) : '';
+        this._formValues[col] = row.start_time ?? null;
+      }
+    }
+
+    const label = this._predictionCol ? 'signal' : 'start_time';
+    this._signalTimeDisplay.textContent = `click spectrogram to mark ${label}`;
+
+    this._validateForm();
+  }
+
+  private _collectFormValues(): Record<string, any> {
+    const row = this._filtered[this._selectedIdx];
+    return { detection_id: row?.id ?? null, ...this._formValues };
+  }
+
+  private _cssSize(val: any): string {
+    return typeof val === 'number' ? `${val}px` : String(val);
+  }
+
+  private _appendTitle(text: string, container: HTMLElement): void {
+    const d = document.createElement('div');
+    d.textContent = text;
+    d.style.cssText =
+      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#6c7086;`;
+    container.appendChild(d);
+  }
+
+  // ─── Table header ────────────────────────────────────────────
 
   private _rebuildTableHeader(): void {
     this._thead.innerHTML = '';
@@ -686,15 +1089,6 @@ class BioacousticWidget extends Widget {
       headerRow.appendChild(th);
     });
     this._thead.appendChild(headerRow);
-  }
-
-  private _populateCategoryDropdown(): void {
-    this._verifiedNameSelect.innerHTML = '';
-    [...this._categories, 'unknown', 'noise'].forEach(name => {
-      const o = document.createElement('option');
-      o.value = o.textContent = name;
-      this._verifiedNameSelect.appendChild(o);
-    });
   }
 
   // ─── Table ───────────────────────────────────────────────────
@@ -816,9 +1210,8 @@ class BioacousticWidget extends Widget {
     if (!row) return;
 
     if (autoUpdateInputs) {
-      this._startInput.value        = String(row.start_time);
-      this._endInput.value          = String(row.end_time);
-      this._signalStartInput.value  = row.start_time.toFixed(2);
+      this._startInput.value = String(row.start_time);
+      this._endInput.value   = String(row.end_time);
     }
 
     // ── Info card ──
@@ -840,21 +1233,18 @@ class BioacousticWidget extends Widget {
 
     const items: HTMLElement[] = [];
 
-    // Always show time range
     items.push(mkChip(
       `${this._fmtTime(row.start_time)} – ${this._fmtTime(row.end_time)}`,
       '#a6adc8'
     ));
 
-    // Verification mode: show prediction column value prominently
     if (this._predictionCol && row[this._predictionCol] !== undefined) {
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = `font-size:13px;font-weight:600;color:#cdd6f4;flex-shrink:0;`;
       nameSpan.textContent = String(row[this._predictionCol]);
-      items.unshift(nameSpan);  // prepend before time range
+      items.unshift(nameSpan);
     }
 
-    // Extra display columns
     const colColors = ['#a6e3a1', '#cba6f7', '#fab387', '#89dceb', '#f38ba8'];
     this._displayCols.forEach((col, i) => {
       if (row[col] === undefined) return;
@@ -891,7 +1281,6 @@ class BioacousticWidget extends Widget {
       }
     });
 
-    // Interleave separators between items
     const cardChildren: HTMLElement[] = [];
     items.forEach((el, i) => {
       cardChildren.push(el);
@@ -900,9 +1289,8 @@ class BioacousticWidget extends Widget {
     cardChildren.push(spacer, prevBtn, nextBtn);
     this._infoCard.append(...cardChildren);
 
-    // Re-render table so selected row is highlighted
     this._renderTable();
-    this._resetForm(row);
+    this._updateFormFromRow(row);
   }
 
   private _ensurePageShowsSelected(): void {
@@ -1055,7 +1443,6 @@ class BioacousticWidget extends Widget {
     }
 
     if (this._specBitmap && this._segDuration > 0) {
-      // Buffer overlay — darken regions outside the detection window
       const detStartFrac = Math.max(0, (this._detectionStart - this._segLoadStart) / this._segDuration);
       const detEndFrac   = Math.min(1, (this._detectionEnd   - this._segLoadStart) / this._segDuration);
 
@@ -1068,7 +1455,6 @@ class BioacousticWidget extends Widget {
         ctx.fillRect(rx, 0, W - rx, H);
       }
 
-      // Playhead
       const ph = Math.floor(
         Math.max(0, Math.min(1, this._audio.currentTime / this._segDuration)) * (W - 1)
       );
@@ -1111,96 +1497,34 @@ class BioacousticWidget extends Widget {
     const rect = this._canvas.getBoundingClientRect();
     const frac  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 
-    // Seek audio
     this._audio.currentTime = frac * this._segDuration;
     this._renderFrame();
 
-    // signal_start_time = detection start_time + position_in_clip
-    // position_in_clip is 0 at start_time, negative in left buffer region
-    const absTime    = this._segLoadStart + frac * this._segDuration;
-    const posInClip  = absTime - this._detectionStart;   // negative in left buffer
-    const signalTime = absTime;                            // absolute position in audio file
+    const absTime   = this._segLoadStart + frac * this._segDuration;
+    const posInClip = absTime - this._detectionStart;
+    const signalTime = absTime;
 
-    this._signalStartInput.value = signalTime.toFixed(2);
+    // Update all time_select inputs
+    for (const [col, inp] of this._timeSelectInputs) {
+      inp.value = signalTime.toFixed(2);
+      this._formValues[col] = signalTime;
+    }
+    this._validateForm();
+
     const posStr = `${posInClip >= 0 ? '+' : ''}${posInClip.toFixed(2)}s`;
     const label  = this._predictionCol ? 'signal' : 'start_time';
     this._signalTimeDisplay.textContent =
       `⏱ ${this._fmtTime(signalTime)}  (${label} pos: ${posStr})`;
   }
 
-  // ─── Form ────────────────────────────────────────────────────
-
-  private _resetForm(row?: Detection): void {
-    this._notesInput.value       = '';
-    this._signalStartInput.value = row ? row.start_time.toFixed(2) : '';
-
-    if (this._predictionCol) {
-      // Verification mode
-      this._isValidSelect.value = '';
-      this._secondaryForm.style.display = 'none';
-      this._verifyBtn.disabled    = true;
-      this._verifyBtn.style.opacity = '0.4';
-      this._signalTimeDisplay.textContent = 'click spectrogram to mark signal';
-    } else {
-      // Annotation mode — secondary form stays visible, button always enabled
-      this._signalTimeDisplay.textContent = 'click spectrogram to set start_time';
-    }
-  }
-
-  private _onIsValidChange(): void {
-    if (!this._predictionCol) return;   // annotation mode: no is_valid
-    const val = this._isValidSelect.value;
-    this._secondaryForm.style.display = val === 'no' ? 'flex' : 'none';
-    this._verifyBtn.disabled      = val === '';
-    this._verifyBtn.style.opacity = val === '' ? '0.4' : '1';
-  }
+  // ─── Form actions ────────────────────────────────────────────
 
   private async _onVerify(): Promise<void> {
     const row = this._filtered[this._selectedIdx];
     if (!row || !this._outputPath) return;
 
-    const esc         = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const notes       = this._notesInput.value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
-    const signalStart = parseFloat(this._signalStartInput.value) || row.start_time;
-    const outPath     = esc(this._outputPath);
-
-    let cols: string[];
-    let rowDict: string;
-
-    if (this._predictionCol) {
-      // Verification mode
-      const isValid      = this._isValidSelect.value;
-      const verifiedName = isValid === 'no' ? this._verifiedNameSelect.value : '';
-      const verifConf    = isValid === 'no' ? this._verificationConfSelect.value : '';
-      cols = ['detection_id', 'is_valid', 'signal_start_time', 'notes',
-              'verified_common_name', 'verification_confidence'];
-      rowDict = [
-        `{`,
-        `  'detection_id':            ${row.id},`,
-        `  'is_valid':                '${isValid}',`,
-        `  'signal_start_time':       ${signalStart.toFixed(4)},`,
-        `  'notes':                   '${notes}',`,
-        `  'verified_common_name':    '${esc(verifiedName)}',`,
-        `  'verification_confidence': '${esc(verifConf)}',`,
-        `}`,
-      ].join('\n');
-    } else {
-      // Annotation mode
-      const commonName = this._verifiedNameSelect.value;
-      const confidence = this._verificationConfSelect.value;
-      cols = ['detection_id', 'start_time', 'common_name', 'confidence', 'notes'];
-      rowDict = [
-        `{`,
-        `  'detection_id': ${row.id},`,
-        `  'start_time':   ${signalStart.toFixed(4)},`,
-        `  'common_name':  '${esc(commonName)}',`,
-        `  'confidence':   '${esc(confidence)}',`,
-        `  'notes':        '${notes}',`,
-        `}`,
-      ].join('\n');
-    }
-
-    const code = this._buildOutputCode(cols, rowDict);
+    const values = this._collectFormValues();
+    const code = this._buildOutputCode(values);
     const verb = this._predictionCol ? 'Verified' : 'Annotated';
     try {
       await this._execPython(code);
@@ -1209,14 +1533,22 @@ class BioacousticWidget extends Widget {
       this._setStatus(`❌ Write failed: ${String(e.message ?? e)}`, true);
       return;
     }
-
     this._onSkip();
   }
 
-  private _buildOutputCode(cols: string[], rowDict: string): string {
-    const esc     = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  private _buildOutputCode(values: Record<string, any>): string {
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const outPath = esc(this._outputPath);
-    const ext     = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
+    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
+
+    const cols = Object.keys(values);
+    const pyRepr = (val: any): string => {
+      if (val === null || val === undefined) return 'None';
+      if (typeof val === 'boolean') return val ? 'True' : 'False';
+      if (typeof val === 'number') return String(val);
+      return `'${esc(String(val)).replace(/\n/g, ' ')}'`;
+    };
+    const rowDict = `{\n${cols.map(c => `  '${c}': ${pyRepr(values[c])}`).join(',\n')}\n}`;
 
     if (ext === 'csv') {
       const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
@@ -1247,7 +1579,6 @@ class BioacousticWidget extends Widget {
       ].join('\n');
     }
 
-    // Default: line-delimited JSON (.jsonl / .ndjson / anything else)
     return [
       `import json as _json`,
       `_row  = ${rowDict}`,
@@ -1255,6 +1586,14 @@ class BioacousticWidget extends Widget {
       `  _f.write(_json.dumps(_row) + '\\n')`,
       `print('ok')`,
     ].join('\n');
+  }
+
+  private _onPrev(): void {
+    if (this._selectedIdx > 0) {
+      this._selectRow(this._selectedIdx - 1);
+      this._ensurePageShowsSelected();
+      void this._loadAudio();
+    }
   }
 
   private _onSkip(): void {
@@ -1322,15 +1661,12 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
     palette: ICommandPalette,
     tracker: INotebookTracker
   ) => {
-    // Expose app so Python's display(Javascript(...)) can reach it
     (window as any)._bioacousticApp = app;
 
-    // Inline mode: attach a widget instance to an existing container div
     (window as any)._bioacousticOpenInline = (divId: string) => {
       const container = document.getElementById(divId);
       if (!container) return;
       const widget = new BioacousticWidget(tracker);
-      // Fill the container completely
       widget.node.style.cssText += `position:absolute;inset:0;`;
       Widget.attach(widget, container);
     };
@@ -1348,3 +1684,5 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
     console.log('jupyter-bioacoustic activated');
   }
 };
+
+export default bioacousticPlugin;

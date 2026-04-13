@@ -70,6 +70,7 @@ class JupyterAudio:
         prediction_column=_UNSET,
         display_columns=_UNSET,
         data_columns=_UNSET,
+        form_config=_UNSET,
         inline=_UNSET,
         width=_UNSET,
         height=_UNSET,
@@ -146,6 +147,10 @@ class JupyterAudio:
         self._prediction_column = resolve(prediction_column, 'prediction_column', '')
         self._display_columns  = resolve(display_columns,  'display_columns',  None) or []
         self._data_columns     = resolve(data_columns,     'data_columns',     None) or []
+        raw_form = resolve(form_config, 'form_config', None)
+        if isinstance(raw_form, str):
+            raw_form = _load_config(raw_form)
+        self._form_config = raw_form   # dict or None
         self._inline           = resolve(inline,           'inline',           False)
         self._width            = resolve(width,            'width',            '100%')
         self._height           = resolve(height,           'height',           900)
@@ -165,6 +170,8 @@ class JupyterAudio:
         ip.user_ns['_BA_PREDICTION_COL'] = self._prediction_column
         ip.user_ns['_BA_DISPLAY_COLS']   = json.dumps(self._display_columns)
         ip.user_ns['_BA_DATA_COLS']      = json.dumps(self._data_columns)
+
+        ip.user_ns['_BA_FORM_CONFIG'] = json.dumps(self._form_config)
 
         if self._inline:
             self._open_inline()
