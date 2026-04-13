@@ -309,6 +309,7 @@ submission_buttons:
 | `annotation` | Spectrogram annotation tools — draggable lines and bounding boxes. See [Annotation tools](#annotation-tools) below. |
 | `title` | Styled section header. String or `{value, progress_tracker}`. Can appear anywhere. |
 | `pass_value` | Passes a column from the input row to the output. `pass_value: col` or `{source_column, column}`. Position controls output column order. |
+| `fixed_value` | Writes a constant value to every output row. `{column, value}`. |
 | `progress_tracker` | Shows session and total progress, with accuracy for review mode. Reads existing output file on load. |
 | `break` | Line break. |
 | `line` | Horizontal divider. |
