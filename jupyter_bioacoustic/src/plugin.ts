@@ -668,6 +668,11 @@ class BioacousticWidget extends Widget {
 
       } else if (key === 'submission_buttons') {
         await this._buildSubmissionButtons(cfg.submission_buttons);
+
+      } else if (key === '_fixed_kwargs') {
+        for (const item of cfg._fixed_kwargs) {
+          if (item.fixed_value) this._registerFixedValue(item.fixed_value);
+        }
       }
     }
 

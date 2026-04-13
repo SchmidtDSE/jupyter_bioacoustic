@@ -78,6 +78,7 @@ class JupyterAudio:
         width=_UNSET,
         height=_UNSET,
         config=None,
+        **kwargs,
     ):
         """
         Parameters
@@ -156,6 +157,13 @@ class JupyterAudio:
         raw_form = resolve(form_config, 'form_config', None)
         if isinstance(raw_form, str):
             raw_form = _load_config(raw_form)
+        # Append **kwargs as fixed_value entries to the form config
+        if kwargs:
+            if raw_form is None:
+                raw_form = {}
+            # Build a list of fixed_value entries; append after submission_buttons
+            fv_list = [{'fixed_value': {'column': k, 'value': v}} for k, v in kwargs.items()]
+            raw_form.setdefault('_fixed_kwargs', fv_list)
         self._form_config = raw_form   # dict or None
         self._capture          = resolve(capture,          'capture',          True)
         self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')

@@ -199,7 +199,24 @@ ja.output()     # the output file as a DataFrame (cached, reloads after each sub
 | `capture` | bool or str | `True` | Show a Capture button to save spectrogram PNGs. `False` hides it. A string sets the button label (e.g. `'Save Spectrogram'`). |
 | `capture_dir` | str | `''` | Directory prefix for capture filenames. Created automatically if it doesn't exist. |
 | `config` | str | `None` | Path to a JSON or YAML config file. Any parameter above can be set here; explicit arguments override file values. |
+| `**kwargs` | | | Any extra keyword arguments are written as fixed columns in every output row. See below. |
 
+### Fixed values via kwargs
+
+Any unrecognised keyword argument is treated as a fixed value column appended to every output row:
+
+```python
+JupyterAudio(
+    data=df,
+    audio_path='test.flac',
+    form_config='form.yaml',
+    output='reviews.csv',
+    reviewer_name='brookie guzder-williams',
+    review_date=20260413,
+).open()
+```
+
+Every submitted row will include `reviewer_name` and `review_date` with the given values. This is equivalent to adding `fixed_value` entries at the end of the form config, but more convenient for per-session metadata.
 
 ### Configurable Forms
 
