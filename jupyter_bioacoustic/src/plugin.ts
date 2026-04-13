@@ -635,6 +635,9 @@ class BioacousticWidget extends Widget {
       } else if (key === 'pass_value') {
         this._registerPassValue(cfg.pass_value);
 
+      } else if (key === 'fixed_value') {
+        this._registerFixedValue(cfg.fixed_value);
+
       } else if (key === 'is_valid_form') {
         const isValidDiv = document.createElement('div');
         isValidDiv.dataset.formSection = 'is_valid_form';
@@ -697,6 +700,8 @@ class BioacousticWidget extends Widget {
         this._appendTitleEntry(config, container);
       } else if (type === 'progress_tracker') {
         this._appendProgressTracker(container);
+      } else if (type === 'fixed_value') {
+        this._registerFixedValue(config);
       } else if (type === 'annotation') {
         this._buildAnnotationElement(config, container);
       } else if (type === 'break') {
@@ -978,6 +983,8 @@ class BioacousticWidget extends Widget {
     for (const [key, val] of Object.entries(cfg)) {
       if (key === 'pass_value') {
         this._registerPassValue(val);
+      } else if (key === 'fixed_value') {
+        this._registerFixedValue(val);
       } else if (key === 'title') {
         this._appendTitleEntry(val, this._dynFormEl);
       } else if (key === 'progress_tracker') {
@@ -1209,6 +1216,13 @@ class BioacousticWidget extends Widget {
       this._passValueDefs.push({ sourceCol, col });
       this._formValues[col] = null;
     }
+  }
+
+  private _registerFixedValue(config: any): void {
+    if (!config || typeof config !== 'object') return;
+    const col = config.column;
+    if (!col) return;
+    this._formValues[col] = config.value ?? null;
   }
 
   private _collectFormValues(): Record<string, any> {
