@@ -1,51 +1,14 @@
-"""Generate dev-annotate.csv and dev-review.csv — 500 rows each with audio_path, county, lat, lon."""
+"""Generate dev-annotate.csv and dev-review.csv — 750 rows each with audio_path, county, lat, lon."""
 import csv
 import random
 
 random.seed(123)
 
-CATEGORIES = [
-    ("Northern saw-whet owl",      "Aegolius acadicus"),
-    ("Canada goose",               "Branta canadensis"),
-    ("Marbled murrelet",           "Brachyramphus marmoratus"),
-    ("Great horned owl",           "Bubo virginianus"),
-    ("Hermit thrush",              "Catharus guttatus"),
-    ("Wolf howl",                  "Canis lupus"),
-    ("Swainson's thrush",          "Catharus ustulatus"),
-    ("Olive-sided flycatcher",     "Contopus cooperi"),
-    ("Wrentit",                    "Chamaea fasciata"),
-    ("Common nighthawk call",      "Chordeiles minor"),
-    ("Common nighthawk boom",      "Chordeiles minor"),
-    ("Northern flicker series",    "Colaptes auratus"),
-    ("Common raven",               "Corvus corax"),
-    ("Steller's jay",              "Cyanocitta stelleri"),
-    ("Sooty grouse",               "Dendragapus fuliginosus"),
-    ("Dog barks",                  "NA"),
-    ("Downy woodpecker call",      "Dryobates pubescens"),
-    ("Northern pygmy-owl",         "Glaucidium gnoma"),
-    ("Human speech",               "NA"),
-    ("Pileated woodpecker call",   "Dryocopus pileatus"),
-    ("Barred owl inspection call", "Strix varia"),
-    ("Varied thrush",              "Ixoreus naevius"),
-    ("Western screech-owl",        "Megascops kennicotti"),
-    ("Townsend's solitaire",       "Myadestes townsendi"),
-    ("Clark's nutcracker",         "Nucifraga columbiana"),
-    ("American pika",              "Ochotona princeps"),
-    ("Mountain quail",             "Oreortyx pictus"),
-    ("Canada jay",                 "Perisoreus canadensis"),
-    ("Spotted towhee",             "Pipilo maculatus"),
-    ("Chickadee song",             "Poecile sp."),
-    ("Flammulated owl",            "Psiloscops flammeolus"),
-    ("Gunshot",                    "NA"),
-    ("Nuthatch",                   "Sitta sp."),
-    ("Spotted owl location call",  "Strix occidentalis"),
-    ("Barred owl eight-note call", "Strix varia"),
-    ("Douglas' squirrel rattle",   "Tamasciurus douglasii"),
-    ("Chipmunk chirp",             "Neotamias sp."),
-    ("American robin whinny",      "Turdus migratorius"),
-    ("Strix owl contact whistle",  "Strix sp."),
-    ("Mourning dove",              "Zenaida macroura"),
-]
+# Load categories from categories-small.csv
+CATEGORIES = []
+with open('categories-small.csv') as f:
+    for row in csv.DictReader(f):
+        CATEGORIES.append((row['common_name'], row['scientific_name']))
 
 # California counties with approximate bounding boxes (lat_min, lat_max, lon_min, lon_max)
 CA_COUNTIES = [
@@ -109,7 +72,7 @@ CA_COUNTIES = [
     ("Yuba",           39.09, 39.62, -121.63, -120.96),
 ]
 
-AUDIO_FILES = ['test1.flac', 'test2.flac', 'test3.flac', None]
+AUDIO_FILES = ['audio/test1.flac', 'audio/test2.flac', 'audio/test3.flac', None]
 
 
 def generate(filename, n=500):
@@ -146,5 +109,5 @@ def generate(filename, n=500):
     print(f'Written {len(rows)} rows to {filename}')
 
 
-generate('dev-annotate.csv')
-generate('dev-review.csv')
+generate('dev-annotate.csv', 1500)
+generate('dev-review.csv', 1500)
