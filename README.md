@@ -209,7 +209,12 @@ There are two form types, determined by which top-level key is present:
 #### Review form structure
 
 ```yaml
-title: REVIEW CLIP              # optional styled header
+title:
+  value: REVIEW CLIP             # optional styled header
+  progress_tracker: true         # inline progress: session 2/25 · total 8/25 · accuracy 75%
+pass_value:                      # pass input row values to output
+  source_column: id
+  column: detection_id
 is_valid_form:                   # always visible; must contain one is_valid_select
   - is_valid_select: true
   - textbox:
@@ -283,8 +288,10 @@ submission_buttons:
 | `checkbox` | Single checkbox. Custom `yes_value`/`no_value` supported. |
 | `number` | Numeric input with optional `min`, `max`, `step`, `placeholder`. |
 | `is_valid_select` | Special yes/no dropdown for review mode. Required by default. Controls `yes_form`/`no_form` visibility. |
-| `time_select` | Numeric input updated by clicking the spectrogram. `init_value` can be a column name or a literal number. |
-| `title` | Styled section header. Can appear anywhere — top-level, inside form sections, or in `submission_buttons`. |
+| `annotation` | Spectrogram annotation tools — draggable lines and bounding boxes. See [Annotation tools](#annotation-tools) below. |
+| `title` | Styled section header. String or `{value, progress_tracker}`. Can appear anywhere. |
+| `pass_value` | Passes a column from the input row to the output. `pass_value: col` or `{source_column, column}`. Position controls output column order. |
+| `progress_tracker` | Shows session and total progress, with accuracy for review mode. Reads existing output file on load. |
 | `break` | Line break. |
 | `line` | Horizontal divider. |
 | `text` | Static text. |
@@ -342,7 +349,42 @@ submission_buttons:
     icon: true               # show checkmark icon (default true)
 ```
 
-`detection_id` (the `id` from the selected row) is always written to the output automatically.
+Use `pass_value` to include input row values (like `id`) in the output.
+
+#### Annotation tools
+
+The `annotation` element adds interactive spectrogram tools for marking times and frequency ranges. Without an `annotation` element, the spectrogram has no click/drag interaction.
+
+Three tools are available:
+
+| Tool | Interaction | Fields used |
+|---|---|---|
+| `time_select` | Single draggable vertical line | `start_time` |
+| `start_end_time_select` | Two draggable vertical lines (can't cross) | `start_time`, `end_time` |
+| `bounding_box` | Click+drag rectangle with draggable edges | `start_time`, `end_time`, `min_frequency`, `max_frequency` |
+
+```yaml
+- annotation:
+    start_time:                    # required for all tools
+      label: Start
+      column: start_time
+      source_value: start_time     # init from selected row column
+    end_time:                      # required for start_end_time_select, bounding_box
+      label: End
+      column: end_time
+      source_value: end_time
+    min_frequency:                 # required for bounding_box
+      label: Min
+      column: min_freq
+    max_frequency:                 # required for bounding_box
+      label: Max
+      column: max_freq
+    tools:                         # string for one tool, list for a selector dropdown
+      - start_end_time_select
+      - bounding_box
+```
+
+When `tools` is a list, a dropdown appears in the form to switch between tools. Values for all configured fields are always written to the output regardless of which tool is active.
 
 For the full specification with all options, see [CONFIG_FORMS.md](CONFIG_FORMS.md).
 
@@ -353,7 +395,7 @@ For the full specification with all options, see [CONFIG_FORMS.md](CONFIG_FORMS.
 | **Filter bar** | Expression filtering: `common_name = 'Barred owl' and confidence >= 0.5` |
 | **Clip table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select · columns set by `data_columns` |
 | **Info card** | Time range · prediction value (verification) · any `display_columns` · Prev / Next navigation |
-| **Spectrogram player** | Mel or plain STFT · adjustable buffer · buffer overlay · play/pause · click to seek and mark signal |
+| **Spectrogram player** | Mel or plain STFT · adjustable buffer · buffer overlay · play/pause · annotation tools (draggable time lines, bounding boxes) |
 | **Configurable form** | Fully driven by YAML config — any combination of selects, textboxes, checkboxes, number/time inputs, with conditional sections and custom submission buttons |
 
 ---
