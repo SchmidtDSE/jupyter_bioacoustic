@@ -65,6 +65,7 @@ class JupyterAudio:
         self,
         data=_UNSET,
         audio_path=_UNSET,
+        audio_column=_UNSET,
         category_path=_UNSET,
         output=_UNSET,
         prediction_column=_UNSET,
@@ -136,14 +137,17 @@ class JupyterAudio:
         if isinstance(raw_data, str):
             raw_data = _read_data(raw_data)
 
-        raw_audio = resolve(audio_path, 'audio_path', _UNSET)
-        if raw_audio is _UNSET:
+        raw_audio = resolve(audio_path, 'audio_path', '')
+        raw_audio_col = resolve(audio_column, 'audio_column', '')
+        if not raw_audio and not raw_audio_col:
             raise ValueError(
-                "'audio_path' is required — pass a path or include 'audio_path' in config."
+                "'audio_path' or 'audio_column' is required — pass a path/column "
+                "or include in config."
             )
 
         self._data             = raw_data
         self._audio_path       = raw_audio
+        self._audio_column     = raw_audio_col
         self._category_path    = resolve(category_path,    'category_path',    '')
         self._output           = resolve(output,           'output',           '')
         self._prediction_column = resolve(prediction_column, 'prediction_column', '')
@@ -169,6 +173,7 @@ class JupyterAudio:
 
         ip.user_ns['_BA_DATA']           = self._data.to_json(orient='records')
         ip.user_ns['_BA_AUDIO_PATH']     = self._audio_path
+        ip.user_ns['_BA_AUDIO_COL']      = self._audio_column
         ip.user_ns['_BA_CATEGORY_PATH']  = self._category_path
         ip.user_ns['_BA_OUTPUT']         = self._output
         ip.user_ns['_BA_PREDICTION_COL'] = self._prediction_column
