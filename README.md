@@ -156,7 +156,8 @@ JupyterAudio(
 | parameter | type | default | description |
 |---|---|---|---|
 | `data` | DataFrame or str | — | Rows with at minimum `id`, `start_time`, `end_time`. Pass a file path (`.csv`, `.parquet`, `.jsonl`, `.ndjson`) to load directly. |
-| `audio_path` | str | — | Local path or `s3://bucket/key` |
+| `audio_path` | str | `''` | Default audio file — local path or `s3://bucket/key`. Used when `audio_column` is not set or the row value is empty. |
+| `audio_column` | str | `''` | Column in `data` containing per-row audio file paths. Rows with empty values fall back to `audio_path`. At least one of `audio_path` or `audio_column` is required. |
 | `category_path` | str | `''` | Path to `categories.csv` for the class dropdown |
 | `output` | str | `''` | Path where rows are appended on Verify / Submit. Format inferred from extension: `.csv`, `.parquet`, `.jsonl` / `.ndjson`, or line-delimited JSON for any other extension. Parent directories are created automatically. |
 | `prediction_column` | str | `''` | Column holding the model's predicted class — enables verification mode |
