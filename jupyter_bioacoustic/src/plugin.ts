@@ -66,6 +66,7 @@ class BioacousticWidget extends Widget {
   private _selectedIdx = -1;
   private _filterExpr = '';
   private _audioPath = '';
+  private _audioCol = '';
   private _categoryPath = '';
   private _outputPath = '';
 
@@ -487,6 +488,7 @@ class BioacousticWidget extends Widget {
         `print(_j.dumps({\n` +
         `  'data': _BA_DATA,\n` +
         `  'audio_path': _BA_AUDIO_PATH,\n` +
+        `  'audio_col': _BA_AUDIO_COL,\n` +
         `  'category_path': _BA_CATEGORY_PATH,\n` +
         `  'output': _BA_OUTPUT,\n` +
         `  'prediction_col': _BA_PREDICTION_COL,\n` +
@@ -503,7 +505,7 @@ class BioacousticWidget extends Widget {
     }
 
     let cfg: {
-      data: string; audio_path: string; category_path: string; output: string;
+      data: string; audio_path: string; audio_col: string; category_path: string; output: string;
       prediction_col: string; display_cols: string; data_cols: string;
       form_config: string; capture: string; capture_dir: string;
     };
@@ -515,6 +517,7 @@ class BioacousticWidget extends Widget {
     }
 
     this._audioPath      = cfg.audio_path;
+    this._audioCol       = cfg.audio_col;
     this._categoryPath   = cfg.category_path;
     this._outputPath     = cfg.output;
     this._predictionCol  = cfg.prediction_col;
@@ -1584,8 +1587,23 @@ class BioacousticWidget extends Widget {
 
   // ─── Player ──────────────────────────────────────────────────
 
+  private _resolveAudioPath(): string {
+    if (this._audioCol) {
+      const row = this._filtered[this._selectedIdx];
+      if (row) {
+        const val = row[this._audioCol];
+        if (val != null && String(val).trim()) return String(val);
+      }
+    }
+    return this._audioPath;
+  }
+
   private async _loadAudio(): Promise<void> {
-    if (!this._audioPath) return;
+    const audioPath = this._resolveAudioPath();
+    if (!audioPath) {
+      this._setStatus('❌ No audio path — set audio_path or audio_column', true);
+      return;
+    }
 
     this._bufferSec        = Math.max(0, parseFloat(this._bufferInput.value) || 5);
     const startTime        = parseFloat(this._startInput.value) || 0;
@@ -1601,7 +1619,7 @@ class BioacousticWidget extends Widget {
 
     let result: { spec: string; wav: string; duration: number; sample_rate: number; freq_min: number; freq_max: number };
     try {
-      const raw = await this._execPython(this._buildPythonCode(this._audioPath, loadStart, loadDur));
+      const raw = await this._execPython(this._buildPythonCode(audioPath, loadStart, loadDur));
       result = JSON.parse(raw) as typeof result;
     } catch (e: any) {
       this._setStatus(`❌ ${String(e.message ?? e)}`, true);
@@ -1628,7 +1646,7 @@ class BioacousticWidget extends Widget {
     this._audio.load();
     this._renderFrame();
 
-    const fname = this._audioPath.split('/').pop() ?? this._audioPath;
+    const fname = audioPath.split('/').pop() ?? audioPath;
     this._setStatus(
       `✓ ${fname}  ${this._fmtTime(loadStart)}–${this._fmtTime(loadStart + result.duration)}`
     );
