@@ -135,8 +135,10 @@ class BioacousticWidget extends Widget {
   private _timeSelectDefs: Array<{ col: string; initValue: any }> = [];
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
-  private _submittedCount = 0;
-  private _validCount = 0;
+  private _sessionCount = 0;
+  private _sessionValid = 0;
+  private _fileCount = 0;
+  private _fileValid = 0;
   private _progressEls: HTMLSpanElement[] = [];
 
   constructor(tracker: INotebookTracker) {
@@ -502,6 +504,7 @@ class BioacousticWidget extends Widget {
 
     this._configureFormForMode();
     await this._buildForm();
+    await this._loadOutputFileProgress();
     this._applyFilterAndSort();
     this._renderTable();
 
@@ -560,8 +563,10 @@ class BioacousticWidget extends Widget {
     this._timeSelectDefs = [];
     this._sourceValueFields = [];
     this._passValueDefs = [];
-    this._submittedCount = 0;
-    this._validCount = 0;
+    this._sessionCount = 0;
+    this._sessionValid = 0;
+    this._fileCount = 0;
+    this._fileValid = 0;
     this._progressEls = [];
 
     const cfg = this._formConfig;
@@ -1126,15 +1131,81 @@ class BioacousticWidget extends Widget {
 
   private _updateProgress(): void {
     const total = this._rows.length;
-    const n = this._submittedCount;
-    const verb = this._isValidEl ? 'reviewed' : 'annotated';
-    let text = `${n}/${total} ${verb}`;
-    if (this._isValidEl && n > 0) {
-      const pct = Math.round((this._validCount / n) * 100);
-      text += `, accuracy ${pct}%`;
+    const totalDone = this._fileCount + this._sessionCount;
+    const parts: string[] = [];
+    if (this._sessionCount > 0) {
+      parts.push(`session ${this._sessionCount}/${total}`);
     }
+    parts.push(`total ${totalDone}/${total}`);
+    if (this._isValidEl) {
+      const allValid = this._fileValid + this._sessionValid;
+      const pct = totalDone > 0 ? Math.round((allValid / totalDone) * 100) : 0;
+      parts.push(`accuracy ${pct}%`);
+    }
+    const text = parts.join(' · ');
     for (const el of this._progressEls) {
       el.textContent = text;
+    }
+  }
+
+  private async _loadOutputFileProgress(): Promise<void> {
+    if (!this._outputPath) return;
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const p = esc(this._outputPath);
+    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
+    const isValidCol = this._isValidEl ? esc(this._isValidCol) : '';
+    const yesVal = this._isValidEl ? esc(String(this._isValidYesVal)) : '';
+
+    let code: string;
+    if (ext === 'csv') {
+      code = [
+        `import csv, json, os`,
+        `_c = _v = 0`,
+        `if os.path.exists('${p}'):`,
+        `    with open('${p}') as f:`,
+        `        rows = list(csv.DictReader(f))`,
+        `        _c = len(rows)`,
+        ...(isValidCol ? [
+          `        _v = sum(1 for r in rows if r.get('${isValidCol}') == '${yesVal}')`,
+        ] : []),
+        `print(json.dumps({'count': _c, 'valid': _v}))`,
+      ].join('\n');
+    } else if (ext === 'parquet') {
+      code = [
+        `import json, os`,
+        `_c = _v = 0`,
+        `if os.path.exists('${p}'):`,
+        `    import pandas as pd`,
+        `    df = pd.read_parquet('${p}')`,
+        `    _c = len(df)`,
+        ...(isValidCol ? [
+          `    if '${isValidCol}' in df.columns: _v = int((df['${isValidCol}'].astype(str) == '${yesVal}').sum())`,
+        ] : []),
+        `print(json.dumps({'count': _c, 'valid': _v}))`,
+      ].join('\n');
+    } else {
+      code = [
+        `import json, os`,
+        `_c = _v = 0`,
+        `if os.path.exists('${p}'):`,
+        `    with open('${p}') as f:`,
+        `        rows = [json.loads(l) for l in f if l.strip()]`,
+        `        _c = len(rows)`,
+        ...(isValidCol ? [
+          `        _v = sum(1 for r in rows if str(r.get('${isValidCol}','')) == '${yesVal}')`,
+        ] : []),
+        `print(json.dumps({'count': _c, 'valid': _v}))`,
+      ].join('\n');
+    }
+
+    try {
+      const raw = await this._execPython(code);
+      const result = JSON.parse(raw) as { count: number; valid: number };
+      this._fileCount = result.count;
+      this._fileValid = result.valid;
+      this._updateProgress();
+    } catch {
+      // output file may not exist yet — that's fine
     }
   }
 
@@ -1614,9 +1685,9 @@ class BioacousticWidget extends Widget {
       this._setStatus(`❌ Write failed: ${String(e.message ?? e)}`, true);
       return;
     }
-    this._submittedCount++;
+    this._sessionCount++;
     if (this._isValidEl && this._formValues[this._isValidCol] === String(this._isValidYesVal)) {
-      this._validCount++;
+      this._sessionValid++;
     }
     this._updateProgress();
     this._onSkip();
