@@ -162,6 +162,31 @@ class JupyterAudio:
         self._inline           = resolve(inline,           'inline',           False)
         self._width            = resolve(width,            'width',            '100%')
         self._height           = resolve(height,           'height',           900)
+        self._output_cache     = None
+
+    @property
+    def source(self):
+        """The input DataFrame passed as ``data``."""
+        return self._data
+
+    def output(self):
+        """Read and return the output file as a DataFrame.
+
+        Caches the result until the next call to ``open()`` (which resets it),
+        so repeated calls don't re-read the file.
+        """
+        if self._output_cache is not None:
+            return self._output_cache
+        if not self._output:
+            return None
+        if not os.path.exists(self._output):
+            return None
+        self._output_cache = _read_data(self._output)
+        return self._output_cache
+
+    def _invalidate_output_cache(self):
+        """Called by the widget after each submit to force a re-read."""
+        self._output_cache = None
 
     def open(self) -> None:
         """Serialize data into kernel variables and open the review panel."""
@@ -189,6 +214,7 @@ class JupyterAudio:
             cap = ''
         ip.user_ns['_BA_CAPTURE'] = cap
         ip.user_ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
+        ip.user_ns['_BA_INSTANCE'] = self
 
         if self._inline:
             self._open_inline()
