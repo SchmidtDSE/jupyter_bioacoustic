@@ -71,6 +71,8 @@ class JupyterAudio:
         display_columns=_UNSET,
         data_columns=_UNSET,
         form_config=_UNSET,
+        capture=_UNSET,
+        capture_dir=_UNSET,
         inline=_UNSET,
         width=_UNSET,
         height=_UNSET,
@@ -151,6 +153,8 @@ class JupyterAudio:
         if isinstance(raw_form, str):
             raw_form = _load_config(raw_form)
         self._form_config = raw_form   # dict or None
+        self._capture          = resolve(capture,          'capture',          True)
+        self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')
         self._inline           = resolve(inline,           'inline',           False)
         self._width            = resolve(width,            'width',            '100%')
         self._height           = resolve(height,           'height',           900)
@@ -172,6 +176,14 @@ class JupyterAudio:
         ip.user_ns['_BA_DATA_COLS']      = json.dumps(self._data_columns)
 
         ip.user_ns['_BA_FORM_CONFIG'] = json.dumps(self._form_config)
+        # capture: True → 'Capture', str → that string, False → ''
+        cap = self._capture
+        if cap is True:
+            cap = 'Capture'
+        elif cap is False:
+            cap = ''
+        ip.user_ns['_BA_CAPTURE'] = cap
+        ip.user_ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
 
         if self._inline:
             self._open_inline()
