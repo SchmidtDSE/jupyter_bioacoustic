@@ -186,6 +186,184 @@ JupyterAudio(
 | `width` | int \| str | `'100%'` | Inline widget width (px int or CSS string) |
 | `height` | int \| str | `900` | Inline widget height (px int or CSS string) |
 | `config` | str | `None` | Path to a JSON or YAML config file. Any parameter above can be set here; explicit arguments override file values. |
+| `form_config` | dict or str | `None` | Form layout config — a Python dict, or a path to a YAML/JSON file. When omitted, no form is shown and the widget is a pure visualizer/player. See [Configurable Forms](#configurable-forms) below. |
+
+### Configurable Forms
+
+The review/annotation form is fully driven by a **form config** — a YAML file, JSON file, or Python dict passed via the `form_config` parameter. When no form config is provided the widget operates as a visualizer/player with no form section.
+
+```python
+# From a YAML file
+JupyterAudio(
+    data='detections.csv',
+    audio_path='test.flac',
+    form_config='form-review.yaml',
+).open()
+
+# From a Python dict
+JupyterAudio(
+    data='detections.csv',
+    audio_path='test.flac',
+    form_config={
+        'title': 'REVIEW CLIP',
+        'is_valid_form': [
+            {'is_valid_select': True},
+            {'textbox': {'label': 'notes', 'column': 'notes'}},
+        ],
+        'submission_buttons': {'next': {'label': 'Skip'}, 'submit': {'label': 'Verify'}},
+    },
+).open()
+
+# Embedded in the main config.yaml under a form_config key
+JupyterAudio(config='config.yaml').open()
+```
+
+There are two form types, determined by which top-level key is present:
+
+| Form type | Key | Widget title |
+|---|---|---|
+| **Review** | `is_valid_form` | Bioacoustic Reviewer |
+| **Annotate** | `annotate_form` | Bioacoustic Annotator |
+
+#### Review form structure
+
+```yaml
+title: REVIEW CLIP              # optional styled header
+is_valid_form:                   # always visible; must contain one is_valid_select
+  - is_valid_select: true
+  - textbox:
+      label: notes
+      column: notes
+  - time_select:
+      label: signal_start (s)
+      column: signal_start_time
+      init_value: start_time
+
+yes_form:                        # shown when is_valid = yes (optional)
+  - ...
+
+no_form:                         # shown when is_valid = no (optional)
+  - select:
+      label: verified name
+      column: verified_common_name
+      items:
+        path: categories.csv
+        value: common_name
+  - select:
+      label: verif. confidence
+      column: verification_confidence
+      items: [low, medium, high]
+
+submission_buttons:
+  line: true
+  next:
+    label: Skip
+  submit:
+    label: Verify
+```
+
+#### Annotation form structure
+
+```yaml
+title: ANNOTATE CLIP
+annotate_form:                   # always visible
+  - select:
+      label: common_name
+      column: common_name
+      items:
+        path: categories.csv
+        value: common_name
+  - select:
+      label: confidence
+      column: confidence
+      items: [low, medium, high]
+  - textbox:
+      label: notes
+      column: notes
+  - time_select:
+      label: start_time (s)
+      column: start_time
+      init_value: start_time
+
+submission_buttons:
+  line: true
+  next:
+    label: Skip
+  submit:
+    label: Submit
+```
+
+#### Element types
+
+| Element | Description |
+|---|---|
+| `textbox` | Single-line or multiline text input. `multiline: true` renders a `<textarea>`. |
+| `select` | Dropdown. Items from an inline list, a file (CSV/Parquet/JSONL/YAML/text), or an integer range. |
+| `checkbox` | Single checkbox. Custom `yes_value`/`no_value` supported. |
+| `number` | Numeric input with optional `min`, `max`, `step`, `placeholder`. |
+| `is_valid_select` | Special yes/no dropdown for review mode. Required by default. Controls `yes_form`/`no_form` visibility. |
+| `time_select` | Numeric input updated by clicking the spectrogram. `init_value` can be a column name or a literal number. |
+| `title` | Styled section header. Can appear anywhere — top-level, inside form sections, or in `submission_buttons`. |
+| `break` | Line break. |
+| `line` | Horizontal divider. |
+| `text` | Static text. |
+
+#### Common fields
+
+All input elements share these optional fields:
+
+```yaml
+label: 'Label Text'         # display label; doubles as column name if column omitted
+column: 'output_col_name'   # output column name (defaults to label)
+default: null               # initial value
+required: false             # if true, submit disabled until value is set
+source_value: 'col_name'    # pre-populate from this column of the selected row
+width: null                 # CSS width (int = px, string = CSS value)
+```
+
+#### Select items formats
+
+```yaml
+# Inline list
+items: [low, medium, high]
+
+# Inline with custom labels
+items:
+  - low: Low confidence
+  - high: High confidence
+
+# From a file
+items:
+  path: categories.csv
+  value: common_name        # column for option value
+  label: display_name       # column for display label (optional)
+
+# Plain text file (one value per line, or "value, label" per line)
+items: species.txt
+
+# Integer range
+items:
+  min: 1
+  max: 5
+  step: 1
+```
+
+#### Submission buttons
+
+```yaml
+submission_buttons:
+  previous: true             # go back without writing
+  next:
+    label: Skip              # go forward without writing
+    icon: true               # show arrow icon (default true)
+  submit:
+    label: Verify            # write form values and advance
+    icon: true               # show checkmark icon (default true)
+```
+
+`detection_id` (the `id` from the selected row) is always written to the output automatically.
+
+For the full specification with all options, see [CONFIG_FORMS.md](CONFIG_FORMS.md).
 
 ### Features
 
