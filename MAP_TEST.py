@@ -1,0 +1,82 @@
+"""
+Interactive California map with analysis charts.
+
+Paste each section into a separate notebook cell.
+
+Requirements: pip install ipyleaflet ipywidgets pandas shapely requests matplotlib
+"""
+
+# ── Cell 1 — Load data and county boundaries ─────────────────
+
+import pandas as pd
+import requests
+from IPython.display import display
+
+df = pd.read_csv('dev-review.csv')
+df_output = pd.read_csv('dev-geo-review-output.csv')
+
+all_counties = requests.get(
+    "https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json"
+).json()
+ca_counties = {
+    "type": "FeatureCollection",
+    "features": [f for f in all_counties["features"] if f["id"].startswith("06")]
+}
+
+print(f"Input: {len(df)} rows, Output: {len(df_output)} rows, Counties: {len(ca_counties['features'])}")
+
+
+# ── Cell 2 — Species histogram (input data) ──────────────────
+
+from tools import analysis
+
+analysis.species_histogram(df, title='Input detections by species')
+
+
+# ── Cell 3 — Species histogram (validated data) ──────────────
+
+# Merge output with input to get common_name for validated rows
+df_validated = df.merge(
+    df_output[['start_time', 'end_time', 'is_valid']],
+    on=['start_time', 'end_time'],
+    how='inner',
+)
+analysis.species_histogram(df_validated, title='Validated detections by species')
+
+
+# ── Cell 4 — Accuracy by county ──────────────────────────────
+
+analysis.accuracy_by_county(df, df_output)
+
+
+# ── Cell 5 — Map: dominant species by county ─────────────────
+
+from ipyleaflet import Map
+
+m = Map(center=(37.5, -119.5), zoom=6, layout={'height': '600px'})
+layer, info = analysis.county_species_map(m, df, ca_counties)
+display(m, info)
+
+
+# ── Cell 6 — Interactive selection map ────────────────────────
+
+from tools import MapHandler
+
+m2 = Map(center=(37.5, -119.5), zoom=6, layout={'height': '600px'})
+handler = MapHandler(df, region_data=ca_counties, region_column='county', color_column='common_name')
+handler.add_to(m2)
+display(m2)
+
+
+# ── Cell 7 — Describe the selection ───────────────────────────
+
+handler.describe('common_name', 'confidence')
+
+
+# ── Cell 8 — Access the filtered result ───────────────────────
+
+if handler.selected is not None:
+    print(f"{len(handler.selected)} rows selected")
+    # JupyterAudio(data=handler.selected, audio_path='test.flac', ...).open()
+else:
+    print("No selection yet — click a county, draw a rectangle, or draw a polygon")

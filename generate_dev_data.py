@@ -1,4 +1,4 @@
-"""Generate dev-annotate.csv and dev-review.csv — 750 rows each with audio_path, county, lat, lon."""
+"""Generate dev-annotate.csv and dev-review.csv — 1500 rows each with realistic distributions."""
 import csv
 import random
 
@@ -10,7 +10,21 @@ with open('categories-small.csv') as f:
     for row in csv.DictReader(f):
         CATEGORIES.append((row['common_name'], row['scientific_name']))
 
-# California counties with approximate bounding boxes (lat_min, lat_max, lon_min, lon_max)
+# Per-species accuracy profiles (some very accurate, some very poor)
+SPECIES_ACCURACY = {}
+random.seed(77)
+for common_name, _ in CATEGORIES:
+    r = random.random()
+    if r < 0.25:
+        SPECIES_ACCURACY[common_name] = random.uniform(0.92, 0.99)   # very accurate
+    elif r < 0.55:
+        SPECIES_ACCURACY[common_name] = random.uniform(0.70, 0.90)   # decent
+    elif r < 0.80:
+        SPECIES_ACCURACY[common_name] = random.uniform(0.35, 0.65)   # mediocre
+    else:
+        SPECIES_ACCURACY[common_name] = random.uniform(0.03, 0.15)   # poor
+
+# California counties with approximate bounding boxes
 CA_COUNTIES = [
     ("Alameda",        37.45, 37.91, -122.37, -121.47),
     ("Alpine",         38.41, 38.77, -120.21, -119.54),
@@ -74,21 +88,62 @@ CA_COUNTIES = [
 
 AUDIO_FILES = ['audio/test1.flac', 'audio/test2.flac', 'audio/test3.flac', None]
 
+# Build per-county species distributions (clustered)
+random.seed(42)
+COUNTY_PROFILES = {}
+for county, *_ in CA_COUNTIES:
+    # Pick 2-4 dominant species (65% of detections) and spread the rest
+    n_dominant = random.randint(2, 4)
+    dominant = random.sample(CATEGORIES, n_dominant)
+    others = [c for c in CATEGORIES if c not in dominant]
+    # Weights: dominant species share ~65%, rest share ~35%
+    dominant_weight = 0.65 / n_dominant
+    other_weight = 0.35 / len(others) if others else 0
+    species_weights = []
+    species_list = []
+    for cat in dominant:
+        species_list.append(cat)
+        species_weights.append(dominant_weight)
+    for cat in others:
+        species_list.append(cat)
+        species_weights.append(other_weight)
+    COUNTY_PROFILES[county] = (species_list, species_weights)
 
-def generate(filename, n=500):
+
+def weighted_choice(items, weights):
+    total = sum(weights)
+    r = random.random() * total
+    cumulative = 0
+    for item, w in zip(items, weights):
+        cumulative += w
+        if r <= cumulative:
+            return item
+    return items[-1]
+
+
+def generate(filename, n=1500):
+    random.seed(hash(filename) % (2**32))
     rows = []
     for i in range(1, n + 1):
-        common_name, scientific_name = random.choice(CATEGORIES)
         county, lat_min, lat_max, lon_min, lon_max = random.choice(CA_COUNTIES)
+        species_list, species_weights = COUNTY_PROFILES[county]
+        common_name, scientific_name = weighted_choice(species_list, species_weights)
+
         lat = round(random.uniform(lat_min, lat_max), 5)
         lon = round(random.uniform(lon_min, lon_max), 5)
         audio = random.choice(AUDIO_FILES)
         start_time = round(random.uniform(0, 4 * 60 * 60), 2)
+
+        # Confidence correlated with accuracy — accurate species get higher confidence
+        acc = SPECIES_ACCURACY.get(common_name, 0.5)
+        base_conf = acc * 0.7 + random.uniform(0, 0.3)
+        confidence = round(max(0.05, min(0.999, base_conf + random.gauss(0, 0.08))), 3)
+
         rows.append({
             'id':              i,
             'common_name':     common_name,
             'scientific_name': scientific_name,
-            'confidence':      round(random.uniform(0.1, 0.998), 3),
+            'confidence':      confidence,
             'rank':            random.randint(1, 3),
             'start_time':      start_time,
             'end_time':        round(start_time + 12, 2),
