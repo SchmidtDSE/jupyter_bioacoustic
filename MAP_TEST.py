@@ -44,9 +44,9 @@ df_validated = df.merge(
 analysis.species_histogram(df_validated, title='Validated detections by species')
 
 
-# ── Cell 4 — Accuracy by county ──────────────────────────────
+# ── Cell 4 — County distributions (diversity + accuracy) ─────
 
-analysis.accuracy_by_county(df, df_output)
+analysis.county_distributions(df, df_output)
 
 
 # ── Cell 5 — Map: dominant species by county ─────────────────
@@ -58,22 +58,29 @@ layer, info = analysis.county_species_map(m, df, ca_counties)
 display(m, info)
 
 
-# ── Cell 6 — Interactive selection map ────────────────────────
+# ── Cell 6 — Map: accuracy by county ─────────────────────────
+
+m2 = Map(center=(37.5, -119.5), zoom=6, layout={'height': '600px'})
+layer2, info2 = analysis.county_accuracy_map(m2, df, df_output, ca_counties)
+display(m2, info2)
+
+
+# ── Cell 7 — Interactive selection map ────────────────────────
 
 from demo_tools import MapHandler
 
-m2 = Map(center=(37.5, -119.5), zoom=6, layout={'height': '600px'})
+m3 = Map(center=(37.5, -119.5), zoom=6, layout={'height': '600px'})
 handler = MapHandler(df, region_data=ca_counties, region_column='county', color_column='common_name')
-handler.add_to(m2)
-display(m2)
+handler.add_to(m3)
+display(m3)
 
 
-# ── Cell 7 — Describe the selection ───────────────────────────
+# ── Cell 8 — Describe the selection ───────────────────────────
 
 handler.describe('common_name', 'confidence')
 
 
-# ── Cell 8 — Access the filtered result ───────────────────────
+# ── Cell 9 — Access the filtered result ───────────────────────
 
 if handler.selected is not None:
     print(f"{len(handler.selected)} rows selected")

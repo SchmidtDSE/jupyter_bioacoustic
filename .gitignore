@@ -34,7 +34,7 @@ test.flac
 detections-test.csv
 *yarn*
 
-tools/*
+demo_tools/*
 MAP_TEST.py
 #***************************************************************************
 # Mac
