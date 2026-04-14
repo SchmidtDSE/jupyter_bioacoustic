@@ -76,6 +76,8 @@ class BioacousticWidget extends Widget {
   private _dataCols: string[] = [];
   private _captureLabel = '';   // empty = hidden
   private _captureDir = '';
+  private _duplicateEntries = false;
+  private _reviewedMap: Map<number, Record<string, any>> = new Map();
 
   // ── Player state ────────────────────────────────────────────
   private _specBitmap: ImageBitmap | null = null;
@@ -497,6 +499,7 @@ class BioacousticWidget extends Widget {
         `  'form_config': _BA_FORM_CONFIG,\n` +
         `  'capture': _BA_CAPTURE,\n` +
         `  'capture_dir': _BA_CAPTURE_DIR,\n` +
+        `  'duplicate_entries': _BA_DUPLICATE_ENTRIES,\n` +
         `}))`
       );
     } catch (e: any) {
@@ -507,7 +510,7 @@ class BioacousticWidget extends Widget {
     let cfg: {
       data: string; audio_path: string; audio_col: string; category_path: string; output: string;
       prediction_col: string; display_cols: string; data_cols: string;
-      form_config: string; capture: string; capture_dir: string;
+      form_config: string; capture: string; capture_dir: string; duplicate_entries: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -526,6 +529,7 @@ class BioacousticWidget extends Widget {
     this._formConfig     = JSON.parse(cfg.form_config);
     this._captureLabel   = cfg.capture ?? '';
     this._captureDir     = cfg.capture_dir ?? '';
+    this._duplicateEntries = !!cfg.duplicate_entries;
     if (this._captureLabel) {
       this._captureBtn.textContent = this._captureLabel;
       this._captureBtn.style.display = '';
@@ -541,6 +545,7 @@ class BioacousticWidget extends Widget {
     this._configureFormForMode();
     await this._buildForm();
     await this._loadOutputFileProgress();
+    await this._loadReviewedState();
     this._applyFilterAndSort();
     this._renderTable();
 
@@ -1361,6 +1366,173 @@ class BioacousticWidget extends Widget {
     }
   }
 
+  // ─── Reviewed state (duplicate_entries=false) ────────────────
+
+  private async _loadReviewedState(): Promise<void> {
+    if (this._duplicateEntries || !this._outputPath) return;
+    this._reviewedMap.clear();
+
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const p = esc(this._outputPath);
+    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
+
+    let code: string;
+    if (ext === 'csv') {
+      code = `import csv,json,os\n_r=[]\nif os.path.exists('${p}'):\n with open('${p}') as f: _r=list(csv.DictReader(f))\nprint(json.dumps(_r))`;
+    } else if (ext === 'parquet') {
+      code = `import pandas as pd,json,os\n_r=[]\nif os.path.exists('${p}'):\n _r=pd.read_parquet('${p}').astype(str).to_dict('records')\nprint(json.dumps(_r))`;
+    } else {
+      code = `import json,os\n_r=[]\nif os.path.exists('${p}'):\n with open('${p}') as f: _r=[json.loads(l) for l in f if l.strip()]\nprint(json.dumps(_r))`;
+    }
+
+    let outputRows: Record<string, any>[];
+    try {
+      outputRows = JSON.parse(await this._execPython(code));
+    } catch { return; }
+
+    // Find matching key: pass_value that maps from 'id'
+    const idMapping = this._passValueDefs.find(pv => pv.sourceCol === 'id');
+    const outIdCol = idMapping?.col;
+
+    for (const outRow of outputRows) {
+      let inputId: number | null = null;
+      if (outIdCol && outRow[outIdCol] !== undefined) {
+        inputId = Number(outRow[outIdCol]);
+      } else {
+        // Fallback: match on start_time + end_time
+        const st = Number(outRow['start_time'] ?? NaN);
+        const et = Number(outRow['end_time'] ?? NaN);
+        if (!isNaN(st) && !isNaN(et)) {
+          const match = this._rows.find(r =>
+            Math.abs(r.start_time - st) < 0.01 && Math.abs(r.end_time - et) < 0.01);
+          if (match) inputId = match.id;
+        }
+      }
+      if (inputId !== null) {
+        this._reviewedMap.set(inputId, outRow);
+      }
+    }
+  }
+
+  private _isRowReviewed(row: Detection): boolean {
+    return !this._duplicateEntries && this._reviewedMap.has(row.id);
+  }
+
+  private _showReviewedResult(row: Detection): void {
+    this._dynFormEl.innerHTML = '';
+    this._submitBtns = [];
+    const data = this._reviewedMap.get(row.id);
+    if (!data) return;
+
+    // Title
+    const title = document.createElement('div');
+    title.style.cssText =
+      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#a6e3a1;`;
+    title.textContent = 'REVIEWED';
+    this._dynFormEl.appendChild(title);
+
+    // Key-value pairs
+    const container = document.createElement('div');
+    container.style.cssText =
+      `display:flex;flex-direction:column;gap:4px;padding:4px 0;`;
+    for (const [key, val] of Object.entries(data)) {
+      const line = document.createElement('div');
+      line.style.cssText =
+        `display:flex;gap:8px;font-size:12px;`;
+      const keyEl = document.createElement('span');
+      keyEl.style.cssText = `color:#6c7086;min-width:140px;flex-shrink:0;`;
+      keyEl.textContent = key;
+      const valEl = document.createElement('span');
+      valEl.style.cssText = `color:#cdd6f4;`;
+      valEl.textContent = val != null && val !== '' ? String(val) : '—';
+      line.append(keyEl, valEl);
+      container.appendChild(line);
+    }
+    this._dynFormEl.appendChild(container);
+
+    // Divider + delete button
+    const divider = document.createElement('div');
+    divider.style.cssText = `border-top:1px solid #313244;margin:4px -2px;`;
+    this._dynFormEl.appendChild(divider);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Delete this review';
+    deleteBtn.style.cssText =
+      btnStyle() + `font-size:12px;color:#f38ba8;margin-top:2px;`;
+    deleteBtn.addEventListener('click', () => void this._onDeleteReview(row));
+    this._dynFormEl.appendChild(deleteBtn);
+  }
+
+  private async _onDeleteReview(row: Detection): Promise<void> {
+    if (!confirm('Delete this review? This cannot be undone.')) return;
+
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const p = esc(this._outputPath);
+    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
+
+    // Build match condition
+    const idMapping = this._passValueDefs.find(pv => pv.sourceCol === 'id');
+    const outIdCol = idMapping?.col;
+    let matchExpr: string;
+    if (outIdCol) {
+      matchExpr = `str(r.get('${esc(outIdCol)}','')) == '${row.id}'`;
+    } else {
+      matchExpr = `abs(float(r.get('start_time',0))-${row.start_time})<0.01 and abs(float(r.get('end_time',0))-${row.end_time})<0.01`;
+    }
+
+    let code: string;
+    if (ext === 'csv') {
+      code = [
+        `import csv,os`,
+        `_rows=list(csv.DictReader(open('${p}')))`,
+        `_keep=[r for r in _rows if not (${matchExpr})]`,
+        `with open('${p}','w',newline='') as f:`,
+        `  if _keep:`,
+        `    w=csv.DictWriter(f,fieldnames=_keep[0].keys())`,
+        `    w.writeheader(); w.writerows(_keep)`,
+        `print('ok')`,
+      ].join('\n');
+    } else if (ext === 'parquet') {
+      code = [
+        `import pandas as pd`,
+        `df=pd.read_parquet('${p}')`,
+        `df=df[~df.apply(lambda r: ${matchExpr}, axis=1)]`,
+        `df.to_parquet('${p}',index=False)`,
+        `print('ok')`,
+      ].join('\n');
+    } else {
+      code = [
+        `import json`,
+        `_rows=[json.loads(l) for l in open('${p}') if l.strip()]`,
+        `_keep=[r for r in _rows if not (${matchExpr})]`,
+        `with open('${p}','w') as f:`,
+        `  for r in _keep: f.write(json.dumps(r)+'\\n')`,
+        `print('ok')`,
+      ].join('\n');
+    }
+
+    try {
+      await this._execPython(code);
+    } catch (e: any) {
+      this._setStatus(`❌ Delete failed: ${String(e.message ?? e)}`, true);
+      return;
+    }
+
+    this._reviewedMap.delete(row.id);
+    this._sessionCount = Math.max(0, this._sessionCount - 1);
+    this._fileCount = Math.max(0, this._fileCount - 1);
+    this._updateProgress();
+    this._renderTable();
+    // Rebuild the form and show it
+    await this._buildForm();
+    this._updateFormFromRow(row);
+    this._setStatus(`✓ Review deleted for clip ${row.id}`);
+
+    void this._execPython(
+      'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()'
+    ).catch(() => {});
+  }
+
   // ─── Table header ────────────────────────────────────────────
 
   private _rebuildTableHeader(): void {
@@ -1470,12 +1642,16 @@ class BioacousticWidget extends Widget {
     slice.forEach((row, i) => {
       const globalIdx = start + i;
       const isSelected = globalIdx === this._selectedIdx;
+      const reviewed = this._isRowReviewed(row);
       const tr = document.createElement('tr');
+      const baseBg = i % 2 === 0 ? '#1e1e2e' : '#252538';
       tr.style.cssText =
         `cursor:pointer;border-bottom:1px solid #2a2a3d;` +
         (isSelected
           ? `background:#2d3f5e;`
-          : `background:${i % 2 === 0 ? '#1e1e2e' : '#252538'};`);
+          : reviewed
+            ? `background:#1a2a1a;`
+            : `background:${baseBg};`);
 
       this._tableCols.forEach(({ key }) => {
         const raw = row[key];
@@ -1484,7 +1660,9 @@ class BioacousticWidget extends Widget {
           : raw ?? '—';
         const td = document.createElement('td');
         td.textContent = String(v);
-        td.style.cssText = `padding:4px 8px;font-size:12px;white-space:nowrap;color:#cdd6f4;`;
+        td.style.cssText =
+          `padding:4px 8px;font-size:12px;white-space:nowrap;` +
+          `color:${reviewed ? '#6c7086' : '#cdd6f4'};`;
         tr.appendChild(td);
       });
 
@@ -1497,7 +1675,7 @@ class BioacousticWidget extends Widget {
       });
       tr.addEventListener('mouseleave', () => {
         if (globalIdx !== this._selectedIdx)
-          tr.style.background = i % 2 === 0 ? '#1e1e2e' : '#252538';
+          tr.style.background = reviewed ? '#1a2a1a' : baseBg;
       });
 
       this._tableBody.appendChild(tr);
@@ -1594,7 +1772,11 @@ class BioacousticWidget extends Widget {
     this._infoCard.append(...cardChildren);
 
     this._renderTable();
-    this._updateFormFromRow(row);
+    if (this._isRowReviewed(row)) {
+      this._showReviewedResult(row);
+    } else {
+      this._updateFormFromRow(row);
+    }
   }
 
   private _ensurePageShowsSelected(): void {
@@ -2127,6 +2309,10 @@ class BioacousticWidget extends Widget {
     this._sessionCount++;
     if (this._isValidEl && this._formValues[this._isValidCol] === String(this._isValidYesVal)) {
       this._sessionValid++;
+    }
+    // Track as reviewed
+    if (!this._duplicateEntries) {
+      this._reviewedMap.set(row.id, { ...values });
     }
     this._updateProgress();
     // Invalidate Python-side output cache
