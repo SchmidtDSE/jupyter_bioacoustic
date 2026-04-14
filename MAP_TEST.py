@@ -28,7 +28,7 @@ print(f"Input: {len(df)} rows, Output: {len(df_output)} rows, Counties: {len(ca_
 
 # ── Cell 2 — Species histogram (input data) ──────────────────
 
-from tools import analysis
+from demo_tools import analysis
 
 analysis.species_histogram(df, title='Input detections by species')
 
@@ -60,7 +60,7 @@ display(m, info)
 
 # ── Cell 6 — Interactive selection map ────────────────────────
 
-from tools import MapHandler
+from demo_tools import MapHandler
 
 m2 = Map(center=(37.5, -119.5), zoom=6, layout={'height': '600px'})
 handler = MapHandler(df, region_data=ca_counties, region_column='county', color_column='common_name')

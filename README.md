@@ -458,7 +458,7 @@ For the full specification with all options, see [CONFIG_FORMS.md](CONFIG_FORMS.
 | **Info card** | Time range · prediction value · any `display_columns` · Prev / Next navigation |
 | **Spectrogram player** | Mel or plain STFT · adjustable buffer · buffer overlay · play/pause · capture PNG · annotation tools |
 | **Configurable form** | YAML-driven: selects, textboxes, checkboxes, number inputs, annotation tools, conditional sections, `pass_value`, `fixed_value`, progress tracker |
-| **Analysis tools** | Species histograms · accuracy-by-county charts · choropleth maps · interactive map selection (`tools/`) |
+| **Analysis tools** | Species histograms · accuracy-by-county charts · choropleth maps · interactive map selection (`demo_tools/`) |
 
 ---
 
@@ -511,8 +511,8 @@ JupyterGIS's foundation is:
 
 1. An interactive clip table that lets you filter, sort, and select rows pointing to audio sources and time windows.
 2. A spectrogram player that displays the selected clip, plays audio, and supports both verification (confirm or correct a model prediction) and annotation (assign a class from scratch). Similar in spirit to [whombat](https://mbsantiago.github.io/whombat/).
-3. Reporting tools — species histograms, accuracy-by-county charts, progress tracking, and choropleth maps via the `tools/analysis` module.
-4. Map integration — interactive county/region selection and bounding-box filtering via `tools/MapHandler`, using ipyleaflet.
+3. Reporting tools — species histograms, accuracy-by-county charts, progress tracking, and choropleth maps via the `demo_tools/analysis` module.
+4. Map integration — interactive county/region selection and bounding-box filtering via `demo_tools/MapHandler`, using ipyleaflet.
 
 ---
 
@@ -569,7 +569,7 @@ jupyter_bioacoustic/
 ├── categories-small.csv              # 19 species subset
 ├── form-review.yaml                  # example review form config
 ├── CONFIG_FORMS.md                   # full form config specification
-├── tools/                            # analysis and map utilities
+├── demo_tools/                       # analysis and map utilities (not tracked in git)
 │   ├── __init__.py
 │   ├── analysis.py                   # histograms, accuracy charts, choropleth maps
 │   └── map_handler.py                # interactive ipyleaflet point/region selection
