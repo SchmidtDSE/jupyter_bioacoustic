@@ -53,10 +53,10 @@ Then distribute the wheel:
 - Optionally tag and create a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) with the wheel attached
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
-gh release create v0.1.0 dist/jupyter_bioacoustic-0.1.0-py3-none-any.whl \
-    --title "v0.1.0" --notes "Release notes"
+git tag v0.1.1
+git push origin v0.1.1
+gh release create v0.1.1 dist/jupyter_bioacoustic-0.1.1-py3-none-any.whl \
+    --title "v0.1.1" --notes "pending/reviewed/all. bug: 0 buffer"
 ```
 
 > **Checklist:**
@@ -93,7 +93,7 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 | **Configurable forms** | YAML-driven: selects, textboxes, checkboxes, conditional sections, progress tracker |
 | **Per-row audio** | Each row can point to a different audio file with fallback |
 | **Output** | CSV, Parquet, or line-delimited JSON with `pass_value`, `fixed_value`, and `**kwargs` |
-| **Duplicate prevention** | Reviewed rows are faded, show read-only results, deletable |
+| **Duplicate prevention** | Reviewed rows faded, read-only results, deletable. Filter by pending/reviewed/all with refresh. |
 
 ## Documentation
 
@@ -120,6 +120,7 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/dev-jupyter-au
 | `display_columns` | list | `[]` | Extra columns in the info card |
 | `data_columns` | list | `[]` | Columns for the clip table |
 | `duplicate_entries` | bool | `False` | Allow multiple submissions per row |
+| `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
 | `inline` | bool | `False` | Embed below cell vs split-right panel |

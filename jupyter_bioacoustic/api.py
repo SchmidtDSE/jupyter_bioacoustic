@@ -73,6 +73,7 @@ class JupyterAudio:
         data_columns=_UNSET,
         form_config=_UNSET,
         duplicate_entries=_UNSET,
+        default_buffer=_UNSET,
         capture=_UNSET,
         capture_dir=_UNSET,
         inline=_UNSET,
@@ -167,6 +168,7 @@ class JupyterAudio:
             raw_form.setdefault('_fixed_kwargs', fv_list)
         self._form_config = raw_form   # dict or None
         self._duplicate_entries = resolve(duplicate_entries, 'duplicate_entries', False)
+        self._default_buffer   = resolve(default_buffer,   'default_buffer',   3)
         self._capture          = resolve(capture,          'capture',          True)
         self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')
         self._inline           = resolve(inline,           'inline',           False)
@@ -225,6 +227,7 @@ class JupyterAudio:
         ip.user_ns['_BA_CAPTURE'] = cap
         ip.user_ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
         ip.user_ns['_BA_DUPLICATE_ENTRIES'] = 'true' if self._duplicate_entries else ''
+        ip.user_ns['_BA_DEFAULT_BUFFER'] = str(self._default_buffer)
         ip.user_ns['_BA_INSTANCE'] = self
 
         if self._inline:
