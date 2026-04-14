@@ -65,7 +65,7 @@ class BioacousticWidget extends Widget {
   private _pageSize = 10;
   private _selectedIdx = -1;
   private _filterExpr = '';
-  private _viewMode: 'all' | 'unreviewed' | 'reviewed' = 'all';
+  private _viewMode: 'all' | 'pending' | 'reviewed' = 'all';
   private _audioPath = '';
   private _audioCol = '';
   private _categoryPath = '';
@@ -97,6 +97,7 @@ class BioacousticWidget extends Widget {
   private _titleEl!: HTMLSpanElement;
   private _statusEl!: HTMLSpanElement;
   private _filterInput!: HTMLInputElement;
+  private _viewModeSelect!: HTMLSelectElement;
 
   // ── DOM refs — table ────────────────────────────────────────
   private _tableCols: Array<{ key: string; label: string }> = [];
@@ -227,7 +228,27 @@ class BioacousticWidget extends Widget {
       this._renderTable();
     });
 
-    filterBar.append(filterLbl, this._filterInput, applyBtn, clearBtn);
+    this._viewModeSelect = document.createElement('select');
+    this._viewModeSelect.style.cssText = selectStyle() + `font-size:11px;margin-left:auto;display:none;`;
+    (['all', 'pending', 'reviewed'] as const).forEach(v => {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = v;
+      this._viewModeSelect.appendChild(o);
+    });
+    this._viewModeSelect.addEventListener('change', () => {
+      this._viewMode = this._viewModeSelect.value as any;
+      this._page = 0;
+      this._applyFilterAndSort();
+      this._renderTable();
+      // Auto-select first row in new view
+      if (this._filtered.length > 0) {
+        this._selectRow(0);
+        void this._loadAudio();
+      }
+    });
+
+    filterBar.append(filterLbl, this._filterInput, applyBtn, clearBtn, this._viewModeSelect);
 
     // ── Table ────────────────────────────────────────────────────
     const tableWrap = document.createElement('div');
@@ -369,7 +390,7 @@ class BioacousticWidget extends Widget {
     typeLbl.appendChild(this._spectTypeSelect);
     playerCtrls.appendChild(typeLbl);
 
-    this._bufferInput = mkNumLabel('Buffer (s)', '5',  '50px');
+    this._bufferInput = mkNumLabel('Buffer (s)', '3',  '50px');
     this._startInput  = mkNumLabel('Start (s)',  '0',  '70px');
     this._endInput    = mkNumLabel('End (s)',    '12', '70px');
 
@@ -548,6 +569,14 @@ class BioacousticWidget extends Widget {
     await this._buildForm();
     await this._loadOutputFileProgress();
     await this._loadReviewedState();
+
+    // Show view mode toggle and default to unreviewed when duplicate prevention is on
+    if (!this._duplicateEntries) {
+      this._viewModeSelect.style.display = '';
+      this._viewMode = 'pending';
+      this._viewModeSelect.value = 'pending';
+    }
+
     this._applyFilterAndSort();
     this._renderTable();
 
@@ -1630,6 +1659,13 @@ class BioacousticWidget extends Widget {
       return this._sortAsc ? cmp : -cmp;
     });
 
+    // Apply view mode filter
+    if (this._viewMode === 'pending') {
+      rows = rows.filter(r => !this._reviewedMap.has(r.id));
+    } else if (this._viewMode === 'reviewed') {
+      rows = rows.filter(r => this._reviewedMap.has(r.id));
+    }
+
     this._filtered = rows;
   }
 
@@ -1823,7 +1859,8 @@ class BioacousticWidget extends Widget {
       this._playBtn.textContent = '▶';
     }
 
-    this._bufferSec        = Math.max(0, parseFloat(this._bufferInput.value) || 5);
+    const bufVal = parseFloat(this._bufferInput.value);
+    this._bufferSec        = Math.max(0, isNaN(bufVal) ? 3 : bufVal);
     const startTime        = parseFloat(this._startInput.value) || 0;
     const endTime          = parseFloat(this._endInput.value)   || startTime + 12;
     const loadStart        = Math.max(0, startTime - this._bufferSec);
