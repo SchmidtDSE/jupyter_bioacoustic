@@ -65,6 +65,7 @@ class BioacousticWidget extends Widget {
   private _pageSize = 10;
   private _selectedIdx = -1;
   private _filterExpr = '';
+  private _viewMode: 'all' | 'unreviewed' | 'reviewed' = 'all';
   private _audioPath = '';
   private _audioCol = '';
   private _categoryPath = '';
@@ -78,6 +79,7 @@ class BioacousticWidget extends Widget {
   private _captureDir = '';
   private _duplicateEntries = false;
   private _reviewedMap: Map<number, Record<string, any>> = new Map();
+  private _showingReviewedView = false;
 
   // ── Player state ────────────────────────────────────────────
   private _specBitmap: ImageBitmap | null = null;
@@ -1421,6 +1423,7 @@ class BioacousticWidget extends Widget {
   private _showReviewedResult(row: Detection): void {
     this._dynFormEl.innerHTML = '';
     this._submitBtns = [];
+    this._showingReviewedView = true;
     const data = this._reviewedMap.get(row.id);
     if (!data) return;
 
@@ -1774,6 +1777,10 @@ class BioacousticWidget extends Widget {
     this._renderTable();
     if (this._isRowReviewed(row)) {
       this._showReviewedResult(row);
+    } else if (this._showingReviewedView) {
+      // Rebuild form after showing a reviewed result view
+      this._showingReviewedView = false;
+      void this._buildForm().then(() => this._updateFormFromRow(row));
     } else {
       this._updateFormFromRow(row);
     }
@@ -1806,6 +1813,14 @@ class BioacousticWidget extends Widget {
     if (!audioPath) {
       this._setStatus('❌ No audio path — set audio_path or audio_column', true);
       return;
+    }
+
+    // Stop any current playback
+    if (this._playing) {
+      this._audio.pause();
+      this._playing = false;
+      cancelAnimationFrame(this._rafId);
+      this._playBtn.textContent = '▶';
     }
 
     this._bufferSec        = Math.max(0, parseFloat(this._bufferInput.value) || 5);
