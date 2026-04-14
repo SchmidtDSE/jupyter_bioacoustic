@@ -67,3 +67,13 @@ cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
 
 [tool.pixi.tasks.generate-data]
 cmd = "python generate_test_data.py"
+
+[tool.pixi.environments]
+default = { features = [] }
+dev = { features = ["dev"] }
+
+[tool.pixi.feature.dev.dependencies]
+twine = "*"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+build = "*"
