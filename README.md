@@ -15,14 +15,17 @@ Browse a table of audio clips, play each one with a mel spectrogram, and optiona
 - Adjustable buffer window — pads the clip with context on either side
 - Semi-transparent overlay marks the region outside the clip window
 - Displays metadata in an info card, controlled by `prediction_column` and `display_columns`
-- Click anywhere on the spectrogram to seek and mark a signal start time
+- Annotation tools: draggable time markers (`time_select`, `start_end_time_select`) and frequency-time bounding boxes
 - Play/pause with a real-time position indicator drawn over the spectrogram
+- Capture button to save spectrogram PNGs
 
 **Configurable form.** Define your own review or annotation form via a YAML config:
-- Build review forms with `is_valid_select`, conditional `yes_form`/`no_form` sections, and any combination of selects, textboxes, checkboxes, number inputs, and time selects
+- Build review forms with `is_valid_select`, conditional `yes_form`/`no_form` sections, and any combination of selects, textboxes, checkboxes, number inputs, and annotation tools
 - Build annotation forms with any fields you need
 - Load select options from inline lists, CSV/Parquet/JSONL/YAML files, or integer ranges
+- Pass input row values to output with `pass_value`, add constants with `fixed_value` or `**kwargs`
 - Output is written to CSV, Parquet, or line-delimited JSON on each submit
+- Progress tracker shows session and total counts with accuracy
 
 **Table of Contents**
 
@@ -269,10 +272,12 @@ is_valid_form:                   # always visible; must contain one is_valid_sel
   - textbox:
       label: notes
       column: notes
-  - time_select:
-      label: signal_start (s)
-      column: signal_start_time
-      init_value: start_time
+  - annotation:
+      start_time:
+        label: signal start
+        column: signal_start_time
+        source_value: start_time
+      tools: time_select
 
 yes_form:                        # shown when is_valid = yes (optional)
   - ...
@@ -315,10 +320,16 @@ annotate_form:                   # always visible
   - textbox:
       label: notes
       column: notes
-  - time_select:
-      label: start_time (s)
-      column: start_time
-      init_value: start_time
+  - annotation:
+      start_time:
+        label: start
+        column: start_time
+        source_value: start_time
+      end_time:
+        label: end
+        column: end_time
+        source_value: end_time
+      tools: start_end_time_select
 
 submission_buttons:
   line: true
@@ -444,9 +455,10 @@ For the full specification with all options, see [CONFIG_FORMS.md](CONFIG_FORMS.
 |---|---|
 | **Filter bar** | Expression filtering: `common_name = 'Barred owl' and confidence >= 0.5` |
 | **Clip table** | Sort by any column · paginate (5 / 10 / 20 / custom rows) · click to select · columns set by `data_columns` |
-| **Info card** | Time range · prediction value (verification) · any `display_columns` · Prev / Next navigation |
-| **Spectrogram player** | Mel or plain STFT · adjustable buffer · buffer overlay · play/pause · annotation tools (draggable time lines, bounding boxes) |
-| **Configurable form** | Fully driven by YAML config — any combination of selects, textboxes, checkboxes, number/time inputs, with conditional sections and custom submission buttons |
+| **Info card** | Time range · prediction value · any `display_columns` · Prev / Next navigation |
+| **Spectrogram player** | Mel or plain STFT · adjustable buffer · buffer overlay · play/pause · capture PNG · annotation tools |
+| **Configurable form** | YAML-driven: selects, textboxes, checkboxes, number inputs, annotation tools, conditional sections, `pass_value`, `fixed_value`, progress tracker |
+| **Analysis tools** | Species histograms · accuracy-by-county charts · choropleth maps · interactive map selection (`tools/`) |
 
 ---
 
@@ -481,7 +493,7 @@ Format is inferred from the `output` file extension. Line-delimited JSON is the 
 | `.parquet` | Apache Parquet (read-concat-write on each append) |
 | `.jsonl`, `.ndjson`, *(other)* | line-delimited JSON — one JSON object per line |
 
-Output columns are determined by the `form_config`. Each submit writes `detection_id` (the `id` from the selected input row) plus one column per form element, using the element's `column` (or `label`) as the column name.
+Output columns are determined by the `form_config`. Each submit writes one column per form element (using the element's `column` or `label` as the column name), plus any `pass_value`, `fixed_value`, or `**kwargs` entries. Use `pass_value` to include input row values like `id` in the output. Column order matches the order elements appear in the config.
 
 
 ---
@@ -499,8 +511,8 @@ JupyterGIS's foundation is:
 
 1. An interactive clip table that lets you filter, sort, and select rows pointing to audio sources and time windows.
 2. A spectrogram player that displays the selected clip, plays audio, and supports both verification (confirm or correct a model prediction) and annotation (assign a class from scratch). Similar in spirit to [whombat](https://mbsantiago.github.io/whombat/).
-3. *(Future)* Reporting tools — class distributions, confidence stats, progress through the review queue, running accuracy of verified data.
-4. *(Future)* Map integration — if detections carry geographic coordinates, display and filter them on an interactive map.
+3. Reporting tools — species histograms, accuracy-by-county charts, progress tracking, and choropleth maps via the `tools/analysis` module.
+4. Map integration — interactive county/region selection and bounding-box filtering via `tools/MapHandler`, using ipyleaflet.
 
 ---
 
@@ -552,7 +564,15 @@ jupyter_bioacoustic/
 ├── pyproject.toml                    # build config + pixi task definitions
 ├── develop.py                        # labextension symlink helper
 ├── generate_test_data.py             # generates detections-test.csv
+├── generate_dev_data.py              # generates dev-annotate.csv / dev-review.csv
 ├── categories.csv                    # 51 species/class reference rows
+├── categories-small.csv              # 19 species subset
+├── form-review.yaml                  # example review form config
+├── CONFIG_FORMS.md                   # full form config specification
+├── tools/                            # analysis and map utilities
+│   ├── __init__.py
+│   ├── analysis.py                   # histograms, accuracy charts, choropleth maps
+│   └── map_handler.py                # interactive ipyleaflet point/region selection
 └── jupyter_bioacoustic/              # Python package + TypeScript source
     ├── api.py                        # JupyterAudio class
     ├── __init__.py
