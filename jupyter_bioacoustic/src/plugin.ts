@@ -98,6 +98,7 @@ class BioacousticWidget extends Widget {
   private _statusEl!: HTMLSpanElement;
   private _filterInput!: HTMLInputElement;
   private _viewModeSelect!: HTMLSelectElement;
+  private _refreshBtn!: HTMLButtonElement;
 
   // ── DOM refs — table ────────────────────────────────────────
   private _tableCols: Array<{ key: string; label: string }> = [];
@@ -248,7 +249,22 @@ class BioacousticWidget extends Widget {
       }
     });
 
-    filterBar.append(filterLbl, this._filterInput, applyBtn, clearBtn, this._viewModeSelect);
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = '↻';
+    refreshBtn.title = 'Refresh list';
+    refreshBtn.style.cssText = btnStyle() + `font-size:14px;padding:2px 7px;display:none;`;
+    refreshBtn.addEventListener('click', () => {
+      this._page = 0;
+      this._applyFilterAndSort();
+      this._renderTable();
+      if (this._filtered.length > 0) {
+        this._selectRow(0);
+        void this._loadAudio();
+      }
+    });
+    this._refreshBtn = refreshBtn;
+
+    filterBar.append(filterLbl, this._filterInput, applyBtn, clearBtn, this._viewModeSelect, refreshBtn);
 
     // ── Table ────────────────────────────────────────────────────
     const tableWrap = document.createElement('div');
@@ -523,6 +539,7 @@ class BioacousticWidget extends Widget {
         `  'capture': _BA_CAPTURE,\n` +
         `  'capture_dir': _BA_CAPTURE_DIR,\n` +
         `  'duplicate_entries': _BA_DUPLICATE_ENTRIES,\n` +
+        `  'default_buffer': _BA_DEFAULT_BUFFER,\n` +
         `}))`
       );
     } catch (e: any) {
@@ -533,7 +550,7 @@ class BioacousticWidget extends Widget {
     let cfg: {
       data: string; audio_path: string; audio_col: string; category_path: string; output: string;
       prediction_col: string; display_cols: string; data_cols: string;
-      form_config: string; capture: string; capture_dir: string; duplicate_entries: string;
+      form_config: string; capture: string; capture_dir: string; duplicate_entries: string; default_buffer: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -553,6 +570,8 @@ class BioacousticWidget extends Widget {
     this._captureLabel   = cfg.capture ?? '';
     this._captureDir     = cfg.capture_dir ?? '';
     this._duplicateEntries = !!cfg.duplicate_entries;
+    const defaultBuffer = parseFloat(cfg.default_buffer) || 3;
+    this._bufferInput.value = String(defaultBuffer);
     if (this._captureLabel) {
       this._captureBtn.textContent = this._captureLabel;
       this._captureBtn.style.display = '';
@@ -573,6 +592,7 @@ class BioacousticWidget extends Widget {
     // Show view mode toggle and default to unreviewed when duplicate prevention is on
     if (!this._duplicateEntries) {
       this._viewModeSelect.style.display = '';
+      this._refreshBtn.style.display = '';
       this._viewMode = 'pending';
       this._viewModeSelect.value = 'pending';
     }
@@ -1482,17 +1502,37 @@ class BioacousticWidget extends Widget {
     }
     this._dynFormEl.appendChild(container);
 
-    // Divider + delete button
+    // Divider + buttons
     const divider = document.createElement('div');
     divider.style.cssText = `border-top:1px solid #313244;margin:4px -2px;`;
     this._dynFormEl.appendChild(divider);
 
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-top:2px;`;
+
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '◀ Prev';
+    prevBtn.style.cssText = btnStyle() + `font-size:12px;`;
+    prevBtn.disabled = this._selectedIdx === 0;
+    prevBtn.addEventListener('click', () => this._onPrev());
+
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = 'Next ▶';
+    nextBtn.style.cssText = btnStyle() + `font-size:12px;`;
+    nextBtn.disabled = this._selectedIdx >= this._filtered.length - 1;
+    nextBtn.addEventListener('click', () => this._onSkip());
+
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+
     const deleteBtn = document.createElement('button');
     deleteBtn.textContent = 'Delete this review';
     deleteBtn.style.cssText =
-      btnStyle() + `font-size:12px;color:#f38ba8;margin-top:2px;`;
+      btnStyle() + `font-size:12px;color:#f38ba8;`;
     deleteBtn.addEventListener('click', () => void this._onDeleteReview(row));
-    this._dynFormEl.appendChild(deleteBtn);
+
+    btnRow.append(prevBtn, nextBtn, spacer, deleteBtn);
+    this._dynFormEl.appendChild(btnRow);
   }
 
   private async _onDeleteReview(row: Detection): Promise<void> {
@@ -1860,7 +1900,7 @@ class BioacousticWidget extends Widget {
     }
 
     const bufVal = parseFloat(this._bufferInput.value);
-    this._bufferSec        = Math.max(0, isNaN(bufVal) ? 3 : bufVal);
+    this._bufferSec        = Math.max(0, isNaN(bufVal) ? 0 : bufVal);
     const startTime        = parseFloat(this._startInput.value) || 0;
     const endTime          = parseFloat(this._endInput.value)   || startTime + 12;
     const loadStart        = Math.max(0, startTime - this._bufferSec);
