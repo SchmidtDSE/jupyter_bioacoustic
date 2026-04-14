@@ -6,14 +6,43 @@ _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 
 Browse a table of audio clips, play each one with a spectrogram, and optionally record verification decisions or annotations — all without leaving the notebook. The form layout is fully configurable via YAML; without a form config the widget is a pure visualizer/player.
 
-## Quick Start
+## Install
+
+### From GitHub (no build step)
+
+The pre-built labextension is committed to the repo, so users can install directly:
+
+```bash
+pip install git+https://github.com/SchmidtDSE/dev-jupyter-audio.git
+```
+
+For private repos via SSH:
+
+```bash
+pip install git+ssh://git@github.com/SchmidtDSE/dev-jupyter-audio.git
+```
+
+No Node.js or TypeScript build required.
+
+### For development
 
 ```bash
 git clone <repo-url>
-cd jupyter_bioacoustic
+cd dev-jupyter-audio
 pixi run setup   # install deps, build TypeScript, register extension
 pixi run lab     # launch JupyterLab
 ```
+
+### Publishing the pre-built extension
+
+The pre-built labextension (`jupyter_bioacoustic/labextension/`) must be committed to the repo for GitHub installs to work without Node.js. After any TypeScript changes:
+
+1. Build: `pixi run build`
+2. Verify: `ls jupyter_bioacoustic/labextension/`
+3. Ensure `.gitignore` does **not** block `jupyter_bioacoustic/labextension/`
+4. Commit and push the updated `labextension/` directory
+
+## Quick Start
 
 ```python
 from jupyter_bioacoustic import JupyterAudio
