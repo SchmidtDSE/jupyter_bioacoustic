@@ -357,7 +357,7 @@ class BioacousticWidget extends Widget {
     typeLbl.textContent = 'Type';
     this._spectTypeSelect = document.createElement('select');
     this._spectTypeSelect.style.cssText = selectStyle();
-    ['mel', 'plain'].forEach(v => {
+    ['plain', 'mel'].forEach(v => {
       const o = document.createElement('option');
       o.value = o.textContent = v;
       this._spectTypeSelect.appendChild(o);
@@ -1281,14 +1281,16 @@ class BioacousticWidget extends Widget {
 
   private _updateProgress(): void {
     const total = this._rows.length;
-    const totalDone = this._fileCount + this._sessionCount;
+    const fileN = Math.min(this._fileCount, total);
+    const fileV = Math.min(this._fileValid, fileN);
+    const totalDone = fileN + this._sessionCount;
     const parts: string[] = [];
     if (this._sessionCount > 0) {
       parts.push(`session ${this._sessionCount}/${total}`);
     }
     parts.push(`total ${totalDone}/${total}`);
     if (this._isValidEl) {
-      const allValid = this._fileValid + this._sessionValid;
+      const allValid = fileV + this._sessionValid;
       const pct = totalDone > 0 ? Math.round((allValid / totalDone) * 100) : 0;
       parts.push(`accuracy ${pct}%`);
     }
