@@ -53,10 +53,10 @@ Then distribute the wheel:
 - Optionally tag and create a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) with the wheel attached
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
-gh release create v0.1.1 dist/jupyter_bioacoustic-0.1.1-py3-none-any.whl \
-    --title "v0.1.1" --notes "pending/reviewed/all. bug: 0 buffer"
+git tag v0.1.2
+git push origin v0.1.2
+gh release create v0.1.2 dist/jupyter_bioacoustic-0.1.2-py3-none-any.whl \
+    --title "v0.1.2" --notes "prev/next on reviewed"
 ```
 
 > **Checklist:**
