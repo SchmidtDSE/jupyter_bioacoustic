@@ -8,21 +8,27 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 
 ## Install
 
-### From GitHub (no build step)
+### From a release wheel (fastest)
 
-The pre-built labextension is committed to the repo, so users can install directly:
+Pre-built wheels are attached to [GitHub Releases](https://github.com/SchmidtDSE/dev-jupyter-audio/releases). No Node.js or build step needed:
 
 ```bash
-pip install git+https://github.com/SchmidtDSE/dev-jupyter-audio.git
+pip install https://github.com/SchmidtDSE/dev-jupyter-audio/releases/download/v0.1.0/jupyter_bioacoustic-0.1.0-py3-none-any.whl
 ```
 
-For private repos via SSH:
+Or in a pixi `pyproject.toml`:
+
+```toml
+jupyter-bioacoustic = { url = "https://github.com/SchmidtDSE/dev-jupyter-audio/releases/download/v0.1.0/jupyter_bioacoustic-0.1.0-py3-none-any.whl" }
+```
+
+### From GitHub source (slower)
 
 ```bash
 pip install git+ssh://git@github.com/SchmidtDSE/dev-jupyter-audio.git
 ```
 
-No Node.js or TypeScript build required.
+Clones the repo and builds the wheel on install. The pre-built labextension is committed so Node.js is not required, but the clone + build takes several minutes.
 
 ### For development
 
@@ -33,14 +39,37 @@ pixi run setup   # install deps, build TypeScript, register extension
 pixi run lab     # launch JupyterLab
 ```
 
-### Publishing the pre-built extension
+### Publishing a new release
 
-The pre-built labextension (`jupyter_bioacoustic/labextension/`) must be committed to the repo for GitHub installs to work without Node.js. After any TypeScript changes:
+After TypeScript or Python changes, build a new wheel and create a GitHub release:
 
-1. Build: `pixi run build`
-2. Verify: `ls jupyter_bioacoustic/labextension/`
-3. Ensure `.gitignore` does **not** block `jupyter_bioacoustic/labextension/`
-4. Commit and push the updated `labextension/` directory
+```bash
+# 1. Update version in pyproject.toml if needed
+
+# 2. Build TypeScript
+pixi run build
+
+# 3. Build the wheel (requires `build` package — available in the `dev` pixi environment)
+pixi run -e dev python -m build --wheel
+
+# 4. Verify
+ls dist/*.whl
+
+# 5. Tag and push
+git tag v0.1.0
+git push origin v0.1.0
+
+# 6. Create GitHub release and attach the wheel
+gh release create v0.1.0 dist/jupyter_bioacoustic-0.1.0-py3-none-any.whl \
+    --title "v0.1.0" \
+    --notes "Release notes here"
+```
+
+> **Release checklist:**
+> - Bump the version in `pyproject.toml` (`version = "0.1.0"`)
+> - Tag must match the version (`v0.1.0`)
+> - Delete old wheels from `dist/` before building (`rm -f dist/*.whl`)
+> - The wheel URL in downstream `pyproject.toml` files must be updated to match the new version
 
 ## Quick Start
 
