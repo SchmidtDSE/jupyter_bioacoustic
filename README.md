@@ -2,7 +2,7 @@
 
 _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 
-![JupyterBioacoustic Plugin](assets/screenshot.png)
+![JupyterBioacoustic Plugin](assets/app-review.png)
 
 Browse a table of audio clips, play each one with a spectrogram, and optionally record verification decisions or annotations — all without leaving the notebook. The form layout is fully configurable via YAML; without a form config the widget is a pure visualizer/player.
 
@@ -79,7 +79,7 @@ JupyterAudio(
 ).open()
 ```
 
-![TODO INSERT SCREENSHOT: Widget embedded inline below a notebook cell](assets/quick-start-inline.png)
+![JupyterBioacoustic Plugin](assets/app-inline.png)
 
 See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Quick-Start) for test files and more examples.
 
@@ -132,52 +132,3 @@ See [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configu
 ## License
 
 BSD 3-Clause
-
----
-
-## TODO
-
-### SCREENSHOT INSERTS
-
-- README.md
-
-    - [ ] Widget embedded inline below a notebook cell
-
-- Quick-Start.md
-
-    - [ ] Widget opened in split-right panel mode with a spectrogram loaded and form visible
-    - [ ] Widget embedded inline below a notebook cell
-    - [ ] Notebook cell showing `JupyterAudio(...).open()` with the widget appearing below
-
-- Configuration.md
-
-    - [ ] Example YAML config file open in an editor alongside the running widget
-    - [ ] Widget showing per-row audio files with different filenames in the audio_path column
-    - [ ] Capture button in the player controls bar
-    - [ ] Save dialog prompt with auto-generated filename
-
-- Configurable-Forms.md
-
-    - [ ] Review form with is_valid_select, notes, and annotation tool visible
-    - [ ] Review form showing no_form section expanded after selecting "no"
-    - [ ] Annotation form with species dropdown and annotation tools
-    - [ ] Progress tracker showing session and total counts inline with title
-    - [ ] Form with multiple element types visible (select, textbox, checkbox, number)
-
-- Annotation-Tools.md
-
-    - [ ] time_select tool: single vertical line on spectrogram with handle at top
-    - [ ] start_end_time_select tool: two colored vertical lines (green start, pink end) with shaded region between
-    - [ ] bounding_box tool: rectangle drawn on spectrogram with corner handles
-    - [ ] Tool selector dropdown in the form when multiple tools are configured
-
-- Data-Schema.md
-
-    - [ ] Example input CSV open in a table view
-    - [ ] Example output CSV showing review results
-
-- API-Reference.md
-
-    - [ ] Notebook cell showing `ja.source` and `ja.output()` with DataFrames displayed
-    - [ ] Reviewed row in the table showing faded/green styling
-    - [ ] Read-only review result view with "Delete this review" button
