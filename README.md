@@ -107,7 +107,122 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/dev-jupyter-au
 - [API Reference](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/API-Reference) — `JupyterAudio` class, properties, methods
 - [Development](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Development) — Project structure, build tasks, architecture
 
-## Parameters
+## Usage 
+
+The `JupyterAudio` class is has an extremely simple interface; having only two methods (`.open()`, `.output()`) and one property (`.source`).
+
+```python
+from jupyter_bioacoustic import JupyterAudio
+
+# Create an instance
+ja = JupyterAudio(data='path_to_data.parquet', ...)
+
+# Open the Annotation/Review Interface
+ja.open()
+
+# Get a dataframe with all the annotated/reviewed data
+# Note: this data is lazy loaded. this will read from 
+#       file each time you submit a new review/annotation.
+#       however between submissions it will be cached.
+verified_df = ja.output()
+
+# Dataframe access to the source data (here 'path_to_data.parquet')
+ja.source
+```
+
+The parameters for `JupyterAudio` are listed [below](#jupyteraudio-parameters). There is one special parameter `config` that can be used instead of providing the parameter values directly in the notebook. This is a great feature for reproduciblity, organization and avoiding bloated notebooks.  
+
+Consider the example above:
+
+
+```python
+JupyterAudio(
+    data='detections-test.csv',
+    audio_path='test.flac',
+    prediction_column='common_name',
+    form_config='form-review.yaml',
+    output='reviews.csv',
+    inline=True,
+)
+```
+
+This can instead be produced this way
+
+```python
+JupyterAudio(
+    data='detections-test.csv',
+    config='config/review-configuration.yaml',
+    inline=True,
+)
+```
+
+```yaml
+# config/review-configuration.yaml
+audio_path: 'test.flac'
+prediction_column: 'common_name'
+form_config: 'form-review.yaml'
+output: 'reviews.csv'
+```
+
+For this simple example, this might not seem helpful. However for more advanced configurations this is quite useful.  Moreover, in the example above the review-form has a configuration file `form-review.yaml`. If using `config` the form can be included directly.
+
+See [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration) for full details. Here is an advanced example:
+
+```yaml
+# JupyterAudio Args
+audio_column: "audio_path"
+data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
+prediction_column: 'common_name'
+display_columns: ["confidence", "county", "start_time", "audio_path"]
+category_path: "data/categories-small.csv"
+capture: 'Save Spectrogram'
+capture_dir: 'spectrograms'
+
+
+# Validation Form
+form_config:
+    is_valid_form:
+      - title: 
+          value: 'REVIEW CLIP'
+          progress_tracker: true
+      - is_valid_select: true
+      - textbox:
+          label: notes
+          column: notes
+      - annotation:             
+            start_time:           
+              label: Start        
+              column: start_time  
+              source_value: start_time
+            end_time:     
+              label: End
+              column: end_time
+              source_value: end_time                                
+            tools: start_end_time_select                     
+    no_form:
+      - select:
+          label: verified name
+          column: verified_common_name
+          required: true
+          items:
+            path: data/categories.csv
+            value: common_name
+      - select:
+          label: verif. confidence
+          column: verification_confidence
+          items:
+            - low
+            - medium
+            - high
+    submission_buttons:
+      line: true
+      next:
+        label: Skip
+      submit:
+        label: Verify
+```
+
+### JupyterAudio Parameters
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -126,8 +241,6 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/dev-jupyter-au
 | `inline` | bool | `False` | Embed below cell vs split-right panel |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
-
-See [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration) for full details.
 
 ## License
 
