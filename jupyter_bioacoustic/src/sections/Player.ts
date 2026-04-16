@@ -9,7 +9,8 @@ import { Signal } from '@lumino/signaling';
 import { Detection } from '../types';
 import { KernelBridge } from '../kernel';
 import { FormPanel } from './FormPanel';
-import { fmtTime, escPy } from '../util';
+import { fmtTime } from '../util';
+import { spectrogramPipeline, savePng } from '../python';
 import {
   COLORS,
   inputStyle,
@@ -301,7 +302,8 @@ export class Player {
 
     let result: { spec: string; wav: string; duration: number; sample_rate: number; freq_min: number; freq_max: number };
     try {
-      const raw = await this._kernel.exec(this._buildPythonCode(audioPath, loadStart, loadDur));
+      const spectType = this._spectTypeSelect.value as 'mel' | 'plain';
+      const raw = await this._kernel.exec(spectrogramPipeline(audioPath, loadStart, loadDur, spectType));
       result = JSON.parse(raw) as typeof result;
     } catch (e: any) {
       this.statusChanged.emit({ message: `❌ ${String(e.message ?? e)}`, error: true });
@@ -334,90 +336,6 @@ export class Player {
       error: false,
     });
   }
-
-  private _buildPythonCode(path: string, startSec: number, durSec: number): string {
-    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-
-    let readLines: string[];
-    if (path.startsWith('s3://')) {
-      const noProto = path.slice(5);
-      const slash = noProto.indexOf('/');
-      const bucket = esc(slash < 0 ? noProto : noProto.slice(0, slash));
-      const key = slash < 0 ? '' : esc(noProto.slice(slash + 1));
-      readLines = [
-        `import boto3 as _b3, tempfile as _tmp, os as _os, soundfile as _sf`,
-        `with _tmp.NamedTemporaryFile(suffix='.flac', delete=False) as _t:`,
-        `    _b3.client('s3').download_fileobj('${bucket}', '${key}', _t)`,
-        `    _tp = _t.name`,
-        `with _sf.SoundFile(_tp) as _f:`,
-        `    _sr = _f.samplerate`,
-        `    _f.seek(int(${startSec} * _sr))`,
-        `    _raw = _f.read(int(${durSec} * _sr), dtype='float32', always_2d=True)`,
-        `_os.unlink(_tp)`,
-      ];
-    } else {
-      readLines = [
-        `import soundfile as _sf`,
-        `with _sf.SoundFile('${esc(path)}') as _f:`,
-        `    _sr = _f.samplerate`,
-        `    _f.seek(int(${startSec} * _sr))`,
-        `    _raw = _f.read(int(${durSec} * _sr), dtype='float32', always_2d=True)`,
-      ];
-    }
-
-    return [
-      ...readLines,
-      `import numpy as _np, io as _io, base64 as _b64, json as _j`,
-      `import matplotlib as _mpl; _mpl.use('Agg')`,
-      `import matplotlib.pyplot as _plt`,
-      `_mono = _raw.mean(axis=1) if _raw.shape[1] > 1 else _raw[:, 0]`,
-      `_actual_dur = len(_mono) / _sr`,
-      `_fft = 512; _hop = 128; _n_mels = 80`,
-      `_win = 0.5 * (1 - _np.cos(2 * _np.pi * _np.arange(_fft) / (_fft - 1)))`,
-      `_n_frames = max(1, (len(_mono) - _fft) // _hop + 1)`,
-      `_idx = _np.arange(_fft)[None,:] + _hop * _np.arange(_n_frames)[:,None]`,
-      `_idx = _np.clip(_idx, 0, len(_mono) - 1)`,
-      `_mag = _np.abs(_np.fft.rfft(_mono[_idx] * _win, axis=1)[:, :_fft//2]).T`,
-      ...(this._spectTypeSelect.value === 'mel' ? [
-        `_f_min, _f_max = 80.0, _sr / 2.0`,
-        `_mel_pts = _np.linspace(2595*_np.log10(1+_f_min/700), 2595*_np.log10(1+_f_max/700), _n_mels+2)`,
-        `_hz_pts  = 700 * (10 ** (_mel_pts / 2595) - 1)`,
-        `_bin_pts = (_hz_pts / (_sr / 2.0) * (_fft // 2 - 1)).astype(int).clip(0, _fft // 2 - 1)`,
-        `_fb = _np.zeros((_n_mels, _fft // 2))`,
-        `for _m in range(1, _n_mels + 1):`,
-        `    _lo, _pk, _hi = _bin_pts[_m-1], _bin_pts[_m], _bin_pts[_m+1]`,
-        `    if _pk > _lo: _fb[_m-1, _lo:_pk] = (_np.arange(_lo, _pk) - _lo) / (_pk - _lo)`,
-        `    if _hi > _pk: _fb[_m-1, _pk:_hi] = (_hi - _np.arange(_pk, _hi)) / (_hi - _pk)`,
-        `_S = _fb @ _mag`,
-      ] : [
-        `_f_min, _f_max = 0.0, _sr / 2.0`,
-        `_S = _mag`,
-      ]),
-      `_S_db   = 20 * _np.log10(_np.maximum(_S, 1e-10))`,
-      `_S_db   = _np.clip(_S_db, _S_db.max() - 80, _S_db.max())`,
-      `_S_norm = (_S_db - _S_db.min()) / max(float(_S_db.max() - _S_db.min()), 1e-10)`,
-      `_fig = _plt.figure(figsize=(20, 5), dpi=100)`,
-      `_ax  = _fig.add_axes([0, 0, 1, 1])`,
-      `_ax.imshow(_S_norm, aspect='auto', cmap='magma', origin='lower', interpolation='bilinear')`,
-      `_ax.set_axis_off()`,
-      `_pb = _io.BytesIO()`,
-      `_fig.savefig(_pb, format='png', dpi=100, bbox_inches='tight', pad_inches=0)`,
-      `_plt.close(_fig)`,
-      `import soundfile as _sf2`,
-      `_wb = _io.BytesIO()`,
-      `_sf2.write(_wb, (_mono * 32767).astype(_np.int16)[:, None], _sr, format='WAV', subtype='PCM_16')`,
-      `print(_j.dumps({`,
-      `  'spec': _b64.b64encode(_pb.getvalue()).decode(),`,
-      `  'wav':  _b64.b64encode(_wb.getvalue()).decode(),`,
-      `  'duration': float(_actual_dur),`,
-      `  'sample_rate': int(_sr),`,
-      `  'freq_min': float(_f_min) if '_f_min' in dir() else 0.0,`,
-      `  'freq_max': float(_f_max) if '_f_max' in dir() else float(_sr / 2),`,
-      `}))`,
-    ].join('\n');
-  }
-
-  // ─── Private: rendering ────────────────────────────────────
 
   private _renderFrame(): void {
     const ctx = this._canvas.getContext('2d');
@@ -796,17 +714,8 @@ export class Player {
 
     const dataUrl = offscreen.toDataURL('image/png');
     const b64 = dataUrl.split(',')[1];
-    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     try {
-      await this._kernel.exec(
-        `import base64 as _b64, os as _os\n` +
-        `_p = '${esc(filename)}'\n` +
-        `_d = _os.path.dirname(_p)\n` +
-        `if _d: _os.makedirs(_d, exist_ok=True)\n` +
-        `with open(_p, 'wb') as _f:\n` +
-        `    _f.write(_b64.b64decode('${b64}'))\n` +
-        `print('ok')`
-      );
+      await this._kernel.exec(savePng(filename, b64));
       this.statusChanged.emit({ message: `✓ Saved ${filename}`, error: false });
     } catch (e: any) {
       this.statusChanged.emit({ message: `❌ Save failed: ${String(e.message ?? e)}`, error: true });

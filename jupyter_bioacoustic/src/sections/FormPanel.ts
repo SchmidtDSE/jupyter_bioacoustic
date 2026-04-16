@@ -12,6 +12,18 @@ import { Detection, AnnotConfig } from '../types';
 import { KernelBridge } from '../kernel';
 import { escPy } from '../util';
 import {
+  countOutputProgress,
+  readOutputRows,
+  writeOutputRow,
+  deleteOutputRow,
+  loadSelectItemsCsv,
+  loadSelectItemsParquet,
+  loadSelectItemsJsonl,
+  loadSelectItemsYaml,
+  loadSelectItemsText,
+  INVALIDATE_OUTPUT_CACHE,
+} from '../python';
+import {
   COLORS,
   inputStyle,
   selectStyle,
@@ -272,52 +284,10 @@ export class FormPanel {
    *  Called once during init. */
   async loadOutputFileProgress(): Promise<void> {
     if (!this._outputPath) return;
-    const p = escPy(this._outputPath);
     const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
     const isValidCol = this._isValidEl ? escPy(this._isValidCol) : '';
     const yesVal = this._isValidEl ? escPy(String(this._isValidYesVal)) : '';
-
-    let code: string;
-    if (ext === 'csv') {
-      code = [
-        `import csv, json, os`,
-        `_c = _v = 0`,
-        `if os.path.exists('${p}'):`,
-        `    with open('${p}') as f:`,
-        `        rows = list(csv.DictReader(f))`,
-        `        _c = len(rows)`,
-        ...(isValidCol ? [
-          `        _v = sum(1 for r in rows if r.get('${isValidCol}') == '${yesVal}')`,
-        ] : []),
-        `print(json.dumps({'count': _c, 'valid': _v}))`,
-      ].join('\n');
-    } else if (ext === 'parquet') {
-      code = [
-        `import json, os`,
-        `_c = _v = 0`,
-        `if os.path.exists('${p}'):`,
-        `    import pandas as pd`,
-        `    df = pd.read_parquet('${p}')`,
-        `    _c = len(df)`,
-        ...(isValidCol ? [
-          `    if '${isValidCol}' in df.columns: _v = int((df['${isValidCol}'].astype(str) == '${yesVal}').sum())`,
-        ] : []),
-        `print(json.dumps({'count': _c, 'valid': _v}))`,
-      ].join('\n');
-    } else {
-      code = [
-        `import json, os`,
-        `_c = _v = 0`,
-        `if os.path.exists('${p}'):`,
-        `    with open('${p}') as f:`,
-        `        rows = [json.loads(l) for l in f if l.strip()]`,
-        `        _c = len(rows)`,
-        ...(isValidCol ? [
-          `        _v = sum(1 for r in rows if str(r.get('${isValidCol}','')) == '${yesVal}')`,
-        ] : []),
-        `print(json.dumps({'count': _c, 'valid': _v}))`,
-      ].join('\n');
-    }
+    const code = countOutputProgress(this._outputPath, ext, isValidCol, yesVal);
 
     try {
       const raw = await this._kernel.exec(code);
@@ -337,17 +307,8 @@ export class FormPanel {
     if (this._duplicateEntries || !this._outputPath) return;
     this._reviewedMap.clear();
 
-    const p = escPy(this._outputPath);
     const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-
-    let code: string;
-    if (ext === 'csv') {
-      code = `import csv,json,os\n_r=[]\nif os.path.exists('${p}'):\n with open('${p}') as f: _r=list(csv.DictReader(f))\nprint(json.dumps(_r))`;
-    } else if (ext === 'parquet') {
-      code = `import pandas as pd,json,os\n_r=[]\nif os.path.exists('${p}'):\n _r=pd.read_parquet('${p}').astype(str).to_dict('records')\nprint(json.dumps(_r))`;
-    } else {
-      code = `import json,os\n_r=[]\nif os.path.exists('${p}'):\n with open('${p}') as f: _r=[json.loads(l) for l in f if l.strip()]\nprint(json.dumps(_r))`;
-    }
+    const code = readOutputRows(this._outputPath, ext);
 
     let outputRows: Record<string, any>[];
     try {
@@ -586,71 +547,19 @@ export class FormPanel {
     valueCol?: string,
     labelCol?: string
   ): Promise<Array<[string, string]>> {
-    const p = escPy(path);
     const ext = path.split('.').pop()?.toLowerCase() ?? '';
     let code: string;
 
     if (ext === 'csv') {
-      if (valueCol) {
-        const v = escPy(valueCol);
-        const l = labelCol ? escPy(labelCol) : v;
-        code = [
-          `import csv as _csv, json as _j`,
-          `with open('${p}') as _f:`,
-          `    _rows = list(_csv.DictReader(_f))`,
-          `print(_j.dumps([[r['${v}'], r.get('${l}', r['${v}'])] for r in _rows]))`,
-        ].join('\n');
-      } else {
-        code = [
-          `import csv as _csv, json as _j`,
-          `with open('${p}') as _f:`,
-          `    _rd = _csv.reader(_f)`,
-          `    _rows = [r for r in _rd if r]`,
-          `print(_j.dumps([[r[0], r[1] if len(r)>1 else r[0]] for r in _rows]))`,
-        ].join('\n');
-      }
+      code = loadSelectItemsCsv(path, valueCol, labelCol);
     } else if (ext === 'parquet') {
-      const v = valueCol ? `'${escPy(valueCol)}'` : 'None';
-      const l = labelCol ? `'${escPy(labelCol)}'` : 'None';
-      code = [
-        `import pandas as _pd, json as _j`,
-        `_df = _pd.read_parquet('${p}')`,
-        `_vc = ${v} or _df.columns[0]`,
-        `_lc = ${l} or _vc`,
-        `print(_j.dumps([[str(r[_vc]), str(r[_lc])] for _,r in _df.iterrows()]))`,
-      ].join('\n');
+      code = loadSelectItemsParquet(path, valueCol, labelCol);
     } else if (ext === 'jsonl' || ext === 'ndjson') {
-      const v = valueCol ? `'${escPy(valueCol)}'` : 'None';
-      const l = labelCol ? `'${escPy(labelCol)}'` : 'None';
-      code = [
-        `import json as _j`,
-        `_rows = [_j.loads(line) for line in open('${p}') if line.strip()]`,
-        `_vc = ${v} or (list(_rows[0].keys())[0] if _rows else 'value')`,
-        `_lc = ${l} or _vc`,
-        `print(_j.dumps([[str(r[_vc]), str(r.get(_lc, r[_vc]))] for r in _rows]))`,
-      ].join('\n');
+      code = loadSelectItemsJsonl(path, valueCol, labelCol);
     } else if (ext === 'yaml' || ext === 'yml') {
-      const v = valueCol ? `'${escPy(valueCol)}'` : 'None';
-      const l = labelCol ? `'${escPy(labelCol)}'` : 'None';
-      code = [
-        `import yaml as _y, json as _j`,
-        `_data = _y.safe_load(open('${p}'))`,
-        `_vc = ${v} or (list(_data.keys())[0] if isinstance(_data, dict) else 'value')`,
-        `_lc = ${l} or _vc`,
-        `if isinstance(_data, dict):`,
-        `    _vals = _data.get(_vc, [])`,
-        `    _lbls = _data.get(_lc, _vals)`,
-        `    print(_j.dumps([[str(_vals[i]), str(_lbls[i])] for i in range(min(len(_vals),len(_lbls)))]))`,
-        `else:`,
-        `    print(_j.dumps([[str(x), str(x)] for x in _data]))`,
-      ].join('\n');
+      code = loadSelectItemsYaml(path, valueCol, labelCol);
     } else {
-      code = [
-        `import json as _j`,
-        `_lines = [ln.rstrip('\\n') for ln in open('${p}') if ln.strip()]`,
-        `_rows = [[p[0].strip(), p[1].strip() if len(p)>1 else p[0].strip()] for p in [ln.split(',',1) for ln in _lines]]`,
-        `print(_j.dumps(_rows))`,
-      ].join('\n');
+      code = loadSelectItemsText(path);
     }
 
     try {
@@ -1069,7 +978,7 @@ export class FormPanel {
     const activeRow = this._currentRow;
 
     const values = this._collectFormValues();
-    const code = this._buildOutputCode(values);
+    const code = writeOutputRow(this._outputPath, values);
     const verb = this._predictionCol ? 'Verified' : 'Annotated';
     try {
       await this._kernel.exec(code);
@@ -1087,7 +996,7 @@ export class FormPanel {
     }
     this._updateProgress();
     void this._kernel.exec(
-      'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()'
+      INVALIDATE_OUTPUT_CACHE
     ).catch(() => {});
     this.submitted.emit(values);
   }
@@ -1101,48 +1010,12 @@ export class FormPanel {
   private async _onDeleteReview(row: Detection): Promise<void> {
     if (!confirm('Delete this review? This cannot be undone.')) return;
 
-    const p = escPy(this._outputPath);
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-
     const idMapping = this._passValueDefs.find(pv => pv.sourceCol === 'id');
     const outIdCol = idMapping?.col;
-    let matchExpr: string;
-    if (outIdCol) {
-      matchExpr = `str(r.get('${escPy(outIdCol)}','')) == '${row.id}'`;
-    } else {
-      matchExpr = `abs(float(r.get('start_time',0))-${row.start_time})<0.01 and abs(float(r.get('end_time',0))-${row.end_time})<0.01`;
-    }
-
-    let code: string;
-    if (ext === 'csv') {
-      code = [
-        `import csv,os`,
-        `_rows=list(csv.DictReader(open('${p}')))`,
-        `_keep=[r for r in _rows if not (${matchExpr})]`,
-        `with open('${p}','w',newline='') as f:`,
-        `  if _keep:`,
-        `    w=csv.DictWriter(f,fieldnames=_keep[0].keys())`,
-        `    w.writeheader(); w.writerows(_keep)`,
-        `print('ok')`,
-      ].join('\n');
-    } else if (ext === 'parquet') {
-      code = [
-        `import pandas as pd`,
-        `df=pd.read_parquet('${p}')`,
-        `df=df[~df.apply(lambda r: ${matchExpr}, axis=1)]`,
-        `df.to_parquet('${p}',index=False)`,
-        `print('ok')`,
-      ].join('\n');
-    } else {
-      code = [
-        `import json`,
-        `_rows=[json.loads(l) for l in open('${p}') if l.strip()]`,
-        `_keep=[r for r in _rows if not (${matchExpr})]`,
-        `with open('${p}','w') as f:`,
-        `  for r in _keep: f.write(json.dumps(r)+'\\n')`,
-        `print('ok')`,
-      ].join('\n');
-    }
+    const matchExpr = outIdCol
+      ? `str(r.get('${escPy(outIdCol)}','')) == '${row.id}'`
+      : `abs(float(r.get('start_time',0))-${row.start_time})<0.01 and abs(float(r.get('end_time',0))-${row.end_time})<0.01`;
+    const code = deleteOutputRow(this._outputPath, matchExpr);
 
     try {
       await this._kernel.exec(code);
@@ -1162,7 +1035,7 @@ export class FormPanel {
     this.statusChanged.emit({ message: `✓ Review deleted for clip ${row.id}`, error: false });
 
     void this._kernel.exec(
-      'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()'
+      INVALIDATE_OUTPUT_CACHE
     ).catch(() => {});
 
     this.reviewDeleted.emit(row);
@@ -1173,59 +1046,4 @@ export class FormPanel {
   // We could refactor _applyRow to return/accept the row, but keeping a
   // _currentRow field is simpler and the row is already passed in.
 
-  private _buildOutputCode(values: Record<string, any>): string {
-    const outPath = escPy(this._outputPath);
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-
-    const mkdirLine = `import os as _os; _d=_os.path.dirname('${outPath}');\nif _d: _os.makedirs(_d, exist_ok=True)`;
-
-    const cols = Object.keys(values);
-    const pyRepr = (val: any): string => {
-      if (val === null || val === undefined) return 'None';
-      if (typeof val === 'boolean') return val ? 'True' : 'False';
-      if (typeof val === 'number') return String(val);
-      return `'${escPy(String(val)).replace(/\n/g, ' ')}'`;
-    };
-    const rowDict = `{\n${cols.map(c => `  '${c}': ${pyRepr(values[c])}`).join(',\n')}\n}`;
-
-    if (ext === 'csv') {
-      const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
-      return [
-        mkdirLine,
-        `import csv as _csv, os as _os`,
-        `_cols = ${colsPy}`,
-        `_row  = ${rowDict}`,
-        `_exists = _os.path.exists('${outPath}')`,
-        `with open('${outPath}', 'a', newline='') as _f:`,
-        `  _w = _csv.DictWriter(_f, fieldnames=_cols)`,
-        `  if not _exists: _w.writeheader()`,
-        `  _w.writerow(_row)`,
-        `print('ok')`,
-      ].join('\n');
-    }
-
-    if (ext === 'parquet') {
-      return [
-        mkdirLine,
-        `import pandas as _pd, os as _os`,
-        `_row  = ${rowDict}`,
-        `_new  = _pd.DataFrame([_row])`,
-        `if _os.path.exists('${outPath}'):`,
-        `  _existing = _pd.read_parquet('${outPath}')`,
-        `  _pd.concat([_existing, _new], ignore_index=True).to_parquet('${outPath}', index=False)`,
-        `else:`,
-        `  _new.to_parquet('${outPath}', index=False)`,
-        `print('ok')`,
-      ].join('\n');
-    }
-
-    return [
-      mkdirLine,
-      `import json as _json`,
-      `_row  = ${rowDict}`,
-      `with open('${outPath}', 'a') as _f:`,
-      `  _f.write(_json.dumps(_row) + '\\n')`,
-      `print('ok')`,
-    ].join('\n');
-  }
 }
