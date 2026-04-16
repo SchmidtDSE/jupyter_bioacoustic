@@ -28,6 +28,7 @@ import {
 import { Detection, FilterClause } from './types';
 import { fmtTime } from './util';
 import { KernelBridge } from './kernel';
+import { FormPanel } from './sections/FormPanel';
 
 // ═══════════════════════════════════════════════════════════════
 // BioacousticWidget
@@ -60,8 +61,6 @@ class BioacousticWidget extends Widget {
   private _captureLabel = '';   // empty = hidden
   private _captureDir = '';
   private _duplicateEntries = false;
-  private _reviewedMap: Map<number, Record<string, any>> = new Map();
-  private _showingReviewedView = false;
 
   // ── Player state ────────────────────────────────────────────
   private _specBitmap: ImageBitmap | null = null;
@@ -107,41 +106,11 @@ class BioacousticWidget extends Widget {
   private _audio!: HTMLAudioElement;
   private _captureBtn!: HTMLButtonElement;
 
-  // ── DOM refs — form ─────────────────────────────────────────
-  private _formSection!: HTMLDivElement;
-  private _dynFormEl!: HTMLDivElement;
+  // ── Form section (extracted) ────────────────────────────────
+  private _form!: FormPanel;
 
-  // ── Form state ──────────────────────────────────────────────
-  private _formConfig: any = null;
-  private _formValues: Record<string, any> = {};
-  private _isValidEl: HTMLSelectElement | null = null;
-  private _isValidYesVal: any = 'yes';
-  private _isValidNoVal: any = 'no';
-  private _isValidCol = 'is_valid';
-  private _yesFormEl: HTMLDivElement | null = null;
-  private _noFormEl: HTMLDivElement | null = null;
-  private _submitBtns: HTMLButtonElement[] = [];
-  private _requiredInputs: Array<{ col: string; el: HTMLElement }> = [];
-  private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
-  private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
-  private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
-  private _sessionCount = 0;
-  private _sessionValid = 0;
-  private _fileCount = 0;
-  private _fileValid = 0;
-  private _progressEls: HTMLSpanElement[] = [];
-
-  // ── Annotation tool state ───────────────────────────────────
-  private _annotConfig: {
-    startTime?: { col: string; sourceValue?: string };
-    endTime?: { col: string; sourceValue?: string };
-    minFreq?: { col: string };
-    maxFreq?: { col: string };
-    tools: string[];
-  } | null = null;
-  private _activeTool = '';
+  // ── Annotation / canvas drag state (stays in widget until Player extraction) ──
   private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number } | null = null;
-  private _annotInputs: Map<string, HTMLInputElement> = new Map();
   private _sampleRate = 0;
   private _freqMin = 0;
   private _freqMax = 0;
@@ -454,23 +423,27 @@ class BioacousticWidget extends Widget {
       this._renderFrame();
     });
 
-    // ── Form section (hidden until form_config is provided) ─────
-    this._formSection = document.createElement('div');
-    this._formSection.style.cssText =
-      `flex-shrink:0;min-height:140px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
-      `border-top:1px solid ${COLORS.bgSurface0};display:none;flex-direction:column;gap:10px;`;
+    // ── Form panel (extracted section) ─────────────────────────
+    this._form = new FormPanel(this._kernelBridge);
 
-    this._dynFormEl = document.createElement('div');
-    this._dynFormEl.style.cssText = `display:flex;flex-direction:column;gap:10px;`;
-
-    this._formSection.append(this._dynFormEl);
+    // Wire FormPanel signals
+    this._form.submitted.connect(() => this._onSkip());
+    this._form.prevRequested.connect(() => this._onPrev());
+    this._form.nextRequested.connect(() => this._onSkip());
+    this._form.reviewDeleted.connect(() => this._renderTable());
+    this._form.annotationChanged.connect(() => this._renderFrame());
+    this._form.activeToolChanged.connect(() => {
+      this._canvasContainer.style.cursor = this._form.getAnnotConfig() ? 'crosshair' : 'default';
+      this._renderFrame();
+    });
+    this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
 
     // ── Assemble widget ──────────────────────────────────────────
     this.node.append(
       header, filterBar, tableWrap, pagBar,
       this._infoCard,
       playerCtrls, this._canvasContainer, playBar,
-      this._audio, this._formSection
+      this._audio, this._form.element
     );
   }
 
@@ -549,7 +522,7 @@ class BioacousticWidget extends Widget {
     this._predictionCol  = cfg.prediction_col;
     this._displayCols    = JSON.parse(cfg.display_cols) as string[];
     this._dataCols       = JSON.parse(cfg.data_cols) as string[];
-    this._formConfig     = JSON.parse(cfg.form_config);
+    const formConfig     = JSON.parse(cfg.form_config);
     this._captureLabel   = cfg.capture ?? '';
     this._captureDir     = cfg.capture_dir ?? '';
     this._duplicateEntries = !!cfg.duplicate_entries;
@@ -568,11 +541,33 @@ class BioacousticWidget extends Widget {
     }
 
     this._configureFormForMode();
-    await this._buildForm();
-    await this._loadOutputFileProgress();
-    await this._loadReviewedState();
 
-    // Show view mode toggle and default to unreviewed when duplicate prevention is on
+    // Set title from mode
+    if (this._predictionCol) {
+      this._titleEl.textContent = 'Bioacoustic Reviewer';
+      this.title.label = 'Bioacoustic Reviewer';
+    } else {
+      this._titleEl.textContent = 'Bioacoustic Annotator';
+      this.title.label = 'Bioacoustic Annotator';
+    }
+
+    // Initialize form panel
+    this._form.setContext({
+      formConfig,
+      rows: this._rows,
+      predictionCol: this._predictionCol,
+      duplicateEntries: this._duplicateEntries,
+      outputPath: this._outputPath,
+    });
+    await this._form.build();
+    await this._form.loadOutputFileProgress();
+    await this._form.loadReviewedState();
+
+    // Set cursor based on annotation config
+    this._canvasContainer.style.cursor =
+      this._form.getAnnotConfig() ? 'crosshair' : 'default';
+
+    // Show view mode toggle and default to pending when duplicate prevention is on
     if (!this._duplicateEntries) {
       this._viewModeSelect.style.display = '';
       this._refreshBtn.style.display = '';
@@ -622,967 +617,9 @@ class BioacousticWidget extends Widget {
     this._rebuildTableHeader();
   }
 
-  // ─── Dynamic form builder ────────────────────────────────────
+  // ─── Form methods removed — now in FormPanel ────────────────
+  // (See src/sections/FormPanel.ts)
 
-  private async _buildForm(): Promise<void> {
-    this._dynFormEl.innerHTML = '';
-    this._formValues = {};
-    this._isValidEl = null;
-    this._isValidCol = 'is_valid';
-    this._yesFormEl = null;
-    this._noFormEl = null;
-    this._submitBtns = [];
-    this._requiredInputs = [];
-    this._inputRefs.clear();
-    this._sourceValueFields = [];
-    this._passValueDefs = [];
-    this._annotConfig = null;
-    this._activeTool = '';
-    this._annotDrag = null;
-    this._annotInputs.clear();
-    this._canvasContainer.style.cursor = 'default';
-    this._sessionCount = 0;
-    this._sessionValid = 0;
-    this._fileCount = 0;
-    this._fileValid = 0;
-    this._progressEls = [];
-
-    const cfg = this._formConfig;
-    // Set title from mode regardless of form config
-    if (this._predictionCol) {
-      this._titleEl.textContent = 'Bioacoustic Reviewer';
-      this.title.label = 'Bioacoustic Reviewer';
-    } else {
-      this._titleEl.textContent = 'Bioacoustic Annotator';
-      this.title.label = 'Bioacoustic Annotator';
-    }
-
-    if (!cfg) {
-      this._formSection.style.display = 'none';
-      return;
-    }
-    this._formSection.style.display = 'flex';
-
-    // Iterate keys in order so pass_value position controls output column order
-    for (const key of Object.keys(cfg)) {
-      if (key === 'title') {
-        this._appendTitleEntry(cfg.title, this._dynFormEl);
-
-      } else if (key === 'progress_tracker') {
-        this._appendProgressTracker(this._dynFormEl);
-
-      } else if (key === 'pass_value') {
-        this._registerPassValue(cfg.pass_value);
-
-      } else if (key === 'fixed_value') {
-        this._registerFixedValue(cfg.fixed_value);
-
-      } else if (key === 'is_valid_form') {
-        const isValidDiv = document.createElement('div');
-        isValidDiv.dataset.formSection = 'is_valid_form';
-        isValidDiv.style.cssText = formRowStyle();
-        await this._buildFormSection(cfg.is_valid_form ?? [], isValidDiv);
-        this._dynFormEl.appendChild(isValidDiv);
-
-      } else if (key === 'yes_form') {
-        this._yesFormEl = document.createElement('div');
-        this._yesFormEl.dataset.formSection = 'yes_form';
-        this._yesFormEl.style.cssText = formRowStyle(true);
-        await this._buildFormSection(cfg.yes_form, this._yesFormEl);
-        this._dynFormEl.appendChild(this._yesFormEl);
-
-      } else if (key === 'no_form') {
-        this._noFormEl = document.createElement('div');
-        this._noFormEl.dataset.formSection = 'no_form';
-        this._noFormEl.style.cssText = formRowStyle(true);
-        await this._buildFormSection(cfg.no_form, this._noFormEl);
-        this._dynFormEl.appendChild(this._noFormEl);
-
-      } else if (key === 'annotate_form') {
-        const annotateDiv = document.createElement('div');
-        annotateDiv.dataset.formSection = 'annotate_form';
-        annotateDiv.style.cssText = formRowStyle();
-        await this._buildFormSection(cfg.annotate_form ?? [], annotateDiv);
-        this._dynFormEl.appendChild(annotateDiv);
-
-      } else if (key === 'submission_buttons') {
-        await this._buildSubmissionButtons(cfg.submission_buttons);
-
-      } else if (key === '_fixed_kwargs') {
-        for (const item of cfg._fixed_kwargs) {
-          if (item.fixed_value) this._registerFixedValue(item.fixed_value);
-        }
-      }
-    }
-
-    // Wire is_valid_select → show/hide subforms
-    if (this._isValidEl) {
-      const isValidEl = this._isValidEl;
-      isValidEl.addEventListener('change', () => {
-        const val = isValidEl.value;
-        if (this._yesFormEl) {
-          this._yesFormEl.style.display = val === String(this._isValidYesVal) ? 'flex' : 'none';
-        }
-        if (this._noFormEl) {
-          this._noFormEl.style.display = val === String(this._isValidNoVal) ? 'flex' : 'none';
-        }
-        this._validateForm();
-      });
-    }
-
-    this._validateForm();
-  }
-
-  private async _buildFormSection(elements: any[], container: HTMLElement): Promise<void> {
-    for (const item of elements) {
-      if (!item || typeof item !== 'object') continue;
-      const [type] = Object.keys(item);
-      const config = item[type];
-      if (type === 'pass_value') {
-        this._registerPassValue(config);
-      } else if (type === 'title') {
-        this._appendTitleEntry(config, container);
-      } else if (type === 'progress_tracker') {
-        this._appendProgressTracker(container);
-      } else if (type === 'fixed_value') {
-        this._registerFixedValue(config);
-      } else if (type === 'annotation') {
-        this._buildAnnotationElement(config, container);
-      } else if (type === 'break') {
-        container.appendChild(document.createElement('br'));
-      } else if (type === 'line') {
-        const d = document.createElement('div');
-        d.style.cssText = fullWidthDividerStyle();
-        container.appendChild(d);
-      } else if (type === 'text') {
-        const d = document.createElement('div');
-        d.style.cssText = mutedTextStyle({ width: '100%' });
-        d.textContent = String(config);
-        container.appendChild(d);
-      } else {
-        await this._buildInputElement(type, config, container);
-      }
-    }
-  }
-
-  private async _buildInputElement(
-    type: string,
-    rawConfig: any,
-    container: HTMLElement
-  ): Promise<void> {
-    const cfg = (rawConfig === true || rawConfig === null || rawConfig === undefined) ? {} : rawConfig;
-
-    let labelText: string;
-    let col: string;
-    let required: boolean;
-
-    if (type === 'is_valid_select') {
-      col = cfg.column ?? 'is_valid';
-      labelText = cfg.label ?? 'is_valid';
-      required = true;
-    } else {
-      labelText = cfg.label ?? type;
-      col = cfg.column ?? labelText;
-      required = cfg.required ?? false;
-    }
-
-    const lbl = document.createElement('label');
-    lbl.style.cssText = formLabelStyle();
-    lbl.textContent = labelText;
-
-    let inputEl: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-
-    if (type === 'textbox') {
-      if (cfg.multiline) {
-        const ta = document.createElement('textarea');
-        ta.rows = 1;
-        ta.style.cssText =
-          inputStyle(cfg.width ? cssSize(cfg.width) : '220px') +
-          `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
-        ta.addEventListener('input', () => { this._formValues[col] = ta.value; this._validateForm(); });
-        inputEl = ta;
-      } else {
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.style.cssText =
-          inputStyle(cfg.width ? cssSize(cfg.width) : '220px') + `font-size:13px;`;
-        inp.addEventListener('input', () => { this._formValues[col] = inp.value; this._validateForm(); });
-        inputEl = inp;
-      }
-      this._formValues[col] = cfg.default ?? '';
-
-    } else if (type === 'select') {
-      const sel = document.createElement('select');
-      sel.style.cssText = selectStyle() + `font-size:13px;max-width:260px;`;
-      if (cfg.width) sel.style.width = cssSize(cfg.width);
-      const emptyOpt = document.createElement('option');
-      emptyOpt.value = ''; emptyOpt.textContent = '— select —';
-      sel.appendChild(emptyOpt);
-      const items = await this._loadSelectItems(cfg.items);
-      items.forEach(([v, l]) => {
-        const o = document.createElement('option');
-        o.value = v; o.textContent = l;
-        sel.appendChild(o);
-      });
-      sel.addEventListener('change', () => { this._formValues[col] = sel.value; this._validateForm(); });
-      this._formValues[col] = cfg.default ?? '';
-      inputEl = sel;
-
-    } else if (type === 'checkbox') {
-      const inp = document.createElement('input');
-      inp.type = 'checkbox';
-      inp.checked = Boolean(cfg.default);
-      inp.addEventListener('change', () => {
-        this._formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
-        this._validateForm();
-      });
-      this._formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
-      inputEl = inp;
-
-    } else if (type === 'number') {
-      const inp = document.createElement('input');
-      inp.type = 'number';
-      if (cfg.min !== undefined) inp.min = String(cfg.min);
-      if (cfg.max !== undefined) inp.max = String(cfg.max);
-      if (cfg.step !== undefined) inp.step = String(cfg.step);
-      if (cfg.placeholder) inp.placeholder = String(cfg.placeholder);
-      if (cfg.value !== undefined) inp.value = String(cfg.value);
-      inp.style.cssText =
-        inputStyle(cfg.width ? cssSize(cfg.width) : '80px') + `font-size:13px;`;
-      inp.addEventListener('input', () => {
-        this._formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
-        this._validateForm();
-      });
-      this._formValues[col] = cfg.value ?? null;
-      inputEl = inp;
-
-    } else if (type === 'is_valid_select') {
-      const sel = document.createElement('select');
-      sel.style.cssText = selectStyle() + `font-size:13px;`;
-
-      let yesLabel = 'yes', yesVal: any = 'yes';
-      let noLabel = 'no', noVal: any = 'no';
-      if (typeof cfg.yes === 'string') { yesLabel = yesVal = cfg.yes; }
-      else if (cfg.yes && typeof cfg.yes === 'object') {
-        yesLabel = cfg.yes.label ?? 'yes'; yesVal = cfg.yes.value ?? 'yes';
-      }
-      if (typeof cfg.no === 'string') { noLabel = noVal = cfg.no; }
-      else if (cfg.no && typeof cfg.no === 'object') {
-        noLabel = cfg.no.label ?? 'no'; noVal = cfg.no.value ?? 'no';
-      }
-
-      [['', '— select —'], [String(yesVal), yesLabel], [String(noVal), noLabel]].forEach(([v, l]) => {
-        const o = document.createElement('option');
-        o.value = v; o.textContent = l;
-        sel.appendChild(o);
-      });
-
-      this._isValidEl = sel;
-      this._isValidYesVal = yesVal;
-      this._isValidNoVal = noVal;
-      this._isValidCol = col;
-
-      sel.addEventListener('change', () => { this._formValues[col] = sel.value; this._validateForm(); });
-      this._formValues[col] = '';
-      this._requiredInputs.push({ col, el: sel });
-      this._inputRefs.set(col, sel);
-      lbl.appendChild(sel);
-      container.appendChild(lbl);
-      return;  // early return — change handler wired in _buildForm
-
-    } else {
-      return;
-    }
-
-    if (cfg.source_value) {
-      this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
-    }
-    if (required) this._requiredInputs.push({ col, el: inputEl });
-    this._inputRefs.set(col, inputEl);
-    lbl.appendChild(inputEl);
-    container.appendChild(lbl);
-  }
-
-  private async _loadSelectItems(items: any): Promise<Array<[string, string]>> {
-    if (!items) return [];
-
-    if (Array.isArray(items)) {
-      return items.map(item => {
-        if (typeof item === 'string') return [item, item] as [string, string];
-        if (typeof item === 'object' && item !== null) {
-          const [k] = Object.keys(item);
-          return [k, String(item[k])] as [string, string];
-        }
-        return [String(item), String(item)] as [string, string];
-      });
-    }
-
-    if (typeof items === 'string') {
-      return this._loadSelectItemsFromFile(items);
-    }
-
-    if (typeof items === 'object') {
-      if ('max' in items) {
-        const min = items.min ?? 0;
-        const max = items.max;
-        const step = items.step ?? 1;
-        const result: Array<[string, string]> = [];
-        for (let i = min; i <= max; i += step) result.push([String(i), String(i)]);
-        return result;
-      }
-      if ('path' in items) {
-        return this._loadSelectItemsFromFile(items.path, items.value, items.label);
-      }
-    }
-
-    return [];
-  }
-
-  private async _loadSelectItemsFromFile(
-    path: string,
-    valueCol?: string,
-    labelCol?: string
-  ): Promise<Array<[string, string]>> {
-    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const p = esc(path);
-    const ext = path.split('.').pop()?.toLowerCase() ?? '';
-    let code: string;
-
-    if (ext === 'csv') {
-      if (valueCol) {
-        const v = esc(valueCol);
-        const l = labelCol ? esc(labelCol) : v;
-        code = [
-          `import csv as _csv, json as _j`,
-          `with open('${p}') as _f:`,
-          `    _rows = list(_csv.DictReader(_f))`,
-          `print(_j.dumps([[r['${v}'], r.get('${l}', r['${v}'])] for r in _rows]))`,
-        ].join('\n');
-      } else {
-        code = [
-          `import csv as _csv, json as _j`,
-          `with open('${p}') as _f:`,
-          `    _rd = _csv.reader(_f)`,
-          `    _rows = [r for r in _rd if r]`,
-          `print(_j.dumps([[r[0], r[1] if len(r)>1 else r[0]] for r in _rows]))`,
-        ].join('\n');
-      }
-    } else if (ext === 'parquet') {
-      const v = valueCol ? `'${esc(valueCol)}'` : 'None';
-      const l = labelCol ? `'${esc(labelCol)}'` : 'None';
-      code = [
-        `import pandas as _pd, json as _j`,
-        `_df = _pd.read_parquet('${p}')`,
-        `_vc = ${v} or _df.columns[0]`,
-        `_lc = ${l} or _vc`,
-        `print(_j.dumps([[str(r[_vc]), str(r[_lc])] for _,r in _df.iterrows()]))`,
-      ].join('\n');
-    } else if (ext === 'jsonl' || ext === 'ndjson') {
-      const v = valueCol ? `'${esc(valueCol)}'` : 'None';
-      const l = labelCol ? `'${esc(labelCol)}'` : 'None';
-      code = [
-        `import json as _j`,
-        `_rows = [_j.loads(line) for line in open('${p}') if line.strip()]`,
-        `_vc = ${v} or (list(_rows[0].keys())[0] if _rows else 'value')`,
-        `_lc = ${l} or _vc`,
-        `print(_j.dumps([[str(r[_vc]), str(r.get(_lc, r[_vc]))] for r in _rows]))`,
-      ].join('\n');
-    } else if (ext === 'yaml' || ext === 'yml') {
-      const v = valueCol ? `'${esc(valueCol)}'` : 'None';
-      const l = labelCol ? `'${esc(labelCol)}'` : 'None';
-      code = [
-        `import yaml as _y, json as _j`,
-        `_data = _y.safe_load(open('${p}'))`,
-        `_vc = ${v} or (list(_data.keys())[0] if isinstance(_data, dict) else 'value')`,
-        `_lc = ${l} or _vc`,
-        `if isinstance(_data, dict):`,
-        `    _vals = _data.get(_vc, [])`,
-        `    _lbls = _data.get(_lc, _vals)`,
-        `    print(_j.dumps([[str(_vals[i]), str(_lbls[i])] for i in range(min(len(_vals),len(_lbls)))]))`,
-        `else:`,
-        `    print(_j.dumps([[str(x), str(x)] for x in _data]))`,
-      ].join('\n');
-    } else {
-      // Plain text: one value per line, or "value, label" per line
-      code = [
-        `import json as _j`,
-        `_lines = [ln.rstrip('\\n') for ln in open('${p}') if ln.strip()]`,
-        `_rows = [[p[0].strip(), p[1].strip() if len(p)>1 else p[0].strip()] for p in [ln.split(',',1) for ln in _lines]]`,
-        `print(_j.dumps(_rows))`,
-      ].join('\n');
-    }
-
-    try {
-      const result = await this._kernelBridge.exec(code);
-      return JSON.parse(result) as Array<[string, string]>;
-    } catch {
-      return [];
-    }
-  }
-
-  private async _buildSubmissionButtons(cfg: any): Promise<void> {
-    const btnContainer = document.createElement('div');
-    btnContainer.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px;`;
-
-    for (const [key, val] of Object.entries(cfg)) {
-      if (key === 'pass_value') {
-        this._registerPassValue(val);
-      } else if (key === 'fixed_value') {
-        this._registerFixedValue(val);
-      } else if (key === 'title') {
-        this._appendTitleEntry(val, this._dynFormEl);
-      } else if (key === 'progress_tracker') {
-        this._appendProgressTracker(this._dynFormEl);
-      } else if (key === 'line') {
-        const d = document.createElement('div');
-        d.style.cssText = dividerStyle();
-        this._dynFormEl.appendChild(d);
-      } else if (key === 'break') {
-        this._dynFormEl.appendChild(document.createElement('br'));
-      } else if (key === 'text') {
-        const d = document.createElement('div');
-        d.style.cssText = mutedTextStyle();
-        d.textContent = String(val);
-        this._dynFormEl.appendChild(d);
-      } else {
-        const btnCfg = (val === true) ? {} : (val as any);
-        const btn = document.createElement('button');
-        if (key === 'previous') {
-          btn.textContent = btnCfg.label ?? '◀ Prev';
-          btn.style.cssText = btnStyle() + `font-size:13px;`;
-          btn.addEventListener('click', () => this._onPrev());
-        } else if (key === 'next') {
-          const showIcon = btnCfg.icon !== false;
-          btn.textContent = (btnCfg.label ?? 'Skip') + (showIcon ? ' →' : '');
-          btn.style.cssText = btnStyle() + `font-size:13px;`;
-          btn.addEventListener('click', () => this._onSkip());
-        } else if (key === 'submit') {
-          const showIcon = btnCfg.icon !== false;
-          btn.textContent = (showIcon ? '✓ ' : '') + (btnCfg.label ?? 'Submit');
-          btn.style.cssText = btnStyle(true) + `font-size:13px;opacity:0.4;`;
-          btn.disabled = true;
-          btn.addEventListener('click', () => void this._onVerify());
-          this._submitBtns.push(btn);
-        }
-        btnContainer.appendChild(btn);
-      }
-    }
-
-    this._dynFormEl.appendChild(btnContainer);
-  }
-
-  private _buildAnnotationElement(config: any, container: HTMLElement): void {
-    if (!config || typeof config !== 'object') return;
-
-    const ac: typeof this._annotConfig = { tools: [] };
-
-    // Parse field configs
-    if (config.start_time) {
-      const c = typeof config.start_time === 'string' ? { column: config.start_time } : config.start_time;
-      const col = c.column ?? c.label ?? 'start_time';
-      ac.startTime = { col, sourceValue: c.source_value };
-      this._formValues[col] = null;
-    }
-    if (config.end_time) {
-      const c = typeof config.end_time === 'string' ? { column: config.end_time } : config.end_time;
-      const col = c.column ?? c.label ?? 'end_time';
-      ac.endTime = { col, sourceValue: c.source_value };
-      this._formValues[col] = null;
-    }
-    if (config.min_frequency) {
-      const c = typeof config.min_frequency === 'string' ? { column: config.min_frequency } : config.min_frequency;
-      const col = c.column ?? c.label ?? 'min_frequency';
-      ac.minFreq = { col };
-      this._formValues[col] = null;
-    }
-    if (config.max_frequency) {
-      const c = typeof config.max_frequency === 'string' ? { column: config.max_frequency } : config.max_frequency;
-      const col = c.column ?? c.label ?? 'max_frequency';
-      ac.maxFreq = { col };
-      this._formValues[col] = null;
-    }
-
-    // Parse tools
-    const rawTools = config.tools;
-    if (typeof rawTools === 'string') {
-      ac.tools = [rawTools];
-    } else if (Array.isArray(rawTools)) {
-      ac.tools = rawTools.filter((t: any) => typeof t === 'string');
-    } else {
-      ac.tools = ['time_select'];
-    }
-
-    this._annotConfig = ac;
-    this._activeTool = ac.tools[0] ?? '';
-    this._canvasContainer.style.cursor = 'crosshair';
-
-    // Build UI: tool selector (if multiple) + value inputs
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `display:flex;align-items:center;gap:12px;flex-wrap:wrap;`;
-
-    if (ac.tools.length > 1) {
-      const lbl = document.createElement('label');
-      lbl.style.cssText = formLabelStyle();
-      lbl.textContent = 'tool';
-      const sel = document.createElement('select');
-      sel.style.cssText = selectStyle() + `font-size:13px;`;
-      ac.tools.forEach(t => {
-        const o = document.createElement('option');
-        o.value = t;
-        o.textContent = t.replace(/_/g, ' ');
-        sel.appendChild(o);
-      });
-      sel.addEventListener('change', () => {
-        this._activeTool = sel.value;
-        this._renderFrame();
-      });
-      lbl.appendChild(sel);
-      wrapper.appendChild(lbl);
-    }
-
-    // Value inputs
-    const mkInput = (field: string, label: string, unit = ''): void => {
-      const lbl = document.createElement('label');
-      lbl.style.cssText = labelStyle() + `font-size:12px;gap:5px;`;
-      lbl.textContent = label;
-      const inp = document.createElement('input');
-      inp.type = 'number';
-      inp.step = field.includes('Freq') ? '1' : '0.01';
-      inp.style.cssText = inputStyle('80px') + `font-size:12px;`;
-      inp.readOnly = false;
-      inp.addEventListener('input', () => {
-        const v = inp.value === '' ? null : parseFloat(inp.value);
-        this._setAnnotValue(field, v);
-        this._renderFrame();
-      });
-      if (unit) {
-        const u = document.createElement('span');
-        u.textContent = unit;
-        u.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
-        lbl.append(inp, u);
-      } else {
-        lbl.appendChild(inp);
-      }
-      this._annotInputs.set(field, inp);
-      wrapper.appendChild(lbl);
-    };
-
-    if (ac.startTime) mkInput('startTime', config.start_time?.label ?? 'start', 's');
-    if (ac.endTime) mkInput('endTime', config.end_time?.label ?? 'end', 's');
-    if (ac.minFreq) mkInput('minFreq', config.min_frequency?.label ?? 'min freq', 'Hz');
-    if (ac.maxFreq) mkInput('maxFreq', config.max_frequency?.label ?? 'max freq', 'Hz');
-
-    container.appendChild(wrapper);
-  }
-
-  private _validateForm(): void {
-    const allSatisfied = this._requiredInputs.every(({ col, el }) => {
-      const section = el.closest('[data-form-section]') as HTMLElement | null;
-      if (section && section.style.display === 'none') return true;
-      const val = this._formValues[col];
-      return val !== null && val !== undefined && val !== '';
-    });
-    this._submitBtns.forEach(btn => {
-      btn.disabled = !allSatisfied;
-      btn.style.opacity = allSatisfied ? '1' : '0.4';
-    });
-  }
-
-  private _updateFormFromRow(row: Detection): void {
-    // Reset is_valid select and hide subforms
-    if (this._isValidEl) {
-      this._isValidEl.value = '';
-      this._formValues[this._isValidCol] = '';
-    }
-    if (this._yesFormEl) this._yesFormEl.style.display = 'none';
-    if (this._noFormEl) this._noFormEl.style.display = 'none';
-
-    // Reset all tracked inputs to empty (skip is_valid — already reset above)
-    for (const [col, el] of this._inputRefs) {
-      if (col === this._isValidCol) continue;
-      if (el instanceof HTMLInputElement && el.type === 'checkbox') {
-        el.checked = false;
-        this._formValues[col] = false;
-      } else {
-        (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value = '';
-        this._formValues[col] = '';
-      }
-    }
-
-    // Apply source_value fields
-    for (const { col, sourceCol } of this._sourceValueFields) {
-      const val = row[sourceCol];
-      if (val !== undefined) {
-        const el = this._inputRefs.get(col);
-        if (el) {
-          (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value = String(val);
-          this._formValues[col] = val;
-        }
-      }
-    }
-
-    // Apply annotation fields from row
-    if (this._annotConfig) {
-      const ac = this._annotConfig;
-      if (ac.startTime) {
-        const sv = ac.startTime.sourceValue;
-        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.start_time;
-        this._setAnnotValue('startTime', v);
-      }
-      if (ac.endTime) {
-        const sv = ac.endTime.sourceValue;
-        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.end_time;
-        this._setAnnotValue('endTime', v);
-      }
-      if (ac.minFreq) this._setAnnotValue('minFreq', null);
-      if (ac.maxFreq) this._setAnnotValue('maxFreq', null);
-    }
-
-    // Apply pass_value fields
-    for (const { sourceCol, col } of this._passValueDefs) {
-      this._formValues[col] = row[sourceCol] ?? null;
-    }
-
-    this._signalTimeDisplay.textContent = this._annotConfig
-      ? 'drag on spectrogram to annotate'
-      : '';
-
-    this._validateForm();
-  }
-
-  private _registerPassValue(config: any): void {
-    if (typeof config === 'string') {
-      this._passValueDefs.push({ sourceCol: config, col: config });
-      this._formValues[config] = null;
-    } else if (config && typeof config === 'object') {
-      const sourceCol = config.source_column;
-      const col = config.column ?? sourceCol;
-      this._passValueDefs.push({ sourceCol, col });
-      this._formValues[col] = null;
-    }
-  }
-
-  private _registerFixedValue(config: any): void {
-    if (!config || typeof config !== 'object') return;
-    const col = config.column;
-    if (!col) return;
-    this._formValues[col] = config.value ?? null;
-  }
-
-  private _collectFormValues(): Record<string, any> {
-    return { ...this._formValues };
-  }
-
-
-  private _appendTitleEntry(config: any, container: HTMLElement): void {
-    if (!config) return;
-    const isObj = typeof config === 'object';
-    const text = isObj ? (config.value ?? '') : String(config);
-    const withProgress = isObj && config.progress_tracker === true;
-
-    const d = document.createElement('div');
-    d.style.cssText = sectionTitleStyle() + `display:flex;align-items:baseline;`;
-
-    const span = document.createElement('span');
-    span.textContent = text;
-    d.appendChild(span);
-
-    if (withProgress) {
-      const spacer = document.createElement('span');
-      spacer.style.flex = '1';
-      d.append(spacer, this._createProgressEl());
-    }
-
-    container.appendChild(d);
-  }
-
-  private _appendProgressTracker(container: HTMLElement): void {
-    const d = document.createElement('div');
-    d.style.cssText = `width:100%;`;
-    d.appendChild(this._createProgressEl());
-    container.appendChild(d);
-  }
-
-  private _createProgressEl(): HTMLSpanElement {
-    const el = document.createElement('span');
-    el.style.cssText =
-      `font-size:11px;font-weight:400;letter-spacing:0;color:${COLORS.textMuted};` +
-      `font-family:ui-monospace,monospace;`;
-    this._progressEls.push(el);
-    this._updateProgress();
-    return el;
-  }
-
-  private _updateProgress(): void {
-    const total = this._rows.length;
-    const fileN = Math.min(this._fileCount, total);
-    const fileV = Math.min(this._fileValid, fileN);
-    const totalDone = fileN + this._sessionCount;
-    const parts: string[] = [];
-    if (this._sessionCount > 0) {
-      parts.push(`session ${this._sessionCount}/${total}`);
-    }
-    parts.push(`total ${totalDone}/${total}`);
-    if (this._isValidEl) {
-      const allValid = fileV + this._sessionValid;
-      const pct = totalDone > 0 ? Math.round((allValid / totalDone) * 100) : 0;
-      parts.push(`accuracy ${pct}%`);
-    }
-    const text = parts.join(' · ');
-    for (const el of this._progressEls) {
-      el.textContent = text;
-    }
-  }
-
-  private async _loadOutputFileProgress(): Promise<void> {
-    if (!this._outputPath) return;
-    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const p = esc(this._outputPath);
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-    const isValidCol = this._isValidEl ? esc(this._isValidCol) : '';
-    const yesVal = this._isValidEl ? esc(String(this._isValidYesVal)) : '';
-
-    let code: string;
-    if (ext === 'csv') {
-      code = [
-        `import csv, json, os`,
-        `_c = _v = 0`,
-        `if os.path.exists('${p}'):`,
-        `    with open('${p}') as f:`,
-        `        rows = list(csv.DictReader(f))`,
-        `        _c = len(rows)`,
-        ...(isValidCol ? [
-          `        _v = sum(1 for r in rows if r.get('${isValidCol}') == '${yesVal}')`,
-        ] : []),
-        `print(json.dumps({'count': _c, 'valid': _v}))`,
-      ].join('\n');
-    } else if (ext === 'parquet') {
-      code = [
-        `import json, os`,
-        `_c = _v = 0`,
-        `if os.path.exists('${p}'):`,
-        `    import pandas as pd`,
-        `    df = pd.read_parquet('${p}')`,
-        `    _c = len(df)`,
-        ...(isValidCol ? [
-          `    if '${isValidCol}' in df.columns: _v = int((df['${isValidCol}'].astype(str) == '${yesVal}').sum())`,
-        ] : []),
-        `print(json.dumps({'count': _c, 'valid': _v}))`,
-      ].join('\n');
-    } else {
-      code = [
-        `import json, os`,
-        `_c = _v = 0`,
-        `if os.path.exists('${p}'):`,
-        `    with open('${p}') as f:`,
-        `        rows = [json.loads(l) for l in f if l.strip()]`,
-        `        _c = len(rows)`,
-        ...(isValidCol ? [
-          `        _v = sum(1 for r in rows if str(r.get('${isValidCol}','')) == '${yesVal}')`,
-        ] : []),
-        `print(json.dumps({'count': _c, 'valid': _v}))`,
-      ].join('\n');
-    }
-
-    try {
-      const raw = await this._kernelBridge.exec(code);
-      const result = JSON.parse(raw) as { count: number; valid: number };
-      this._fileCount = result.count;
-      this._fileValid = result.valid;
-      this._updateProgress();
-    } catch {
-      // output file may not exist yet — that's fine
-    }
-  }
-
-  // ─── Reviewed state (duplicate_entries=false) ────────────────
-
-  private async _loadReviewedState(): Promise<void> {
-    if (this._duplicateEntries || !this._outputPath) return;
-    this._reviewedMap.clear();
-
-    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const p = esc(this._outputPath);
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-
-    let code: string;
-    if (ext === 'csv') {
-      code = `import csv,json,os\n_r=[]\nif os.path.exists('${p}'):\n with open('${p}') as f: _r=list(csv.DictReader(f))\nprint(json.dumps(_r))`;
-    } else if (ext === 'parquet') {
-      code = `import pandas as pd,json,os\n_r=[]\nif os.path.exists('${p}'):\n _r=pd.read_parquet('${p}').astype(str).to_dict('records')\nprint(json.dumps(_r))`;
-    } else {
-      code = `import json,os\n_r=[]\nif os.path.exists('${p}'):\n with open('${p}') as f: _r=[json.loads(l) for l in f if l.strip()]\nprint(json.dumps(_r))`;
-    }
-
-    let outputRows: Record<string, any>[];
-    try {
-      outputRows = JSON.parse(await this._kernelBridge.exec(code));
-    } catch { return; }
-
-    // Find matching key: pass_value that maps from 'id'
-    const idMapping = this._passValueDefs.find(pv => pv.sourceCol === 'id');
-    const outIdCol = idMapping?.col;
-
-    for (const outRow of outputRows) {
-      let inputId: number | null = null;
-      if (outIdCol && outRow[outIdCol] !== undefined) {
-        inputId = Number(outRow[outIdCol]);
-      } else {
-        // Fallback: match on start_time + end_time
-        const st = Number(outRow['start_time'] ?? NaN);
-        const et = Number(outRow['end_time'] ?? NaN);
-        if (!isNaN(st) && !isNaN(et)) {
-          const match = this._rows.find(r =>
-            Math.abs(r.start_time - st) < 0.01 && Math.abs(r.end_time - et) < 0.01);
-          if (match) inputId = match.id;
-        }
-      }
-      if (inputId !== null) {
-        this._reviewedMap.set(inputId, outRow);
-      }
-    }
-  }
-
-  private _isRowReviewed(row: Detection): boolean {
-    return !this._duplicateEntries && this._reviewedMap.has(row.id);
-  }
-
-  private _showReviewedResult(row: Detection): void {
-    this._dynFormEl.innerHTML = '';
-    this._submitBtns = [];
-    this._showingReviewedView = true;
-    const data = this._reviewedMap.get(row.id);
-    if (!data) return;
-
-    // Title
-    const title = document.createElement('div');
-    // Same as sectionTitleStyle but green for "REVIEWED" state
-    title.style.cssText =
-      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:${COLORS.green};`;
-    title.textContent = 'REVIEWED';
-    this._dynFormEl.appendChild(title);
-
-    // Key-value pairs
-    const container = document.createElement('div');
-    container.style.cssText =
-      `display:flex;flex-direction:column;gap:4px;padding:4px 0;`;
-    for (const [key, val] of Object.entries(data)) {
-      const line = document.createElement('div');
-      line.style.cssText =
-        `display:flex;gap:8px;font-size:12px;`;
-      const keyEl = document.createElement('span');
-      keyEl.style.cssText = `color:${COLORS.textMuted};min-width:140px;flex-shrink:0;`;
-      keyEl.textContent = key;
-      const valEl = document.createElement('span');
-      valEl.style.cssText = `color:${COLORS.textPrimary};`;
-      valEl.textContent = val != null && val !== '' ? String(val) : '—';
-      line.append(keyEl, valEl);
-      container.appendChild(line);
-    }
-    this._dynFormEl.appendChild(container);
-
-    // Divider + buttons
-    const divider = document.createElement('div');
-    divider.style.cssText = dividerStyle('4px -2px');
-    this._dynFormEl.appendChild(divider);
-
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-top:2px;`;
-
-    const prevBtn = document.createElement('button');
-    prevBtn.textContent = '◀ Prev';
-    prevBtn.style.cssText = btnStyle() + `font-size:12px;`;
-    prevBtn.disabled = this._selectedIdx === 0;
-    prevBtn.addEventListener('click', () => this._onPrev());
-
-    const nextBtn = document.createElement('button');
-    nextBtn.textContent = 'Next ▶';
-    nextBtn.style.cssText = btnStyle() + `font-size:12px;`;
-    nextBtn.disabled = this._selectedIdx >= this._filtered.length - 1;
-    nextBtn.addEventListener('click', () => this._onSkip());
-
-    const spacer = document.createElement('span');
-    spacer.style.flex = '1';
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.textContent = 'Delete this review';
-    deleteBtn.style.cssText =
-      btnStyle() + `font-size:12px;color:${COLORS.red};`;
-    deleteBtn.addEventListener('click', () => void this._onDeleteReview(row));
-
-    btnRow.append(prevBtn, nextBtn, spacer, deleteBtn);
-    this._dynFormEl.appendChild(btnRow);
-  }
-
-  private async _onDeleteReview(row: Detection): Promise<void> {
-    if (!confirm('Delete this review? This cannot be undone.')) return;
-
-    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const p = esc(this._outputPath);
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-
-    // Build match condition
-    const idMapping = this._passValueDefs.find(pv => pv.sourceCol === 'id');
-    const outIdCol = idMapping?.col;
-    let matchExpr: string;
-    if (outIdCol) {
-      matchExpr = `str(r.get('${esc(outIdCol)}','')) == '${row.id}'`;
-    } else {
-      matchExpr = `abs(float(r.get('start_time',0))-${row.start_time})<0.01 and abs(float(r.get('end_time',0))-${row.end_time})<0.01`;
-    }
-
-    let code: string;
-    if (ext === 'csv') {
-      code = [
-        `import csv,os`,
-        `_rows=list(csv.DictReader(open('${p}')))`,
-        `_keep=[r for r in _rows if not (${matchExpr})]`,
-        `with open('${p}','w',newline='') as f:`,
-        `  if _keep:`,
-        `    w=csv.DictWriter(f,fieldnames=_keep[0].keys())`,
-        `    w.writeheader(); w.writerows(_keep)`,
-        `print('ok')`,
-      ].join('\n');
-    } else if (ext === 'parquet') {
-      code = [
-        `import pandas as pd`,
-        `df=pd.read_parquet('${p}')`,
-        `df=df[~df.apply(lambda r: ${matchExpr}, axis=1)]`,
-        `df.to_parquet('${p}',index=False)`,
-        `print('ok')`,
-      ].join('\n');
-    } else {
-      code = [
-        `import json`,
-        `_rows=[json.loads(l) for l in open('${p}') if l.strip()]`,
-        `_keep=[r for r in _rows if not (${matchExpr})]`,
-        `with open('${p}','w') as f:`,
-        `  for r in _keep: f.write(json.dumps(r)+'\\n')`,
-        `print('ok')`,
-      ].join('\n');
-    }
-
-    try {
-      await this._kernelBridge.exec(code);
-    } catch (e: any) {
-      this._setStatus(`❌ Delete failed: ${String(e.message ?? e)}`, true);
-      return;
-    }
-
-    this._reviewedMap.delete(row.id);
-    this._sessionCount = Math.max(0, this._sessionCount - 1);
-    this._fileCount = Math.max(0, this._fileCount - 1);
-    this._updateProgress();
-    this._renderTable();
-    // Rebuild the form and show it
-    await this._buildForm();
-    this._updateFormFromRow(row);
-    this._setStatus(`✓ Review deleted for clip ${row.id}`);
-
-    void this._kernelBridge.exec(
-      'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()'
-    ).catch(() => {});
-  }
 
   // ─── Table header ────────────────────────────────────────────
 
@@ -1680,9 +717,9 @@ class BioacousticWidget extends Widget {
 
     // Apply view mode filter
     if (this._viewMode === 'pending') {
-      rows = rows.filter(r => !this._reviewedMap.has(r.id));
+      rows = rows.filter(r => !this._form.getReviewedMap().has(r.id));
     } else if (this._viewMode === 'reviewed') {
-      rows = rows.filter(r => this._reviewedMap.has(r.id));
+      rows = rows.filter(r => this._form.getReviewedMap().has(r.id));
     }
 
     this._filtered = rows;
@@ -1700,7 +737,7 @@ class BioacousticWidget extends Widget {
     slice.forEach((row, i) => {
       const globalIdx = start + i;
       const isSelected = globalIdx === this._selectedIdx;
-      const reviewed = this._isRowReviewed(row);
+      const reviewed = this._form.isReviewed(row);
       const tr = document.createElement('tr');
       const baseBg = i % 2 === 0 ? COLORS.bgBase : COLORS.bgAltRow;
       tr.style.cssText =
@@ -1830,15 +867,12 @@ class BioacousticWidget extends Widget {
     this._infoCard.append(...cardChildren);
 
     this._renderTable();
-    if (this._isRowReviewed(row)) {
-      this._showReviewedResult(row);
-    } else if (this._showingReviewedView) {
-      // Rebuild form after showing a reviewed result view
-      this._showingReviewedView = false;
-      void this._buildForm().then(() => this._updateFormFromRow(row));
-    } else {
-      this._updateFormFromRow(row);
-    }
+    this._form.setSelectionInfo(filteredIdx, this._filtered.length);
+    this._form.updateFromRow(row);
+
+    // Update signal time display based on annotation state
+    this._signalTimeDisplay.textContent = this._form.getAnnotConfig()
+      ? 'drag on spectrogram to annotate' : '';
   }
 
   private _ensurePageShowsSelected(): void {
@@ -2115,35 +1149,21 @@ class BioacousticWidget extends Widget {
     return this._freqMin + frac * (this._freqMax - this._freqMin);
   }
 
-  private _setAnnotValue(field: string, val: number | null): void {
-    const ac = this._annotConfig;
-    if (!ac) return;
-    let col: string | undefined;
-    if (field === 'startTime') col = ac.startTime?.col;
-    else if (field === 'endTime') col = ac.endTime?.col;
-    else if (field === 'minFreq') col = ac.minFreq?.col;
-    else if (field === 'maxFreq') col = ac.maxFreq?.col;
-    if (!col) return;
-    this._formValues[col] = val;
-    const inp = this._annotInputs.get(field);
-    if (inp) inp.value = val != null ? val.toFixed(2) : '';
-    this._validateForm();
-  }
 
   private _onCanvasMouseDown(e: MouseEvent): void {
-    if (!this._annotConfig || !this._specBitmap || this._segDuration === 0) return;
+    if (!this._form.getAnnotConfig() || !this._specBitmap || this._segDuration === 0) return;
     const { cx, cy } = this._canvasXY(e);
-    const ac = this._annotConfig;
-    const tool = this._activeTool;
+    const ac = this._form.getAnnotConfig();
+    const tool = this._form.getActiveTool();
     const GRAB = 10;
 
     if (tool === 'time_select') {
       const t = this._xToTime(cx);
-      this._setAnnotValue('startTime', t);
+      this._form.setAnnotValue('startTime', t);
       this._annotDrag = { target: 'start' };
     } else if (tool === 'start_end_time_select') {
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
-      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
       const sx = st != null ? this._timeToX(st) : -Infinity;
       const ex = et != null ? this._timeToX(et) : Infinity;
       if (Math.abs(cx - sx) <= GRAB && Math.abs(cx - sx) <= Math.abs(cx - ex)) {
@@ -2151,18 +1171,18 @@ class BioacousticWidget extends Widget {
       } else if (Math.abs(cx - ex) <= GRAB) {
         this._annotDrag = { target: 'end' };
       } else if (cx < (sx + ex) / 2) {
-        this._setAnnotValue('startTime', this._xToTime(cx));
+        this._form.setAnnotValue('startTime', this._xToTime(cx));
         this._annotDrag = { target: 'start' };
       } else {
-        this._setAnnotValue('endTime', this._xToTime(cx));
+        this._form.setAnnotValue('endTime', this._xToTime(cx));
         this._annotDrag = { target: 'end' };
       }
     } else if (tool === 'bounding_box') {
       // Check if near an existing edge
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
-      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
-      const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
-      const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
+      const flo = ac.minFreq?.col ? this._form.getFormValue(ac.minFreq.col) : null;
+      const fhi = ac.maxFreq?.col ? this._form.getFormValue(ac.maxFreq.col) : null;
       if (st != null && et != null && flo != null && fhi != null) {
         const sx = this._timeToX(st), ex = this._timeToX(et);
         const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
@@ -2176,10 +1196,10 @@ class BioacousticWidget extends Widget {
       // Start new box — store anchor for the fixed corner
       const t = this._xToTime(cx);
       const f = this._yToFreq(cy);
-      this._setAnnotValue('startTime', t);
-      this._setAnnotValue('endTime', t);
-      this._setAnnotValue('minFreq', f);
-      this._setAnnotValue('maxFreq', f);
+      this._form.setAnnotValue('startTime', t);
+      this._form.setAnnotValue('endTime', t);
+      this._form.setAnnotValue('minFreq', f);
+      this._form.setAnnotValue('maxFreq', f);
       this._annotDrag = { target: 'box-corner', anchorTime: t, anchorFreq: f };
     }
 
@@ -2188,9 +1208,9 @@ class BioacousticWidget extends Widget {
   }
 
   private _onCanvasMouseMove(e: MouseEvent): void {
-    if (!this._annotConfig || !this._specBitmap || this._segDuration === 0) return;
+    if (!this._form.getAnnotConfig() || !this._specBitmap || this._segDuration === 0) return;
     const { cx, cy } = this._canvasXY(e);
-    const ac = this._annotConfig;
+    const ac = this._form.getAnnotConfig();
 
     if (!this._annotDrag) {
       // Update cursor based on proximity to handles
@@ -2205,39 +1225,39 @@ class BioacousticWidget extends Widget {
 
     if (tgt === 'start') {
       const endCol = ac.endTime?.col;
-      const endVal = endCol ? this._formValues[endCol] : Infinity;
-      if (this._activeTool === 'start_end_time_select' && endVal != null) {
-        this._setAnnotValue('startTime', Math.min(t, endVal));
+      const endVal = endCol ? this._form.getFormValue(endCol) : Infinity;
+      if (this._form.getActiveTool() === 'start_end_time_select' && endVal != null) {
+        this._form.setAnnotValue('startTime', Math.min(t, endVal));
       } else {
-        this._setAnnotValue('startTime', t);
+        this._form.setAnnotValue('startTime', t);
       }
     } else if (tgt === 'end') {
       const startCol = ac.startTime?.col;
-      const startVal = startCol ? this._formValues[startCol] : -Infinity;
-      if (startVal != null) this._setAnnotValue('endTime', Math.max(t, startVal));
+      const startVal = startCol ? this._form.getFormValue(startCol) : -Infinity;
+      if (startVal != null) this._form.setAnnotValue('endTime', Math.max(t, startVal));
     } else if (tgt === 'box-corner') {
       const at = this._annotDrag.anchorTime ?? t;
       const af = this._annotDrag.anchorFreq ?? f;
-      this._setAnnotValue('startTime', Math.min(at, t));
-      this._setAnnotValue('endTime', Math.max(at, t));
-      this._setAnnotValue('minFreq', Math.min(af, f));
-      this._setAnnotValue('maxFreq', Math.max(af, f));
+      this._form.setAnnotValue('startTime', Math.min(at, t));
+      this._form.setAnnotValue('endTime', Math.max(at, t));
+      this._form.setAnnotValue('minFreq', Math.min(af, f));
+      this._form.setAnnotValue('maxFreq', Math.max(af, f));
     } else if (tgt === 'box-left') {
       const endCol = ac.endTime?.col;
-      const endVal = endCol ? this._formValues[endCol] : Infinity;
-      if (endVal != null) this._setAnnotValue('startTime', Math.min(t, endVal));
+      const endVal = endCol ? this._form.getFormValue(endCol) : Infinity;
+      if (endVal != null) this._form.setAnnotValue('startTime', Math.min(t, endVal));
     } else if (tgt === 'box-right') {
       const startCol = ac.startTime?.col;
-      const startVal = startCol ? this._formValues[startCol] : -Infinity;
-      if (startVal != null) this._setAnnotValue('endTime', Math.max(t, startVal));
+      const startVal = startCol ? this._form.getFormValue(startCol) : -Infinity;
+      if (startVal != null) this._form.setAnnotValue('endTime', Math.max(t, startVal));
     } else if (tgt === 'box-top') {
       const loCol = ac.minFreq?.col;
-      const loVal = loCol ? this._formValues[loCol] : 0;
-      if (loVal != null) this._setAnnotValue('maxFreq', Math.max(f, loVal));
+      const loVal = loCol ? this._form.getFormValue(loCol) : 0;
+      if (loVal != null) this._form.setAnnotValue('maxFreq', Math.max(f, loVal));
     } else if (tgt === 'box-bottom') {
       const hiCol = ac.maxFreq?.col;
-      const hiVal = hiCol ? this._formValues[hiCol] : Infinity;
-      if (hiVal != null) this._setAnnotValue('minFreq', Math.min(f, hiVal));
+      const hiVal = hiCol ? this._form.getFormValue(hiCol) : Infinity;
+      if (hiVal != null) this._form.setAnnotValue('minFreq', Math.min(f, hiVal));
     }
 
     this._renderFrame();
@@ -2249,30 +1269,30 @@ class BioacousticWidget extends Widget {
   }
 
   private _updateAnnotCursor(cx: number, cy: number): void {
-    const ac = this._annotConfig;
+    const ac = this._form.getAnnotConfig();
     if (!ac) return;
     const GRAB = 10;
-    const tool = this._activeTool;
+    const tool = this._form.getActiveTool();
 
     if (tool === 'time_select') {
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
       if (st != null && Math.abs(cx - this._timeToX(st)) <= GRAB) {
         this._canvasContainer.style.cursor = 'ew-resize';
         return;
       }
     } else if (tool === 'start_end_time_select') {
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
-      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
       if ((st != null && Math.abs(cx - this._timeToX(st)) <= GRAB) ||
           (et != null && Math.abs(cx - this._timeToX(et)) <= GRAB)) {
         this._canvasContainer.style.cursor = 'ew-resize';
         return;
       }
     } else if (tool === 'bounding_box') {
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
-      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
-      const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
-      const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
+      const flo = ac.minFreq?.col ? this._form.getFormValue(ac.minFreq.col) : null;
+      const fhi = ac.maxFreq?.col ? this._form.getFormValue(ac.maxFreq.col) : null;
       if (st != null && et != null && flo != null && fhi != null) {
         const sx = this._timeToX(st), ex = this._timeToX(et);
         const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
@@ -2290,26 +1310,26 @@ class BioacousticWidget extends Widget {
   }
 
   private _updateAnnotDisplay(): void {
-    const ac = this._annotConfig;
+    const ac = this._form.getAnnotConfig();
     if (!ac) return;
     const parts: string[] = [];
-    const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
-    const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+    const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+    const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
     if (st != null) parts.push(fmtTime(st));
     if (et != null) parts.push(`– ${fmtTime(et)}`);
-    const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
-    const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+    const flo = ac.minFreq?.col ? this._form.getFormValue(ac.minFreq.col) : null;
+    const fhi = ac.maxFreq?.col ? this._form.getFormValue(ac.maxFreq.col) : null;
     if (flo != null && fhi != null) parts.push(`${Math.round(flo)}–${Math.round(fhi)} Hz`);
     this._signalTimeDisplay.textContent = parts.length ? `⏱ ${parts.join(' ')}` : '';
   }
 
   private _renderAnnotation(ctx: CanvasRenderingContext2D, W: number, H: number): void {
-    const ac = this._annotConfig;
+    const ac = this._form.getAnnotConfig();
     if (!ac || this._segDuration === 0) return;
-    const tool = this._activeTool;
+    const tool = this._form.getActiveTool();
 
     if (tool === 'time_select') {
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
       if (st == null) return;
       const x = this._timeToX(st);
       ctx.strokeStyle = 'rgba(137,180,250,0.85)';
@@ -2319,8 +1339,8 @@ class BioacousticWidget extends Widget {
       ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10);
       ctx.closePath(); ctx.fill();
     } else if (tool === 'start_end_time_select') {
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
-      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
       if (st != null && et != null) {
         const sx = this._timeToX(st), ex = this._timeToX(et);
         ctx.fillStyle = 'rgba(137,180,250,0.08)';
@@ -2343,10 +1363,10 @@ class BioacousticWidget extends Widget {
         ctx.closePath(); ctx.fill();
       }
     } else if (tool === 'bounding_box') {
-      const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
-      const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
-      const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
-      const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
+      const flo = ac.minFreq?.col ? this._form.getFormValue(ac.minFreq.col) : null;
+      const fhi = ac.maxFreq?.col ? this._form.getFormValue(ac.maxFreq.col) : null;
       if (st == null || et == null || flo == null || fhi == null) return;
       const sx = this._timeToX(st), ex = this._timeToX(et);
       const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
@@ -2359,93 +1379,6 @@ class BioacousticWidget extends Widget {
         ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
       }
     }
-  }
-
-  // ─── Form actions ────────────────────────────────────────────
-
-  private async _onVerify(): Promise<void> {
-    const row = this._filtered[this._selectedIdx];
-    if (!row || !this._outputPath) return;
-
-    const values = this._collectFormValues();
-    const code = this._buildOutputCode(values);
-    const verb = this._predictionCol ? 'Verified' : 'Annotated';
-    try {
-      await this._kernelBridge.exec(code);
-      this._setStatus(`✓ ${verb} clip ${row.id} → ${this._outputPath}`);
-    } catch (e: any) {
-      this._setStatus(`❌ Write failed: ${String(e.message ?? e)}`, true);
-      return;
-    }
-    this._sessionCount++;
-    if (this._isValidEl && this._formValues[this._isValidCol] === String(this._isValidYesVal)) {
-      this._sessionValid++;
-    }
-    // Track as reviewed
-    if (!this._duplicateEntries) {
-      this._reviewedMap.set(row.id, { ...values });
-    }
-    this._updateProgress();
-    // Invalidate Python-side output cache
-    void this._kernelBridge.exec('if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()').catch(() => {});
-    this._onSkip();
-  }
-
-  private _buildOutputCode(values: Record<string, any>): string {
-    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const outPath = esc(this._outputPath);
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-
-    const mkdirLine = `import os as _os; _d=_os.path.dirname('${outPath}');\nif _d: _os.makedirs(_d, exist_ok=True)`;
-
-    const cols = Object.keys(values);
-    const pyRepr = (val: any): string => {
-      if (val === null || val === undefined) return 'None';
-      if (typeof val === 'boolean') return val ? 'True' : 'False';
-      if (typeof val === 'number') return String(val);
-      return `'${esc(String(val)).replace(/\n/g, ' ')}'`;
-    };
-    const rowDict = `{\n${cols.map(c => `  '${c}': ${pyRepr(values[c])}`).join(',\n')}\n}`;
-
-    if (ext === 'csv') {
-      const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
-      return [
-        mkdirLine,
-        `import csv as _csv, os as _os`,
-        `_cols = ${colsPy}`,
-        `_row  = ${rowDict}`,
-        `_exists = _os.path.exists('${outPath}')`,
-        `with open('${outPath}', 'a', newline='') as _f:`,
-        `  _w = _csv.DictWriter(_f, fieldnames=_cols)`,
-        `  if not _exists: _w.writeheader()`,
-        `  _w.writerow(_row)`,
-        `print('ok')`,
-      ].join('\n');
-    }
-
-    if (ext === 'parquet') {
-      return [
-        mkdirLine,
-        `import pandas as _pd, os as _os`,
-        `_row  = ${rowDict}`,
-        `_new  = _pd.DataFrame([_row])`,
-        `if _os.path.exists('${outPath}'):`,
-        `  _existing = _pd.read_parquet('${outPath}')`,
-        `  _pd.concat([_existing, _new], ignore_index=True).to_parquet('${outPath}', index=False)`,
-        `else:`,
-        `  _new.to_parquet('${outPath}', index=False)`,
-        `print('ok')`,
-      ].join('\n');
-    }
-
-    return [
-      mkdirLine,
-      `import json as _json`,
-      `_row  = ${rowDict}`,
-      `with open('${outPath}', 'a') as _f:`,
-      `  _f.write(_json.dumps(_row) + '\\n')`,
-      `print('ok')`,
-    ].join('\n');
   }
 
   private _onPrev(): void {
