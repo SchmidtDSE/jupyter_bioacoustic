@@ -256,7 +256,20 @@ The player section owns the spectrogram canvas, playback controls, and annotatio
 
 **Commit:** `refactor: extract Player section (Step 2)`
 
-### Step 3: Extract `ClipTable`
+### Step 3: Extract `ClipTable` ✅ COMPLETE
+
+**Notes:**
+- Created `src/sections/ClipTable.ts` (480 lines). Owns filter bar, table, pagination, view mode toggle, refresh button.
+- ClipTable takes FormPanel ref (for reviewed map in view mode filter + row styling).
+- ClipTable.setData() configures columns and triggers initial render.
+- Emits `rowSelected({row, filteredIdx})` on click.
+- Public: `selectIndex(idx)`, `ensurePageShowsSelected()`, `refresh()`, `filtered`, `selectedIdx`, `rows`.
+- plugin.ts: 800 → 405 lines. Removed all table/filter/pagination state, DOM refs, and methods.
+- `_selectRow` is now purely orchestration: updates ClipTable highlight, builds info card, calls Form + Player.
+- `_onPrev/_onSkip` use `this._table.selectedIdx` and `this._table.filtered`.
+- `_configureFormForMode`, `_rebuildTableHeader`, `_parseFilters`, `_applyFilter`, `_applyFilterAndSort`, `_renderTable`, `_ensurePageShowsSelected` all removed.
+
+**Commit:** `refactor: extract ClipTable section (Step 3)`
 
 Table rendering, filtering, sorting, pagination.
 
