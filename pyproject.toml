@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jupyter-bioacoustic"
-version = "0.1.2"
+version = "0.1.3"
 description = "JupyterLab bioacoustic audio review plugin"
 requires-python = ">=3.9"
 dependencies = [
@@ -19,6 +19,12 @@ dependencies = [
 
 [tool.hatch.build.targets.wheel]
 artifacts = ["jupyter_bioacoustic/labextension"]
+
+# Install pre-built labextension into JupyterLab's shared data directory
+# so `pip install` auto-registers it (no `develop.py` step needed).
+[tool.hatch.build.targets.wheel.shared-data]
+"jupyter_bioacoustic/labextension" = "share/jupyter/labextensions/jupyter-bioacoustic"
+"install.json" = "share/jupyter/labextensions/jupyter-bioacoustic/install.json"
 
 # --- pixi ---
 
