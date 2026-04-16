@@ -220,7 +220,7 @@ The form logic is the largest subsystem (~1000 lines of builder/state methods). 
 
 **Commit:** `refactor: wire FormPanel into plugin.ts (Step 1b)`
 
-### Step 2: Extract `Player`
+### Step 2: Extract `Player` ✅ COMPLETE
 
 The player section owns the spectrogram canvas, playback controls, and annotation mouse handlers.
 
@@ -240,9 +240,21 @@ The player section owns the spectrogram canvas, playback controls, and annotatio
      - `statusChanged: Signal<Player, { message: string; error: boolean }>` — for header status line
 2. Inject `KernelBridge` for Python calls.
 
-**Test:** build, refresh. Playback, spectrogram rendering, annotation tools, capture button all work.
+**Notes:**
+- Created `src/sections/Player.ts` (815 lines). Player owns: spectrogram canvas, playback controls, audio element, annotation canvas mouse handlers, capture button.
+- Player takes FormPanel reference in constructor for reading annotation config/values and calling setAnnotValue.
+- Player builds its own DOM in `_buildUI()` — all 4 sub-elements (controls bar, canvas container, playback bar, audio) use `display:contents` wrapper.
+- Player.attach()/detach() manage the ResizeObserver lifecycle, called from Widget onAfterAttach/onBeforeDetach.
+- Player.loadRow(row) replaces the old _selectRow→_loadAudio flow for audio loading.
+- Player.signalTimeDisplay getter lets the orchestrator update annotation hint text.
+- Player emits statusChanged signal for header status messages.
+- plugin.ts: 1522 → 800 lines (~720 removed). Removed _audioPath, _audioCol, _captureLabel, _captureDir, _specBitmap, _seg*, _detection*, _bufferSec, _playing, _rafId, _resizeObserver, _resizeTimer, _sampleRate, _freqMin, _freqMax, _annotDrag, and all player/canvas DOM refs. Removed all player methods.
+- _onPrev/_onSkip updated to use this._player.loadRow().
+- Info card prev/next buttons simplified to call _onPrev/_onSkip directly.
 
-**Commit:** `refactor: extract Player section`
+**Test needed:** build on Mac, full test — playback, annotation tools (all 3 types), capture, buffer/start/end updates.
+
+**Commit:** `refactor: extract Player section (Step 2)`
 
 ### Step 3: Extract `ClipTable`
 
