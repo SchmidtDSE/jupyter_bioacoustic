@@ -131,7 +131,7 @@ Each step ends with **`pixi run build`** + **hard browser refresh** + **manual t
 
 **Commit:** `refactor: extract types, util, kernel helper`
 
-### Step 1: Extract `FormPanel` (biggest win, self-contained)
+### Step 1: Extract `FormPanel` (biggest win, self-contained) — IN PROGRESS
 
 The form logic is the largest subsystem (~1000 lines of builder/state methods). It already has a clean boundary: takes a form config + current row, emits `submitted`.
 
@@ -157,7 +157,53 @@ The form logic is the largest subsystem (~1000 lines of builder/state methods). 
 2. The FormPanel needs a reference to the `KernelBridge` (for loadSelectItemsFromFile, output writes, reviewed state loading). Inject via constructor.
 3. Update `plugin.ts`: remove the moved fields/methods, replace with `this._form = new FormPanel(kernel)`, connect signals, call `this._form.setConfig(...)` in init, call `this._form.updateFromRow(row)` when selecting a row, etc.
 
-**Test:** build, refresh. Full form workflow must work — review submit, annotation tools, progress tracker, reviewed-view with delete, view mode filter.
+**Status: Step 1a DONE — FormPanel.ts created and compiles (631 lines). Step 1b TODO — wire into plugin.ts.**
+
+**Step 1a notes:**
+- Created `src/sections/FormPanel.ts` (631 lines). It uses Lumino `Signal` for all cross-section communication.
+- FormPanel owns: form config, form values, form DOM (dynFormEl), all input building, select item loading, submission buttons, annotation tool UI (config + inputs + tool dropdown), progress tracker, reviewed map + reviewed-view + delete, output file writing.
+- Signals emitted: `submitted`, `prevRequested`, `nextRequested`, `reviewDeleted`, `annotationChanged`, `activeToolChanged`, `statusChanged`.
+- Public API: `setContext({...})`, `setSelectionInfo(idx, len)`, `build()`, `updateFromRow(row)`, `setAnnotValue(field, val)`, `getAnnotConfig()`, `getActiveTool()`, `getFormValue(col)`, `getReviewedMap()`, `isReviewed(row)`, `loadOutputFileProgress()`, `loadReviewedState()`.
+- `_setAnnotValueInternal(field, val, emit)` avoids circular updates: Player calls `setAnnotValue()` which passes `emit=false`; form input handler passes `emit=true`.
+- `_currentRow` field tracks the row that `_applyRow` was last called with so `_onVerify` can reference it.
+- Uses `escPy()` from `util.ts` instead of inline escape functions.
+
+**Step 1b — what remains:**
+1. Import FormPanel in plugin.ts
+2. Remove all form-related fields and methods from BioacousticWidget:
+   - Fields: `_formConfig`, `_formValues`, `_isValidEl`, `_isValidYesVal`, `_isValidNoVal`, `_isValidCol`, `_yesFormEl`, `_noFormEl`, `_submitBtns`, `_requiredInputs`, `_inputRefs`, `_sourceValueFields`, `_passValueDefs`, `_sessionCount`, `_sessionValid`, `_fileCount`, `_fileValid`, `_progressEls`, `_formSection`, `_dynFormEl`, `_reviewedMap`, `_showingReviewedView`, `_annotConfig`, `_activeTool`, `_annotInputs`
+   - Methods: `_buildForm`, `_buildFormSection`, `_buildInputElement`, `_loadSelectItems`, `_loadSelectItemsFromFile`, `_buildSubmissionButtons`, `_buildAnnotationElement`, `_validateForm`, `_updateFormFromRow`, `_registerPassValue`, `_registerFixedValue`, `_collectFormValues`, `_appendTitleEntry`, `_appendProgressTracker`, `_createProgressEl`, `_updateProgress`, `_loadOutputFileProgress`, `_loadReviewedState`, `_isRowReviewed`, `_showReviewedResult`, `_onDeleteReview`, `_setAnnotValue`, `_onVerify`, `_buildOutputCode`
+3. In `_buildUI()`:
+   - Replace the form section DOM creation with `this._form = new FormPanel(this._kernelBridge); this.node.append(..., this._form.element);`
+4. In `_init()`:
+   - Replace `this._formConfig = ...` with `this._form.setContext({...})`
+   - Replace `await this._buildForm()` with `await this._form.build()`
+   - Replace `await this._loadOutputFileProgress()` with `await this._form.loadOutputFileProgress()`
+   - Replace `await this._loadReviewedState()` with `await this._form.loadReviewedState()`
+   - Remove the viewMode/reviewed init code and instead query `this._form.getReviewedMap().size`
+5. In `_selectRow()`:
+   - Replace `this._updateFormFromRow(row)` / `this._showReviewedResult(row)` / `this._showingReviewedView` logic with `this._form.setSelectionInfo(idx, len); this._form.updateFromRow(row);`
+6. In canvas mouse handlers (`_onCanvasMouseDown`, `_onCanvasMouseMove`, etc.):
+   - Replace `this._annotConfig` with `this._form.getAnnotConfig()`
+   - Replace `this._activeTool` with `this._form.getActiveTool()`
+   - Replace `this._setAnnotValue(field, val)` with `this._form.setAnnotValue(field, val)`
+   - Replace `this._formValues[col]` with `this._form.getFormValue(col)`
+7. In `_renderAnnotation()`:
+   - Same substitutions as canvas handlers
+8. Wire signals in constructor or init:
+   - `this._form.submitted.connect(() => this._onSkip())`
+   - `this._form.prevRequested.connect(() => this._onPrev())`
+   - `this._form.nextRequested.connect(() => this._onSkip())`
+   - `this._form.reviewDeleted.connect(() => this._renderTable())`
+   - `this._form.annotationChanged.connect(() => this._renderFrame())`
+   - `this._form.activeToolChanged.connect((_, tool) => { this._canvasContainer.style.cursor = tool ? 'crosshair' : 'default'; this._renderFrame(); })`
+   - `this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error))`
+9. Remove `_isRowReviewed` usage in `_renderTable` — query `this._form.isReviewed(row)` instead
+10. Remove `_signalTimeDisplay.textContent = ...` from the old `_updateFormFromRow` (now in FormPanel via signal) — actually FormPanel doesn't have access to `_signalTimeDisplay`. Either:
+    - Emit a signal with the annotation status text, or
+    - The orchestrator updates it based on `getAnnotConfig()` after `updateFromRow`
+
+**Test:** build, refresh. Full form workflow must work.
 
 **Commit:** `refactor: extract FormPanel section`
 
