@@ -317,7 +317,29 @@ Small, mostly-presentational:
 
 **Commit:** `refactor: extract Header and InfoCard sections`
 
-### Step 5: Plugin.ts cleanup
+### Step 5: Plugin.ts cleanup ✅ COMPLETE (folded into Steps 3-4)
+
+plugin.ts is 329 lines — pure orchestrator. No further cleanup needed.
+
+### REFACTOR COMPLETE
+
+Final file structure:
+```
+src/
+├── index.ts            (2)    plugin entry
+├── plugin.ts         (329)    orchestrator — header, init, signal wiring
+├── styles.ts         (138)    colors + CSS helpers
+├── types.ts           (50)    shared interfaces
+├── kernel.ts          (39)    KernelBridge
+├── util.ts            (18)    fmtTime, escPy
+└── sections/
+    ├── ClipTable.ts  (480)    filter, table, pagination, view mode
+    ├── Player.ts     (815)    spectrogram, playback, annotation, capture
+    ├── FormPanel.ts (1231)    form building, progress, reviewed state, output
+    └── InfoCard.ts    (96)    selected row info + prev/next
+```
+
+### Step 5 (original): Plugin.ts cleanup
 
 At this point `plugin.ts` should just contain:
 - The `BioacousticWidget` class extending `Widget`
