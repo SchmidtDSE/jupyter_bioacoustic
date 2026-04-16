@@ -131,7 +131,7 @@ Each step ends with **`pixi run build`** + **hard browser refresh** + **manual t
 
 **Commit:** `refactor: extract types, util, kernel helper`
 
-### Step 1: Extract `FormPanel` (biggest win, self-contained) — IN PROGRESS
+### Step 1: Extract `FormPanel` (biggest win, self-contained) ✅ COMPLETE
 
 The form logic is the largest subsystem (~1000 lines of builder/state methods). It already has a clean boundary: takes a form config + current row, emits `submitted`.
 
@@ -203,9 +203,22 @@ The form logic is the largest subsystem (~1000 lines of builder/state methods). 
     - Emit a signal with the annotation status text, or
     - The orchestrator updates it based on `getAnnotConfig()` after `updateFromRow`
 
-**Test:** build, refresh. Full form workflow must work.
+**Step 1b DONE — wired FormPanel into plugin.ts.**
 
-**Commit:** `refactor: extract FormPanel section`
+**Step 1b notes:**
+- Removed ~1070 lines from plugin.ts (2589 → 1522). FormPanel.ts is 1231 lines.
+- Removed state fields: `_formConfig`, `_formValues`, `_isValidEl`, `_isValidYesVal`, `_isValidNoVal`, `_isValidCol`, `_yesFormEl`, `_noFormEl`, `_submitBtns`, `_requiredInputs`, `_inputRefs`, `_sourceValueFields`, `_passValueDefs`, `_sessionCount`, `_sessionValid`, `_fileCount`, `_fileValid`, `_progressEls`, `_formSection`, `_dynFormEl`, `_reviewedMap`, `_showingReviewedView`, `_annotConfig`, `_activeTool`, `_annotInputs`.
+- Removed methods: `_buildForm`, `_buildFormSection`, `_buildInputElement`, `_loadSelectItems`, `_loadSelectItemsFromFile`, `_buildSubmissionButtons`, `_buildAnnotationElement`, `_validateForm`, `_updateFormFromRow`, `_registerPassValue`, `_registerFixedValue`, `_collectFormValues`, `_appendTitleEntry`, `_appendProgressTracker`, `_createProgressEl`, `_updateProgress`, `_loadOutputFileProgress`, `_loadReviewedState`, `_isRowReviewed`, `_showReviewedResult`, `_onDeleteReview`, `_setAnnotValue`, `_onVerify`, `_buildOutputCode`.
+- Canvas handlers now call `this._form.getAnnotConfig()`, `this._form.getActiveTool()`, `this._form.setAnnotValue()`, `this._form.getFormValue()`.
+- `_selectRow` now calls `this._form.setSelectionInfo(idx, len)` + `this._form.updateFromRow(row)`.
+- Title mode (Reviewer vs Annotator) now set in `_init()` not in `_buildForm`.
+- Signals wired in `_buildUI()`: submitted→onSkip, prevRequested→onPrev, nextRequested→onSkip, reviewDeleted→renderTable, annotationChanged→renderFrame, activeToolChanged→cursor+renderFrame, statusChanged→setStatus.
+- View mode filter in `_applyFilterAndSort` now uses `this._form.getReviewedMap()`.
+- `_signalTimeDisplay` text update moved to `_selectRow` after `updateFromRow`.
+
+**Test needed:** build on Mac, refresh, verify full form workflow.
+
+**Commit:** `refactor: wire FormPanel into plugin.ts (Step 1b)`
 
 ### Step 2: Extract `Player`
 
