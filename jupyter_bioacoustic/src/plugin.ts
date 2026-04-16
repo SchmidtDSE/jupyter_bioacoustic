@@ -11,6 +11,7 @@ import {
 } from './styles';
 import { Detection } from './types';
 import { KernelBridge } from './kernel';
+import { readKernelVars } from './python';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
@@ -134,24 +135,7 @@ class BioacousticWidget extends Widget {
     this._setStatus('Reading kernel variables…');
     let raw: string;
     try {
-      raw = await this._kernelBridge.exec(
-        `import json as _j\n` +
-        `print(_j.dumps({\n` +
-        `  'data': _BA_DATA,\n` +
-        `  'audio_path': _BA_AUDIO_PATH,\n` +
-        `  'audio_col': _BA_AUDIO_COL,\n` +
-        `  'category_path': _BA_CATEGORY_PATH,\n` +
-        `  'output': _BA_OUTPUT,\n` +
-        `  'prediction_col': _BA_PREDICTION_COL,\n` +
-        `  'display_cols': _BA_DISPLAY_COLS,\n` +
-        `  'data_cols': _BA_DATA_COLS,\n` +
-        `  'form_config': _BA_FORM_CONFIG,\n` +
-        `  'capture': _BA_CAPTURE,\n` +
-        `  'capture_dir': _BA_CAPTURE_DIR,\n` +
-        `  'duplicate_entries': _BA_DUPLICATE_ENTRIES,\n` +
-        `  'default_buffer': _BA_DEFAULT_BUFFER,\n` +
-        `}))`
-      );
+      raw = await this._kernelBridge.exec(readKernelVars());
     } catch (e: any) {
       this._setStatus(`❌ ${String(e.message ?? e)}`, true);
       return;
