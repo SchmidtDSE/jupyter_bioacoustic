@@ -25,23 +25,9 @@ import {
   cssSize,
   injectGlobalStyles,
 } from './styles';
-
-// ═══════════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════════
-
-interface Detection {
-  id: number;
-  start_time: number;
-  end_time: number;
-  [key: string]: any;
-}
-
-interface FilterClause {
-  col: string;
-  op: string;
-  val: string | number;
-}
+import { Detection, FilterClause } from './types';
+import { fmtTime } from './util';
+import { KernelBridge } from './kernel';
 
 // ═══════════════════════════════════════════════════════════════
 // BioacousticWidget
@@ -50,7 +36,7 @@ interface FilterClause {
 let _counter = 0;
 
 class BioacousticWidget extends Widget {
-  private _tracker: INotebookTracker;
+  private _kernelBridge: KernelBridge;
 
   // ── Data state ─────────────────────────────────────────────
   private _rows: Detection[] = [];
@@ -162,7 +148,7 @@ class BioacousticWidget extends Widget {
 
   constructor(tracker: INotebookTracker) {
     super();
-    this._tracker = tracker;
+    this._kernelBridge = new KernelBridge(tracker);
     this.id = `jp-bioacoustic-${_counter++}`;
     this.title.label = 'Bioacoustic Reviewer';
     this.title.closable = true;
@@ -521,7 +507,7 @@ class BioacousticWidget extends Widget {
     this._setStatus('Reading kernel variables…');
     let raw: string;
     try {
-      raw = await this._execPython(
+      raw = await this._kernelBridge.exec(
         `import json as _j\n` +
         `print(_j.dumps({\n` +
         `  'data': _BA_DATA,\n` +
@@ -1027,7 +1013,7 @@ class BioacousticWidget extends Widget {
     }
 
     try {
-      const result = await this._execPython(code);
+      const result = await this._kernelBridge.exec(code);
       return JSON.parse(result) as Array<[string, string]>;
     } catch {
       return [];
@@ -1399,7 +1385,7 @@ class BioacousticWidget extends Widget {
     }
 
     try {
-      const raw = await this._execPython(code);
+      const raw = await this._kernelBridge.exec(code);
       const result = JSON.parse(raw) as { count: number; valid: number };
       this._fileCount = result.count;
       this._fileValid = result.valid;
@@ -1430,7 +1416,7 @@ class BioacousticWidget extends Widget {
 
     let outputRows: Record<string, any>[];
     try {
-      outputRows = JSON.parse(await this._execPython(code));
+      outputRows = JSON.parse(await this._kernelBridge.exec(code));
     } catch { return; }
 
     // Find matching key: pass_value that maps from 'id'
@@ -1577,7 +1563,7 @@ class BioacousticWidget extends Widget {
     }
 
     try {
-      await this._execPython(code);
+      await this._kernelBridge.exec(code);
     } catch (e: any) {
       this._setStatus(`❌ Delete failed: ${String(e.message ?? e)}`, true);
       return;
@@ -1593,7 +1579,7 @@ class BioacousticWidget extends Widget {
     this._updateFormFromRow(row);
     this._setStatus(`✓ Review deleted for clip ${row.id}`);
 
-    void this._execPython(
+    void this._kernelBridge.exec(
       'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()'
     ).catch(() => {});
   }
@@ -1788,7 +1774,7 @@ class BioacousticWidget extends Widget {
     const items: HTMLElement[] = [];
 
     items.push(mkChip(
-      `${this._fmtTime(row.start_time)} – ${this._fmtTime(row.end_time)}`,
+      `${fmtTime(row.start_time)} – ${fmtTime(row.end_time)}`,
       COLORS.textSubtle
     ));
 
@@ -1907,7 +1893,7 @@ class BioacousticWidget extends Widget {
 
     let result: { spec: string; wav: string; duration: number; sample_rate: number; freq_min: number; freq_max: number };
     try {
-      const raw = await this._execPython(this._buildPythonCode(audioPath, loadStart, loadDur));
+      const raw = await this._kernelBridge.exec(this._buildPythonCode(audioPath, loadStart, loadDur));
       result = JSON.parse(raw) as typeof result;
     } catch (e: any) {
       this._setStatus(`❌ ${String(e.message ?? e)}`, true);
@@ -1936,7 +1922,7 @@ class BioacousticWidget extends Widget {
 
     const fname = audioPath.split('/').pop() ?? audioPath;
     this._setStatus(
-      `✓ ${fname}  ${this._fmtTime(loadStart)}–${this._fmtTime(loadStart + result.duration)}`
+      `✓ ${fname}  ${fmtTime(loadStart)}–${fmtTime(loadStart + result.duration)}`
     );
   }
 
@@ -2065,7 +2051,7 @@ class BioacousticWidget extends Widget {
 
     const absNow = this._segLoadStart + this._audio.currentTime;
     const absEnd = this._segLoadStart + this._segDuration;
-    this._timeDisplay.textContent = `${this._fmtTime(absNow)} / ${this._fmtTime(absEnd)}`;
+    this._timeDisplay.textContent = `${fmtTime(absNow)} / ${fmtTime(absEnd)}`;
   }
 
   private _togglePlay(): void {
@@ -2309,8 +2295,8 @@ class BioacousticWidget extends Widget {
     const parts: string[] = [];
     const st = ac.startTime?.col ? this._formValues[ac.startTime.col] : null;
     const et = ac.endTime?.col ? this._formValues[ac.endTime.col] : null;
-    if (st != null) parts.push(this._fmtTime(st));
-    if (et != null) parts.push(`– ${this._fmtTime(et)}`);
+    if (st != null) parts.push(fmtTime(st));
+    if (et != null) parts.push(`– ${fmtTime(et)}`);
     const flo = ac.minFreq?.col ? this._formValues[ac.minFreq.col] : null;
     const fhi = ac.maxFreq?.col ? this._formValues[ac.maxFreq.col] : null;
     if (flo != null && fhi != null) parts.push(`${Math.round(flo)}–${Math.round(fhi)} Hz`);
@@ -2385,7 +2371,7 @@ class BioacousticWidget extends Widget {
     const code = this._buildOutputCode(values);
     const verb = this._predictionCol ? 'Verified' : 'Annotated';
     try {
-      await this._execPython(code);
+      await this._kernelBridge.exec(code);
       this._setStatus(`✓ ${verb} clip ${row.id} → ${this._outputPath}`);
     } catch (e: any) {
       this._setStatus(`❌ Write failed: ${String(e.message ?? e)}`, true);
@@ -2401,7 +2387,7 @@ class BioacousticWidget extends Widget {
     }
     this._updateProgress();
     // Invalidate Python-side output cache
-    void this._execPython('if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()').catch(() => {});
+    void this._kernelBridge.exec('if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()').catch(() => {});
     this._onSkip();
   }
 
@@ -2536,7 +2522,7 @@ class BioacousticWidget extends Widget {
     const b64 = dataUrl.split(',')[1];
     const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     try {
-      await this._execPython(
+      await this._kernelBridge.exec(
         `import base64 as _b64, os as _os\n` +
         `_p = '${esc(filename)}'\n` +
         `_d = _os.path.dirname(_p)\n` +
@@ -2553,30 +2539,6 @@ class BioacousticWidget extends Widget {
 
   // ─── Kernel helpers ──────────────────────────────────────────
 
-  private _kernel(): any {
-    return this._tracker.currentWidget?.sessionContext.session?.kernel ?? null;
-  }
-
-  private async _execPython(code: string): Promise<string> {
-    const kernel = this._kernel();
-    if (!kernel) throw new Error('No active kernel');
-    let out = '', err = '';
-    const future = kernel.requestExecute({ code });
-    future.onIOPub = (msg: any) => {
-      const t = msg.header.msg_type;
-      if (t === 'stream') {
-        if (msg.content?.name === 'stdout') out += msg.content.text as string;
-        if (msg.content?.name === 'stderr') err += msg.content.text as string;
-      } else if (t === 'error') {
-        const tb: string[] = msg.content?.traceback ?? [];
-        err += (msg.content?.ename ?? '') + ': ' + (msg.content?.evalue ?? '') +
-               '\n' + tb.join('\n');
-      }
-    };
-    await future.done;
-    if (!out.trim() && err) throw new Error(err.trim());
-    return out.trim();
-  }
 
   // ─── Utilities ───────────────────────────────────────────────
 
@@ -2585,14 +2547,6 @@ class BioacousticWidget extends Widget {
     this._statusEl.style.color = error ? COLORS.red : COLORS.green;
   }
 
-  private _fmtTime(s: number): string {
-    const sign = s < 0 ? '-' : '';
-    const abs  = Math.abs(s);
-    const m    = Math.floor(abs / 60);
-    const sec  = Math.floor(abs % 60).toString().padStart(2, '0');
-    const cs   = Math.floor((abs % 1) * 100).toString().padStart(2, '0');
-    return `${sign}${m}:${sec}.${cs}`;
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
