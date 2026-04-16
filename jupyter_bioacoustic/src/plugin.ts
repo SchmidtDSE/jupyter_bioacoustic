@@ -6,31 +6,15 @@ import { Widget } from '@lumino/widgets';
 
 import {
   COLORS,
-  DISPLAY_CHIP_COLORS,
-  inputStyle,
-  selectStyle,
-  labelStyle,
-  btnStyle,
-  barStyle,
   barBottomStyle,
-  barTopBottomStyle,
-  smallLabelStyle,
-  formLabelStyle,
-  sectionTitleStyle,
-  monoTextStyle,
-  mutedTextStyle,
-  formRowStyle,
-  dividerStyle,
-  fullWidthDividerStyle,
-  cssSize,
   injectGlobalStyles,
 } from './styles';
-import { Detection, FilterClause } from './types';
-import { fmtTime } from './util';
+import { Detection } from './types';
 import { KernelBridge } from './kernel';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
+import { InfoCard } from './sections/InfoCard';
 
 // ═══════════════════════════════════════════════════════════════
 // BioacousticWidget
@@ -48,10 +32,9 @@ class BioacousticWidget extends Widget {
   // ── DOM refs ────────────────────────────────────────────────
   private _titleEl!: HTMLSpanElement;
   private _statusEl!: HTMLSpanElement;
-  private _infoCard!: HTMLDivElement;
-
-  // ── Sections (extracted) ─────────────────────────────────────
+  // ── Sections ─────────────────────────────────────────────────
   private _table!: ClipTable;
+  private _infoCard!: InfoCard;
   private _player!: Player;
   private _form!: FormPanel;
 
@@ -91,18 +74,15 @@ class BioacousticWidget extends Widget {
 
     // ── Clip table (filter + table + pagination) ──────────────────
 
-    // ── Info card ────────────────────────────────────────────────
-    this._infoCard = document.createElement('div');
-    this._infoCard.style.cssText =
-      `display:flex;align-items:center;gap:10px;padding:6px 12px;` +
-      `background:${COLORS.bgMantle};border-bottom:1px solid ${COLORS.bgSurface0};flex-shrink:0;min-height:34px;`;
-    this._infoCard.innerHTML =
-      `<span style="font-size:12px;color:${COLORS.textMuted};font-style:italic;">No selection</span>`;
-
     // ── Sections ──────────────────────────────────────────────────
     this._form = new FormPanel(this._kernelBridge);
     this._player = new Player(this._kernelBridge, this._form);
     this._table = new ClipTable(this._form);
+    this._infoCard = new InfoCard();
+
+    // Wire InfoCard signals
+    this._infoCard.prevRequested.connect(() => this._onPrev());
+    this._infoCard.nextRequested.connect(() => this._onSkip());
 
     // Wire ClipTable signals
     this._table.rowSelected.connect((_, { row, filteredIdx }) => {
@@ -129,7 +109,7 @@ class BioacousticWidget extends Widget {
     this.node.append(
       header,
       this._table.element,
-      this._infoCard,
+      this._infoCard.element,
       this._player.element,
       this._form.element
     );
@@ -262,68 +242,12 @@ class BioacousticWidget extends Widget {
     const row = this._table.filtered[filteredIdx];
     if (!row) return;
 
-    // ── Info card ──
-    this._infoCard.innerHTML = '';
-
-    const sep = () => {
-      const s = document.createElement('span');
-      s.style.cssText = `color:${COLORS.bgSurface1};font-size:11px;flex-shrink:0;`;
-      s.textContent = '|';
-      return s;
-    };
-
-    const mkChip = (text: string, color: string) => {
-      const s = document.createElement('span');
-      s.style.cssText = `font-size:12px;color:${color};flex-shrink:0;`;
-      s.textContent = text;
-      return s;
-    };
-
-    const items: HTMLElement[] = [];
-
-    items.push(mkChip(
-      `${fmtTime(row.start_time)} – ${fmtTime(row.end_time)}`,
-      COLORS.textSubtle
-    ));
-
-    if (this._predictionCol && row[this._predictionCol] !== undefined) {
-      const nameSpan = document.createElement('span');
-      nameSpan.style.cssText = `font-size:13px;font-weight:600;color:${COLORS.textPrimary};flex-shrink:0;`;
-      nameSpan.textContent = String(row[this._predictionCol]);
-      items.unshift(nameSpan);
-    }
-
-    const colColors = DISPLAY_CHIP_COLORS;
-    this._displayCols.forEach((col, i) => {
-      if (row[col] === undefined) return;
-      const val = typeof row[col] === 'number' && !Number.isInteger(row[col])
-        ? (row[col] as number).toFixed(3)
-        : String(row[col]);
-      items.push(mkChip(`${col}: ${val}`, colColors[i % colColors.length]));
+    this._infoCard.render(row, {
+      predictionCol: this._predictionCol,
+      displayCols: this._displayCols,
+      filteredIdx,
+      filteredLength: this._table.filtered.length,
     });
-
-    const spacer = document.createElement('span');
-    spacer.style.flex = '1';
-
-    const prevBtn = document.createElement('button');
-    prevBtn.textContent = '◀ Prev';
-    prevBtn.style.cssText = btnStyle() + `font-size:11px;`;
-    prevBtn.disabled = filteredIdx === 0;
-    prevBtn.addEventListener('click', () => this._onPrev());
-
-    const nextBtn = document.createElement('button');
-    nextBtn.textContent = 'Next ▶';
-    nextBtn.style.cssText = btnStyle() + `font-size:11px;`;
-    nextBtn.disabled = filteredIdx >= this._table.filtered.length - 1;
-    nextBtn.addEventListener('click', () => this._onSkip());
-
-    const cardChildren: HTMLElement[] = [];
-    items.forEach((el, i) => {
-      cardChildren.push(el);
-      if (i < items.length - 1) cardChildren.push(sep());
-    });
-    cardChildren.push(spacer, prevBtn, nextBtn);
-    this._infoCard.append(...cardChildren);
 
     this._form.setSelectionInfo(filteredIdx, this._table.filtered.length);
     this._form.updateFromRow(row);

@@ -293,7 +293,19 @@ Table rendering, filtering, sorting, pagination.
 
 **Commit:** `refactor: extract ClipTable section`
 
-### Step 4: Extract `Header` and `InfoCard`
+### Step 4: Extract `InfoCard` ✅ COMPLETE
+
+**Notes:**
+- Created `src/sections/InfoCard.ts` (96 lines). Owns the selected-row info display + Prev/Next buttons.
+- Emits `prevRequested` and `nextRequested` signals.
+- `render(row, {predictionCol, displayCols, filteredIdx, filteredLength})` builds the card contents.
+- plugin.ts: 405 → 329 lines. `_selectRow` is now 15 lines — calls `_table.selectIndex`, `_infoCard.render`, `_form.updateFromRow`.
+- Cleaned up 15 unused style imports from plugin.ts (`inputStyle`, `selectStyle`, `DISPLAY_CHIP_COLORS`, `fmtTime`, `FilterClause`, etc.).
+- Header (title + status) kept inline in plugin.ts — only 10 lines, not worth a separate file.
+
+**Commit:** `refactor: extract InfoCard section (Step 4)`
+
+### Step 4 (original): Extract `Header` and `InfoCard`
 
 Small, mostly-presentational:
 
