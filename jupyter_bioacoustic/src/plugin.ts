@@ -4,6 +4,28 @@ import { INotebookTracker } from '@jupyterlab/notebook';
 import { Message } from '@lumino/messaging';
 import { Widget } from '@lumino/widgets';
 
+import {
+  COLORS,
+  DISPLAY_CHIP_COLORS,
+  inputStyle,
+  selectStyle,
+  labelStyle,
+  btnStyle,
+  barStyle,
+  barBottomStyle,
+  barTopBottomStyle,
+  smallLabelStyle,
+  formLabelStyle,
+  sectionTitleStyle,
+  monoTextStyle,
+  mutedTextStyle,
+  formRowStyle,
+  dividerStyle,
+  fullWidthDividerStyle,
+  cssSize,
+  injectGlobalStyles,
+} from './styles';
+
 // ═══════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════
@@ -20,32 +42,6 @@ interface FilterClause {
   op: string;
   val: string | number;
 }
-
-// ═══════════════════════════════════════════════════════════════
-// CSS helpers (module-level, shared across widget instances)
-// ═══════════════════════════════════════════════════════════════
-
-const inputStyle = (w = '80px') =>
-  `background:#313244;border:1px solid #45475a;border-radius:4px;color:#cdd6f4;` +
-  `padding:3px 6px;font-size:12px;width:${w};box-sizing:border-box;`;
-
-const selectStyle = () =>
-  `background:#313244;border:1px solid #45475a;border-radius:4px;color:#cdd6f4;` +
-  `padding:3px 5px;font-size:12px;`;
-
-const labelStyle = () =>
-  `display:flex;align-items:center;gap:5px;color:#a6adc8;font-size:11px;white-space:nowrap;`;
-
-const btnStyle = (primary = false) =>
-  primary
-    ? `background:#89b4fa;border:none;border-radius:4px;color:#1e1e2e;padding:4px 12px;` +
-      `font-size:12px;cursor:pointer;font-weight:700;`
-    : `background:#45475a;border:none;border-radius:4px;color:#cdd6f4;padding:4px 10px;` +
-      `font-size:12px;cursor:pointer;`;
-
-const barStyle = () =>
-  `display:flex;align-items:center;gap:8px;padding:6px 12px;` +
-  `background:#181825;flex-wrap:wrap;flex-shrink:0;`;
 
 // ═══════════════════════════════════════════════════════════════
 // BioacousticWidget
@@ -170,6 +166,7 @@ class BioacousticWidget extends Widget {
     this.id = `jp-bioacoustic-${_counter++}`;
     this.title.label = 'Bioacoustic Reviewer';
     this.title.closable = true;
+    injectGlobalStyles();
     this._buildUI();
   }
 
@@ -178,13 +175,13 @@ class BioacousticWidget extends Widget {
   private _buildUI(): void {
     this.node.style.cssText =
       `display:flex;flex-direction:column;width:100%;height:100%;` +
-      `background:#1e1e2e;color:#cdd6f4;` +
+      `background:${COLORS.bgBase};color:${COLORS.textPrimary};` +
       `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);` +
       `overflow:hidden;box-sizing:border-box;`;
 
     // ── Header ──────────────────────────────────────────────────
     const header = document.createElement('div');
-    header.style.cssText = barStyle() + `border-bottom:1px solid #313244;`;
+    header.style.cssText = barBottomStyle();
 
     this._titleEl = document.createElement('span');
     this._titleEl.textContent = 'Bioacoustic Reviewer';
@@ -192,21 +189,22 @@ class BioacousticWidget extends Widget {
 
     this._statusEl = document.createElement('span');
     this._statusEl.style.cssText =
-      `flex:1;text-align:right;font-size:11px;color:#a6e3a1;` +
+      `flex:1;text-align:right;font-size:11px;color:${COLORS.green};` +
       `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
     this._statusEl.textContent = 'Loading…';
     header.append(this._titleEl, this._statusEl);
 
     // ── Filter bar ───────────────────────────────────────────────
     const filterBar = document.createElement('div');
-    filterBar.style.cssText = barStyle() + `border-bottom:1px solid #313244;`;
+    filterBar.style.cssText = barBottomStyle();
 
     const filterLbl = document.createElement('span');
-    filterLbl.style.cssText = `color:#a6adc8;font-size:11px;white-space:nowrap;flex-shrink:0;`;
+    filterLbl.style.cssText = smallLabelStyle();
     filterLbl.textContent = 'Filter:';
 
     this._filterInput = document.createElement('input');
     this._filterInput.type = 'text';
+    this._filterInput.className = 'jp-BA-filter-input';
     this._filterInput.placeholder = `common_name = 'Barred owl' and confidence >= 0.5`;
     this._filterInput.style.cssText = inputStyle('340px');
     this._filterInput.addEventListener('keydown', e => {
@@ -270,13 +268,13 @@ class BioacousticWidget extends Widget {
     const tableWrap = document.createElement('div');
     tableWrap.style.cssText =
       `flex:0 0 auto;overflow-y:auto;max-height:175px;` +
-      `border-bottom:1px solid #313244;`;
+      `border-bottom:1px solid ${COLORS.bgSurface0};`;
 
     const table = document.createElement('table');
     table.style.cssText = `width:100%;border-collapse:collapse;font-size:12px;`;
 
     this._thead = document.createElement('thead');
-    this._thead.style.cssText = `background:#181825;position:sticky;top:0;z-index:1;`;
+    this._thead.style.cssText = `background:${COLORS.bgMantle};position:sticky;top:0;z-index:1;`;
 
     // Default cols — rebuilt in _configureFormForMode once mode is known
     this._tableCols = [
@@ -294,7 +292,7 @@ class BioacousticWidget extends Widget {
 
     // ── Pagination bar ───────────────────────────────────────────
     const pagBar = document.createElement('div');
-    pagBar.style.cssText = barStyle() + `border-bottom:1px solid #313244;gap:5px;`;
+    pagBar.style.cssText = barBottomStyle() + `gap:5px;`;
 
     const mkPagBtn = (label: string, action: () => void) => {
       const b = document.createElement('button');
@@ -329,10 +327,10 @@ class BioacousticWidget extends Widget {
     });
 
     this._pageInfo = document.createElement('span');
-    this._pageInfo.style.cssText = `font-size:11px;color:#a6adc8;white-space:nowrap;`;
+    this._pageInfo.style.cssText = `font-size:11px;color:${COLORS.textSubtle};white-space:nowrap;`;
 
     const rowsLbl = document.createElement('span');
-    rowsLbl.style.cssText = `font-size:11px;color:#a6adc8;margin-left:6px;white-space:nowrap;flex-shrink:0;`;
+    rowsLbl.style.cssText = smallLabelStyle() + `margin-left:6px;`;
     rowsLbl.textContent = 'Rows:';
 
     this._pageSizeSelect = document.createElement('select');
@@ -372,13 +370,13 @@ class BioacousticWidget extends Widget {
     this._infoCard = document.createElement('div');
     this._infoCard.style.cssText =
       `display:flex;align-items:center;gap:10px;padding:6px 12px;` +
-      `background:#181825;border-bottom:1px solid #313244;flex-shrink:0;min-height:34px;`;
+      `background:${COLORS.bgMantle};border-bottom:1px solid ${COLORS.bgSurface0};flex-shrink:0;min-height:34px;`;
     this._infoCard.innerHTML =
-      `<span style="font-size:12px;color:#6c7086;font-style:italic;">No selection</span>`;
+      `<span style="font-size:12px;color:${COLORS.textMuted};font-style:italic;">No selection</span>`;
 
     // ── Player controls ──────────────────────────────────────────
     const playerCtrls = document.createElement('div');
-    playerCtrls.style.cssText = barStyle() + `border-bottom:1px solid #313244;`;
+    playerCtrls.style.cssText = barBottomStyle();
 
     const mkNumLabel = (labelText: string, def: string, w = '65px'): HTMLInputElement => {
       const lbl = document.createElement('label');
@@ -418,7 +416,7 @@ class BioacousticWidget extends Widget {
 
     const ctrNote = document.createElement('span');
     ctrNote.textContent = '← update after changes';
-    ctrNote.style.cssText = `font-size:10px;color:#6c7086;white-space:nowrap;`;
+    ctrNote.style.cssText = `font-size:10px;color:${COLORS.textMuted};white-space:nowrap;`;
     playerCtrls.appendChild(ctrNote);
 
     this._captureBtn = document.createElement('button');
@@ -430,7 +428,7 @@ class BioacousticWidget extends Widget {
     // ── Spectrogram canvas ───────────────────────────────────────
     this._canvasContainer = document.createElement('div');
     this._canvasContainer.style.cssText =
-      `flex:1;position:relative;min-height:80px;background:#11111b;overflow:hidden;cursor:crosshair;`;
+      `flex:1;position:relative;min-height:80px;background:${COLORS.bgCrust};overflow:hidden;cursor:crosshair;`;
 
     this._canvas = document.createElement('canvas');
     this._canvas.style.cssText = `display:block;width:100%;height:100%;`;
@@ -442,7 +440,7 @@ class BioacousticWidget extends Widget {
 
     // ── Playback bar ─────────────────────────────────────────────
     const playBar = document.createElement('div');
-    playBar.style.cssText = barStyle() + `border-top:1px solid #313244;border-bottom:1px solid #313244;`;
+    playBar.style.cssText = barTopBottomStyle();
 
     this._playBtn = document.createElement('button');
     this._playBtn.textContent = '▶';
@@ -450,13 +448,12 @@ class BioacousticWidget extends Widget {
     this._playBtn.addEventListener('click', () => this._togglePlay());
 
     this._timeDisplay = document.createElement('span');
-    this._timeDisplay.style.cssText =
-      `font-variant-numeric:tabular-nums;font-size:11px;color:#a6adc8;font-family:ui-monospace,monospace;`;
+    this._timeDisplay.style.cssText = monoTextStyle();
     this._timeDisplay.textContent = '0:00.00 / 0:00.00';
 
     this._signalTimeDisplay = document.createElement('span');
     this._signalTimeDisplay.style.cssText =
-      `margin-left:auto;font-size:11px;color:#cba6f7;font-family:ui-monospace,monospace;`;
+      `margin-left:auto;font-size:11px;color:${COLORS.mauve};font-family:ui-monospace,monospace;`;
     this._signalTimeDisplay.textContent = 'click spectrogram to mark signal';
 
     playBar.append(this._playBtn, this._timeDisplay, this._signalTimeDisplay);
@@ -474,8 +471,8 @@ class BioacousticWidget extends Widget {
     // ── Form section (hidden until form_config is provided) ─────
     this._formSection = document.createElement('div');
     this._formSection.style.cssText =
-      `flex-shrink:0;min-height:140px;padding:10px 14px 12px;background:#181825;` +
-      `border-top:1px solid #313244;display:none;flex-direction:column;gap:10px;`;
+      `flex-shrink:0;min-height:140px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
+      `border-top:1px solid ${COLORS.bgSurface0};display:none;flex-direction:column;gap:10px;`;
 
     this._dynFormEl = document.createElement('div');
     this._dynFormEl.style.cssText = `display:flex;flex-direction:column;gap:10px;`;
@@ -697,28 +694,28 @@ class BioacousticWidget extends Widget {
       } else if (key === 'is_valid_form') {
         const isValidDiv = document.createElement('div');
         isValidDiv.dataset.formSection = 'is_valid_form';
-        isValidDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
+        isValidDiv.style.cssText = formRowStyle();
         await this._buildFormSection(cfg.is_valid_form ?? [], isValidDiv);
         this._dynFormEl.appendChild(isValidDiv);
 
       } else if (key === 'yes_form') {
         this._yesFormEl = document.createElement('div');
         this._yesFormEl.dataset.formSection = 'yes_form';
-        this._yesFormEl.style.cssText = `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
+        this._yesFormEl.style.cssText = formRowStyle(true);
         await this._buildFormSection(cfg.yes_form, this._yesFormEl);
         this._dynFormEl.appendChild(this._yesFormEl);
 
       } else if (key === 'no_form') {
         this._noFormEl = document.createElement('div');
         this._noFormEl.dataset.formSection = 'no_form';
-        this._noFormEl.style.cssText = `display:none;align-items:center;gap:16px;flex-wrap:wrap;`;
+        this._noFormEl.style.cssText = formRowStyle(true);
         await this._buildFormSection(cfg.no_form, this._noFormEl);
         this._dynFormEl.appendChild(this._noFormEl);
 
       } else if (key === 'annotate_form') {
         const annotateDiv = document.createElement('div');
         annotateDiv.dataset.formSection = 'annotate_form';
-        annotateDiv.style.cssText = `display:flex;align-items:center;gap:16px;flex-wrap:wrap;`;
+        annotateDiv.style.cssText = formRowStyle();
         await this._buildFormSection(cfg.annotate_form ?? [], annotateDiv);
         this._dynFormEl.appendChild(annotateDiv);
 
@@ -769,11 +766,11 @@ class BioacousticWidget extends Widget {
         container.appendChild(document.createElement('br'));
       } else if (type === 'line') {
         const d = document.createElement('div');
-        d.style.cssText = `border-top:1px solid #313244;width:100%;margin:2px 0;`;
+        d.style.cssText = fullWidthDividerStyle();
         container.appendChild(d);
       } else if (type === 'text') {
         const d = document.createElement('div');
-        d.style.cssText = `color:#a6adc8;font-size:11px;width:100%;`;
+        d.style.cssText = mutedTextStyle({ width: '100%' });
         d.textContent = String(config);
         container.appendChild(d);
       } else {
@@ -804,7 +801,7 @@ class BioacousticWidget extends Widget {
     }
 
     const lbl = document.createElement('label');
-    lbl.style.cssText = labelStyle() + `font-size:13px;gap:7px;`;
+    lbl.style.cssText = formLabelStyle();
     lbl.textContent = labelText;
 
     let inputEl: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -814,7 +811,7 @@ class BioacousticWidget extends Widget {
         const ta = document.createElement('textarea');
         ta.rows = 1;
         ta.style.cssText =
-          inputStyle(cfg.width ? this._cssSize(cfg.width) : '220px') +
+          inputStyle(cfg.width ? cssSize(cfg.width) : '220px') +
           `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
         ta.addEventListener('input', () => { this._formValues[col] = ta.value; this._validateForm(); });
         inputEl = ta;
@@ -822,7 +819,7 @@ class BioacousticWidget extends Widget {
         const inp = document.createElement('input');
         inp.type = 'text';
         inp.style.cssText =
-          inputStyle(cfg.width ? this._cssSize(cfg.width) : '220px') + `font-size:13px;`;
+          inputStyle(cfg.width ? cssSize(cfg.width) : '220px') + `font-size:13px;`;
         inp.addEventListener('input', () => { this._formValues[col] = inp.value; this._validateForm(); });
         inputEl = inp;
       }
@@ -831,7 +828,7 @@ class BioacousticWidget extends Widget {
     } else if (type === 'select') {
       const sel = document.createElement('select');
       sel.style.cssText = selectStyle() + `font-size:13px;max-width:260px;`;
-      if (cfg.width) sel.style.width = this._cssSize(cfg.width);
+      if (cfg.width) sel.style.width = cssSize(cfg.width);
       const emptyOpt = document.createElement('option');
       emptyOpt.value = ''; emptyOpt.textContent = '— select —';
       sel.appendChild(emptyOpt);
@@ -865,7 +862,7 @@ class BioacousticWidget extends Widget {
       if (cfg.placeholder) inp.placeholder = String(cfg.placeholder);
       if (cfg.value !== undefined) inp.value = String(cfg.value);
       inp.style.cssText =
-        inputStyle(cfg.width ? this._cssSize(cfg.width) : '80px') + `font-size:13px;`;
+        inputStyle(cfg.width ? cssSize(cfg.width) : '80px') + `font-size:13px;`;
       inp.addEventListener('input', () => {
         this._formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
         this._validateForm();
@@ -1052,13 +1049,13 @@ class BioacousticWidget extends Widget {
         this._appendProgressTracker(this._dynFormEl);
       } else if (key === 'line') {
         const d = document.createElement('div');
-        d.style.cssText = `border-top:1px solid #313244;margin:0 -2px;`;
+        d.style.cssText = dividerStyle();
         this._dynFormEl.appendChild(d);
       } else if (key === 'break') {
         this._dynFormEl.appendChild(document.createElement('br'));
       } else if (key === 'text') {
         const d = document.createElement('div');
-        d.style.cssText = `color:#a6adc8;font-size:11px;`;
+        d.style.cssText = mutedTextStyle();
         d.textContent = String(val);
         this._dynFormEl.appendChild(d);
       } else {
@@ -1139,7 +1136,7 @@ class BioacousticWidget extends Widget {
 
     if (ac.tools.length > 1) {
       const lbl = document.createElement('label');
-      lbl.style.cssText = labelStyle() + `font-size:13px;gap:7px;`;
+      lbl.style.cssText = formLabelStyle();
       lbl.textContent = 'tool';
       const sel = document.createElement('select');
       sel.style.cssText = selectStyle() + `font-size:13px;`;
@@ -1175,7 +1172,7 @@ class BioacousticWidget extends Widget {
       if (unit) {
         const u = document.createElement('span');
         u.textContent = unit;
-        u.style.cssText = `color:#6c7086;font-size:10px;`;
+        u.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
         lbl.append(inp, u);
       } else {
         lbl.appendChild(inp);
@@ -1290,9 +1287,6 @@ class BioacousticWidget extends Widget {
     return { ...this._formValues };
   }
 
-  private _cssSize(val: any): string {
-    return typeof val === 'number' ? `${val}px` : String(val);
-  }
 
   private _appendTitleEntry(config: any, container: HTMLElement): void {
     if (!config) return;
@@ -1301,9 +1295,7 @@ class BioacousticWidget extends Widget {
     const withProgress = isObj && config.progress_tracker === true;
 
     const d = document.createElement('div');
-    d.style.cssText =
-      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#6c7086;` +
-      `display:flex;align-items:baseline;`;
+    d.style.cssText = sectionTitleStyle() + `display:flex;align-items:baseline;`;
 
     const span = document.createElement('span');
     span.textContent = text;
@@ -1328,7 +1320,7 @@ class BioacousticWidget extends Widget {
   private _createProgressEl(): HTMLSpanElement {
     const el = document.createElement('span');
     el.style.cssText =
-      `font-size:11px;font-weight:400;letter-spacing:0;color:#6c7086;` +
+      `font-size:11px;font-weight:400;letter-spacing:0;color:${COLORS.textMuted};` +
       `font-family:ui-monospace,monospace;`;
     this._progressEls.push(el);
     this._updateProgress();
@@ -1478,8 +1470,9 @@ class BioacousticWidget extends Widget {
 
     // Title
     const title = document.createElement('div');
+    // Same as sectionTitleStyle but green for "REVIEWED" state
     title.style.cssText =
-      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:#a6e3a1;`;
+      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:${COLORS.green};`;
     title.textContent = 'REVIEWED';
     this._dynFormEl.appendChild(title);
 
@@ -1492,10 +1485,10 @@ class BioacousticWidget extends Widget {
       line.style.cssText =
         `display:flex;gap:8px;font-size:12px;`;
       const keyEl = document.createElement('span');
-      keyEl.style.cssText = `color:#6c7086;min-width:140px;flex-shrink:0;`;
+      keyEl.style.cssText = `color:${COLORS.textMuted};min-width:140px;flex-shrink:0;`;
       keyEl.textContent = key;
       const valEl = document.createElement('span');
-      valEl.style.cssText = `color:#cdd6f4;`;
+      valEl.style.cssText = `color:${COLORS.textPrimary};`;
       valEl.textContent = val != null && val !== '' ? String(val) : '—';
       line.append(keyEl, valEl);
       container.appendChild(line);
@@ -1504,7 +1497,7 @@ class BioacousticWidget extends Widget {
 
     // Divider + buttons
     const divider = document.createElement('div');
-    divider.style.cssText = `border-top:1px solid #313244;margin:4px -2px;`;
+    divider.style.cssText = dividerStyle('4px -2px');
     this._dynFormEl.appendChild(divider);
 
     const btnRow = document.createElement('div');
@@ -1528,7 +1521,7 @@ class BioacousticWidget extends Widget {
     const deleteBtn = document.createElement('button');
     deleteBtn.textContent = 'Delete this review';
     deleteBtn.style.cssText =
-      btnStyle() + `font-size:12px;color:#f38ba8;`;
+      btnStyle() + `font-size:12px;color:${COLORS.red};`;
     deleteBtn.addEventListener('click', () => void this._onDeleteReview(row));
 
     btnRow.append(prevBtn, nextBtn, spacer, deleteBtn);
@@ -1614,9 +1607,9 @@ class BioacousticWidget extends Widget {
       const th = document.createElement('th');
       th.dataset.col = key;
       th.style.cssText =
-        `padding:5px 8px;text-align:left;color:#89b4fa;font-size:11px;` +
+        `padding:5px 8px;text-align:left;color:${COLORS.blue};font-size:11px;` +
         `cursor:pointer;user-select:none;white-space:nowrap;` +
-        `border-bottom:2px solid #313244;`;
+        `border-bottom:2px solid ${COLORS.bgSurface0};`;
       th.textContent = label;
       th.addEventListener('click', () => {
         if (this._sortCol === key) {
@@ -1723,13 +1716,13 @@ class BioacousticWidget extends Widget {
       const isSelected = globalIdx === this._selectedIdx;
       const reviewed = this._isRowReviewed(row);
       const tr = document.createElement('tr');
-      const baseBg = i % 2 === 0 ? '#1e1e2e' : '#252538';
+      const baseBg = i % 2 === 0 ? COLORS.bgBase : COLORS.bgAltRow;
       tr.style.cssText =
-        `cursor:pointer;border-bottom:1px solid #2a2a3d;` +
+        `cursor:pointer;border-bottom:1px solid ${COLORS.bgHover};` +
         (isSelected
-          ? `background:#2d3f5e;`
+          ? `background:${COLORS.bgSelected};`
           : reviewed
-            ? `background:#1a2a1a;`
+            ? `background:${COLORS.bgReviewed};`
             : `background:${baseBg};`);
 
       this._tableCols.forEach(({ key }) => {
@@ -1741,7 +1734,7 @@ class BioacousticWidget extends Widget {
         td.textContent = String(v);
         td.style.cssText =
           `padding:4px 8px;font-size:12px;white-space:nowrap;` +
-          `color:${reviewed ? '#6c7086' : '#cdd6f4'};`;
+          `color:${reviewed ? COLORS.textMuted : COLORS.textPrimary};`;
         tr.appendChild(td);
       });
 
@@ -1750,11 +1743,11 @@ class BioacousticWidget extends Widget {
         void this._loadAudio();
       });
       tr.addEventListener('mouseenter', () => {
-        if (globalIdx !== this._selectedIdx) tr.style.background = '#2a2a3d';
+        if (globalIdx !== this._selectedIdx) tr.style.background = COLORS.bgHover;
       });
       tr.addEventListener('mouseleave', () => {
         if (globalIdx !== this._selectedIdx)
-          tr.style.background = reviewed ? '#1a2a1a' : baseBg;
+          tr.style.background = reviewed ? COLORS.bgReviewed : baseBg;
       });
 
       this._tableBody.appendChild(tr);
@@ -1780,7 +1773,7 @@ class BioacousticWidget extends Widget {
 
     const sep = () => {
       const s = document.createElement('span');
-      s.style.cssText = `color:#45475a;font-size:11px;flex-shrink:0;`;
+      s.style.cssText = `color:${COLORS.bgSurface1};font-size:11px;flex-shrink:0;`;
       s.textContent = '|';
       return s;
     };
@@ -1796,17 +1789,17 @@ class BioacousticWidget extends Widget {
 
     items.push(mkChip(
       `${this._fmtTime(row.start_time)} – ${this._fmtTime(row.end_time)}`,
-      '#a6adc8'
+      COLORS.textSubtle
     ));
 
     if (this._predictionCol && row[this._predictionCol] !== undefined) {
       const nameSpan = document.createElement('span');
-      nameSpan.style.cssText = `font-size:13px;font-weight:600;color:#cdd6f4;flex-shrink:0;`;
+      nameSpan.style.cssText = `font-size:13px;font-weight:600;color:${COLORS.textPrimary};flex-shrink:0;`;
       nameSpan.textContent = String(row[this._predictionCol]);
       items.unshift(nameSpan);
     }
 
-    const colColors = ['#a6e3a1', '#cba6f7', '#fab387', '#89dceb', '#f38ba8'];
+    const colColors = DISPLAY_CHIP_COLORS;
     this._displayCols.forEach((col, i) => {
       if (row[col] === undefined) return;
       const val = typeof row[col] === 'number' && !Number.isInteger(row[col])
@@ -2038,7 +2031,7 @@ class BioacousticWidget extends Widget {
     if (this._specBitmap) {
       ctx.drawImage(this._specBitmap, 0, 0, W, H);
     } else {
-      ctx.fillStyle = '#11111b';
+      ctx.fillStyle = COLORS.bgCrust;
       ctx.fillRect(0, 0, W, H);
     }
 
@@ -2062,7 +2055,7 @@ class BioacousticWidget extends Widget {
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(ph, 0); ctx.lineTo(ph, H); ctx.stroke();
 
-      ctx.fillStyle = '#cdd6f4';
+      ctx.fillStyle = COLORS.textPrimary;
       ctx.beginPath();
       ctx.moveTo(ph - 6, 0); ctx.lineTo(ph + 6, 0); ctx.lineTo(ph, 11);
       ctx.closePath(); ctx.fill();
@@ -2336,7 +2329,7 @@ class BioacousticWidget extends Widget {
       ctx.strokeStyle = 'rgba(137,180,250,0.85)';
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-      ctx.fillStyle = '#89b4fa';
+      ctx.fillStyle = COLORS.blue;
       ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10);
       ctx.closePath(); ctx.fill();
     } else if (tool === 'start_end_time_select') {
@@ -2351,7 +2344,7 @@ class BioacousticWidget extends Widget {
         const x = this._timeToX(st);
         ctx.strokeStyle = 'rgba(166,227,161,0.85)'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-        ctx.fillStyle = '#a6e3a1';
+        ctx.fillStyle = COLORS.green;
         ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10);
         ctx.closePath(); ctx.fill();
       }
@@ -2359,7 +2352,7 @@ class BioacousticWidget extends Widget {
         const x = this._timeToX(et);
         ctx.strokeStyle = 'rgba(243,139,168,0.85)'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-        ctx.fillStyle = '#f38ba8';
+        ctx.fillStyle = COLORS.red;
         ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 6, 0); ctx.lineTo(x, 10);
         ctx.closePath(); ctx.fill();
       }
@@ -2375,7 +2368,7 @@ class BioacousticWidget extends Widget {
       ctx.fillRect(sx, yhi, ex - sx, ylo - yhi);
       ctx.strokeStyle = 'rgba(137,180,250,0.85)'; ctx.lineWidth = 2;
       ctx.strokeRect(sx, yhi, ex - sx, ylo - yhi);
-      ctx.fillStyle = '#89b4fa';
+      ctx.fillStyle = COLORS.blue;
       for (const [px, py] of [[sx,yhi],[ex,yhi],[sx,ylo],[ex,ylo]]) {
         ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
       }
@@ -2589,7 +2582,7 @@ class BioacousticWidget extends Widget {
 
   private _setStatus(msg: string, error = false): void {
     this._statusEl.textContent = msg;
-    this._statusEl.style.color = error ? '#f38ba8' : '#a6e3a1';
+    this._statusEl.style.color = error ? COLORS.red : COLORS.green;
   }
 
   private _fmtTime(s: number): string {
