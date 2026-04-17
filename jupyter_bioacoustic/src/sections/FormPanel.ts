@@ -941,15 +941,17 @@ export class FormPanel {
     const btnRow = document.createElement('div');
     btnRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-top:2px;`;
 
+    const navBtnStyle = btnStyle() + `font-size:12px;width:75px;height:28px`;
+
     const prevBtn = document.createElement('button');
     prevBtn.textContent = '◀ Prev';
-    prevBtn.style.cssText = btnStyle() + `font-size:12px;`;
+    prevBtn.style.cssText = navBtnStyle;
     prevBtn.disabled = this._selectedIdx === 0;
     prevBtn.addEventListener('click', () => this.prevRequested.emit(void 0));
 
     const nextBtn = document.createElement('button');
     nextBtn.textContent = 'Next ▶';
-    nextBtn.style.cssText = btnStyle() + `font-size:12px;`;
+    nextBtn.style.cssText = navBtnStyle;
     nextBtn.disabled = this._selectedIdx >= this._filteredLength - 1;
     nextBtn.addEventListener('click', () => this.nextRequested.emit(void 0));
 
