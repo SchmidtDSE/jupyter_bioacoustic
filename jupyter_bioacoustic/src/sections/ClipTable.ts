@@ -168,7 +168,7 @@ export class ClipTable {
     this._refreshBtn = document.createElement('button');
     this._refreshBtn.textContent = '↻';
     this._refreshBtn.title = 'Refresh list';
-    this._refreshBtn.style.cssText = btnStyle() + `font-size:14px;padding:2px 7px;display:none;`;
+    this._refreshBtn.style.cssText = btnStyle() + `font-size:17px;padding:1px 7px 3px;display:none;`;
     this._refreshBtn.addEventListener('click', () => {
       this._page = 0;
       this.refresh();
