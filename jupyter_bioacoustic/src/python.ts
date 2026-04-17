@@ -7,6 +7,12 @@
  * Grouping matches the kernel.exec() call sites across sections.
  */
 import { escPy } from './util';
+import {
+  buildSpectrogram as PY_BUILD_SPEC,
+  spectrogramMel as PY_SPEC_MEL,
+  spectrogramPlain as PY_SPEC_PLAIN,
+  spectrogramRender as PY_SPEC_RENDER,
+} from './py_chunks';
 
 // ─── Kernel variable reading (plugin.ts _init) ──────────────
 
@@ -58,60 +64,10 @@ export function readAudioS3(bucket: string, key: string, startSec: number, durSe
   ].join('\n');
 }
 
+/** Assemble the spectrogram pipeline from .py chunks (no template vars). */
 export function buildSpectrogram(spectType: 'mel' | 'plain'): string {
-  const melBlock = [
-    `_f_min, _f_max = 80.0, _sr / 2.0`,
-    `_mel_pts = _np.linspace(2595*_np.log10(1+_f_min/700), 2595*_np.log10(1+_f_max/700), _n_mels+2)`,
-    `_hz_pts  = 700 * (10 ** (_mel_pts / 2595) - 1)`,
-    `_bin_pts = (_hz_pts / (_sr / 2.0) * (_fft // 2 - 1)).astype(int).clip(0, _fft // 2 - 1)`,
-    `_fb = _np.zeros((_n_mels, _fft // 2))`,
-    `for _m in range(1, _n_mels + 1):`,
-    `    _lo, _pk, _hi = _bin_pts[_m-1], _bin_pts[_m], _bin_pts[_m+1]`,
-    `    if _pk > _lo: _fb[_m-1, _lo:_pk] = (_np.arange(_lo, _pk) - _lo) / (_pk - _lo)`,
-    `    if _hi > _pk: _fb[_m-1, _pk:_hi] = (_hi - _np.arange(_pk, _hi)) / (_hi - _pk)`,
-    `_S = _fb @ _mag`,
-  ];
-
-  const plainBlock = [
-    `_f_min, _f_max = 0.0, _sr / 2.0`,
-    `_S = _mag`,
-  ];
-
-  return [
-    `import numpy as _np, io as _io, base64 as _b64, json as _j`,
-    `import matplotlib as _mpl; _mpl.use('Agg')`,
-    `import matplotlib.pyplot as _plt`,
-    `_mono = _raw.mean(axis=1) if _raw.shape[1] > 1 else _raw[:, 0]`,
-    `_actual_dur = len(_mono) / _sr`,
-    `_fft = 512; _hop = 128; _n_mels = 80`,
-    `_win = 0.5 * (1 - _np.cos(2 * _np.pi * _np.arange(_fft) / (_fft - 1)))`,
-    `_n_frames = max(1, (len(_mono) - _fft) // _hop + 1)`,
-    `_idx = _np.arange(_fft)[None,:] + _hop * _np.arange(_n_frames)[:,None]`,
-    `_idx = _np.clip(_idx, 0, len(_mono) - 1)`,
-    `_mag = _np.abs(_np.fft.rfft(_mono[_idx] * _win, axis=1)[:, :_fft//2]).T`,
-    ...(spectType === 'mel' ? melBlock : plainBlock),
-    `_S_db   = 20 * _np.log10(_np.maximum(_S, 1e-10))`,
-    `_S_db   = _np.clip(_S_db, _S_db.max() - 80, _S_db.max())`,
-    `_S_norm = (_S_db - _S_db.min()) / max(float(_S_db.max() - _S_db.min()), 1e-10)`,
-    `_fig = _plt.figure(figsize=(20, 5), dpi=100)`,
-    `_ax  = _fig.add_axes([0, 0, 1, 1])`,
-    `_ax.imshow(_S_norm, aspect='auto', cmap='magma', origin='lower', interpolation='bilinear')`,
-    `_ax.set_axis_off()`,
-    `_pb = _io.BytesIO()`,
-    `_fig.savefig(_pb, format='png', dpi=100, bbox_inches='tight', pad_inches=0)`,
-    `_plt.close(_fig)`,
-    `import soundfile as _sf2`,
-    `_wb = _io.BytesIO()`,
-    `_sf2.write(_wb, (_mono * 32767).astype(_np.int16)[:, None], _sr, format='WAV', subtype='PCM_16')`,
-    `print(_j.dumps({`,
-    `  'spec': _b64.b64encode(_pb.getvalue()).decode(),`,
-    `  'wav':  _b64.b64encode(_wb.getvalue()).decode(),`,
-    `  'duration': float(_actual_dur),`,
-    `  'sample_rate': int(_sr),`,
-    `  'freq_min': float(_f_min),`,
-    `  'freq_max': float(_f_max),`,
-    `}))`,
-  ].join('\n');
+  const filterBlock = spectType === 'mel' ? PY_SPEC_MEL : PY_SPEC_PLAIN;
+  return [PY_BUILD_SPEC, filterBlock, PY_SPEC_RENDER].join('\n');
 }
 
 /** Full spectrogram pipeline: read audio + process + return JSON. */

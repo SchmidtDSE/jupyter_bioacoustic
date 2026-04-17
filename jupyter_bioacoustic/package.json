@@ -17,8 +17,9 @@
     "build:labextension:dev": "jupyter labextension build --development True .",
     "build:labextension": "jupyter labextension build .",
     "build:prod": "jlpm run build:lib:prod && jlpm run build:labextension",
-    "build:lib": "tsc --sourceMap",
-    "build:lib:prod": "tsc",
+    "gen:py": "node src/py/gen_chunks.js",
+    "build:lib": "jlpm run gen:py && tsc --sourceMap",
+    "build:lib:prod": "jlpm run gen:py && tsc",
     "watch:src": "tsc -w --sourceMap",
     "clean": "rimraf lib labextension tsconfig.tsbuildinfo"
   },
