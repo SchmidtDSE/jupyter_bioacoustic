@@ -125,9 +125,6 @@ class JupyterAudio:
         audio_prefix=_UNSET,
         audio_suffix=_UNSET,
         audio_fallback=_UNSET,
-        # Legacy aliases (deprecated)
-        audio_path=_UNSET,
-        audio_column=_UNSET,
         category_path=_UNSET,
         output=_UNSET,
         prediction_column=_UNSET,
@@ -202,26 +199,11 @@ class JupyterAudio:
         if isinstance(raw_data, str):
             raw_data = _read_data(raw_data)
 
-        # Resolve audio — support new 'audio' param and legacy 'audio_path'/'audio_column'
+        # Resolve audio
         raw_audio = resolve(audio, 'audio', _UNSET)
         raw_prefix = resolve(audio_prefix, 'audio_prefix', '')
         raw_suffix = resolve(audio_suffix, 'audio_suffix', '')
         raw_fallback = resolve(audio_fallback, 'audio_fallback', '')
-
-        # Legacy support: convert old audio_path/audio_column to new format
-        if raw_audio is _UNSET:
-            old_path = resolve(audio_path, 'audio_path', '')
-            old_col = resolve(audio_column, 'audio_column', '')
-            if old_col:
-                raw_audio = old_col
-                if old_path:
-                    raw_fallback = raw_fallback or old_path
-            elif old_path:
-                raw_audio = old_path
-            else:
-                raise ValueError(
-                    "'audio' is required — pass a path, URL, column name, or dict."
-                )
 
         self._audio_config = _resolve_audio_config(
             raw_audio, raw_prefix, raw_suffix, raw_fallback)
