@@ -60,10 +60,72 @@ def _load_config(path: str) -> dict:
             return yaml.safe_load(f) or {}
 
 
+def _detect_audio_type(value: str) -> str:
+    """Detect whether an audio string is a url, column name, or local path.
+
+    - Starts with http://, https://, s3://, gs:// → 'url'
+    - Contains no '/' and no '.' → 'column'
+    - Otherwise → 'path'
+    """
+    if value.startswith(('http://', 'https://', 's3://', 'gs://')):
+        return 'url'
+    if '/' not in value and '.' not in value:
+        return 'column'
+    return 'path'
+
+
+def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback) -> dict:
+    """Normalize the audio parameter into a standard dict.
+
+    Returns dict with keys: type, value, prefix, suffix, fallback.
+    """
+    prefix = audio_prefix or ''
+    suffix = audio_suffix or ''
+    fallback = audio_fallback or ''
+
+    if isinstance(audio, dict):
+        # Explicit dict form: must have exactly one of path/url/uri/column
+        type_keys = {'path', 'url', 'uri', 'column'}
+        found = [k for k in type_keys if k in audio]
+        if len(found) != 1:
+            raise ValueError(
+                f"audio dict must have exactly one of {type_keys}, "
+                f"got: {found or 'none'}"
+            )
+        key = found[0]
+        atype = 'url' if key in ('url', 'uri') else key
+        return {
+            'type': atype,
+            'value': audio[key],
+            'prefix': audio.get('prefix', prefix),
+            'suffix': audio.get('suffix', suffix),
+            'fallback': audio.get('fallback', fallback),
+        }
+
+    if isinstance(audio, str) and audio:
+        return {
+            'type': _detect_audio_type(audio),
+            'value': audio,
+            'prefix': prefix,
+            'suffix': suffix,
+            'fallback': fallback,
+        }
+
+    raise ValueError(
+        "'audio' is required — pass a path, URL, column name, or dict. "
+        "See documentation for details."
+    )
+
+
 class JupyterAudio:
     def __init__(
         self,
         data=_UNSET,
+        audio=_UNSET,
+        audio_prefix=_UNSET,
+        audio_suffix=_UNSET,
+        audio_fallback=_UNSET,
+        # Legacy aliases (deprecated)
         audio_path=_UNSET,
         audio_column=_UNSET,
         category_path=_UNSET,
@@ -140,17 +202,31 @@ class JupyterAudio:
         if isinstance(raw_data, str):
             raw_data = _read_data(raw_data)
 
-        raw_audio = resolve(audio_path, 'audio_path', '')
-        raw_audio_col = resolve(audio_column, 'audio_column', '')
-        if not raw_audio and not raw_audio_col:
-            raise ValueError(
-                "'audio_path' or 'audio_column' is required — pass a path/column "
-                "or include in config."
-            )
+        # Resolve audio — support new 'audio' param and legacy 'audio_path'/'audio_column'
+        raw_audio = resolve(audio, 'audio', _UNSET)
+        raw_prefix = resolve(audio_prefix, 'audio_prefix', '')
+        raw_suffix = resolve(audio_suffix, 'audio_suffix', '')
+        raw_fallback = resolve(audio_fallback, 'audio_fallback', '')
+
+        # Legacy support: convert old audio_path/audio_column to new format
+        if raw_audio is _UNSET:
+            old_path = resolve(audio_path, 'audio_path', '')
+            old_col = resolve(audio_column, 'audio_column', '')
+            if old_col:
+                raw_audio = old_col
+                if old_path:
+                    raw_fallback = raw_fallback or old_path
+            elif old_path:
+                raw_audio = old_path
+            else:
+                raise ValueError(
+                    "'audio' is required — pass a path, URL, column name, or dict."
+                )
+
+        self._audio_config = _resolve_audio_config(
+            raw_audio, raw_prefix, raw_suffix, raw_fallback)
 
         self._data             = raw_data
-        self._audio_path       = raw_audio
-        self._audio_column     = raw_audio_col
         self._category_path    = resolve(category_path,    'category_path',    '')
         self._output           = resolve(output,           'output',           '')
         self._prediction_column = resolve(prediction_column, 'prediction_column', '')
@@ -209,8 +285,7 @@ class JupyterAudio:
             )
 
         ip.user_ns['_BA_DATA']           = self._data.to_json(orient='records')
-        ip.user_ns['_BA_AUDIO_PATH']     = self._audio_path
-        ip.user_ns['_BA_AUDIO_COL']      = self._audio_column
+        ip.user_ns['_BA_AUDIO']          = json.dumps(self._audio_config)
         ip.user_ns['_BA_CATEGORY_PATH']  = self._category_path
         ip.user_ns['_BA_OUTPUT']         = self._output
         ip.user_ns['_BA_PREDICTION_COL'] = self._prediction_column

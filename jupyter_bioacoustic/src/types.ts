@@ -38,6 +38,15 @@ export interface AnnotConfig {
   tools: string[];
 }
 
+/** Resolved audio configuration passed from Python to TypeScript. */
+export interface AudioConfig {
+  type: 'path' | 'url' | 'column';
+  value: string;
+  prefix: string;
+  suffix: string;
+  fallback: string;
+}
+
 /** Spectrogram audio segment metadata returned from the Python loader. */
 export interface SegmentInfo {
   sampleRate: number;

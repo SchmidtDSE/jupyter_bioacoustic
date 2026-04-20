@@ -64,8 +64,7 @@ export class Player {
 
   // ─── Context ───────────────────────────────────────────────
 
-  private _audioPath = '';
-  private _audioCol = '';
+  private _audioConfig = { type: 'path', value: '', prefix: '', suffix: '', fallback: '' };
   private _captureLabel = '';
   private _captureDir = '';
   private _predictionCol = '';
@@ -87,8 +86,7 @@ export class Player {
 
   /** Set context after kernel vars are read. */
   setContext(opts: {
-    audioPath: string;
-    audioCol: string;
+    audioConfig: { type: string; value: string; prefix: string; suffix: string; fallback: string };
     captureLabel: string;
     captureDir: string;
     predictionCol: string;
@@ -96,8 +94,7 @@ export class Player {
     defaultBuffer: number;
     rows: Detection[];
   }): void {
-    this._audioPath = opts.audioPath;
-    this._audioCol = opts.audioCol;
+    this._audioConfig = opts.audioConfig;
     this._captureLabel = opts.captureLabel;
     this._captureDir = opts.captureDir;
     this._predictionCol = opts.predictionCol;
@@ -264,18 +261,54 @@ export class Player {
 
   // ─── Private: audio loading ────────────────────────────────
 
-  private _resolveAudioPath(): string {
-    if (this._audioCol && this._currentRow) {
-      const val = this._currentRow[this._audioCol];
-      if (val != null && String(val).trim()) return String(val);
+  /**
+   * Apply prefix/suffix to a raw audio path based on the audio type.
+   * - path/url: join with '/'
+   * - url prefix: insert after protocol (e.g. s3://prefix/rest)
+   */
+  private _applyPrefixSuffix(raw: string): string {
+    const { prefix, suffix, type } = this._audioConfig;
+    if (!prefix && !suffix) return raw;
+
+    if (type === 'url' || raw.match(/^(https?|s3|gs):\/\//)) {
+      const m = raw.match(/^(https?:\/\/|s3:\/\/|gs:\/\/)(.*)/);
+      if (m) {
+        let rest = m[2];
+        if (prefix) rest = prefix + '/' + rest;
+        if (suffix) rest = rest + '/' + suffix;
+        return m[1] + rest;
+      }
     }
-    return this._audioPath;
+
+    let result = raw;
+    if (prefix) result = prefix + '/' + result;
+    if (suffix) result = result + '/' + suffix;
+    return result;
+  }
+
+  private _resolveAudioPath(): string {
+    const { type, value, fallback } = this._audioConfig;
+
+    if (type === 'column') {
+      // Read the column value from the current row
+      if (this._currentRow) {
+        const colVal = this._currentRow[value];
+        if (colVal != null && String(colVal).trim()) {
+          return this._applyPrefixSuffix(String(colVal));
+        }
+      }
+      // Fallback (already a complete path — no prefix/suffix)
+      return fallback || '';
+    }
+
+    // path or url — apply prefix/suffix directly
+    return this._applyPrefixSuffix(value);
   }
 
   private async _loadAudio(): Promise<void> {
     const audioPath = this._resolveAudioPath();
     if (!audioPath) {
-      this.statusChanged.emit({ message: '❌ No audio path — set audio_path or audio_column', error: true });
+      this.statusChanged.emit({ message: '❌ No audio configured — set audio param', error: true });
       return;
     }
 

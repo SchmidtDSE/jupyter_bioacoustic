@@ -83,7 +83,7 @@ from jupyter_bioacoustic import JupyterAudio
 
 JupyterAudio(
     data='detections-test.csv',
-    audio_path='test.flac',
+    audio='test.flac',
     prediction_column='common_name',
     form_config='form-review.yaml',
     output='reviews.csv',
@@ -150,7 +150,7 @@ Consider the example above:
 ```python
 JupyterAudio(
     data='detections-test.csv',
-    audio_path='test.flac',
+    audio='test.flac',
     prediction_column='common_name',
     form_config='form-review.yaml',
     output='reviews.csv',
@@ -170,7 +170,7 @@ JupyterAudio(
 
 ```yaml
 # config/review-configuration.yaml
-audio_path: 'test.flac'
+audio: 'test.flac'
 prediction_column: 'common_name'
 form_config: 'form-review.yaml'
 output: 'reviews.csv'
@@ -182,7 +182,7 @@ See [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configu
 
 ```yaml
 # JupyterAudio Args
-audio_column: "audio_path"
+audio: "audio_path"    # column name — auto-detected (no slashes or dots)
 data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
 prediction_column: 'common_name'
 display_columns: ["confidence", "county", "start_time", "audio_path"]
@@ -239,8 +239,10 @@ form_config:
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `data` | DataFrame / str | *required* | Input data with `id`, `start_time`, `end_time` columns |
-| `audio_path` | str | `''` | Default audio file (local or `s3://`) |
-| `audio_column` | str | `''` | Column with per-row audio paths |
+| `audio` | str or dict | *required* | Audio source — local path, URL/URI, column name (auto-detected), or dict with explicit `{path\|url\|uri\|column, prefix, suffix, fallback}`. |
+| `audio_prefix` | str | `''` | Prefix added to audio paths (joined with `/`). For URLs, inserted after the protocol. |
+| `audio_suffix` | str | `''` | Suffix appended to audio paths (joined with `/`). |
+| `audio_fallback` | str | `''` | Fallback path/URL when `audio` is a column and the row value is empty. |
 | `output` | str | `''` | Output file path (`.csv`, `.parquet`, `.jsonl`) |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form |
 | `prediction_column` | str | `''` | Prediction column — sets title, info card, capture filename |
