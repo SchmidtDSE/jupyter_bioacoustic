@@ -1,4 +1,7 @@
-audio_column: audio_path
+audio: audio_path
+data_secrets:
+    key: "__Secure-authjs.session-token"
+    value: bob
 data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
 prediction_column: common_name
 category_path: data/categories-small.csv
