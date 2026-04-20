@@ -238,7 +238,8 @@ form_config:
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `data` | DataFrame / str | *required* | Input data with `id`, `start_time`, `end_time` columns |
+| `data` | DataFrame / str | *required* | Input data with `id`, `start_time`, `end_time` columns. Accepts: DataFrame, file path, URL (auto-detects file vs JSON), `api::url` for API endpoints, or SQL query (`SELECT ...` via duckdb). |
+| `data_secrets` | dict or list | `None` | Auth for data loading. `{key, value}` pairs passed as cookies (HTTP) or connection params (SQL). Value supports `env:VAR_NAME`, `dialog` (prompt), or literal. |
 | `audio` | str or dict | *required* | Audio source — local path, URL/URI, column name (auto-detected), or dict with explicit `{path\|url\|uri\|column, prefix, suffix, fallback}`. |
 | `audio_prefix` | str | `''` | Prefix added to audio paths (joined with `/`). For URLs, inserted after the protocol. |
 | `audio_suffix` | str | `''` | Suffix appended to audio paths (joined with `/`). |
