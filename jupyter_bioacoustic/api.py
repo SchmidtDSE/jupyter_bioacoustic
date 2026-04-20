@@ -14,6 +14,7 @@ Usage (config + overrides):
 
 import json
 import os
+import re
 import uuid
 
 from IPython import get_ipython
@@ -23,8 +24,62 @@ from IPython.display import display, Javascript, HTML
 _UNSET = object()
 
 
+# ─── Secret resolution ────────────────────────────────────────
+
+def _resolve_secrets(data_secrets) -> dict:
+    """Resolve a data_secrets param into a plain {key: value} dict.
+
+    Each entry is ``{key: str, value: str}`` where value can be:
+    - ``env:VAR_NAME`` → reads ``os.environ['VAR_NAME']``
+    - ``dialog`` (case-insensitive) → prompts the user via getpass
+    - anything else → used literally
+    """
+    if not data_secrets:
+        return {}
+    if isinstance(data_secrets, dict):
+        data_secrets = [data_secrets]
+
+    import getpass
+    resolved = {}
+    for entry in data_secrets:
+        k = entry['key']
+        v = entry['value']
+        if isinstance(v, str) and re.match(r'^env:', v, re.IGNORECASE):
+            env_var = v[4:]
+            resolved[k] = os.environ.get(env_var, '')
+            if not resolved[k]:
+                raise ValueError(
+                    f"Environment variable {env_var!r} not set (for secret {k!r})")
+        elif isinstance(v, str) and v.lower() == 'dialog':
+            resolved[k] = getpass.getpass(f'Enter value for {k!r}: ')
+        else:
+            resolved[k] = v
+    return resolved
+
+
+# ─── Data type detection ───────────────────────────────────────
+
+def _detect_data_type(data_str: str) -> str:
+    """Detect whether a data string is sql, api, url, or path.
+
+    - Contains 'SELECT ' (case-insensitive, trailing space) → 'sql'
+    - Starts with 'api::' → 'api'
+    - Starts with http://, https://, s3://, gs:// → 'url'
+    - Otherwise → 'path'
+    """
+    if re.search(r'\bSELECT\s', data_str, re.IGNORECASE):
+        return 'sql'
+    if data_str.lower().startswith('api::'):
+        return 'api'
+    if data_str.startswith(('http://', 'https://', 's3://', 'gs://')):
+        return 'url'
+    return 'path'
+
+
+# ─── Data loading ──────────────────────────────────────────────
+
 def _read_data(path: str):
-    """Read a DataFrame from a file path, inferring format from extension."""
+    """Read a DataFrame from a local file path, inferring format from extension."""
     import pandas as pd
     ext = os.path.splitext(path)[1].lower()
     if ext == '.csv':
@@ -40,6 +95,130 @@ def _read_data(path: str):
             f"Unsupported data file extension {ext!r}. "
             f"Expected .csv, .parquet, .jsonl, or .ndjson."
         )
+
+
+def _read_data_from_url(url: str, cookies: dict = None):
+    """Fetch data from a URL. Auto-detects file vs JSON response.
+
+    - If Content-Type is application/json or the body parses as JSON → DataFrame
+    - If Content-Type suggests JSONL/NDJSON → line-delimited JSON
+    - Otherwise → download to temp file and read with _read_data
+    """
+    import pandas as pd
+    import requests as req
+    import tempfile
+
+    resp = req.get(url, cookies=cookies or {}, timeout=120)
+    resp.raise_for_status()
+
+    ct = resp.headers.get('Content-Type', '').lower()
+
+    # JSON response → DataFrame directly
+    if 'application/json' in ct:
+        data = resp.json()
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+        elif isinstance(data, dict):
+            # Try common wrappers: {data: [...], results: [...]}
+            for key in ('data', 'results', 'items', 'records', 'rows'):
+                if key in data and isinstance(data[key], list):
+                    return pd.DataFrame(data[key])
+            return pd.DataFrame([data])
+
+    # NDJSON / JSONL
+    if 'ndjson' in ct or 'jsonl' in ct:
+        import io
+        return pd.read_json(io.StringIO(resp.text), lines=True)
+
+    # Try to parse as JSON anyway (some servers don't set Content-Type)
+    try:
+        data = resp.json()
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+    except (ValueError, TypeError):
+        pass
+
+    # Fall back to downloading as a file
+    ext = os.path.splitext(url.split('?')[0])[1].lower() or '.csv'
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+        f.write(resp.content)
+        tmp_path = f.name
+    try:
+        return _read_data(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+
+def _read_data_from_api(url: str, cookies: dict = None):
+    """Fetch data from an API endpoint. Strips 'api::' prefix if present."""
+    if url.lower().startswith('api::'):
+        url = url[5:]
+    return _read_data_from_url(url, cookies=cookies)
+
+
+def _read_data_from_sql(query: str, secrets: dict = None):
+    """Execute a SQL query with duckdb and return a DataFrame.
+
+    Secrets are set as duckdb ``CREATE SECRET`` or environment variables
+    before running the query.
+    """
+    try:
+        import duckdb
+    except ImportError:
+        raise ImportError(
+            "duckdb is required for SQL queries: pip install duckdb"
+        )
+
+    conn = duckdb.connect(':memory:')
+
+    # Apply secrets as duckdb secrets or env vars
+    if secrets:
+        for k, v in secrets.items():
+            # Common duckdb secret patterns
+            k_lower = k.lower()
+            if k_lower in ('s3_access_key_id', 's3_secret_access_key',
+                           's3_region', 's3_endpoint', 's3_session_token'):
+                conn.execute(f"SET {k} = '{v}'")
+            else:
+                # Set as environment variable (for generic auth)
+                os.environ[k] = str(v)
+
+    result = conn.execute(query).df()
+    conn.close()
+    return result
+
+
+def _load_data(data, secrets: dict = None):
+    """Load data from any supported source.
+
+    Args:
+        data: DataFrame, file path, URL, API URL (api::...), or SQL query
+        secrets: resolved {key: value} dict for auth
+
+    Returns:
+        pandas DataFrame
+    """
+    import pandas as pd
+
+    if isinstance(data, pd.DataFrame):
+        return data
+
+    if not isinstance(data, str):
+        raise ValueError(
+            f"'data' must be a DataFrame, file path, URL, or SQL query. "
+            f"Got {type(data).__name__}."
+        )
+
+    dtype = _detect_data_type(data)
+
+    if dtype == 'sql':
+        return _read_data_from_sql(data, secrets=secrets)
+    elif dtype == 'api':
+        return _read_data_from_api(data, cookies=secrets)
+    elif dtype == 'url':
+        return _read_data_from_url(data, cookies=secrets)
+    else:
+        return _read_data(data)
 
 
 def _load_config(path: str) -> dict:
@@ -121,6 +300,7 @@ class JupyterAudio:
     def __init__(
         self,
         data=_UNSET,
+        data_secrets=_UNSET,
         audio=_UNSET,
         audio_prefix=_UNSET,
         audio_suffix=_UNSET,
@@ -194,10 +374,12 @@ class JupyterAudio:
         raw_data = resolve(data, 'data', _UNSET)
         if raw_data is _UNSET:
             raise ValueError(
-                "'data' is required — pass a DataFrame/path or include 'data' in config."
+                "'data' is required — pass a DataFrame, file path, URL, "
+                "API endpoint (api::...), or SQL query."
             )
-        if isinstance(raw_data, str):
-            raw_data = _read_data(raw_data)
+        raw_secrets = resolve(data_secrets, 'data_secrets', None)
+        secrets = _resolve_secrets(raw_secrets)
+        raw_data = _load_data(raw_data, secrets=secrets)
 
         # Resolve audio
         raw_audio = resolve(audio, 'audio', _UNSET)
