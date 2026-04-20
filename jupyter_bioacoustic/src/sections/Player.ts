@@ -331,7 +331,18 @@ export class Player {
     this._detectionEnd = endTime;
     this._segLoadStart = loadStart;
 
-    this.statusChanged.emit({ message: 'Running Python (soundfile + numpy + matplotlib)…', error: false });
+    // Show contextual loading message
+    const isUrl = audioPath.startsWith('http://') || audioPath.startsWith('https://');
+    const isS3 = audioPath.startsWith('s3://');
+    const isGcs = audioPath.startsWith('gs://');
+    const loadMsg = isUrl
+      ? '⬇ Downloading audio (first load may take a moment)…'
+      : isS3
+        ? '⬇ Loading audio from S3…'
+        : isGcs
+          ? '⬇ Loading audio from GCS…'
+          : 'Loading audio…';
+    this.statusChanged.emit({ message: loadMsg, error: false });
 
     let result: { spec: string; wav: string; duration: number; sample_rate: number; freq_min: number; freq_max: number };
     try {
