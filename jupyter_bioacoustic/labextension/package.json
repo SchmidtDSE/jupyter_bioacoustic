@@ -14,8 +14,8 @@
     "lib/**/*.{d.ts,js,js.map}"
   ],
   "scripts": {
-    "build:labextension:dev": "rimraf labextension/static && jupyter labextension build --development True .",
-    "build:labextension": "rimraf labextension/static && jupyter labextension build .",
+    "build:labextension:dev": "rimraf labextension && jupyter labextension build --development True .",
+    "build:labextension": "rimraf labextension && jupyter labextension build .",
     "build:prod": "jlpm run build:lib:prod && jlpm run build:labextension",
     "gen:py": "node src/py/gen_chunks.js",
     "build:lib": "jlpm run gen:py && tsc --sourceMap",
@@ -39,7 +39,7 @@
     "extension": true,
     "outputDir": "labextension",
     "_build": {
-      "load": "static/remoteEntry.f3b3eee85b8b7aaa642b.js",
+      "load": "static/remoteEntry.53cefd4e9722ba87e9db.js",
       "extension": "./extension"
     }
   }
