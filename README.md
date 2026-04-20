@@ -14,6 +14,7 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 - [Documentation](#documentation)
 - [Usage](#usage)
 - [JupyterAudio Parameters](#jupyteraudio-parameters)
+- [Demo](#demo)
 - [License](#license)
 
 ---
@@ -255,6 +256,57 @@ form_config:
 | `inline` | bool | `False` | Embed below cell vs split-right panel |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
+
+## Demo
+
+Example notebooks are included in the `demo/` directory. They require additional dependencies (ipyleaflet, shapely, seaborn, requests).
+
+### 1. Install with demo dependencies
+
+**With pixi:**
+```bash
+pixi run -e demo lab
+```
+This launches JupyterLab with the demo dependencies and sets the working directory to `demo/`.
+
+**With pip:**
+```bash
+pip install -e ".[demo]"
+jupyter lab --ServerApp.iopub_data_rate_limit=1e10
+```
+
+### 2. Download audio files (one-time)
+
+Audio files are not included in this repository (they are large FLAC files, ~50-100 MB each).
+
+> **These are large files. It will likely take multiple minutes per file to download.** For demo purposes, you can replace them with any FLAC audio file — the spectrograms will look different but the plugin works the same way.
+
+**With AWS CLI (faster):**
+
+```bash
+cd demo
+mkdir -p audio
+aws s3 cp s3://dse-soundhub/public/audio/dev/20230522_200000.flac audio/test-default.flac --no-sign-request &
+aws s3 cp s3://dse-soundhub/public/audio/dev/20230524_200000.flac audio/test1.flac --no-sign-request &
+aws s3 cp s3://dse-soundhub/public/audio/dev/20230525_200000.flac audio/test2.flac --no-sign-request &
+aws s3 cp s3://dse-soundhub/public/audio/dev/20230526_000000.flac audio/test3.flac --no-sign-request &
+wait
+```
+
+**With curl:**
+
+```bash
+cd demo
+mkdir -p audio
+curl -o audio/test-default.flac https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230522_200000.flac
+curl -o audio/test1.flac https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230524_200000.flac
+curl -o audio/test2.flac https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230525_200000.flac
+curl -o audio/test3.flac https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230526_000000.flac
+```
+
+### 3. Open a demo notebook
+
+Open `simple-example.ipynb` from the JupyterLab file browser. The notebook demonstrates both review and annotation workflows.
 
 ## License
 

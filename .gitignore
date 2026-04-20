@@ -6,8 +6,13 @@ scratch*
 Untitled*
 dev*
 *.ipynb
+!demo/*.ipynb
 tmp/
 logs/
+
+# Demo runtime outputs
+demo/outputs/
+demo/spectrograms/
 
 #***************************************************************************
 # JupyterBioacoustic Extension

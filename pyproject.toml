@@ -17,6 +17,14 @@ dependencies = [
     "pyyaml",
 ]
 
+[project.optional-dependencies]
+demo = [
+    "ipyleaflet",
+    "shapely",
+    "seaborn",
+    "requests",
+]
+
 [tool.hatch.build.targets.wheel]
 artifacts = ["jupyter_bioacoustic/labextension"]
 
@@ -67,12 +75,23 @@ cwd = "jupyter_bioacoustic"
 [tool.pixi.tasks.lab]
 cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
 
+[tool.pixi.tasks.demo]
+cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
+cwd = "demo"
+
 [tool.pixi.environments]
 default = { features = [] }
 dev = { features = ["dev"] }
+demo = { features = ["demo"] }
 
 [tool.pixi.feature.dev.dependencies]
 twine = "*"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 build = "*"
+
+[tool.pixi.feature.demo.pypi-dependencies]
+ipyleaflet = "*"
+shapely = "*"
+seaborn = "*"
+requests = "*"
