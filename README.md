@@ -61,9 +61,7 @@ pixi run -e dev python -m build --wheel
 ls dist/*.whl
 ```
 
-Then distribute the wheel:
-- Copy it to downstream repos (e.g. `dev-jupyter-audio-demo/dist/`)
-- Optionally tag and create a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) with the wheel attached
+Then tag and create a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) with the wheel attached:
 
 ```bash
 git tag v0.1.5
@@ -118,6 +116,7 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/dev-jupyter-au
 - [Annotation Tools](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Annotation-Tools) — Spectrogram interaction tools
 - [Data Schema](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Data-Schema) — Input and output formats
 - [API Reference](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/API-Reference) — `JupyterAudio` class, properties, methods
+- [Demo](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Demo) — Running the demo notebooks
 - [Development](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Development) — Project structure, build tasks, architecture
 
 ## Usage 
