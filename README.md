@@ -102,7 +102,7 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 | **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, capture PNG |
 | **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes |
 | **Configurable forms** | YAML-driven: selects, textboxes, checkboxes, conditional sections, progress tracker |
-| **Per-row audio** | Each row can point to a different audio file with fallback |
+| **Per-row audio** | Each row can point to a different audio file with fallback. S3 partial byte-range reads. HTTPS URLs cached locally (full download on first access). |
 | **Output** | CSV, Parquet, or line-delimited JSON with `pass_value`, `fixed_value`, and `**kwargs` |
 | **Duplicate prevention** | Reviewed rows faded, read-only results, deletable. Filter by pending/reviewed/all with refresh. |
 
