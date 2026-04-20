@@ -1,0 +1,47 @@
+audio:
+    fallback: audio/test-default.flac
+    column: audio_path
+data_columns: ["county", "audio_path", "start_time"]
+category_path: data/categories-small.csv
+capture: false
+default_buffer: 0
+capture: 'Save Spectrogram'
+capture_dir: 'spectrograms'
+
+form_config:
+  annotate_form:
+    - title:
+        value: ANNOTATE
+        progress_tracker: true
+    - select:
+        label: species
+        column: common_name
+        required: true
+        items:
+          path: data/categories-small.csv
+          value: common_name
+    - annotation:
+        start_time:
+          label: start
+          column: start_time
+          source_value: start_time
+        end_time:
+          label: end
+          column: end_time
+          source_value: end_time
+        min_frequency:
+          label: min freq
+          column: min_freq
+        max_frequency:
+          label: max freq
+          column: max_freq
+        tools:
+          - time_select
+          - start_end_time_select
+          - bounding_box
+  submission_buttons:
+    line: true
+    next:
+      label: Skip
+    submit:
+      label: Submit

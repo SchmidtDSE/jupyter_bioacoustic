@@ -1,0 +1,20 @@
+Class,common_name,scientific_name,Category
+AEAC,Northern saw-whet owl,Aegolius acadicus,Owl
+BRCA,Canada goose,Branta canadensis,Game bird
+BRMA,Marbled murrelet,Brachyramphus marmoratus,Other bird
+BUVI,Great horned owl,Bubo virginianus,Owl
+CAGU,Hermit thrush,Catharus guttatus,Songbird
+CALU,Wolf howl,Canis lupus,Mammal
+CAUS,Swainson's thrush,Catharus ustulatus,Songbird
+CCOO,Olive-sided flycatcher,Contopus cooperi,Songbird
+CHFA,Wrentit,Chamaea fasciata,Songbird
+CHMI,Common nighthawk call,Chordeiles minor,Other bird
+CHMI_IRREG,Common nighthawk boom,Chordeiles minor,Other bird
+COAU,Northern flicker series,Colaptes auratus,Woodpecker
+COAU2,Northern flicker 'skew',Colaptes auratus,Woodpecker
+COCO,Common raven,Corvus corax,Corvid
+CYST,Steller's jay,Cyanocitta stelleri,Corvid
+DEFU,Sooty grouse,Dendragapus fuliginosus,Game bird
+DOG,Dog barks,NA,Nuisance
+DRPU,Downy woodpecker call,Dryobates pubescens,Woodpecker
+DRUM,Woodpecker spp. drum,NA,Woodpecker
