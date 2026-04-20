@@ -59,7 +59,7 @@ cmd = "jlpm install"
 cwd = "jupyter_bioacoustic"
 
 [tool.pixi.tasks.build]
-cmd = "jlpm run build:lib && jlpm run build:labextension:dev"
+cmd = "jlpm run build:lib && jlpm run build:labextension:dev && cd .. && python develop.py"
 cwd = "jupyter_bioacoustic"
 depends-on = ["jlpm-install"]
 
