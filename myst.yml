@@ -1,0 +1,51 @@
+version: 1
+site:
+  title: Jupyter Bioacoustic
+  template: book-theme
+  actions:
+    - title: CODE
+      url: https://github.com/SchmidtDSE/dev-jupyter-audio
+    - title: DOCS
+      url: https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
+    - title: DSE
+      url: https://dse.berkeley.edu/
+  options:
+    hide_toc: false
+    hide_outline: false
+    favicon: assets/favicon.ico
+    logo: assets/dse-2.black-crop.small.png
+    logo_dark: assets/dse-2.white-crop.small.png
+project:
+  title: Jupyter Bioacoustic
+  subtitle: jupyter-lab tools for annotating and reviewing bioacoustic data
+  authors:
+    - name: Brookie Guzder-Williams
+      orcid: 0000-0001-6855-8260
+      corresponding: true
+      email: bguzder-williams@berkeley.edu
+      affiliations:
+        - dse
+        - ucb
+    - name: Ciera Martinez
+      affiliations:
+        - dse
+        - ucb
+    - name: Amy Van Scoyoc
+      affiliations:
+        - dse
+        - ucb
+  affiliations:
+    - id: dse
+      institution: The Eric and Wendy Schmidt Center for Data Science & Environment
+    - id: ucb
+      institution: University of California, Berkeley
+  github: https://github.com/SchmidtDSE/dev-jupyter-audio
+  toc:
+    - file: myst/main.md
+    - file: myst/sections/usage.md
+    - file: myst/sections/features.md
+    - file: myst/sections/install.md
+    - title: Notebooks
+      children:
+        - file: demo/simple-example.ipynb
+        - file: demo/geo-analysis-example.ipynb
