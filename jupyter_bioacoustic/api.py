@@ -244,10 +244,10 @@ def _resolve_data_config(data, data_secrets, data_columns):
         source = data[key]
 
         # Param secrets/columns override dict (explicit args take precedence)
-        secrets_raw = data_secrets if data_secrets else data.get('secrets')
+        secrets_raw = data_secrets if data_secrets is not None else data.get('secrets')
         secrets = _resolve_secrets(secrets_raw)
 
-        columns = data_columns if data_columns else data.get('columns') or []
+        columns = data_columns if data_columns is not None else data.get('columns') or []
 
         # Map key to dtype
         dtype_map = {
