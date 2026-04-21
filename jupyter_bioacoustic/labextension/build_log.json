@@ -711,7 +711,7 @@
               "singleton": true
             },
             "jupyter-bioacoustic": {
-              "version": "0.1.0",
+              "version": "0.1.6",
               "singleton": true,
               "import": "/Users/brookie/code/dse/soundhub/jupyteraudio/dev-jupyter-audio/jupyter_bioacoustic/lib/index.js"
             }
