@@ -17,7 +17,14 @@ export interface Detection {
 export interface FilterClause {
   col: string;
   op: string;
-  val: string | number;
+  val: string | number | null;
+}
+
+/** Metadata for a filterable column (auto-detected or configured). */
+export interface FilterColumnMeta {
+  key: string;
+  label: string;
+  dtype: 'float' | 'string';
 }
 
 /** Column definition for the clip table. */
