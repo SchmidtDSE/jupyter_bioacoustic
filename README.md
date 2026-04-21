@@ -98,7 +98,7 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 
 | | |
 |---|---|
-| **Clip table** | Sort, filter (`common_name = 'Barred owl' and confidence >= 0.5`), paginate, configurable columns |
+| **Clip table** | Sort, GUI filter builder (column/operator/value dropdowns, filter chips), paginate, configurable columns |
 | **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, capture PNG |
 | **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes |
 | **Configurable forms** | YAML-driven: selects, textboxes, checkboxes, conditional sections, progress tracker |
@@ -238,7 +238,11 @@ form_config:
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `data` | DataFrame / str / dict | *required* | Input data. String: file path, URL, `api::url`, or SQL (`SELECT ...`). Dict: `{path\|url\|uri\|api\|sql, secrets, columns}`. |
+| `data` | DataFrame / str / dict | *required** | Input data. String: file path, URL, `api::url`, or SQL (`SELECT ...`). Dict: `{path\|url\|uri\|api\|sql, secrets, columns}`. |
+| `data_path` | str | `None` | Explicit file path for data (overrides `data` source). |
+| `data_url` | str | `None` | Explicit URL for data (overrides `data` source). |
+| `data_sql` | str | `None` | Explicit SQL query for data (overrides `data` source). |
+| `data_api` | str | `None` | Explicit API endpoint for data (overrides `data` source). |
 | `data_secrets` | dict or list | `None` | Auth for data loading. `{key, value}` pairs. Value: `env:VAR`, `dialog`, or literal. |
 | `data_columns` | list | `[]` | Columns for the clip table. |
 | `audio` | str or dict | *required* | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{path\|url\|uri\|column\|sql\|api, prefix, suffix, fallback, secrets, property, response_index}`. |
