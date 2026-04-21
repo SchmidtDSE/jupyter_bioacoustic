@@ -83,6 +83,7 @@ cwd = "demo"
 default = { features = [] }
 dev = { features = ["dev"] }
 demo = { features = ["demo"] }
+mystmd = { features = ["mystmd"] }
 
 [tool.pixi.feature.dev.dependencies]
 twine = "*"
@@ -96,3 +97,11 @@ shapely = "*"
 seaborn = "*"
 requests = "*"
 duckdb = ">=1.5.2, <2"
+
+[tool.pixi.feature.mystmd.pypi-dependencies]
+ipyleaflet = "*"
+shapely = "*"
+seaborn = "*"
+requests = "*"
+duckdb = ">=1.5.2, <2"
+mystmd = ">=1.3.6, <2"
