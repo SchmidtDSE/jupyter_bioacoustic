@@ -50,28 +50,35 @@ pixi run lab     # launch JupyterLab
 After TypeScript or Python changes:
 
 ```bash
-# 1. Build TypeScript
+# 1. Bump version in pyproject.toml and jupyter_bioacoustic/package.json
+
+# 2. Build TypeScript + labextension
 pixi run build
 
-# 2. Build the wheel (requires the `dev` pixi environment)
+# 3. Verify the labextension is complete
+ls jupyter_bioacoustic/labextension/package.json  # must exist
+
+# 4. Commit everything (source changes + rebuilt labextension)
+git add -A
+git commit -m "v0.1.9 — description of changes"
+
+# 5. Build the wheel (requires the `dev` pixi environment)
 rm -f dist/*.whl
 pixi run -e dev python -m build --wheel
-
-# 3. Verify
 ls dist/*.whl
+
+# 6. Tag and release
+git tag v0.1.9
+git push origin main v0.1.9
+gh release create v0.1.9 dist/jupyter_bioacoustic-0.1.9-py3-none-any.whl \
+    --title "v0.1.9" --notes "description of changes"
 ```
 
-Then tag and create a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) with the wheel attached:
-
-```bash
-git tag v0.1.8
-git push origin v0.1.8
-gh release create v0.1.8 dist/jupyter_bioacoustic-0.1.8-py3-none-any.whl \
-    --title "v0.1.8" --notes "missing package"
-```
+> **Important:** The build step (2) regenerates `jupyter_bioacoustic/labextension/`, which is tracked in git. Always rebuild _before_ committing so the wheel and the tagged commit contain the same JS bundle.
 
 > **Checklist:**
-> - Bump the version in `pyproject.toml` if the API changed
+> - Bump version in both `pyproject.toml` and `jupyter_bioacoustic/package.json`
+> - Verify `jupyter_bioacoustic/labextension/package.json` exists after build
 > - Delete old wheels before building (`rm -f dist/*.whl`)
 > - Update the wheel filename in downstream `pyproject.toml` files if the version changed
 
