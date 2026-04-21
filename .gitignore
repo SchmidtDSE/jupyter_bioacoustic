@@ -59,7 +59,7 @@ wheels/
 *.egg
 
 # Keep dist/ for wheel releases
-# dist/
+dist/
 
 #***************************************************************************
 # OS / Editor
