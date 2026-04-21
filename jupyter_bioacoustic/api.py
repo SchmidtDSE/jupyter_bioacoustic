@@ -243,12 +243,11 @@ def _resolve_data_config(data, data_secrets, data_columns):
         key = found[0]
         source = data[key]
 
-        # Dict secrets override param secrets
-        secrets_raw = data.get('secrets', data_secrets)
+        # Param secrets/columns override dict (explicit args take precedence)
+        secrets_raw = data_secrets if data_secrets else data.get('secrets')
         secrets = _resolve_secrets(secrets_raw)
 
-        # Dict columns override param columns
-        columns = data.get('columns', data_columns) or []
+        columns = data_columns if data_columns else data.get('columns') or []
 
         # Map key to dtype
         dtype_map = {
@@ -359,9 +358,9 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback) -> 
         return {
             'type': atype,
             'value': audio[key],
-            'prefix': audio.get('prefix', prefix),
-            'suffix': audio.get('suffix', suffix),
-            'fallback': audio.get('fallback', fallback),
+            'prefix': prefix or audio.get('prefix', ''),
+            'suffix': suffix or audio.get('suffix', ''),
+            'fallback': fallback or audio.get('fallback', ''),
         }
 
     if isinstance(audio, str) and audio:
