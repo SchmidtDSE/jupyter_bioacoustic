@@ -159,8 +159,12 @@ def _read_data_from_api(url: str, cookies: dict = None):
 def _read_data_from_sql(query: str, secrets: dict = None):
     """Execute a SQL query with duckdb and return a DataFrame.
 
-    Secrets are set as duckdb ``CREATE SECRET`` or environment variables
-    before running the query.
+    Automatically loads the httpfs extension if the query references
+    s3:// or gs:// paths. Secrets with S3/GCS-related keys are applied
+    as duckdb SET commands; others are set as environment variables.
+
+    For public S3 buckets, pass ``data_secrets={'key': 's3_region', 'value': 'us-west-2'}``.
+    DuckDB will use unsigned requests by default when no credentials are provided.
     """
     try:
         import duckdb
@@ -171,17 +175,40 @@ def _read_data_from_sql(query: str, secrets: dict = None):
 
     conn = duckdb.connect(':memory:')
 
-    # Apply secrets as duckdb secrets or env vars
+    # Auto-load httpfs if query references cloud storage
+    if re.search(r"s3://|gs://|https?://", query, re.IGNORECASE):
+        try:
+            conn.execute("INSTALL httpfs")
+        except Exception:
+            pass  # may already be installed
+        conn.execute("LOAD httpfs")
+
+    # Duckdb S3/GCS settings that can be SET directly
+    _DUCKDB_SET_KEYS = {
+        's3_access_key_id', 's3_secret_access_key', 's3_region',
+        's3_endpoint', 's3_session_token', 's3_url_style',
+        's3_use_ssl', 's3_url_compatibility_mode',
+    }
+
+    # Apply secrets
+    has_credentials = False
     if secrets:
         for k, v in secrets.items():
-            # Common duckdb secret patterns
-            k_lower = k.lower()
-            if k_lower in ('s3_access_key_id', 's3_secret_access_key',
-                           's3_region', 's3_endpoint', 's3_session_token'):
+            if k.lower() in _DUCKDB_SET_KEYS:
                 conn.execute(f"SET {k} = '{v}'")
+                if k.lower() in ('s3_access_key_id', 's3_secret_access_key'):
+                    has_credentials = True
             else:
-                # Set as environment variable (for generic auth)
                 os.environ[k] = str(v)
+
+    # For S3 queries without explicit credentials, try the AWS credential chain
+    if re.search(r"s3://", query, re.IGNORECASE) and not has_credentials:
+        try:
+            conn.execute(
+                "CREATE SECRET IF NOT EXISTS (_type = 's3', provider = 'credential_chain')"
+            )
+        except Exception:
+            pass  # credential chain may not be available — duckdb will try unsigned
 
     result = conn.execute(query).df()
     conn.close()
