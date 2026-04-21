@@ -238,17 +238,23 @@ form_config:
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `data` | DataFrame / str | *required* | Input data with `id`, `start_time`, `end_time` columns. Accepts: DataFrame, file path, URL (auto-detects file vs JSON), `api::url` for API endpoints, or SQL query (`SELECT ...` via duckdb). |
-| `data_secrets` | dict or list | `None` | Auth for data loading. `{key, value}` pairs passed as cookies (HTTP) or connection params (SQL). Value supports `env:VAR_NAME`, `dialog` (prompt), or literal. |
-| `audio` | str or dict | *required* | Audio source — local path, URL/URI, column name (auto-detected), or dict with explicit `{path\|url\|uri\|column, prefix, suffix, fallback}`. |
-| `audio_prefix` | str | `''` | Prefix added to audio paths (joined with `/`). For URLs, inserted after the protocol. |
-| `audio_suffix` | str | `''` | Suffix appended to audio paths (joined with `/`). |
-| `audio_fallback` | str | `''` | Fallback path/URL when `audio` is a column and the row value is empty. |
-| `output` | str | `''` | Output file path (`.csv`, `.parquet`, `.jsonl`) |
-| `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form |
-| `prediction_column` | str | `''` | Prediction column — sets title, info card, capture filename |
-| `display_columns` | list | `[]` | Extra columns in the info card |
-| `data_columns` | list | `[]` | Columns for the clip table |
+| `data` | DataFrame / str / dict | *required* | Input data. String: file path, URL, `api::url`, or SQL (`SELECT ...`). Dict: `{path\|url\|uri\|api\|sql, secrets, columns}`. |
+| `data_secrets` | dict or list | `None` | Auth for data loading. `{key, value}` pairs. Value: `env:VAR`, `dialog`, or literal. |
+| `data_columns` | list | `[]` | Columns for the clip table. |
+| `audio` | str or dict | *required* | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{path\|url\|uri\|column\|sql\|api, prefix, suffix, fallback, secrets, property, response_index}`. |
+| `audio_prefix` | str | `''` | Prefix joined with `/` to audio paths. |
+| `audio_suffix` | str | `''` | Suffix joined with `/` to audio paths. |
+| `audio_fallback` | str | `''` | Fallback when `audio` is a column and the row value is empty. |
+| `audio_secrets` | dict or list | `None` | Auth for audio loading (same format as `data_secrets`). |
+| `audio_sql` | str | `None` | SQL query to resolve audio path. Requires `audio_property`. |
+| `audio_api` | str | `None` | API URL to resolve audio path. Requires `audio_property`. |
+| `audio_property` | str | `None` | Field/column to extract from SQL/API response as the audio path. |
+| `audio_response_index` | int | `1` | 1-based row index for SQL/API response (1 = first row). |
+| `secrets` | dict or list | `None` | Global auth — fallback for both `data_secrets` and `audio_secrets`. |
+| `output` | str | `''` | Output file path (`.csv`, `.parquet`, `.jsonl`). |
+| `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
+| `prediction_column` | str | `''` | Prediction column — sets title, info card, capture filename. |
+| `display_columns` | list | `[]` | Extra columns in the info card. |
 | `duplicate_entries` | bool | `False` | Allow multiple submissions per row |
 | `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
