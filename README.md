@@ -26,14 +26,14 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 Download the wheel from a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) and install locally. No Node.js or build step needed:
 
 ```bash
-gh release download v0.1.6 --repo SchmidtDSE/dev-jupyter-audio -p "*.whl" -D dist/
-pip install dist/jupyter_bioacoustic-0.1.6-py3-none-any.whl
+gh release download v0.1.7 --repo SchmidtDSE/dev-jupyter-audio -p "*.whl" -D dist/
+pip install dist/jupyter_bioacoustic-0.1.7-py3-none-any.whl
 ```
 
 Or in a pixi `pyproject.toml` (after downloading the wheel):
 
 ```toml
-jupyter-bioacoustic = { path = "dist/jupyter_bioacoustic-0.1.6-py3-none-any.whl" }
+jupyter-bioacoustic = { path = "dist/jupyter_bioacoustic-0.1.7-py3-none-any.whl" }
 ```
 
 ### For development
@@ -64,10 +64,10 @@ ls dist/*.whl
 Then tag and create a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) with the wheel attached:
 
 ```bash
-git tag v0.1.6
-git push origin v0.1.6
-gh release create v0.1.6 dist/jupyter_bioacoustic-0.1.6-py3-none-any.whl \
-    --title "v0.1.6" --notes "sql,api,form-filter,dict-params"
+git tag v0.1.7
+git push origin v0.1.7
+gh release create v0.1.7 dist/jupyter_bioacoustic-0.1.7-py3-none-any.whl \
+    --title "v0.1.7" --notes "sql,api,form-filter,dict-params"
 ```
 
 > **Checklist:**
