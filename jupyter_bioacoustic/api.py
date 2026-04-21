@@ -335,36 +335,114 @@ def _detect_audio_type(value: str) -> str:
     return 'path'
 
 
+def _resolve_audio_from_source(source_type, source_value, prop, index, secrets):
+    """Resolve an audio path from an SQL query or API endpoint.
+
+    Args:
+        source_type: 'sql' or 'api'
+        source_value: the SQL query or API URL
+        prop: property/column name to extract from the result row
+        index: row index to select (0-based)
+        secrets: resolved secrets dict
+
+    Returns:
+        str — the resolved audio path/URL
+    """
+    if not prop:
+        raise ValueError(
+            f"'property' is required when using audio.{source_type} "
+            f"to specify which field contains the audio path."
+        )
+
+    if source_type == 'sql':
+        query = source_value
+        # Append LIMIT if not already present
+        if not re.search(r'\bLIMIT\b', query, re.IGNORECASE):
+            query = query.rstrip().rstrip(';') + f' LIMIT {index + 1}'
+        df = _read_data_from_sql(query, secrets=secrets)
+        if len(df) <= index:
+            raise ValueError(
+                f"SQL returned {len(df)} rows, but response_index={index}")
+        val = df.iloc[index][prop]
+    elif source_type == 'api':
+        import requests as req
+        cookies = secrets or {}
+        resp = req.get(source_value, cookies=cookies, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, list):
+            # Try common wrappers
+            for k in ('data', 'results', 'items', 'records', 'rows'):
+                if k in data and isinstance(data[k], list):
+                    data = data[k]
+                    break
+        if not isinstance(data, list) or len(data) <= index:
+            raise ValueError(
+                f"API returned {len(data) if isinstance(data, list) else 'non-list'} "
+                f"items, but response_index={index}")
+        val = data[index][prop]
+    else:
+        raise ValueError(f"Unknown audio source type: {source_type}")
+
+    return str(val)
+
+
 def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
                           audio_secrets=None) -> dict:
     """Normalize the audio parameter into a standard dict.
 
     Returns dict with keys: type, value, prefix, suffix, fallback, secrets.
+
+    For sql/api sources, the audio path is resolved at init time by
+    executing the query/request and extracting the specified property.
     """
     prefix = audio_prefix or ''
     suffix = audio_suffix or ''
     fallback = audio_fallback or ''
 
     if isinstance(audio, dict):
-        # Explicit dict form: must have exactly one of path/url/uri/column
-        type_keys = {'path', 'url', 'uri', 'column'}
-        found = [k for k in type_keys if k in audio]
+        # Check for sql/api source (resolves at init time)
+        source_keys = {'sql', 'api'}
+        static_keys = {'path', 'url', 'uri', 'column'}
+        all_type_keys = source_keys | static_keys
+        found = [k for k in all_type_keys if k in audio]
         if len(found) != 1:
             raise ValueError(
-                f"audio dict must have exactly one of {type_keys}, "
+                f"audio dict must have exactly one of {all_type_keys}, "
                 f"got: {found or 'none'}"
             )
         key = found[0]
-        atype = 'url' if key in ('url', 'uri') else key
+
         # Param secrets override dict secrets
         secrets_raw = audio_secrets if audio_secrets is not None else audio.get('secrets')
+        resolved_secrets = _resolve_secrets(secrets_raw)
+
+        if key in source_keys:
+            # Resolve audio path from SQL/API
+            prop = audio.get('property')
+            index = audio.get('response_index', 0)
+            resolved_value = _resolve_audio_from_source(
+                key, audio[key], prop, index, resolved_secrets)
+            # Auto-detect the resolved value type
+            atype = _detect_audio_type(resolved_value)
+            return {
+                'type': atype,
+                'value': resolved_value,
+                'prefix': prefix or audio.get('prefix', ''),
+                'suffix': suffix or audio.get('suffix', ''),
+                'fallback': fallback or audio.get('fallback', ''),
+                'secrets': resolved_secrets,
+            }
+
+        # Static source (path/url/uri/column)
+        atype = 'url' if key in ('url', 'uri') else key
         return {
             'type': atype,
             'value': audio[key],
             'prefix': prefix or audio.get('prefix', ''),
             'suffix': suffix or audio.get('suffix', ''),
             'fallback': fallback or audio.get('fallback', ''),
-            'secrets': _resolve_secrets(secrets_raw),
+            'secrets': resolved_secrets,
         }
 
     if isinstance(audio, str) and audio:
