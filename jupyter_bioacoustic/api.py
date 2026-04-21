@@ -215,11 +215,67 @@ def _read_data_from_sql(query: str, secrets: dict = None):
     return result
 
 
-def _load_data(data, secrets: dict = None):
+def _resolve_data_config(data, data_secrets, data_columns):
+    """Normalize the data parameter into (source_str, dtype, secrets, columns).
+
+    Handles:
+    - DataFrame → returned as-is with None dtype
+    - str → auto-detected type
+    - dict → explicit keys: {path|url|uri|api|sql, secrets, columns}
+
+    Returns:
+        (data_value, dtype_or_none, resolved_secrets, columns_list)
+    """
+    import pandas as pd
+
+    if isinstance(data, pd.DataFrame):
+        return data, None, _resolve_secrets(data_secrets), data_columns or []
+
+    if isinstance(data, dict):
+        # Dict form: extract source type + value
+        type_keys = {'path', 'url', 'uri', 'api', 'sql'}
+        found = [k for k in type_keys if k in data]
+        if len(found) != 1:
+            raise ValueError(
+                f"data dict must have exactly one of {type_keys}, "
+                f"got: {found or 'none'}"
+            )
+        key = found[0]
+        source = data[key]
+
+        # Dict secrets override param secrets
+        secrets_raw = data.get('secrets', data_secrets)
+        secrets = _resolve_secrets(secrets_raw)
+
+        # Dict columns override param columns
+        columns = data.get('columns', data_columns) or []
+
+        # Map key to dtype
+        dtype_map = {
+            'path': 'path',
+            'url': 'url',
+            'uri': 'url',
+            'api': 'api',
+            'sql': 'sql',
+        }
+        return source, dtype_map[key], secrets, columns
+
+    if isinstance(data, str):
+        secrets = _resolve_secrets(data_secrets)
+        dtype = _detect_data_type(data)
+        return data, dtype, secrets, data_columns or []
+
+    raise ValueError(
+        f"'data' must be a DataFrame, str, or dict. Got {type(data).__name__}."
+    )
+
+
+def _load_data(data, dtype: str = None, secrets: dict = None):
     """Load data from any supported source.
 
     Args:
-        data: DataFrame, file path, URL, API URL (api::...), or SQL query
+        data: DataFrame, file path, URL, API URL, or SQL query string
+        dtype: Explicit type ('path', 'url', 'api', 'sql') or None for auto-detect
         secrets: resolved {key: value} dict for auth
 
     Returns:
@@ -232,11 +288,11 @@ def _load_data(data, secrets: dict = None):
 
     if not isinstance(data, str):
         raise ValueError(
-            f"'data' must be a DataFrame, file path, URL, or SQL query. "
-            f"Got {type(data).__name__}."
+            f"'data' must be a DataFrame or string. Got {type(data).__name__}."
         )
 
-    dtype = _detect_data_type(data)
+    if dtype is None:
+        dtype = _detect_data_type(data)
 
     if dtype == 'sql':
         return _read_data_from_sql(data, secrets=secrets)
@@ -402,11 +458,15 @@ class JupyterAudio:
         if raw_data is _UNSET:
             raise ValueError(
                 "'data' is required — pass a DataFrame, file path, URL, "
-                "API endpoint (api::...), or SQL query."
+                "API endpoint, SQL query, or dict."
             )
-        raw_secrets = resolve(data_secrets, 'data_secrets', None)
-        secrets = _resolve_secrets(raw_secrets)
-        raw_data = _load_data(raw_data, secrets=secrets)
+        raw_data_secrets = resolve(data_secrets, 'data_secrets', None)
+        raw_data_columns = resolve(data_columns, 'data_columns', None)
+
+        # Resolve data config — handles str, dict, and DataFrame
+        source, dtype, secrets, resolved_columns = _resolve_data_config(
+            raw_data, raw_data_secrets, raw_data_columns)
+        loaded_data = _load_data(source, dtype=dtype, secrets=secrets)
 
         # Resolve audio
         raw_audio = resolve(audio, 'audio', _UNSET)
@@ -417,12 +477,12 @@ class JupyterAudio:
         self._audio_config = _resolve_audio_config(
             raw_audio, raw_prefix, raw_suffix, raw_fallback)
 
-        self._data             = raw_data
+        self._data             = loaded_data
         self._category_path    = resolve(category_path,    'category_path',    '')
         self._output           = resolve(output,           'output',           '')
         self._prediction_column = resolve(prediction_column, 'prediction_column', '')
         self._display_columns  = resolve(display_columns,  'display_columns',  None) or []
-        self._data_columns     = resolve(data_columns,     'data_columns',     None) or []
+        self._data_columns     = resolved_columns
         raw_form = resolve(form_config, 'form_config', None)
         if isinstance(raw_form, str):
             raw_form = _load_config(raw_form)
