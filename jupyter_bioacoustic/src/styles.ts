@@ -111,6 +111,18 @@ export const dividerStyle = (margin: string = '0 -2px') =>
 export const fullWidthDividerStyle = () =>
   `border-top:1px solid ${COLORS.bgSurface0};width:100%;margin:2px 0;`;
 
+// ─── Filter chip ──────────────────────────────────────────────
+
+export const filterChipStyle = () =>
+  `display:inline-flex;align-items:center;gap:4px;` +
+  `background:${COLORS.bgSurface1};color:${COLORS.textPrimary};` +
+  `border-radius:12px;padding:2px 6px 2px 10px;font-size:11px;` +
+  `white-space:nowrap;margin:2px;`;
+
+export const filterChipDismissStyle = () =>
+  `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
+  `font-size:14px;padding:0 2px;line-height:1;`;
+
 // ─── Utility ──────────────────────────────────────────────────
 
 export const cssSize = (val: any): string =>
@@ -128,11 +140,7 @@ export function injectGlobalStyles(): void {
   const styleEl = document.createElement('style');
   styleEl.id = ID;
   styleEl.textContent = `
-    .jp-BA-filter-input::placeholder {
-      color: ${COLORS.textMuted};
-      opacity: 0.7;
-      font-style: italic;
-    }
+    .jp-BA-chip-dismiss:hover { color: ${COLORS.red}; }
   `;
   document.head.appendChild(styleEl);
 }

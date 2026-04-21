@@ -6,7 +6,7 @@
 #   'rank': 1}
 
 audio:
-    fallback: audio/test-default.flac
+    # fallback: audio/test-default.flac
     # column: audio_path
     # url: "https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230522_200000.flac"
     uri: "s3://dse-soundhub/public/audio/dev/20230522_200000.flac"
@@ -14,7 +14,7 @@ data_secrets:
     key: "__Secure-authjs.session-token"
     value: "env:SOUNDHUB_SESSION_TOKEN"
 
-data_columns: ["confidence", "common_name", "scientific_name", "rank"]
+# data_columns: ["confidence", "common_name", "scientific_name", "rank"]
 category_path: data/categories-small.csv
 capture: false
 default_buffer: 0
