@@ -342,12 +342,17 @@ def _resolve_audio_from_source(source_type, source_value, prop, index, secrets):
         source_type: 'sql' or 'api'
         source_value: the SQL query or API URL
         prop: property/column name to extract from the result row
-        index: row index to select (0-based)
+        index: 1-based row index (default 1 = first row)
         secrets: resolved secrets dict
 
     Returns:
         str — the resolved audio path/URL
     """
+    # Convert 1-based to 0-based
+    if index is None:
+        index = 1
+    idx = max(0, index - 1)
+
     if not prop:
         raise ValueError(
             f"'property' is required when using audio.{source_type} "
@@ -358,12 +363,12 @@ def _resolve_audio_from_source(source_type, source_value, prop, index, secrets):
         query = source_value
         # Append LIMIT if not already present
         if not re.search(r'\bLIMIT\b', query, re.IGNORECASE):
-            query = query.rstrip().rstrip(';') + f' LIMIT {index + 1}'
+            query = query.rstrip().rstrip(';') + f' LIMIT {idx + 1}'
         df = _read_data_from_sql(query, secrets=secrets)
-        if len(df) <= index:
+        if len(df) <= idx:
             raise ValueError(
-                f"SQL returned {len(df)} rows, but response_index={index}")
-        val = df.iloc[index][prop]
+                f"SQL returned {len(df)} rows, but response_index={index} (row {idx})")
+        val = df.iloc[idx][prop]
     elif source_type == 'api':
         import requests as req
         cookies = secrets or {}
@@ -376,11 +381,11 @@ def _resolve_audio_from_source(source_type, source_value, prop, index, secrets):
                 if k in data and isinstance(data[k], list):
                     data = data[k]
                     break
-        if not isinstance(data, list) or len(data) <= index:
+        if not isinstance(data, list) or len(data) <= idx:
             raise ValueError(
                 f"API returned {len(data) if isinstance(data, list) else 'non-list'} "
-                f"items, but response_index={index}")
-        val = data[index][prop]
+                f"items, but response_index={index} (row {idx})")
+        val = data[idx][prop]
     else:
         raise ValueError(f"Unknown audio source type: {source_type}")
 
@@ -420,7 +425,7 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
         if key in source_keys:
             # Resolve audio path from SQL/API
             prop = audio.get('property')
-            index = audio.get('response_index', 0)
+            index = audio.get('response_index')
             resolved_value = _resolve_audio_from_source(
                 key, audio[key], prop, index, resolved_secrets)
             # Auto-detect the resolved value type
@@ -471,6 +476,10 @@ class JupyterAudio:
         audio_suffix=_UNSET,
         audio_fallback=_UNSET,
         audio_secrets=_UNSET,
+        audio_sql=_UNSET,
+        audio_api=_UNSET,
+        audio_property=_UNSET,
+        audio_response_index=_UNSET,
         secrets=_UNSET,
         category_path=_UNSET,
         output=_UNSET,
@@ -565,8 +574,32 @@ class JupyterAudio:
         raw_suffix = resolve(audio_suffix, 'audio_suffix', '')
         raw_fallback = resolve(audio_fallback, 'audio_fallback', '')
         raw_audio_secrets = resolve(audio_secrets, 'audio_secrets', None)
+        raw_audio_sql = resolve(audio_sql, 'audio_sql', None)
+        raw_audio_api = resolve(audio_api, 'audio_api', None)
+        raw_audio_property = resolve(audio_property, 'audio_property', None)
+        raw_audio_response_index = resolve(audio_response_index, 'audio_response_index', None)
         if raw_audio_secrets is None:
             raw_audio_secrets = raw_global_secrets
+
+        # Build audio dict from top-level sql/api params if audio not set
+        if raw_audio is _UNSET and (raw_audio_sql or raw_audio_api):
+            raw_audio = {}
+            if raw_audio_sql:
+                raw_audio['sql'] = raw_audio_sql
+            elif raw_audio_api:
+                raw_audio['api'] = raw_audio_api
+        elif raw_audio is _UNSET:
+            raise ValueError(
+                "'audio' is required — pass a path, URL, column name, dict, "
+                "or use audio_sql/audio_api."
+            )
+
+        # Inject top-level property/response_index into dict if audio is a dict
+        if isinstance(raw_audio, dict):
+            if raw_audio_property is not None:
+                raw_audio.setdefault('property', raw_audio_property)
+            if raw_audio_response_index is not None:
+                raw_audio['response_index'] = raw_audio_response_index
 
         self._audio_config = _resolve_audio_config(
             raw_audio, raw_prefix, raw_suffix, raw_fallback,
