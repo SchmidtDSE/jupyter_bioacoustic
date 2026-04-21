@@ -1,26 +1,19 @@
-# common_name': 'Southern Wood Cricket',
-#   'scientific_name': 'Gryllus fultoni',
-#   'start_time': 222.0,
-#   'end_time': 225.0,
-#   'confidence': 0.1966402232646942,
-#   'rank': 1}
-
+# AUDIO CONFIG
 audio:
     # fallback: audio/test-default.flac
     # column: audio_path
     # url: "https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230522_200000.flac"
     uri: "s3://dse-soundhub/public/audio/dev/20230522_200000.flac"
-data_secrets:
-    key: "__Secure-authjs.session-token"
-    value: "env:SOUNDHUB_SESSION_TOKEN"
-
-# data_columns: ["confidence", "common_name", "scientific_name", "rank"]
+# DATA CONFIG
+data:
+    columns: ['common_name', 'confidence', 'rank', 'county']
+# ADDITIONAL PARAMS
 category_path: data/categories-small.csv
 capture: false
 default_buffer: 0
 capture: 'Save Spectrogram'
 capture_dir: 'spectrograms'
-
+# FORM CONFIG
 form_config:
   annotate_form:
     - title:

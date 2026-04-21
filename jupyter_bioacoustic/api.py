@@ -470,6 +470,10 @@ class JupyterAudio:
     def __init__(
         self,
         data=_UNSET,
+        data_path=_UNSET,
+        data_url=_UNSET,
+        data_sql=_UNSET,
+        data_api=_UNSET,
         data_secrets=_UNSET,
         audio=_UNSET,
         audio_prefix=_UNSET,
@@ -551,11 +555,49 @@ class JupyterAudio:
         raw_global_secrets = resolve(secrets, 'secrets', None)
 
         raw_data = resolve(data, 'data', _UNSET)
-        if raw_data is _UNSET:
+        raw_data_path = resolve(data_path, 'data_path', None)
+        raw_data_url = resolve(data_url, 'data_url', None)
+        raw_data_sql = resolve(data_sql, 'data_sql', None)
+        raw_data_api = resolve(data_api, 'data_api', None)
+
+        # Top-level data_path/url/sql/api can serve as or override the source
+        _top_level_data = {
+            'path': raw_data_path, 'url': raw_data_url,
+            'sql': raw_data_sql, 'api': raw_data_api,
+        }
+        _top_found = {k: v for k, v in _top_level_data.items() if v is not None}
+
+        if len(_top_found) > 1:
+            raise ValueError(
+                f"Only one of data_path, data_url, data_sql, data_api may be set. "
+                f"Got: {list(_top_found.keys())}"
+            )
+
+        if _top_found:
+            # A top-level source param was provided
+            _tkey, _tval = next(iter(_top_found.items()))
+            if raw_data is _UNSET:
+                # No data param at all — use top-level as the source
+                raw_data = _tval
+            elif isinstance(raw_data, dict):
+                # Inject/override the source key in the data dict
+                # Remove any existing source keys first
+                for k in ('path', 'url', 'uri', 'api', 'sql'):
+                    raw_data.pop(k, None)
+                raw_data[_tkey] = _tval
+            else:
+                # data is a str or DataFrame — top-level overrides it
+                raw_data = _tval
+        elif raw_data is _UNSET:
             raise ValueError(
                 "'data' is required — pass a DataFrame, file path, URL, "
-                "API endpoint, SQL query, or dict."
+                "API endpoint, SQL query, or dict. "
+                "Alternatively use data_path, data_url, data_sql, or data_api."
             )
+
+        # Determine dtype for top-level source params
+        _top_dtype = next(iter(_top_found.keys()), None) if _top_found else None
+
         # data_secrets > secrets > data.secrets
         raw_data_secrets = resolve(data_secrets, 'data_secrets', None)
         if raw_data_secrets is None:
@@ -565,6 +607,9 @@ class JupyterAudio:
         # Resolve data config — handles str, dict, and DataFrame
         source, dtype, resolved_secrets, resolved_columns = _resolve_data_config(
             raw_data, raw_data_secrets, raw_data_columns)
+        # Top-level type hint overrides auto-detection (for str sources)
+        if _top_dtype and isinstance(source, str):
+            dtype = _top_dtype
         loaded_data = _load_data(source, dtype=dtype, secrets=resolved_secrets)
 
         # Resolve audio
