@@ -335,10 +335,11 @@ def _detect_audio_type(value: str) -> str:
     return 'path'
 
 
-def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback) -> dict:
+def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
+                          audio_secrets=None) -> dict:
     """Normalize the audio parameter into a standard dict.
 
-    Returns dict with keys: type, value, prefix, suffix, fallback.
+    Returns dict with keys: type, value, prefix, suffix, fallback, secrets.
     """
     prefix = audio_prefix or ''
     suffix = audio_suffix or ''
@@ -355,12 +356,15 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback) -> 
             )
         key = found[0]
         atype = 'url' if key in ('url', 'uri') else key
+        # Param secrets override dict secrets
+        secrets_raw = audio_secrets if audio_secrets is not None else audio.get('secrets')
         return {
             'type': atype,
             'value': audio[key],
             'prefix': prefix or audio.get('prefix', ''),
             'suffix': suffix or audio.get('suffix', ''),
             'fallback': fallback or audio.get('fallback', ''),
+            'secrets': _resolve_secrets(secrets_raw),
         }
 
     if isinstance(audio, str) and audio:
@@ -370,6 +374,7 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback) -> 
             'prefix': prefix,
             'suffix': suffix,
             'fallback': fallback,
+            'secrets': _resolve_secrets(audio_secrets),
         }
 
     raise ValueError(
@@ -387,6 +392,8 @@ class JupyterAudio:
         audio_prefix=_UNSET,
         audio_suffix=_UNSET,
         audio_fallback=_UNSET,
+        audio_secrets=_UNSET,
+        secrets=_UNSET,
         category_path=_UNSET,
         output=_UNSET,
         prediction_column=_UNSET,
@@ -453,28 +460,39 @@ class JupyterAudio:
                 return cfg[key]
             return default
 
+        # Global secrets — fallback for data_secrets and audio_secrets
+        raw_global_secrets = resolve(secrets, 'secrets', None)
+
         raw_data = resolve(data, 'data', _UNSET)
         if raw_data is _UNSET:
             raise ValueError(
                 "'data' is required — pass a DataFrame, file path, URL, "
                 "API endpoint, SQL query, or dict."
             )
+        # data_secrets > secrets > data.secrets
         raw_data_secrets = resolve(data_secrets, 'data_secrets', None)
+        if raw_data_secrets is None:
+            raw_data_secrets = raw_global_secrets
         raw_data_columns = resolve(data_columns, 'data_columns', None)
 
         # Resolve data config — handles str, dict, and DataFrame
-        source, dtype, secrets, resolved_columns = _resolve_data_config(
+        source, dtype, resolved_secrets, resolved_columns = _resolve_data_config(
             raw_data, raw_data_secrets, raw_data_columns)
-        loaded_data = _load_data(source, dtype=dtype, secrets=secrets)
+        loaded_data = _load_data(source, dtype=dtype, secrets=resolved_secrets)
 
         # Resolve audio
+        # audio_secrets > secrets > audio.secrets
         raw_audio = resolve(audio, 'audio', _UNSET)
         raw_prefix = resolve(audio_prefix, 'audio_prefix', '')
         raw_suffix = resolve(audio_suffix, 'audio_suffix', '')
         raw_fallback = resolve(audio_fallback, 'audio_fallback', '')
+        raw_audio_secrets = resolve(audio_secrets, 'audio_secrets', None)
+        if raw_audio_secrets is None:
+            raw_audio_secrets = raw_global_secrets
 
         self._audio_config = _resolve_audio_config(
-            raw_audio, raw_prefix, raw_suffix, raw_fallback)
+            raw_audio, raw_prefix, raw_suffix, raw_fallback,
+            audio_secrets=raw_audio_secrets)
 
         self._data             = loaded_data
         self._category_path    = resolve(category_path,    'category_path',    '')
