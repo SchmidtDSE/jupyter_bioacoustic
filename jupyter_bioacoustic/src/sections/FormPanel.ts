@@ -74,13 +74,9 @@ export class FormPanel {
 
   private _formConfig: any = null;
   private _formValues: Record<string, any> = {};
-  private _isValidEl: HTMLSelectElement | null = null;
-  private _isValidYesVal: any = 'yes';
-  private _isValidNoVal: any = 'no';
-  private _isValidCol = 'is_valid';
-  private _yesFormEl: HTMLDivElement | null = null;
-  private _noFormEl: HTMLDivElement | null = null;
   private _submitBtns: HTMLButtonElement[] = [];
+  /** Named form sections (top-level config keys referenced by select form: items). */
+  private _namedSections: Map<string, HTMLDivElement> = new Map();
   private _requiredInputs: Array<{ col: string; el: HTMLElement }> = [];
   private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
@@ -150,11 +146,8 @@ export class FormPanel {
   async build(): Promise<void> {
     this._dynFormEl.innerHTML = '';
     this._formValues = {};
-    this._isValidEl = null;
-    this._isValidCol = 'is_valid';
-    this._yesFormEl = null;
-    this._noFormEl = null;
     this._submitBtns = [];
+    this._namedSections.clear();
     this._requiredInputs = [];
     this._inputRefs.clear();
     this._sourceValueFields = [];
@@ -173,7 +166,13 @@ export class FormPanel {
     }
     this.element.style.display = 'flex';
 
-    // Iterate keys in order so pass_value position controls output column order
+    // Known top-level keys (not named form sections)
+    const RESERVED_KEYS = new Set([
+      'title', 'progress_tracker', 'pass_value', 'fixed_value',
+      'submission_buttons', '_fixed_kwargs',
+    ]);
+
+    // First pass: build inline elements and submission buttons
     for (const key of Object.keys(cfg)) {
       if (key === 'title') {
         this._appendTitleEntry(cfg.title, this._dynFormEl);
@@ -183,35 +182,28 @@ export class FormPanel {
         this._registerPassValue(cfg.pass_value);
       } else if (key === 'fixed_value') {
         this._registerFixedValue(cfg.fixed_value);
-      } else if (key === 'is_valid_form') {
-        const isValidDiv = document.createElement('div');
-        isValidDiv.dataset.formSection = 'is_valid_form';
-        isValidDiv.style.cssText = formRowStyle();
-        await this._buildFormSection(cfg.is_valid_form ?? [], isValidDiv);
-        this._dynFormEl.appendChild(isValidDiv);
-      } else if (key === 'yes_form') {
-        this._yesFormEl = document.createElement('div');
-        this._yesFormEl.dataset.formSection = 'yes_form';
-        this._yesFormEl.style.cssText = formRowStyle(true);
-        await this._buildFormSection(cfg.yes_form, this._yesFormEl);
-        this._dynFormEl.appendChild(this._yesFormEl);
-      } else if (key === 'no_form') {
-        this._noFormEl = document.createElement('div');
-        this._noFormEl.dataset.formSection = 'no_form';
-        this._noFormEl.style.cssText = formRowStyle(true);
-        await this._buildFormSection(cfg.no_form, this._noFormEl);
-        this._dynFormEl.appendChild(this._noFormEl);
-      } else if (key === 'annotate_form') {
-        const annotateDiv = document.createElement('div');
-        annotateDiv.dataset.formSection = 'annotate_form';
-        annotateDiv.style.cssText = formRowStyle();
-        await this._buildFormSection(cfg.annotate_form ?? [], annotateDiv);
-        this._dynFormEl.appendChild(annotateDiv);
       } else if (key === 'submission_buttons') {
         await this._buildSubmissionButtons(cfg.submission_buttons);
       } else if (key === '_fixed_kwargs') {
         for (const item of cfg._fixed_kwargs) {
           if (item.fixed_value) this._registerFixedValue(item.fixed_value);
+        }
+      } else if (!RESERVED_KEYS.has(key)) {
+        // Any other top-level key is a named form section or inline element
+        const sectionData = cfg[key];
+        if (Array.isArray(sectionData)) {
+          // Array of form elements → named section (hidden until a select references it)
+          const sectionDiv = document.createElement('div');
+          sectionDiv.dataset.formSection = key;
+          sectionDiv.style.cssText = formRowStyle(true); // hidden by default
+          await this._buildFormSection(sectionData, sectionDiv);
+          this._dynFormEl.appendChild(sectionDiv);
+          this._namedSections.set(key, sectionDiv);
+        } else if (key === 'annotation') {
+          this._buildAnnotationElement(sectionData, this._dynFormEl);
+        } else {
+          // Single element (e.g. a top-level select, textbox, etc.)
+          await this._buildInputElement(key, sectionData, this._dynFormEl);
         }
       }
     }
@@ -219,21 +211,6 @@ export class FormPanel {
     // Default submission buttons if none were configured
     if (!cfg.submission_buttons) {
       await this._buildSubmissionButtons({ submit: true });
-    }
-
-    // Wire is_valid_select → show/hide subforms
-    if (this._isValidEl) {
-      const isValidEl = this._isValidEl;
-      isValidEl.addEventListener('change', () => {
-        const val = isValidEl.value;
-        if (this._yesFormEl) {
-          this._yesFormEl.style.display = val === String(this._isValidYesVal) ? 'flex' : 'none';
-        }
-        if (this._noFormEl) {
-          this._noFormEl.style.display = val === String(this._isValidNoVal) ? 'flex' : 'none';
-        }
-        this._validateForm();
-      });
     }
 
     this._validateForm();
@@ -290,9 +267,7 @@ export class FormPanel {
   async loadOutputFileProgress(): Promise<void> {
     if (!this._outputPath) return;
     const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-    const isValidCol = this._isValidEl ? escPy(this._isValidCol) : '';
-    const yesVal = this._isValidEl ? escPy(String(this._isValidYesVal)) : '';
-    const code = countOutputProgress(this._outputPath, ext, isValidCol, yesVal);
+    const code = countOutputProgress(this._outputPath, ext, '', '');
 
     try {
       const raw = await this._kernel.exec(code);
@@ -385,15 +360,9 @@ export class FormPanel {
     let col: string;
     let required: boolean;
 
-    if (type === 'is_valid_select') {
-      col = cfg.column ?? 'is_valid';
-      labelText = cfg.label ?? 'is_valid';
-      required = true;
-    } else {
-      labelText = cfg.label ?? type;
-      col = cfg.column ?? labelText;
-      required = cfg.required ?? false;
-    }
+    labelText = cfg.label ?? type;
+    col = cfg.column ?? labelText;
+    required = cfg.required ?? false;
 
     const lbl = document.createElement('label');
     lbl.style.cssText = formLabelStyle();
@@ -428,12 +397,31 @@ export class FormPanel {
       emptyOpt.value = ''; emptyOpt.textContent = '— select —';
       sel.appendChild(emptyOpt);
       const items = await this._loadSelectItems(cfg.items);
-      items.forEach(([v, l]) => {
+      // Collect form references: value → section name
+      const formRefs = new Map<string, string>();
+      items.forEach(([v, l, formRef]) => {
         const o = document.createElement('option');
         o.value = v; o.textContent = l;
         sel.appendChild(o);
+        if (formRef) formRefs.set(v, formRef);
       });
-      sel.addEventListener('change', () => { this._formValues[col] = sel.value; this._validateForm(); });
+      // All section names referenced by this select
+      const allFormSections = new Set(formRefs.values());
+
+      sel.addEventListener('change', () => {
+        this._formValues[col] = sel.value;
+        // Show/hide form sections referenced by this select
+        if (allFormSections.size > 0) {
+          const activeSection = formRefs.get(sel.value);
+          for (const sectionName of allFormSections) {
+            const sectionEl = this._namedSections.get(sectionName);
+            if (sectionEl) {
+              sectionEl.style.display = sectionName === activeSection ? 'flex' : 'none';
+            }
+          }
+        }
+        this._validateForm();
+      });
       this._formValues[col] = cfg.default ?? '';
       inputEl = sel;
 
@@ -465,40 +453,6 @@ export class FormPanel {
       this._formValues[col] = cfg.value ?? null;
       inputEl = inp;
 
-    } else if (type === 'is_valid_select') {
-      const sel = document.createElement('select');
-      sel.style.cssText = selectStyle() + `font-size:13px;`;
-
-      let yesLabel = 'yes', yesVal: any = 'yes';
-      let noLabel = 'no', noVal: any = 'no';
-      if (typeof cfg.yes === 'string') { yesLabel = yesVal = cfg.yes; }
-      else if (cfg.yes && typeof cfg.yes === 'object') {
-        yesLabel = cfg.yes.label ?? 'yes'; yesVal = cfg.yes.value ?? 'yes';
-      }
-      if (typeof cfg.no === 'string') { noLabel = noVal = cfg.no; }
-      else if (cfg.no && typeof cfg.no === 'object') {
-        noLabel = cfg.no.label ?? 'no'; noVal = cfg.no.value ?? 'no';
-      }
-
-      [['', '— select —'], [String(yesVal), yesLabel], [String(noVal), noLabel]].forEach(([v, l]) => {
-        const o = document.createElement('option');
-        o.value = v; o.textContent = l;
-        sel.appendChild(o);
-      });
-
-      this._isValidEl = sel;
-      this._isValidYesVal = yesVal;
-      this._isValidNoVal = noVal;
-      this._isValidCol = col;
-
-      sel.addEventListener('change', () => { this._formValues[col] = sel.value; this._validateForm(); });
-      this._formValues[col] = '';
-      this._requiredInputs.push({ col, el: sel });
-      this._inputRefs.set(col, sel);
-      lbl.appendChild(sel);
-      container.appendChild(lbl);
-      return;
-
     } else {
       return;
     }
@@ -512,13 +466,24 @@ export class FormPanel {
     container.appendChild(lbl);
   }
 
-  private async _loadSelectItems(items: any): Promise<Array<[string, string]>> {
+  /**
+   * Load select items. Returns [value, label, formRef?] tuples.
+   * formRef is the name of a named form section to show when this item is selected.
+   */
+  private async _loadSelectItems(items: any): Promise<Array<[string, string, string?]>> {
     if (!items) return [];
 
     if (Array.isArray(items)) {
       return items.map(item => {
         if (typeof item === 'string') return [item, item] as [string, string];
         if (typeof item === 'object' && item !== null) {
+          // New form: {label, value, form} or {label, form} or legacy {key: val}
+          if ('label' in item || 'form' in item) {
+            const label = item.label ?? item.value ?? '';
+            const value = item.value ?? item.label ?? '';
+            const form = item.form as string | undefined;
+            return [String(value), String(label), form] as [string, string, string?];
+          }
           const [k] = Object.keys(item);
           return [k, String(item[k])] as [string, string];
         }
@@ -728,17 +693,13 @@ export class FormPanel {
 
   private _applyRow(row: Detection): void {
     this._currentRow = row;
-    // Reset is_valid select and hide subforms
-    if (this._isValidEl) {
-      this._isValidEl.value = '';
-      this._formValues[this._isValidCol] = '';
+    // Hide all named form sections
+    for (const sectionEl of this._namedSections.values()) {
+      sectionEl.style.display = 'none';
     }
-    if (this._yesFormEl) this._yesFormEl.style.display = 'none';
-    if (this._noFormEl) this._noFormEl.style.display = 'none';
 
-    // Reset all tracked inputs to empty (skip is_valid — already reset above)
+    // Reset all tracked inputs to empty
     for (const [col, el] of this._inputRefs) {
-      if (col === this._isValidCol) continue;
       if (el instanceof HTMLInputElement && el.type === 'checkbox') {
         el.checked = false;
         this._formValues[col] = false;
@@ -890,11 +851,7 @@ export class FormPanel {
       parts.push(`session ${this._sessionCount}/${total}`);
     }
     parts.push(`total ${totalDone}/${total}`);
-    if (this._isValidEl) {
-      const allValid = fileV + this._sessionValid;
-      const pct = totalDone > 0 ? Math.round((allValid / totalDone) * 100) : 0;
-      parts.push(`accuracy ${pct}%`);
-    }
+    // Accuracy tracking removed — no longer tied to a specific is_valid column
     const text = parts.join(' · ');
     for (const el of this._progressEls) {
       el.textContent = text;
@@ -994,9 +951,6 @@ export class FormPanel {
       return;
     }
     this._sessionCount++;
-    if (this._isValidEl && this._formValues[this._isValidCol] === String(this._isValidYesVal)) {
-      this._sessionValid++;
-    }
     if (!this._duplicateEntries) {
       this._reviewedMap.set(activeRow.id, { ...values });
     }
