@@ -25,32 +25,21 @@ Demo: https://github.com/SchmidtDSE/dev-jupyter-audio-demo
 
 ---
 
-# APP
+### MSTMD EMBED EXAMPLES
 
-![](#embed_app)
-
-## FIG
-
-:::{figure} #embed_app
-:label: fig-my-cell
-:placeholder: ../assets/app-annotate.png
-
-:::
-
----
+This uses a config file to manage a more advanced configuration
 
 
-```{embed} #embed_test1
-:remove-output: false
+```{embed} nb:simple-examples.3a.parameters
+:remove-output: true
 :remove-input: false
 ```
 
-```{code-cell} python
-:label: codecell
-:caption: Boom
+This is the configuration file
 
-print("Hello world!")
-```
+```{literalinclude} ../demo/config/simple-examples-3c.yaml
+:language: yaml
+```    
 
 
 ### OUTLINE

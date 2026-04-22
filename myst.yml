@@ -47,5 +47,5 @@ project:
     - file: myst/sections/install.md
     - title: Notebooks
       children:
-        - file: demo/simple-example.ipynb
+        - file: demo/simple-examples.ipynb
         - file: demo/geo-analysis-example.ipynb
