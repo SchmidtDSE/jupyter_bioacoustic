@@ -23,6 +23,17 @@ from IPython.display import display, Javascript, HTML
 # Sentinel — distinguishes "caller passed nothing" from a real default value
 _UNSET = object()
 
+# ─── Defaults ─────────────────────────────────────────────────
+
+DEFAULT_OUTPUT_REVIEW = 'review_output'
+DEFAULT_OUTPUT_ANNOTATE = 'annotation_output'
+DEFAULT_OUTPUT_EXT = '.csv'
+DEFAULT_OUTPUT_TS_FMT = '%y%m%d_%H%M'
+DEFAULT_BUFFER = 3
+DEFAULT_CAPTURE_LABEL = 'Capture'
+DEFAULT_WIDTH = '100%'
+DEFAULT_HEIGHT = 900
+
 
 # ─── Secret resolution ────────────────────────────────────────
 
@@ -654,6 +665,14 @@ class JupyterAudio:
         self._category_path    = resolve(category_path,    'category_path',    '')
         self._output           = resolve(output,           'output',           '')
         self._prediction_column = resolve(prediction_column, 'prediction_column', '')
+
+        # Default output filename when a form is configured but no output path given
+        raw_form_check = resolve(form_config, 'form_config', None)
+        if not self._output and raw_form_check is not None:
+            from datetime import datetime
+            ts = datetime.now().strftime(DEFAULT_OUTPUT_TS_FMT)
+            prefix = DEFAULT_OUTPUT_REVIEW if self._prediction_column else DEFAULT_OUTPUT_ANNOTATE
+            self._output = f'{prefix}-{ts}{DEFAULT_OUTPUT_EXT}'
         self._display_columns  = resolve(display_columns,  'display_columns',  None) or []
         self._data_columns     = resolved_columns
         raw_form = resolve(form_config, 'form_config', None)
@@ -668,12 +687,12 @@ class JupyterAudio:
             raw_form.setdefault('_fixed_kwargs', fv_list)
         self._form_config = raw_form   # dict or None
         self._duplicate_entries = resolve(duplicate_entries, 'duplicate_entries', False)
-        self._default_buffer   = resolve(default_buffer,   'default_buffer',   3)
+        self._default_buffer   = resolve(default_buffer,   'default_buffer',   DEFAULT_BUFFER)
         self._capture          = resolve(capture,          'capture',          True)
         self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')
         self._inline           = resolve(inline,           'inline',           False)
-        self._width            = resolve(width,            'width',            '100%')
-        self._height           = resolve(height,           'height',           900)
+        self._width            = resolve(width,            'width',            DEFAULT_WIDTH)
+        self._height           = resolve(height,           'height',           DEFAULT_HEIGHT)
         self._output_cache     = None
 
     @property
@@ -717,10 +736,10 @@ class JupyterAudio:
         ip.user_ns['_BA_DATA_COLS']      = json.dumps(self._data_columns)
 
         ip.user_ns['_BA_FORM_CONFIG'] = json.dumps(self._form_config)
-        # capture: True → 'Capture', str → that string, False → ''
+        # capture: True → default label, str → that string, False → ''
         cap = self._capture
         if cap is True:
-            cap = 'Capture'
+            cap = DEFAULT_CAPTURE_LABEL
         elif cap is False:
             cap = ''
         ip.user_ns['_BA_CAPTURE'] = cap

@@ -262,7 +262,7 @@ form_config:
 | `audio_property` | str | `None` | Field/column to extract from SQL/API response as the audio path. |
 | `audio_response_index` | int | `1` | 1-based row index for SQL/API response (1 = first row). |
 | `secrets` | dict or list | `None` | Global auth — fallback for both `data_secrets` and `audio_secrets`. |
-| `output` | str | `''` | Output file path (`.csv`, `.parquet`, `.jsonl`). |
+| `output` | str | `''` | Output file path (`.csv`, `.parquet`, `.jsonl`). When a form is configured and no output is provided, defaults to `review_output-YYMMDD_HHMM.csv` or `annotation_output-YYMMDD_HHMM.csv`. |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
 | `prediction_column` | str | `''` | Prediction column — sets title, info card, capture filename. |
 | `display_columns` | list | `[]` | Extra columns in the info card. |
