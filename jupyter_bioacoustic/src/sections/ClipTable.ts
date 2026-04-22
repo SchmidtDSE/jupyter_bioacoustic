@@ -99,7 +99,7 @@ export class ClipTable {
 
   setData(opts: {
     rows: Detection[];
-    predictionCol: string;
+    identCol: string;
     displayCols: string[];
     dataCols: string[];
     duplicateEntries: boolean;
@@ -496,7 +496,7 @@ export class ClipTable {
 
   private _configureColumns(opts: {
     rows: Detection[];
-    predictionCol: string;
+    identCol: string;
     displayCols: string[];
     dataCols: string[];
   }): void {
@@ -505,7 +505,7 @@ export class ClipTable {
 
     if (opts.dataCols.length > 0) {
       this._tableCols = opts.dataCols.map(k => ({ key: k, label: prettify(k) }));
-    } else if (opts.rows.length > 0 && !opts.predictionCol && opts.displayCols.length === 0) {
+    } else if (opts.rows.length > 0 && !opts.identCol && opts.displayCols.length === 0) {
       this._tableCols = Object.keys(opts.rows[0]).map(k => ({ key: k, label: prettify(k) }));
     } else {
       const baseCols = [
@@ -514,10 +514,10 @@ export class ClipTable {
         { key: 'end_time', label: 'End (s)' },
       ];
       const extraCols = opts.displayCols.map(k => ({ key: k, label: prettify(k) }));
-      if (opts.predictionCol) {
+      if (opts.identCol) {
         this._tableCols = [
           { key: 'id', label: 'ID' },
-          { key: opts.predictionCol, label: prettify(opts.predictionCol) },
+          { key: opts.identCol, label: prettify(opts.identCol) },
           ...extraCols,
           { key: 'start_time', label: 'Start (s)' },
           { key: 'end_time', label: 'End (s)' },

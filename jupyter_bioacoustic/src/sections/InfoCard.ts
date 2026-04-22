@@ -1,7 +1,7 @@
 /**
  * InfoCard — displays metadata for the currently selected row.
  *
- * Shows time range, prediction value, display columns as colored chips,
+ * Shows time range, ident column value, display columns as colored chips,
  * and Prev/Next navigation buttons.
  */
 import { Signal } from '@lumino/signaling';
@@ -26,7 +26,7 @@ export class InfoCard {
 
   /** Render the info card for the given row. */
   render(row: Detection, opts: {
-    predictionCol: string;
+    identCol: string;
     displayCols: string[];
     filteredIdx: number;
     filteredLength: number;
@@ -54,10 +54,10 @@ export class InfoCard {
       COLORS.textSubtle
     ));
 
-    if (opts.predictionCol && row[opts.predictionCol] !== undefined) {
+    if (opts.identCol && row[opts.identCol] !== undefined) {
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = `font-size:13px;font-weight:600;color:${COLORS.textPrimary};flex-shrink:0;`;
-      nameSpan.textContent = String(row[opts.predictionCol]);
+      nameSpan.textContent = String(row[opts.identCol]);
       items.unshift(nameSpan);
     }
 
