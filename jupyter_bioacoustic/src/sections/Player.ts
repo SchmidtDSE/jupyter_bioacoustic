@@ -67,7 +67,7 @@ export class Player {
   private _audioConfig = { type: 'path', value: '', prefix: '', suffix: '', fallback: '' };
   private _captureLabel = '';
   private _captureDir = '';
-  private _predictionCol = '';
+  private _identCol = '';
   private _displayCols: string[] = [];
   private _currentRow: Detection | null = null;
   private _rows: Detection[] = [];
@@ -89,7 +89,7 @@ export class Player {
     audioConfig: { type: string; value: string; prefix: string; suffix: string; fallback: string };
     captureLabel: string;
     captureDir: string;
-    predictionCol: string;
+    identCol: string;
     displayCols: string[];
     defaultBuffer: number;
     rows: Detection[];
@@ -97,7 +97,7 @@ export class Player {
     this._audioConfig = opts.audioConfig;
     this._captureLabel = opts.captureLabel;
     this._captureDir = opts.captureDir;
-    this._predictionCol = opts.predictionCol;
+    this._identCol = opts.identCol;
     this._displayCols = opts.displayCols;
     this._rows = opts.rows;
     this._bufferInput.value = String(opts.defaultBuffer);
@@ -712,8 +712,8 @@ export class Player {
     const row = this._currentRow;
     if (!row) return 'spectrogram.png';
     const parts: string[] = [];
-    if (this._predictionCol && row[this._predictionCol] !== undefined) {
-      parts.push(String(row[this._predictionCol]));
+    if (this._identCol && row[this._identCol] !== undefined) {
+      parts.push(String(row[this._identCol]));
     }
     for (const col of this._displayCols) {
       if (row[col] !== undefined) {

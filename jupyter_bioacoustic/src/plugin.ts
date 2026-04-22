@@ -27,7 +27,7 @@ class BioacousticWidget extends Widget {
   private _kernelBridge: KernelBridge;
 
   // ── Config (from kernel vars) ────────────────────────────────
-  private _predictionCol = '';
+  private _identCol = '';
   private _displayCols: string[] = [];
 
   // ── DOM refs ────────────────────────────────────────────────
@@ -43,7 +43,7 @@ class BioacousticWidget extends Widget {
     super();
     this._kernelBridge = new KernelBridge(tracker);
     this.id = `jp-bioacoustic-${_counter++}`;
-    this.title.label = 'Bioacoustic Reviewer';
+    this.title.label = 'Jupyter Bioacoustic';
     this.title.closable = true;
     injectGlobalStyles();
     this._buildUI();
@@ -63,7 +63,7 @@ class BioacousticWidget extends Widget {
     header.style.cssText = barBottomStyle();
 
     this._titleEl = document.createElement('span');
-    this._titleEl.textContent = 'Bioacoustic Reviewer';
+    this._titleEl.textContent = 'Jupyter Bioacoustic';
     this._titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
 
     this._statusEl = document.createElement('span');
@@ -143,7 +143,7 @@ class BioacousticWidget extends Widget {
 
     let cfg: {
       data: string; audio: string; category_path: string; output: string;
-      prediction_col: string; display_cols: string; data_cols: string;
+      ident_col: string; app_title: string; display_cols: string; data_cols: string;
       form_config: string; capture: string; capture_dir: string; duplicate_entries: string; default_buffer: string;
     };
     try {
@@ -153,7 +153,7 @@ class BioacousticWidget extends Widget {
       return;
     }
 
-    this._predictionCol  = cfg.prediction_col;
+    this._identCol  = cfg.ident_col;
     this._displayCols    = JSON.parse(cfg.display_cols) as string[];
     const dataCols       = JSON.parse(cfg.data_cols) as string[];
     const formConfig     = JSON.parse(cfg.form_config);
@@ -168,23 +168,16 @@ class BioacousticWidget extends Widget {
       return;
     }
 
-    // Set title from mode
-    let modeTitle: string;
-    if (!formConfig) {
-      modeTitle = 'Bioacoustic Player';
-    } else if (this._predictionCol) {
-      modeTitle = 'Bioacoustic Reviewer';
-    } else {
-      modeTitle = 'Bioacoustic Annotator';
-    }
-    this._titleEl.textContent = modeTitle;
-    this.title.label = modeTitle;
+    // Set title
+    const appTitle = cfg.app_title || 'Jupyter Bioacoustic';
+    this._titleEl.textContent = appTitle;
+    this.title.label = appTitle;
 
     // Initialize form panel
     this._form.setContext({
       formConfig,
       rows,
-      predictionCol: this._predictionCol,
+      identCol: this._identCol,
       duplicateEntries,
       outputPath,
     });
@@ -200,7 +193,7 @@ class BioacousticWidget extends Widget {
       audioConfig,
       captureLabel: cfg.capture ?? '',
       captureDir: cfg.capture_dir ?? '',
-      predictionCol: this._predictionCol,
+      identCol: this._identCol,
       displayCols: this._displayCols,
       defaultBuffer: parseFloat(cfg.default_buffer) || 3,
       rows,
@@ -209,7 +202,7 @@ class BioacousticWidget extends Widget {
     // Initialize table
     this._table.setData({
       rows,
-      predictionCol: this._predictionCol,
+      identCol: this._identCol,
       displayCols: this._displayCols,
       dataCols,
       duplicateEntries,
@@ -221,8 +214,7 @@ class BioacousticWidget extends Widget {
       await this._player.loadRow(this._table.filtered[0]);
     }
 
-    const noun = this._predictionCol ? 'detections' : 'clips';
-    this._setStatus(`✓ ${rows.length} ${noun} loaded`);
+    this._setStatus(`✓ ${rows.length} clips loaded`);
   }
 
   /** Orchestrator: update info card + form for the selected row. */
@@ -232,7 +224,7 @@ class BioacousticWidget extends Widget {
     if (!row) return;
 
     this._infoCard.render(row, {
-      predictionCol: this._predictionCol,
+      identCol: this._identCol,
       displayCols: this._displayCols,
       filteredIdx,
       filteredLength: this._table.filtered.length,

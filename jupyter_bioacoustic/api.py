@@ -32,6 +32,7 @@ DEFAULT_OUTPUT_TS_FMT = '%y%m%d_%H%M'
 DEFAULT_START_TIME_COL = 'start_time'
 DEFAULT_END_TIME_COL = 'end_time'
 DEFAULT_BUFFER = 3
+DEFAULT_APP_TITLE = 'Jupyter Bioacoustic'
 DEFAULT_CAPTURE_LABEL = 'Capture'
 DEFAULT_WIDTH = '100%'
 DEFAULT_HEIGHT = 900
@@ -503,7 +504,8 @@ class JupyterAudio:
         secrets=_UNSET,
         category_path=_UNSET,
         output=_UNSET,
-        prediction_column=_UNSET,
+        ident_column=_UNSET,
+        app_title=_UNSET,
         display_columns=_UNSET,
         data_columns=_UNSET,
         form_config=_UNSET,
@@ -532,7 +534,7 @@ class JupyterAudio:
             Path where rows are appended on Verify/Submit.
             Format is inferred from extension: .csv, .parquet, or .jsonl/.ndjson.
             Defaults to line-delimited JSON for any other/missing extension.
-        prediction_column : str, optional
+        ident_column : str, optional
             Name of the column in ``data`` that holds the model's predicted
             class (e.g. ``'common_name'``).  When set, the widget operates in
             **verification mode**. When empty (default), operates in
@@ -701,14 +703,15 @@ class JupyterAudio:
         self._data             = loaded_data
         self._category_path    = resolve(category_path,    'category_path',    '')
         self._output           = resolve(output,           'output',           '')
-        self._prediction_column = resolve(prediction_column, 'prediction_column', '')
+        self._ident_column = resolve(ident_column, 'ident_column', '')
+        self._app_title        = resolve(app_title,         'app_title',         DEFAULT_APP_TITLE)
 
         # Default output filename when a form is configured but no output path given
         raw_form_check = resolve(form_config, 'form_config', None)
         if not self._output and raw_form_check is not None:
             from datetime import datetime
             ts = datetime.now().strftime(DEFAULT_OUTPUT_TS_FMT)
-            prefix = DEFAULT_OUTPUT_REVIEW if self._prediction_column else DEFAULT_OUTPUT_ANNOTATE
+            prefix = DEFAULT_OUTPUT_REVIEW if self._ident_column else DEFAULT_OUTPUT_ANNOTATE
             self._output = f'{prefix}-{ts}{DEFAULT_OUTPUT_EXT}'
         self._display_columns  = resolve(display_columns,  'display_columns',  None) or []
         self._data_columns     = resolved_columns
@@ -768,7 +771,8 @@ class JupyterAudio:
         ip.user_ns['_BA_AUDIO']          = json.dumps(self._audio_config)
         ip.user_ns['_BA_CATEGORY_PATH']  = self._category_path
         ip.user_ns['_BA_OUTPUT']         = self._output
-        ip.user_ns['_BA_PREDICTION_COL'] = self._prediction_column
+        ip.user_ns['_BA_IDENT_COL']      = self._ident_column
+        ip.user_ns['_BA_APP_TITLE']      = self._app_title
         ip.user_ns['_BA_DISPLAY_COLS']   = json.dumps(self._display_columns)
         ip.user_ns['_BA_DATA_COLS']      = json.dumps(self._data_columns)
 

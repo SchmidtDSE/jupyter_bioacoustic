@@ -104,7 +104,7 @@ export class FormPanel {
 
   // Context provided by the orchestrator
   private _rows: Detection[] = [];
-  private _predictionCol = '';
+  private _identCol = '';
   private _duplicateEntries = false;
   private _outputPath = '';
   private _selectedIdx = -1;
@@ -128,13 +128,13 @@ export class FormPanel {
   setContext(opts: {
     formConfig: any;
     rows: Detection[];
-    predictionCol: string;
+    identCol: string;
     duplicateEntries: boolean;
     outputPath: string;
   }): void {
     this._formConfig = opts.formConfig;
     this._rows = opts.rows;
-    this._predictionCol = opts.predictionCol;
+    this._identCol = opts.identCol;
     this._duplicateEntries = opts.duplicateEntries;
     this._outputPath = opts.outputPath;
   }
@@ -986,10 +986,9 @@ export class FormPanel {
 
     const values = this._collectFormValues();
     const code = writeOutputRow(this._outputPath, values);
-    const verb = this._predictionCol ? 'Verified' : 'Annotated';
     try {
       await this._kernel.exec(code);
-      this.statusChanged.emit({ message: `✓ ${verb} clip ${activeRow.id} → ${this._outputPath}`, error: false });
+      this.statusChanged.emit({ message: `✓ Saved clip ${activeRow.id} → ${this._outputPath}`, error: false });
     } catch (e: any) {
       this.statusChanged.emit({ message: `❌ Write failed: ${String(e.message ?? e)}`, error: true });
       return;
