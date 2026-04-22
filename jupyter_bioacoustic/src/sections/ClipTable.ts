@@ -504,27 +504,20 @@ export class ClipTable {
       k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
     if (opts.dataCols.length > 0) {
+      // Explicit column list — use as-is
       this._tableCols = opts.dataCols.map(k => ({ key: k, label: prettify(k) }));
-    } else if (opts.rows.length > 0 && !opts.identCol && opts.displayCols.length === 0) {
+    } else if (opts.rows.length > 0 && opts.displayCols.length === 0) {
+      // No explicit columns — show all data columns
       this._tableCols = Object.keys(opts.rows[0]).map(k => ({ key: k, label: prettify(k) }));
     } else {
+      // Fallback: base cols + display cols
       const baseCols = [
         { key: 'id', label: 'ID' },
         { key: 'start_time', label: 'Start (s)' },
         { key: 'end_time', label: 'End (s)' },
       ];
       const extraCols = opts.displayCols.map(k => ({ key: k, label: prettify(k) }));
-      if (opts.identCol) {
-        this._tableCols = [
-          { key: 'id', label: 'ID' },
-          { key: opts.identCol, label: prettify(opts.identCol) },
-          ...extraCols,
-          { key: 'start_time', label: 'Start (s)' },
-          { key: 'end_time', label: 'End (s)' },
-        ];
-      } else {
-        this._tableCols = [...baseCols, ...extraCols];
-      }
+      this._tableCols = [...baseCols, ...extraCols];
     }
     this._rebuildTableHeader();
   }
