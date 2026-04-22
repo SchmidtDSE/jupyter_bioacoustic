@@ -90,10 +90,9 @@ from jupyter_bioacoustic import JupyterAudio
 JupyterAudio(
     data='detections-test.csv',
     audio='test.flac',
-    prediction_column='common_name',
+    ident_column='common_name',
     form_config='form-review.yaml',
     output='reviews.csv',
-    inline=True,
 ).open()
 ```
 
@@ -108,7 +107,7 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 | **Clip table** | Sort, GUI filter builder (column/operator/value dropdowns, filter chips), paginate, configurable columns |
 | **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, capture PNG |
 | **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes |
-| **Configurable forms** | YAML-driven: selects, textboxes, checkboxes, conditional sections, progress tracker |
+| **Configurable forms** | YAML-driven: selects (with conditional form sections), textboxes, checkboxes, progress tracker |
 | **Per-row audio** | Each row can point to a different audio file with fallback. S3 partial byte-range reads. HTTPS URLs cached locally (full download on first access). |
 | **Output** | CSV, Parquet, or line-delimited JSON with `pass_value`, `fixed_value`, and `**kwargs` |
 | **Duplicate prevention** | Reviewed rows faded, read-only results, deletable. Filter by pending/reviewed/all with refresh. |
@@ -136,14 +135,14 @@ from jupyter_bioacoustic import JupyterAudio
 # Create an instance
 ja = JupyterAudio(data='path_to_data.parquet', ...)
 
-# Open the Annotation/Review Interface
+# Open the interface
 ja.open()
 
-# Get a dataframe with all the annotated/reviewed data
-# Note: this data is lazy loaded. this will read from 
-#       file each time you submit a new review/annotation.
+# Get a dataframe with all the submitted data
+# Note: this data is lazy loaded. this will read from
+#       file each time you submit.
 #       however between submissions it will be cached.
-verified_df = ja.output()
+result_df = ja.output()
 
 # Dataframe access to the source data (here 'path_to_data.parquet')
 ja.source
@@ -158,10 +157,9 @@ Consider the example above:
 JupyterAudio(
     data='detections-test.csv',
     audio='test.flac',
-    prediction_column='common_name',
+    ident_column='common_name',
     form_config='form-review.yaml',
     output='reviews.csv',
-    inline=True,
 )
 ```
 
@@ -178,7 +176,7 @@ JupyterAudio(
 ```yaml
 # config/review-configuration.yaml
 audio: 'test.flac'
-prediction_column: 'common_name'
+ident_column: 'common_name'
 form_config: 'form-review.yaml'
 output: 'reviews.csv'
 ```
@@ -191,34 +189,42 @@ See [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configu
 # JupyterAudio Args
 audio: "audio_path"    # column name — auto-detected (no slashes or dots)
 data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
-prediction_column: 'common_name'
+ident_column: 'common_name'
 display_columns: ["confidence", "county", "start_time", "audio_path"]
 category_path: "data/categories-small.csv"
 capture: 'Save Spectrogram'
 capture_dir: 'spectrograms'
 
 
-# Validation Form
+# Form
 form_config:
-    is_valid_form:
-      - title: 
-          value: 'REVIEW CLIP'
-          progress_tracker: true
-      - is_valid_select: true
-      - textbox:
-          label: notes
-          column: notes
-      - annotation:             
-            start_time:           
-              label: Start        
-              column: start_time  
-              source_value: start_time
-            end_time:     
-              label: End
-              column: end_time
-              source_value: end_time                                
-            tools: start_end_time_select                     
-    no_form:
+    title:
+      value: 'REVIEW CLIP'
+      progress_tracker: true
+    select:
+      label: Is Valid
+      column: is_valid
+      required: true
+      items:
+        - label: 'yes'
+          value: 'yes'
+        - label: 'no'
+          value: 'no'
+          form: correction_form
+    textbox:
+      label: notes
+      column: notes
+    annotation:
+      start_time:
+        label: Start
+        column: start_time
+        source_value: start_time
+      end_time:
+        label: End
+        column: end_time
+        source_value: end_time
+      tools: start_end_time_select
+    correction_form:
       - select:
           label: verified name
           column: verified_common_name
@@ -264,13 +270,14 @@ form_config:
 | `secrets` | dict or list | `None` | Global auth — fallback for both `data_secrets` and `audio_secrets`. |
 | `output` | str | `''` | Output file path (`.csv`, `.parquet`, `.jsonl`). When a form is configured and no output is provided, defaults to `review_output-YYMMDD_HHMM.csv` or `annotation_output-YYMMDD_HHMM.csv`. |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
-| `prediction_column` | str | `''` | Prediction column — sets title, info card, capture filename. |
+| `ident_column` | str | `''` | Identifying column — shown first (without label) in the info card and capture filenames. |
+| `app_title` | str | `'Jupyter Bioacoustic'` | Custom title shown in the widget header and tab. |
 | `display_columns` | list | `[]` | Extra columns in the info card. |
 | `duplicate_entries` | bool | `False` | Allow multiple submissions per row |
 | `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
-| `inline` | bool | `False` | Embed below cell vs split-right panel |
+| `inline` | bool | `True` | Embed below cell (`True`) vs split-right panel (`False`). |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
 

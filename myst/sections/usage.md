@@ -13,32 +13,31 @@ from jupyter_bioacoustic import JupyterAudio
 JupyterAudio(
     data='detections.csv',
     audio='recording.flac',
-    inline=True,
 ).open()
 ```
 
 ![Inline visualizer with no form](../../assets/app-inline.png)
 
-The widget can also be opened as a split-right panel (the default when `inline=False`), giving you more screen space while keeping the notebook visible.
+By default, the widget embeds below the cell. Set `inline=False` to open it as a split-right panel instead, giving you more screen space while keeping the notebook visible.
 
 ![App has inline and panel views](../../assets/app-inline-panel.png)
 
-## Review Mode
+## With a Form
 
-Add a `form_config` and `prediction_column` to enable review workflows. The form layout is driven entirely by YAML — selects, textboxes, checkboxes, conditional sections, and progress tracking.
+Add a `form_config` to collect data or validate existing results like model outputs. The form layout is driven entirely by YAML — selects (with conditional form sections based on user selection), textboxes, checkboxes, and progress tracking.
 
 ```python
 ja = JupyterAudio(
     data='detections.csv',
     audio='recording.flac',
-    prediction_column='common_name',
+    ident_column='common_name',
     form_config='form-review.yaml',
     output='reviews.csv',
 )
 ja.open()
 ```
 
-![Review form](../../assets/app-review.png)
+![Form-based workflow](../../assets/app-review.png)
 
 Each submission appends a row to the output file. Access results programmatically at any time:
 
@@ -60,16 +59,29 @@ JupyterAudio(data='detections.csv', config='config.yaml').open()
 ```yaml
 # config.yaml
 audio: recording.flac
-prediction_column: common_name
+ident_column: common_name
 form_config:
-  is_valid_form:
-    - title:
-        value: 'REVIEW CLIP'
-        progress_tracker: true
-    - is_valid_select: true
-    - textbox:
-        label: notes
-        column: notes
+  title:
+    value: 'REVIEW CLIP'
+    progress_tracker: true
+  select:
+    label: Is Valid
+    column: is_valid
+    required: true
+    items:
+      - label: 'yes'
+        value: 'yes'
+      - label: 'no'
+        value: 'no'
+        form: correction_form
+  textbox:
+    label: notes
+    column: notes
+  correction_form:
+    - select:
+        label: verified name
+        column: verified_common_name
+        items: [sparrow, owl, warbler]
   submission_buttons:
     submit:
       label: Verify
