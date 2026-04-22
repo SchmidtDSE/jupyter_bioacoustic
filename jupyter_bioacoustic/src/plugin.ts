@@ -21,6 +21,7 @@ import { InfoCard } from './sections/InfoCard';
 // BioacousticWidget
 // ═══════════════════════════════════════════════════════════════
 
+const DEFAULT_TITLE = 'Jupyter Bioacoustic';
 let _counter = 0;
 
 class BioacousticWidget extends Widget {
@@ -43,7 +44,7 @@ class BioacousticWidget extends Widget {
     super();
     this._kernelBridge = new KernelBridge(tracker);
     this.id = `jp-bioacoustic-${_counter++}`;
-    this.title.label = 'Jupyter Bioacoustic';
+    this.title.label = DEFAULT_TITLE;
     this.title.closable = true;
     injectGlobalStyles();
     this._buildUI();
@@ -63,7 +64,7 @@ class BioacousticWidget extends Widget {
     header.style.cssText = barBottomStyle();
 
     this._titleEl = document.createElement('span');
-    this._titleEl.textContent = 'Jupyter Bioacoustic';
+    this._titleEl.textContent = DEFAULT_TITLE;
     this._titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
 
     this._statusEl = document.createElement('span');
@@ -169,7 +170,7 @@ class BioacousticWidget extends Widget {
     }
 
     // Set title
-    const appTitle = cfg.app_title || 'Jupyter Bioacoustic';
+    const appTitle = cfg.app_title || DEFAULT_TITLE;
     this._titleEl.textContent = appTitle;
     this.title.label = appTitle;
 

@@ -67,20 +67,20 @@ Enable multiple tools with a dropdown selector. Each tool writes to its own outp
 
 ## Configurable Forms
 
-The entire form layout is driven by YAML. No code changes needed to switch between review and annotation workflows.
+The entire form layout is driven by YAML. The same form system can be used for collecting new data or for reviewing and validating existing data such as model outputs.
 
-**Review forms** present a yes/no validity question with conditional sections — answer "no" and additional fields appear for correction.
+Select items can include a `form:` reference to show additional fields based on the user's selection — for example, selecting "no" on a validity check reveals correction fields.
 
-![Review form — valid](../../assets/form-review-yes.png)
+![Form — valid selection](../../assets/form-review-yes.png)
 
-![Review form — invalid, correction fields shown](../../assets/form-review-no.png)
+![Form — "no" selected, correction section shown](../../assets/form-review-no.png)
 
 **Form elements** include:
-- **Selects** — with items from inline lists, CSV/Parquet files, or integer ranges
+- **Selects** — with items from inline lists, CSV/Parquet files, or integer ranges. Items can reference conditional form sections via `form:`.
 - **Textboxes** — free-form notes
 - **Checkboxes** — boolean flags
 - **Annotation tools** — embedded directly in the form
-- **Progress tracker** — session and total counts with review accuracy
+- **Progress tracker** — session and total counts
 - **Fixed values** — constants written to every output row
 
 ![Progress tracker](../../assets/tracker.png)

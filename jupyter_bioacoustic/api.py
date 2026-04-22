@@ -34,6 +34,7 @@ DEFAULT_END_TIME_COL = 'end_time'
 DEFAULT_BUFFER = 3
 DEFAULT_APP_TITLE = 'Jupyter Bioacoustic'
 DEFAULT_CAPTURE_LABEL = 'Capture'
+DEFAULT_INLINE = True
 DEFAULT_WIDTH = '100%'
 DEFAULT_HEIGHT = 900
 
@@ -730,7 +731,7 @@ class JupyterAudio:
         self._default_buffer   = resolve(default_buffer,   'default_buffer',   DEFAULT_BUFFER)
         self._capture          = resolve(capture,          'capture',          True)
         self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')
-        self._inline           = resolve(inline,           'inline',           False)
+        self._inline           = resolve(inline,           'inline',           DEFAULT_INLINE)
         self._width            = resolve(width,            'width',            DEFAULT_WIDTH)
         self._height           = resolve(height,           'height',           DEFAULT_HEIGHT)
         self._output_cache     = None
