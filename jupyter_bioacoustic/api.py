@@ -29,6 +29,8 @@ DEFAULT_OUTPUT_REVIEW = 'review_output'
 DEFAULT_OUTPUT_ANNOTATE = 'annotation_output'
 DEFAULT_OUTPUT_EXT = '.csv'
 DEFAULT_OUTPUT_TS_FMT = '%y%m%d_%H%M'
+DEFAULT_START_TIME_COL = 'start_time'
+DEFAULT_END_TIME_COL = 'end_time'
 DEFAULT_BUFFER = 3
 DEFAULT_CAPTURE_LABEL = 'Capture'
 DEFAULT_WIDTH = '100%'
@@ -485,6 +487,9 @@ class JupyterAudio:
         data_url=_UNSET,
         data_sql=_UNSET,
         data_api=_UNSET,
+        data_start_time=_UNSET,
+        data_end_time=_UNSET,
+        data_duration=_UNSET,
         data_secrets=_UNSET,
         audio=_UNSET,
         audio_prefix=_UNSET,
@@ -622,6 +627,38 @@ class JupyterAudio:
         if _top_dtype and isinstance(source, str):
             dtype = _top_dtype
         loaded_data = _load_data(source, dtype=dtype, secrets=resolved_secrets)
+
+        # Normalize start_time / end_time / duration columns
+        # Resolve from: top-level param > config > data dict > default
+        _dict_st = raw_data.get('start_time') if isinstance(raw_data, dict) else None
+        _dict_et = raw_data.get('end_time') if isinstance(raw_data, dict) else None
+        _dict_dur = raw_data.get('duration') if isinstance(raw_data, dict) else None
+        st_col = resolve(data_start_time, 'data_start_time', None) or _dict_st or DEFAULT_START_TIME_COL
+        et_col = resolve(data_end_time, 'data_end_time', None) or _dict_et or DEFAULT_END_TIME_COL
+        dur_val = resolve(data_duration, 'data_duration', None)
+        if dur_val is None:
+            dur_val = _dict_dur
+
+        if dur_val is not None:
+            # duration: compute end_time from start + duration
+            if isinstance(dur_val, str):
+                # dur_val is a column name
+                loaded_data['end_time'] = loaded_data[st_col] + loaded_data[dur_val]
+            else:
+                # dur_val is a fixed number
+                loaded_data['end_time'] = loaded_data[st_col] + dur_val
+            # Rename start col if needed
+            if st_col != 'start_time':
+                loaded_data = loaded_data.rename(columns={st_col: 'start_time'})
+        else:
+            # Rename columns if they differ from defaults
+            renames = {}
+            if st_col != 'start_time':
+                renames[st_col] = 'start_time'
+            if et_col != 'end_time':
+                renames[et_col] = 'end_time'
+            if renames:
+                loaded_data = loaded_data.rename(columns=renames)
 
         # Resolve audio
         # audio_secrets > secrets > audio.secrets

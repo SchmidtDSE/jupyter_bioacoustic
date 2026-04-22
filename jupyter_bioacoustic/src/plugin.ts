@@ -169,13 +169,16 @@ class BioacousticWidget extends Widget {
     }
 
     // Set title from mode
-    if (this._predictionCol) {
-      this._titleEl.textContent = 'Bioacoustic Reviewer';
-      this.title.label = 'Bioacoustic Reviewer';
+    let modeTitle: string;
+    if (!formConfig) {
+      modeTitle = 'Bioacoustic Player';
+    } else if (this._predictionCol) {
+      modeTitle = 'Bioacoustic Reviewer';
     } else {
-      this._titleEl.textContent = 'Bioacoustic Annotator';
-      this.title.label = 'Bioacoustic Annotator';
+      modeTitle = 'Bioacoustic Annotator';
     }
+    this._titleEl.textContent = modeTitle;
+    this.title.label = modeTitle;
 
     // Initialize form panel
     this._form.setContext({

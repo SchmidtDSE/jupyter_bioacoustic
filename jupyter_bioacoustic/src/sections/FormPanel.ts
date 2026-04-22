@@ -216,6 +216,11 @@ export class FormPanel {
       }
     }
 
+    // Default submission buttons if none were configured
+    if (!cfg.submission_buttons) {
+      await this._buildSubmissionButtons({ submit: true });
+    }
+
     // Wire is_valid_select → show/hide subforms
     if (this._isValidEl) {
       const isValidEl = this._isValidEl;
