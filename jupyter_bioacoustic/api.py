@@ -34,6 +34,7 @@ DEFAULT_END_TIME_COL = 'end_time'
 DEFAULT_BUFFER = 3
 DEFAULT_APP_TITLE = 'Jupyter Bioacoustic'
 DEFAULT_CAPTURE_LABEL = 'Capture'
+DEFAULT_SPEC_RESOLUTIONS = [1000, 2000, 4000]
 DEFAULT_INLINE = True
 DEFAULT_WIDTH = '100%'
 DEFAULT_HEIGHT = 900
@@ -514,6 +515,7 @@ class JupyterAudio:
         default_buffer=_UNSET,
         capture=_UNSET,
         capture_dir=_UNSET,
+        spectrogram_resolution=_UNSET,
         inline=_UNSET,
         width=_UNSET,
         height=_UNSET,
@@ -731,6 +733,14 @@ class JupyterAudio:
         self._default_buffer   = resolve(default_buffer,   'default_buffer',   DEFAULT_BUFFER)
         self._capture          = resolve(capture,          'capture',          True)
         self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')
+        raw_res = resolve(spectrogram_resolution, 'spectrogram_resolution', DEFAULT_SPEC_RESOLUTIONS)
+        # Normalize to list of strings (preserves "selected::" prefix)
+        if isinstance(raw_res, (int, float)):
+            self._spec_resolutions = [str(int(raw_res))]
+        elif isinstance(raw_res, list):
+            self._spec_resolutions = [str(r) for r in raw_res]
+        else:
+            self._spec_resolutions = [str(r) for r in DEFAULT_SPEC_RESOLUTIONS]
         self._inline           = resolve(inline,           'inline',           DEFAULT_INLINE)
         self._width            = resolve(width,            'width',            DEFAULT_WIDTH)
         self._height           = resolve(height,           'height',           DEFAULT_HEIGHT)
@@ -786,6 +796,7 @@ class JupyterAudio:
             cap = ''
         ip.user_ns['_BA_CAPTURE'] = cap
         ip.user_ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
+        ip.user_ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(self._spec_resolutions)
         ip.user_ns['_BA_DUPLICATE_ENTRIES'] = 'true' if self._duplicate_entries else ''
         ip.user_ns['_BA_DEFAULT_BUFFER'] = str(self._default_buffer)
         ip.user_ns['_BA_INSTANCE'] = self
