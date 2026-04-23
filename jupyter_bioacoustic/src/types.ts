@@ -43,6 +43,18 @@ export interface AnnotConfig {
   minFreq?: { col: string };
   maxFreq?: { col: string };
   tools: string[];
+  form?: string | null;
+}
+
+/** A single bounding box in multibox mode. */
+export interface MultiboxEntry {
+  id: number;
+  startTime: number;
+  endTime: number;
+  minFreq: number;
+  maxFreq: number;
+  formValues: Record<string, any>;
+  color: string;
 }
 
 /** Resolved audio configuration passed from Python to TypeScript. */

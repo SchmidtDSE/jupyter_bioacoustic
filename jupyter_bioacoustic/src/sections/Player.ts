@@ -46,7 +46,7 @@ export class Player {
   private _sampleRate = 0;
   private _freqMin = 0;
   private _freqMax = 0;
-  private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number } | null = null;
+  private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number; boxIndex?: number } | null = null;
 
   // ─── Zoom state (client-side crop) ────────────────────────
   // View fractions: 0..1 range over the full spectrogram image
@@ -695,6 +695,35 @@ export class Player {
       this._form.setAnnotValue('minFreq', f);
       this._form.setAnnotValue('maxFreq', f);
       this._annotDrag = { target: 'box-corner', anchorTime: t, anchorFreq: f };
+    } else if (tool === 'multibox') {
+      const entries = this._form.getMultiboxEntries();
+      // Hit test existing boxes (edges first, then interior)
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        const sx = this._timeToX(entry.startTime), ex = this._timeToX(entry.endTime);
+        const yhi = this._freqToY(entry.maxFreq), ylo = this._freqToY(entry.minFreq);
+        const inY = cy >= yhi - GRAB && cy <= ylo + GRAB;
+        const inX = cx >= sx - GRAB && cx <= ex + GRAB;
+        if (inY && Math.abs(cx - sx) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-left', boxIndex: i }; this._renderFrame(); return; }
+        if (inY && Math.abs(cx - ex) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-right', boxIndex: i }; this._renderFrame(); return; }
+        if (inX && Math.abs(cy - yhi) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-top', boxIndex: i }; this._renderFrame(); return; }
+        if (inX && Math.abs(cy - ylo) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-bottom', boxIndex: i }; this._renderFrame(); return; }
+      }
+      // Hit test interior (click to select)
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        const sx = this._timeToX(entry.startTime), ex = this._timeToX(entry.endTime);
+        const yhi = this._freqToY(entry.maxFreq), ylo = this._freqToY(entry.minFreq);
+        if (cx >= sx && cx <= ex && cy >= yhi && cy <= ylo) {
+          this._form.setActiveBox(i);
+          this._renderFrame();
+          return;
+        }
+      }
+      // No hit — start drawing a new box
+      const t = this._xToTime(cx);
+      const f = this._yToFreq(cy);
+      this._annotDrag = { target: 'multibox-new', anchorTime: t, anchorFreq: f };
     }
 
     this._renderFrame();
@@ -774,6 +803,37 @@ export class Player {
       const hiCol = ac.maxFreq?.col;
       const hiVal = hiCol ? this._form.getFormValue(hiCol) : Infinity;
       if (hiVal != null) this._form.setAnnotValue('minFreq', Math.min(f, hiVal));
+    } else if (tgt === 'multibox-new') {
+      // Drawing a new multibox — render preview
+      // (committed on mouseup)
+    } else if (tgt.startsWith('box-') && this._annotDrag.boxIndex != null) {
+      const bi = this._annotDrag.boxIndex;
+      const entry = this._form.getMultiboxEntries()[bi];
+      if (entry) {
+        if (tgt === 'box-left') this._form.updateMultiboxBounds(bi, 'startTime', Math.min(t, entry.endTime));
+        else if (tgt === 'box-right') this._form.updateMultiboxBounds(bi, 'endTime', Math.max(t, entry.startTime));
+        else if (tgt === 'box-top') this._form.updateMultiboxBounds(bi, 'maxFreq', Math.max(f, entry.minFreq));
+        else if (tgt === 'box-bottom') this._form.updateMultiboxBounds(bi, 'minFreq', Math.min(f, entry.maxFreq));
+      }
+    }
+
+    // Render multibox-new preview rectangle
+    if (tgt === 'multibox-new' && this._annotDrag.anchorTime != null && this._annotDrag.anchorFreq != null) {
+      this._renderFrame();
+      const ctx2 = this._canvas.getContext('2d');
+      if (ctx2) {
+        const sx = this._timeToX(Math.min(this._annotDrag.anchorTime, t));
+        const ex = this._timeToX(Math.max(this._annotDrag.anchorTime, t));
+        const yhi = this._freqToY(Math.max(this._annotDrag.anchorFreq, f));
+        const ylo = this._freqToY(Math.min(this._annotDrag.anchorFreq, f));
+        ctx2.strokeStyle = COLORS.textPrimary;
+        ctx2.lineWidth = 1.5;
+        ctx2.setLineDash([4, 4]);
+        ctx2.strokeRect(sx, yhi, ex - sx, ylo - yhi);
+        ctx2.setLineDash([]);
+      }
+      this._updateAnnotDisplay();
+      return;
     }
 
     this._renderFrame();
@@ -789,14 +849,30 @@ export class Player {
     }
   }
 
-  private _onCanvasMouseUp(_e?: MouseEvent): void {
+  private _onCanvasMouseUp(e?: MouseEvent): void {
     // Zoom-box is handled at document level
     if (this._panDrag) {
       this._panDrag = null;
       this._updateCursorForZoom();
       return;
     }
+    // Commit new multibox on release
+    if (this._annotDrag?.target === 'multibox-new' && e) {
+      const { cx, cy } = this._canvasXY(e);
+      const at = this._annotDrag.anchorTime!;
+      const af = this._annotDrag.anchorFreq!;
+      const t = this._xToTime(cx);
+      const f = this._yToFreq(cy);
+      const tMin = Math.min(at, t), tMax = Math.max(at, t);
+      const fMin = Math.min(af, f), fMax = Math.max(af, f);
+      // Only add if box is large enough
+      if (Math.abs(this._timeToX(tMax) - this._timeToX(tMin)) > 5 &&
+          Math.abs(this._freqToY(fMax) - this._freqToY(fMin)) > 5) {
+        this._form.addMultiboxEntry(tMin, tMax, fMin, fMax);
+      }
+    }
     this._annotDrag = null;
+    this._renderFrame();
   }
 
   private _updateAnnotCursor(cx: number, cy: number): void {
@@ -906,6 +982,38 @@ export class Player {
       for (const [px, py] of [[sx, yhi], [ex, yhi], [sx, ylo], [ex, ylo]]) {
         ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
       }
+    } else if (tool === 'multibox') {
+      const entries = this._form.getMultiboxEntries();
+      const activeIdx = this._form.getActiveBoxIndex();
+      entries.forEach((entry, i) => {
+        const sx = this._timeToX(entry.startTime);
+        const ex = this._timeToX(entry.endTime);
+        const yhi = this._freqToY(entry.maxFreq);
+        const ylo = this._freqToY(entry.minFreq);
+        const isActive = i === activeIdx;
+        // Fill
+        ctx.fillStyle = isActive ? `${entry.color}20` : `${entry.color}0a`;
+        ctx.fillRect(sx, yhi, ex - sx, ylo - yhi);
+        // Border
+        ctx.strokeStyle = entry.color;
+        ctx.lineWidth = isActive ? 2.5 : 1;
+        if (!isActive) ctx.setLineDash([4, 4]);
+        ctx.strokeRect(sx, yhi, ex - sx, ylo - yhi);
+        ctx.setLineDash([]);
+        // Corner handles on active box
+        if (isActive) {
+          ctx.fillStyle = entry.color;
+          for (const [px, py] of [[sx, yhi], [ex, yhi], [sx, ylo], [ex, ylo]]) {
+            ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        // Index label
+        ctx.fillStyle = entry.color;
+        ctx.font = '10px ui-monospace, monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(String(i + 1), sx + 3, yhi + 3);
+      });
     }
   }
 
@@ -1070,6 +1178,10 @@ export class Player {
         this._viewYMax = this._viewYMin + vh;
         this._renderFrame();
       }
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && this._form.isMultiboxMode()) {
+      e.preventDefault();
+      this._form.removeActiveMultiboxEntry();
+      this._renderFrame();
     }
   }
 
