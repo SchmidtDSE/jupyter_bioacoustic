@@ -1,93 +1,100 @@
 (usage)=
-# Quick Example
+# Overview
 
-The `JupyterAudio` class has a simple interface: two methods (`.open()`, `.output()`) and one property (`.source`).
+## The API
 
-## Visualizer Mode
+`JupyterAudio` has a minimal interface:
 
-Without a form config, the widget is a pure audio browser — browse clips, play audio, view spectrograms.
+- **1 class** — `JupyterAudio(...)`
+- **2 methods** — `.open()` to launch the widget, `.output()` to read submitted data
+- **1 property** — `.source` to access the input DataFrame
 
-```python
-from jupyter_bioacoustic import JupyterAudio
+All configuration is handled through constructor parameters or a YAML/JSON config file. For the full parameter reference see the [wiki](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration).
 
-JupyterAudio(
-    data='detections.csv',
-    audio='recording.flac',
-).open()
+
+## Examples
+
+The class accepts many parameters, but most have sensible defaults. Here are the simplest configurations — no config files, just Python.
+
+
+### Player
+
+No form, no data collection — just browse clips and view spectrograms.
+
+```{embed} #nb.simple-examples.1.player
+:remove-output: true
 ```
 
-![Inline visualizer with no form](../../assets/app-inline.png)
+![TODO: APP SCREENSHOT OF PLAYER MODE](../../assets/app-inline.png)
 
-By default, the widget embeds below the cell. Set `inline=False` to open it as a split-right panel instead, giving you more screen space while keeping the notebook visible.
 
-![App has inline and panel views](../../assets/app-inline-panel.png)
+### Annotation
 
-## With a Form
+Add a `form_config` to collect structured data for each clip.
 
-Add a `form_config` to collect data or validate existing results like model outputs. The form layout is driven entirely by YAML — selects (with conditional form sections based on user selection), textboxes, checkboxes, and progress tracking.
-
-```python
-ja = JupyterAudio(
-    data='detections.csv',
-    audio='recording.flac',
-    ident_column='common_name',
-    form_config='form-review.yaml',
-    output='reviews.csv',
-)
-ja.open()
+```{embed} #nb.simple-examples.2.annotation
+:remove-output: true
 ```
 
-![Form-based workflow](../../assets/app-review.png)
+![TODO: APP SCREENSHOT OF ANNOTATION MODE](../../assets/form-annotate.png)
 
-Each submission appends a row to the output file. Access results programmatically at any time:
 
-```python
-ja.output()     # returns a DataFrame of all reviewed rows
-ja.source       # the original input DataFrame
+### Review
+
+The same form system works for validating existing data. Here a validity dropdown triggers a correction form when the user selects "no."
+
+```{embed} #nb:simple-examples.3a.parameters
+:remove-output: true
 ```
 
-![Access source and output data directly](../../assets/analysis-county.png)
+![TODO: APP SCREENSHOT OF REVIEW MODE](../../assets/app-review.png)
+
 
 ## Config Files
 
-For reproducibility, all parameters can be moved to a YAML config file:
+The constructor signature and the config file schema are the same — any parameter can go in either place. Config files are recommended for anything beyond the simplest setups: they keep notebooks clean, are easy to version, and can be shared across team members.
+
+This reproduces the review example above using a config file:
+
+```{embed} #nb.simple-examples.3b.config-simple
+:remove-output: true
+```
+
+```{literalinclude} ../demo/config/simple-examples-3b.yaml
+:language: yaml
+```
+
+### Advanced Configuration
+
+With a config file, more complex setups are straightforward. This example adds:
+
+1. `data_columns` to control which columns appear in the clip table
+2. `ident_column` and `display_columns` for the info card
+3. Spectrogram capture with a custom button label and output directory
+4. A form title with a progress tracker
+5. Conditional sections on both "yes" and "no" selections
+6. Multiple form element types: `select`, `textbox`, `checkbox`, `number`
+
+```{embed} #nb.simple-examples.3c.config-advanced
+:remove-output: true
+```
+
+```{literalinclude} ../demo/config/simple-examples-3c.yaml
+:language: yaml
+```
+
+## Accessing Results
+
+Submitted data is written to the output file after each submission. Access it programmatically at any time:
 
 ```python
-JupyterAudio(data='detections.csv', config='config.yaml').open()
+ja = JupyterAudio(data='detections.csv', audio='recording.flac',
+                   form_config='form.yaml', output='reviews.csv')
+ja.open()
+
+# After some submissions...
+ja.output()     # DataFrame of all submitted rows (cached, reloads after each submit)
+ja.source       # the original input DataFrame
 ```
 
-```yaml
-# config.yaml
-audio: recording.flac
-ident_column: common_name
-form_config:
-  title:
-    value: 'REVIEW CLIP'
-    progress_tracker: true
-  select:
-    label: Is Valid
-    column: is_valid
-    required: true
-    items:
-      - label: 'yes'
-        value: 'yes'
-      - label: 'no'
-        value: 'no'
-        form: correction_form
-  textbox:
-    label: notes
-    column: notes
-  correction_form:
-    - select:
-        label: verified name
-        column: verified_common_name
-        items: [sparrow, owl, warbler]
-  submission_buttons:
-    submit:
-      label: Verify
-    next:
-      label: Skip
-output: reviews.csv
-```
-
-This keeps notebooks clean and makes it easy to share configurations across team members.
+![TODO: APP SCREENSHOT OF OUTPUT DATA](../../assets/analysis-county.png)

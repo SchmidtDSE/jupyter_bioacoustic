@@ -43,9 +43,13 @@ project:
   toc:
     - file: myst/main.md
     - file: myst/sections/usage.md
+    - file: myst/sections/data.md
+    - file: myst/sections/audio.md
     - file: myst/sections/features.md
     - file: myst/sections/install.md
     - title: Notebooks
       children:
         - file: demo/simple-examples.ipynb
+        - file: demo/data-parameter-examples.ipynb
+        - file: demo/audio-parameter-examples.ipynb
         - file: demo/geo-analysis-example.ipynb
