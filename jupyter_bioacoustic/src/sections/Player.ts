@@ -55,6 +55,10 @@ export class Player {
   private _viewYMin = 0;  // bottom edge (freq fraction, 0=low freq)
   private _viewYMax = 1;  // top edge
   private _panDrag: { startX: number; startY: number; origXMin: number; origXMax: number; origYMin: number; origYMax: number } | null = null;
+  private _zoomBoxActive = false;
+  private _zoomBoxDrag: { startCx: number; startCy: number } | null = null;
+  private _zoomBoxMoveHandler: ((e: MouseEvent) => void) | null = null;
+  private _zoomBoxUpHandler: ((e: MouseEvent) => void) | null = null;
   private _specResolutions: string[] = ['1000', '2000', '4000'];
 
   // ─── DOM refs ──────────────────────────────────────────────
@@ -75,6 +79,7 @@ export class Player {
   private _signalTimeDisplay!: HTMLSpanElement;
   private _audio!: HTMLAudioElement;
   private _loadBtn!: HTMLButtonElement;
+  private _zoomBoxBtn!: HTMLButtonElement;
   private _captureBtn!: HTMLButtonElement;
 
   // ─── Context ───────────────────────────────────────────────
@@ -269,6 +274,17 @@ export class Player {
     onEnterOrBlur(this._viewFreqMinDisplay);
     onEnterOrBlur(this._viewFreqMaxDisplay);
 
+    this._zoomBoxBtn = document.createElement('button');
+    this._zoomBoxBtn.textContent = '⬚';
+    this._zoomBoxBtn.title = 'Zoom to selection — draw a box on the spectrogram';
+    this._zoomBoxBtn.style.cssText = btnStyle() + `font-size:13px;padding:2px 8px;`;
+    this._zoomBoxBtn.addEventListener('click', () => {
+      this._zoomBoxActive = !this._zoomBoxActive;
+      this._zoomBoxBtn.style.background = this._zoomBoxActive ? COLORS.overlay : COLORS.bgSurface1;
+      this._canvasContainer.style.cursor = this._zoomBoxActive ? 'crosshair' : 'default';
+    });
+    viewBar.appendChild(this._zoomBoxBtn);
+
     const zoomResetBtn = document.createElement('button');
     zoomResetBtn.textContent = 'Reset';
     zoomResetBtn.style.cssText = btnStyle();
@@ -286,8 +302,8 @@ export class Player {
     this._canvas.style.outline = 'none';
     this._canvas.addEventListener('mousedown', e => this._onCanvasMouseDown(e));
     this._canvas.addEventListener('mousemove', e => this._onCanvasMouseMove(e));
-    this._canvas.addEventListener('mouseup', () => this._onCanvasMouseUp());
-    this._canvas.addEventListener('mouseleave', () => this._onCanvasMouseUp());
+    this._canvas.addEventListener('mouseup', e => this._onCanvasMouseUp(e));
+    this._canvas.addEventListener('mouseleave', () => this._onCanvasMouseLeave());
     // Note: no wheel zoom — two-finger trackpad scroll should not zoom the spectrogram
     this._canvas.addEventListener('keydown', e => this._onCanvasKeyDown(e));
     this._canvasContainer.appendChild(this._canvas);
@@ -547,6 +563,15 @@ export class Player {
     };
   }
 
+  /** Like _canvasXY but clamped to canvas bounds. */
+  private _canvasXYClamped(e: MouseEvent): { cx: number; cy: number } {
+    const rect = this._canvas.getBoundingClientRect();
+    return {
+      cx: Math.max(0, Math.min(this._canvas.width, (e.clientX - rect.left) * (this._canvas.width / rect.width))),
+      cy: Math.max(0, Math.min(this._canvas.height, (e.clientY - rect.top) * (this._canvas.height / rect.height))),
+    };
+  }
+
   /** Convert absolute time to screen X, accounting for zoom. */
   private _timeToX(t: number): number {
     const frac = (t - this._segLoadStart) / this._segDuration;
@@ -590,6 +615,18 @@ export class Player {
   }
 
   private _onCanvasMouseDown(e: MouseEvent): void {
+    // Zoom-box mode: draw a selection rectangle (tracked at document level)
+    if (this._zoomBoxActive && this._specBitmap) {
+      const { cx, cy } = this._canvasXYClamped(e);
+      this._zoomBoxDrag = { startCx: cx, startCy: cy };
+      // Attach document-level handlers so drag continues outside canvas
+      this._zoomBoxMoveHandler = (ev: MouseEvent) => this._onZoomBoxMove(ev);
+      this._zoomBoxUpHandler = (ev: MouseEvent) => this._onZoomBoxUp(ev);
+      document.addEventListener('mousemove', this._zoomBoxMoveHandler);
+      document.addEventListener('mouseup', this._zoomBoxUpHandler);
+      return;
+    }
+
     // Pan mode: when no annotation tool is active and zoomed in
     const ac = this._form.getAnnotConfig();
     const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
@@ -655,6 +692,9 @@ export class Player {
   }
 
   private _onCanvasMouseMove(e: MouseEvent): void {
+    // Zoom-box is handled at document level — skip here
+    if (this._zoomBoxDrag) return;
+
     // Handle pan drag
     if (this._panDrag) {
       const rect = this._canvas.getBoundingClientRect();
@@ -730,13 +770,20 @@ export class Player {
     this._updateAnnotDisplay();
   }
 
-  private _onCanvasMouseUp(): void {
+  private _onCanvasMouseLeave(): void {
+    // Cancel pan and annotation drags, but NOT zoom-box (it clamps to edges)
+    if (!this._zoomBoxDrag) {
+      this._panDrag = null;
+      this._annotDrag = null;
+      if (this._specBitmap) this._renderFrame();
+    }
+  }
+
+  private _onCanvasMouseUp(_e?: MouseEvent): void {
+    // Zoom-box is handled at document level
     if (this._panDrag) {
       this._panDrag = null;
-      const ac = this._form.getAnnotConfig();
-      const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
-      this._canvasContainer.style.cursor =
-        ac && this._form.getActiveTool() ? 'crosshair' : isZoomed ? 'grab' : 'default';
+      this._updateCursorForZoom();
       return;
     }
     this._annotDrag = null;
@@ -850,6 +897,66 @@ export class Player {
         ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
       }
     }
+  }
+
+  // ─── Private: zoom + pan ────────────────────────────────────
+
+  // ─── Zoom-box (document-level drag) ─────────────────────────
+
+  private _onZoomBoxMove(e: MouseEvent): void {
+    if (!this._zoomBoxDrag) return;
+    const { cx, cy } = this._canvasXYClamped(e);
+    this._renderFrame();
+    const ctx = this._canvas.getContext('2d');
+    if (ctx) {
+      const x = Math.min(this._zoomBoxDrag.startCx, cx);
+      const y = Math.min(this._zoomBoxDrag.startCy, cy);
+      const w = Math.abs(cx - this._zoomBoxDrag.startCx);
+      const h = Math.abs(cy - this._zoomBoxDrag.startCy);
+      ctx.strokeStyle = COLORS.blue;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(137,180,250,0.1)';
+      ctx.fillRect(x, y, w, h);
+    }
+  }
+
+  private _onZoomBoxUp(e: MouseEvent): void {
+    // Clean up document listeners
+    if (this._zoomBoxMoveHandler) document.removeEventListener('mousemove', this._zoomBoxMoveHandler);
+    if (this._zoomBoxUpHandler) document.removeEventListener('mouseup', this._zoomBoxUpHandler);
+    this._zoomBoxMoveHandler = null;
+    this._zoomBoxUpHandler = null;
+
+    if (!this._zoomBoxDrag) return;
+    const { cx, cy } = this._canvasXYClamped(e);
+    const W = this._canvas.width, H = this._canvas.height;
+    const x1 = Math.min(this._zoomBoxDrag.startCx, cx) / W;
+    const x2 = Math.max(this._zoomBoxDrag.startCx, cx) / W;
+    const y1 = Math.min(this._zoomBoxDrag.startCy, cy) / H;
+    const y2 = Math.max(this._zoomBoxDrag.startCy, cy) / H;
+    this._zoomBoxDrag = null;
+
+    // Only zoom if the box is large enough
+    if ((x2 - x1) > 0.02 && (y2 - y1) > 0.02) {
+      const vw = this._viewXMax - this._viewXMin;
+      const vh = this._viewYMax - this._viewYMin;
+      this._viewXMin = this._viewXMin + x1 * vw;
+      this._viewXMax = this._viewXMin + (x2 - x1) * vw;
+      // Y inverted (top of canvas = high freq)
+      const newYMax = this._viewYMin + (1 - y1) * vh;
+      const newYMin = this._viewYMin + (1 - y2) * vh;
+      this._viewYMin = newYMin;
+      this._viewYMax = newYMax;
+    }
+
+    // Deactivate zoom-box tool
+    this._zoomBoxActive = false;
+    this._zoomBoxBtn.style.background = COLORS.bgSurface1;
+    this._updateCursorForZoom();
+    this._renderFrame();
   }
 
   // ─── Private: zoom + pan ────────────────────────────────────
@@ -1009,23 +1116,30 @@ export class Player {
     const filename = prompt('Save spectrogram as:', suggested);
     if (!filename) return;
 
-    // Use the selected resolution for capture width
-    const resW = parseInt(this._resolutionSelect.value) || this._canvas.width;
-    const aspect = this._canvas.height / Math.max(1, this._canvas.width);
-    const W = resW;
-    const H = Math.round(resW * aspect);
-    const offscreen = document.createElement('canvas');
-    offscreen.width = W; offscreen.height = H;
-    const ctx = offscreen.getContext('2d');
-    if (!ctx) return;
-
-    // Draw the current zoom window (same source-rect as _renderFrame)
+    // Output matches the display aspect ratio at the bitmap's horizontal resolution
     const bw = this._specBitmap.width;
     const bh = this._specBitmap.height;
     const sx = this._viewXMin * bw;
     const sw = (this._viewXMax - this._viewXMin) * bw;
     const sy = (1 - this._viewYMax) * bh;
     const sh = (this._viewYMax - this._viewYMin) * bh;
+    const W = Math.round(sw);
+    const displayAspect = this._canvas.height / Math.max(1, this._canvas.width);
+    const H = Math.round(W * displayAspect);
+
+    if (W <= 0 || H <= 0) {
+      this.statusChanged.emit({ message: '❌ Capture failed: zoom region too small', error: true });
+      return;
+    }
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = W; offscreen.height = H;
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) {
+      this.statusChanged.emit({ message: '❌ Capture failed: could not create canvas', error: true });
+      return;
+    }
+
     ctx.drawImage(this._specBitmap, sx, sy, sw, sh, 0, 0, W, H);
 
     if (this._segDuration > 0) {
@@ -1042,8 +1156,19 @@ export class Player {
 
     this._renderAnnotation(ctx, W, H);
 
-    const dataUrl = offscreen.toDataURL('image/png');
+    let dataUrl: string;
+    try {
+      dataUrl = offscreen.toDataURL('image/png');
+    } catch (e: any) {
+      this.statusChanged.emit({ message: `❌ Capture failed: image too large to encode`, error: true });
+      return;
+    }
     const b64 = dataUrl.split(',')[1];
+    if (!b64) {
+      this.statusChanged.emit({ message: '❌ Capture failed: image too large to encode', error: true });
+      return;
+    }
+
     try {
       await this._kernel.exec(savePng(filename, b64));
       this.statusChanged.emit({ message: `✓ Saved ${filename}`, error: false });
