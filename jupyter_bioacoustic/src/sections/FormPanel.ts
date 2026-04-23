@@ -185,7 +185,7 @@ export class FormPanel {
     // Known top-level keys (not named form sections)
     const RESERVED_KEYS = new Set([
       'title', 'progress_tracker', 'pass_value', 'fixed_value',
-      'submission_buttons', '_fixed_kwargs',
+      'submission_buttons', '_fixed_kwargs', 'dynamic_forms',
     ]);
 
     // First pass: build inline elements and submission buttons
@@ -203,6 +203,21 @@ export class FormPanel {
       } else if (key === '_fixed_kwargs') {
         for (const item of cfg._fixed_kwargs) {
           if (item.fixed_value) this._registerFixedValue(item.fixed_value);
+        }
+      } else if (key === 'dynamic_forms') {
+        // Explicit named form sections container
+        const forms = cfg.dynamic_forms;
+        if (forms && typeof forms === 'object') {
+          for (const formName of Object.keys(forms)) {
+            const formElements = forms[formName];
+            if (!Array.isArray(formElements)) continue;
+            const sectionDiv = document.createElement('div');
+            sectionDiv.dataset.formSection = formName;
+            sectionDiv.style.cssText = formRowStyle(true); // hidden by default
+            await this._buildFormSection(formElements, sectionDiv);
+            this._dynFormEl.appendChild(sectionDiv);
+            this._namedSections.set(formName, sectionDiv);
+          }
         }
       } else if (!RESERVED_KEYS.has(key)) {
         // Any other top-level key is a named form section or inline element
