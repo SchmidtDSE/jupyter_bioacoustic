@@ -10,6 +10,7 @@ tmp/
 logs/
 
 # Demo
+demo/*.png
 demo/*.ipynb
 demo/outputs/
 demo/spectrograms/
