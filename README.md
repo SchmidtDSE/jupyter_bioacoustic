@@ -104,8 +104,8 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 
 | | |
 |---|---|
-| **Clip table** | Sort, GUI filter builder (column/operator/value dropdowns, filter chips), paginate, configurable columns |
-| **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, frequency/time zoom (keyboard, wheel, drag), configurable resolution, capture PNG |
+| **Clip table** | Sort, GUI filter builder (column/operator/value dropdowns, filter chips), paginate, configurable columns, keyboard navigation |
+| **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, frequency/time zoom (+/-/0, drag-to-pan), configurable resolution, capture PNG, keyboard shortcuts |
 | **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes |
 | **Configurable forms** | YAML-driven: selects (with conditional form sections), textboxes, checkboxes, progress tracker |
 | **Per-row audio** | Each row can point to a different audio file with fallback. S3 partial byte-range reads. HTTPS URLs cached locally (full download on first access). |

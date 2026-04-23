@@ -69,6 +69,7 @@ export class ClipTable {
   private _page = 0;
   private _pageSize = 10;
   private _selectedIdx = -1;
+  private _highlightIdx = -1;
   private _activeFilters: FilterClause[] = [];
   private _viewMode: 'all' | 'pending' | 'reviewed' = 'all';
   private _tableCols: Array<{ key: string; label: string }> = [];
@@ -320,6 +321,68 @@ export class ClipTable {
     }
   }
 
+  // ─── Private: keyboard navigation ──────────────────────────
+
+  private _onTableKeyDown(e: KeyboardEvent): void {
+    const total = this._filtered.length;
+    if (total === 0) return;
+
+    // Up/Down: move highlight only (like hovering)
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const cur = this._highlightIdx >= 0 ? this._highlightIdx : this._selectedIdx;
+      this._highlightIdx = Math.min(cur + 1, total - 1);
+      this._ensurePageShowsIdx(this._highlightIdx);
+      this._renderTable();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const cur = this._highlightIdx >= 0 ? this._highlightIdx : this._selectedIdx;
+      this._highlightIdx = Math.max(cur - 1, 0);
+      this._ensurePageShowsIdx(this._highlightIdx);
+      this._renderTable();
+    // Enter: select the highlighted row (or current selected if no highlight)
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const idx = this._highlightIdx >= 0 ? this._highlightIdx : this._selectedIdx;
+      if (idx >= 0 && idx < total) {
+        this._selectedIdx = idx;
+        this._highlightIdx = -1;
+        this._renderTable();
+        this.rowSelected.emit({ row: this._filtered[idx], filteredIdx: idx });
+      }
+    // Right: select and load next row
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const next = Math.min(this._selectedIdx + 1, total - 1);
+      if (next !== this._selectedIdx) {
+        this._selectedIdx = next;
+        this._highlightIdx = -1;
+        this.ensurePageShowsSelected();
+        this._renderTable();
+        this.rowSelected.emit({ row: this._filtered[next], filteredIdx: next });
+      }
+    // Left: select and load previous row
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const prev = Math.max(this._selectedIdx - 1, 0);
+      if (prev !== this._selectedIdx) {
+        this._selectedIdx = prev;
+        this._highlightIdx = -1;
+        this.ensurePageShowsSelected();
+        this._renderTable();
+        this.rowSelected.emit({ row: this._filtered[prev], filteredIdx: prev });
+      }
+    }
+  }
+
+  private _ensurePageShowsIdx(idx: number): void {
+    if (idx < 0) return;
+    const newPage = Math.floor(idx / this._pageSize);
+    if (newPage !== this._page) {
+      this._page = newPage;
+    }
+  }
+
   // ─── Private: UI build ─────────────────────────────────────
 
   private _buildUI(): void {
@@ -392,9 +455,11 @@ export class ClipTable {
 
     // Table
     const tableWrap = document.createElement('div');
+    tableWrap.tabIndex = 0;
     tableWrap.style.cssText =
       `flex:0 0 auto;overflow-y:auto;max-height:175px;` +
-      `border-bottom:1px solid ${COLORS.bgSurface0};`;
+      `border-bottom:1px solid ${COLORS.bgSurface0};outline:none;`;
+    tableWrap.addEventListener('keydown', e => this._onTableKeyDown(e));
 
     const table = document.createElement('table');
     table.style.cssText = `width:100%;border-collapse:collapse;font-size:12px;`;
@@ -625,6 +690,7 @@ export class ClipTable {
     slice.forEach((row, i) => {
       const globalIdx = start + i;
       const isSelected = globalIdx === this._selectedIdx;
+      const isHighlighted = globalIdx === this._highlightIdx;
       const reviewed = this._form.isReviewed(row);
       const tr = document.createElement('tr');
       const baseBg = i % 2 === 0 ? COLORS.bgBase : COLORS.bgAltRow;
@@ -632,9 +698,11 @@ export class ClipTable {
         `cursor:pointer;border-bottom:1px solid ${COLORS.bgHover};` +
         (isSelected
           ? `background:${COLORS.bgSelected};`
-          : reviewed
-            ? `background:${COLORS.bgReviewed};`
-            : `background:${baseBg};`);
+          : isHighlighted
+            ? `background:${COLORS.bgHover};`
+            : reviewed
+              ? `background:${COLORS.bgReviewed};`
+              : `background:${baseBg};`);
 
       this._tableCols.forEach(({ key }) => {
         const raw = row[key];

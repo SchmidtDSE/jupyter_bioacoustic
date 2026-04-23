@@ -288,7 +288,7 @@ export class Player {
     this._canvas.addEventListener('mousemove', e => this._onCanvasMouseMove(e));
     this._canvas.addEventListener('mouseup', () => this._onCanvasMouseUp());
     this._canvas.addEventListener('mouseleave', () => this._onCanvasMouseUp());
-    this._canvas.addEventListener('wheel', e => this._onCanvasWheel(e), { passive: false });
+    // Note: no wheel zoom — two-finger trackpad scroll should not zoom the spectrogram
     this._canvas.addEventListener('keydown', e => this._onCanvasKeyDown(e));
     this._canvasContainer.appendChild(this._canvas);
 
@@ -857,25 +857,42 @@ export class Player {
   private _onCanvasKeyDown(e: KeyboardEvent): void {
     if (e.key === '+' || e.key === '=') {
       e.preventDefault();
-      this._zoomBy(0.8); // zoom in: shrink view to 80%
+      this._zoomBy(0.8);
     } else if (e.key === '-' || e.key === '_') {
       e.preventDefault();
-      this._zoomBy(1.25); // zoom out: expand view to 125%
+      this._zoomBy(1.25);
     } else if (e.key === '0') {
       e.preventDefault();
       this._resetZoom();
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        // Shift+Space: play from beginning
+        this._audio.currentTime = 0;
+        if (!this._playing) this._togglePlay();
+        this._renderFrame();
+      } else {
+        this._togglePlay();
+      }
+    } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
+      if (isZoomed) {
+        e.preventDefault();
+        const step = 0.1;
+        const vw = this._viewXMax - this._viewXMin;
+        const vh = this._viewYMax - this._viewYMin;
+        let dx = 0, dy = 0;
+        if (e.key === 'ArrowLeft') dx = -step * vw;
+        if (e.key === 'ArrowRight') dx = step * vw;
+        if (e.key === 'ArrowUp') dy = step * vh;
+        if (e.key === 'ArrowDown') dy = -step * vh;
+        this._viewXMin = Math.max(0, Math.min(1 - vw, this._viewXMin + dx));
+        this._viewXMax = this._viewXMin + vw;
+        this._viewYMin = Math.max(0, Math.min(1 - vh, this._viewYMin + dy));
+        this._viewYMax = this._viewYMin + vh;
+        this._renderFrame();
+      }
     }
-  }
-
-  private _onCanvasWheel(e: WheelEvent): void {
-    if (!this._specBitmap) return;
-    e.preventDefault();
-    // Zoom centered on mouse position
-    const rect = this._canvas.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) / rect.width;
-    const my = (e.clientY - rect.top) / rect.height;
-    const factor = e.deltaY > 0 ? 1.15 : 0.87;
-    this._zoomBy(factor, mx, 1 - my); // invert Y for freq axis
   }
 
   /**
