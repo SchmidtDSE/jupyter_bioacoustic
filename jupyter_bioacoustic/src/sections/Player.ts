@@ -60,6 +60,8 @@ export class Player {
   private _zoomBoxMoveHandler: ((e: MouseEvent) => void) | null = null;
   private _zoomBoxUpHandler: ((e: MouseEvent) => void) | null = null;
   private _specResolutions: string[] = ['1000', '2000', '4000'];
+  /** Vertical padding (px) at top/bottom of canvas for freq axis labels. */
+  private static readonly SPEC_PAD_Y = 8;
 
   // ─── DOM refs ──────────────────────────────────────────────
 
@@ -243,8 +245,8 @@ export class Player {
 
     this._viewTimeMinDisplay = mkNumInput('Time min (s)', '0', '70px', viewBar);
     this._viewTimeMaxDisplay = mkNumInput('Time max (s)', '0', '70px', viewBar);
-    this._viewFreqMinDisplay = mkNumInput('Freq min (Hz)', '0', '65px', viewBar);
-    this._viewFreqMaxDisplay = mkNumInput('Freq max (Hz)', '0', '65px', viewBar);
+    this._viewFreqMinDisplay = mkNumInput('Freq min (kHz)', '0', '65px', viewBar);
+    this._viewFreqMaxDisplay = mkNumInput('Freq max (kHz)', '0', '65px', viewBar);
 
     const applyViewBounds = () => {
       if (this._segDuration <= 0) return;
@@ -254,12 +256,12 @@ export class Player {
         this._viewXMin = Math.max(0, (tMin - this._segLoadStart) / this._segDuration);
         this._viewXMax = Math.min(1, (tMax - this._segLoadStart) / this._segDuration);
       }
-      const fMin = parseFloat(this._viewFreqMinDisplay.value);
-      const fMax = parseFloat(this._viewFreqMaxDisplay.value);
+      const fMinKhz = parseFloat(this._viewFreqMinDisplay.value);
+      const fMaxKhz = parseFloat(this._viewFreqMaxDisplay.value);
       const fRange = this._freqMax - this._freqMin;
-      if (!isNaN(fMin) && !isNaN(fMax) && fMax > fMin && fRange > 0) {
-        this._viewYMin = Math.max(0, (fMin - this._freqMin) / fRange);
-        this._viewYMax = Math.min(1, (fMax - this._freqMin) / fRange);
+      if (!isNaN(fMinKhz) && !isNaN(fMaxKhz) && fMaxKhz > fMinKhz && fRange > 0) {
+        this._viewYMin = Math.max(0, (fMinKhz * 1000 - this._freqMin) / fRange);
+        this._viewYMax = Math.min(1, (fMaxKhz * 1000 - this._freqMin) / fRange);
       }
       this._updateCursorForZoom();
       this._renderFrame();
@@ -485,16 +487,21 @@ export class Player {
     const W = this._canvas.width, H = this._canvas.height;
     if (!W || !H) return;
 
+    const padY = Player.SPEC_PAD_Y;
+    // Fill padding areas with dark background
+    ctx.fillStyle = COLORS.bgCrust;
+    ctx.fillRect(0, 0, W, padY);
+    ctx.fillRect(0, H - padY, W, padY);
+
     if (this._specBitmap) {
       // Client-side zoom: draw only the visible portion of the spectrogram
       const bw = this._specBitmap.width;
       const bh = this._specBitmap.height;
       const sx = this._viewXMin * bw;
       const sw = (this._viewXMax - this._viewXMin) * bw;
-      // Note: image origin=lower, but bitmap is top-down, so Y is inverted
       const sy = (1 - this._viewYMax) * bh;
       const sh = (this._viewYMax - this._viewYMin) * bh;
-      ctx.drawImage(this._specBitmap, sx, sy, sw, sh, 0, 0, W, H);
+      ctx.drawImage(this._specBitmap, sx, sy, sw, sh, 0, padY, W, H - 2 * padY);
     } else {
       ctx.fillStyle = COLORS.bgCrust;
       ctx.fillRect(0, 0, W, H);
@@ -527,6 +534,7 @@ export class Player {
     }
 
     this._renderAnnotation(ctx, W, H);
+    this._renderFreqAxis(ctx, W, H);
     this._updateViewBoundsDisplay();
 
     const absNow = this._segLoadStart + this._audio.currentTime;
@@ -582,9 +590,11 @@ export class Player {
     const viewFrac = this._viewXMin + (x / this._canvas.width) * (this._viewXMax - this._viewXMin);
     return this._segLoadStart + viewFrac * this._segDuration;
   }
-  /** Convert frequency to screen Y, accounting for zoom. */
+  /** Convert frequency to screen Y, accounting for zoom and padding. */
   private _freqToY(f: number): number {
     const H = this._canvas.height;
+    const padY = Player.SPEC_PAD_Y;
+    const specH = H - 2 * padY;
     let frac: number;
     if (this._spectTypeSelect.value === 'mel') {
       const melMin = 2595 * Math.log10(1 + this._freqMin / 700);
@@ -595,15 +605,15 @@ export class Player {
       frac = (this._freqMax - this._freqMin) > 0
         ? (f - this._freqMin) / (this._freqMax - this._freqMin) : 0;
     }
-    // Map full-image frac to view frac, then to screen
     const viewFrac = (frac - this._viewYMin) / (this._viewYMax - this._viewYMin);
-    return H * (1 - viewFrac);
+    return padY + specH * (1 - viewFrac);
   }
-  /** Convert screen Y to frequency, accounting for zoom. */
+  /** Convert screen Y to frequency, accounting for zoom and padding. */
   private _yToFreq(y: number): number {
     const H = this._canvas.height;
-    const viewFrac = 1 - y / H;
-    // Map view frac back to full-image frac
+    const padY = Player.SPEC_PAD_Y;
+    const specH = H - 2 * padY;
+    const viewFrac = 1 - (y - padY) / specH;
     const frac = this._viewYMin + viewFrac * (this._viewYMax - this._viewYMin);
     if (this._spectTypeSelect.value === 'mel') {
       const melMin = 2595 * Math.log10(1 + this._freqMin / 700);
@@ -899,6 +909,67 @@ export class Player {
     }
   }
 
+  // ─── Private: frequency axis ─────────────────────────────────
+
+  private _renderFreqAxis(ctx: CanvasRenderingContext2D, _W: number, H: number): void {
+    if (!this._specBitmap || this._freqMax <= this._freqMin) return;
+
+    const AXIS_W = 40;
+    const FONT_SIZE = 10;
+    const TICK_LEN = 4;
+    const padY = Player.SPEC_PAD_Y;
+    const specH = H - 2 * padY;
+
+    // Background strip
+    ctx.fillStyle = 'rgba(17,17,27,0.75)';
+    ctx.fillRect(0, 0, AXIS_W, H);
+
+    // Compute visible freq range
+    const fMin = this._freqMin + this._viewYMin * (this._freqMax - this._freqMin);
+    const fMax = this._freqMin + this._viewYMax * (this._freqMax - this._freqMin);
+    const fRange = fMax - fMin;
+
+    // Choose nice tick interval (in Hz)
+    const targetTicks = Math.max(2, Math.floor(specH / 40));
+    let tickInterval = fRange / targetTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(tickInterval)));
+    const norm = tickInterval / mag;
+    if (norm < 1.5) tickInterval = mag;
+    else if (norm < 3.5) tickInterval = 2 * mag;
+    else if (norm < 7.5) tickInterval = 5 * mag;
+    else tickInterval = 10 * mag;
+
+    const firstTick = Math.ceil(fMin / tickInterval) * tickInterval;
+
+    ctx.fillStyle = COLORS.textSubtle;
+    ctx.strokeStyle = COLORS.textMuted;
+    ctx.lineWidth = 1;
+    ctx.font = `${FONT_SIZE}px ui-monospace, monospace`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    for (let f = firstTick; f <= fMax; f += tickInterval) {
+      const frac = (f - fMin) / fRange;
+      // Labels are positioned within the padded spectrogram area — no clipping
+      const y = padY + specH * (1 - frac);
+      // Tick mark
+      ctx.beginPath();
+      ctx.moveTo(AXIS_W - TICK_LEN, y);
+      ctx.lineTo(AXIS_W, y);
+      ctx.stroke();
+      // Label in kHz (use integer when possible)
+      const khz = f / 1000;
+      const label = Number.isInteger(khz) ? String(khz) : khz.toFixed(1);
+      ctx.fillText(label, AXIS_W - TICK_LEN - 2, y);
+    }
+
+    // "kHz" unit label at top-left
+    ctx.fillStyle = COLORS.textMuted;
+    ctx.font = `${FONT_SIZE - 1}px ui-monospace, monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText('kHz', 2, FONT_SIZE);
+  }
+
   // ─── Private: zoom + pan ────────────────────────────────────
 
   // ─── Zoom-box (document-level drag) ─────────────────────────
@@ -1061,8 +1132,8 @@ export class Player {
     // Only update inputs that aren't focused (avoid overwriting user edits)
     if (document.activeElement !== this._viewTimeMinDisplay) this._viewTimeMinDisplay.value = tMin.toFixed(2);
     if (document.activeElement !== this._viewTimeMaxDisplay) this._viewTimeMaxDisplay.value = tMax.toFixed(2);
-    if (document.activeElement !== this._viewFreqMinDisplay) this._viewFreqMinDisplay.value = Math.round(fMin).toString();
-    if (document.activeElement !== this._viewFreqMaxDisplay) this._viewFreqMaxDisplay.value = Math.round(fMax).toString();
+    if (document.activeElement !== this._viewFreqMinDisplay) this._viewFreqMinDisplay.value = (fMin / 1000).toFixed(1);
+    if (document.activeElement !== this._viewFreqMaxDisplay) this._viewFreqMaxDisplay.value = (fMax / 1000).toFixed(1);
   }
 
   private _rebuildResolutionSelect(): void {
@@ -1155,6 +1226,7 @@ export class Player {
     }
 
     this._renderAnnotation(ctx, W, H);
+    this._renderFreqAxis(ctx, W, H);
 
     let dataUrl: string;
     try {
