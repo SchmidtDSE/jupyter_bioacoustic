@@ -78,7 +78,7 @@ Select items can include a `form:` reference to show additional fields based on 
 ![Form — "no" selected, correction section shown](../../assets/form-review-no.png)
 
 **Form elements** include:
-- **Selects** — with items from inline lists, CSV/Parquet files, or integer ranges. Items can reference conditional form sections via `form:`.
+- **Selects** — with items from inline lists, CSV/Parquet files, or integer ranges. Supports conditional form sections (`form:`), a filter box for searching large lists (`filter_box`), user-entered custom values (`custom_value`), and a fallback option (`not_available`).
 - **Textboxes** — free-form notes
 - **Checkboxes** — boolean flags
 - **Annotation tools** — embedded directly in the form
@@ -115,6 +115,13 @@ Shortcuts are active when the corresponding component is focused.
 | Key | Action |
 |---|---|
 | `Enter` | Submit (when all required fields are filled) |
+
+### Select Filter Box
+
+| Key | Action |
+|---|---|
+| `Up` / `Down` | Move selection in dropdown |
+| `Enter` | Confirm selection and clear filter |
 
 
 ## Duplicate Prevention
