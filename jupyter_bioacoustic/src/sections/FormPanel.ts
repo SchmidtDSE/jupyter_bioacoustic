@@ -399,11 +399,17 @@ export class FormPanel {
       const items = await this._loadSelectItems(cfg.items);
       // Collect form references: value → section name
       const formRefs = new Map<string, string>();
+      let selectedDefault = '';
       items.forEach(([v, l, formRef]) => {
+        // "selected::" prefix marks the default
+        const isDefault = v.startsWith('selected::');
+        const cleanVal = isDefault ? v.slice(10) : v;
+        const cleanLabel = l.startsWith('selected::') ? l.slice(10) : l;
         const o = document.createElement('option');
-        o.value = v; o.textContent = l;
+        o.value = cleanVal; o.textContent = cleanLabel;
+        if (isDefault) { o.selected = true; selectedDefault = cleanVal; }
         sel.appendChild(o);
-        if (formRef) formRefs.set(v, formRef);
+        if (formRef) formRefs.set(cleanVal, formRef);
       });
       // All section names referenced by this select
       const allFormSections = new Set(formRefs.values());
@@ -422,7 +428,7 @@ export class FormPanel {
         }
         this._validateForm();
       });
-      this._formValues[col] = cfg.default ?? '';
+      this._formValues[col] = cfg.default ?? selectedDefault;
       inputEl = sel;
 
     } else if (type === 'checkbox') {

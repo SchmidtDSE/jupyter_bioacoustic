@@ -48,18 +48,33 @@ export class Player {
   private _freqMax = 0;
   private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number } | null = null;
 
+  // ─── Zoom state (client-side crop) ────────────────────────
+  // View fractions: 0..1 range over the full spectrogram image
+  private _viewXMin = 0;  // left edge (time fraction)
+  private _viewXMax = 1;  // right edge
+  private _viewYMin = 0;  // bottom edge (freq fraction, 0=low freq)
+  private _viewYMax = 1;  // top edge
+  private _panDrag: { startX: number; startY: number; origXMin: number; origXMax: number; origYMin: number; origYMax: number } | null = null;
+  private _specResolutions: string[] = ['1000', '2000', '4000'];
+
   // ─── DOM refs ──────────────────────────────────────────────
 
   private _spectTypeSelect!: HTMLSelectElement;
+  private _resolutionSelect!: HTMLSelectElement;
   private _bufferInput!: HTMLInputElement;
   private _startInput!: HTMLInputElement;
   private _endInput!: HTMLInputElement;
+  private _viewFreqMinDisplay!: HTMLInputElement;
+  private _viewFreqMaxDisplay!: HTMLInputElement;
+  private _viewTimeMinDisplay!: HTMLInputElement;
+  private _viewTimeMaxDisplay!: HTMLInputElement;
   private _canvas!: HTMLCanvasElement;
   private _canvasContainer!: HTMLDivElement;
   private _playBtn!: HTMLButtonElement;
   private _timeDisplay!: HTMLSpanElement;
   private _signalTimeDisplay!: HTMLSpanElement;
   private _audio!: HTMLAudioElement;
+  private _loadBtn!: HTMLButtonElement;
   private _captureBtn!: HTMLButtonElement;
 
   // ─── Context ───────────────────────────────────────────────
@@ -92,6 +107,7 @@ export class Player {
     identCol: string;
     displayCols: string[];
     defaultBuffer: number;
+    specResolutions: string[];
     rows: Detection[];
   }): void {
     this._audioConfig = opts.audioConfig;
@@ -101,13 +117,13 @@ export class Player {
     this._displayCols = opts.displayCols;
     this._rows = opts.rows;
     this._bufferInput.value = String(opts.defaultBuffer);
+    this._specResolutions = opts.specResolutions;
+    this._rebuildResolutionSelect();
     if (this._captureLabel) {
       this._captureBtn.textContent = this._captureLabel;
       this._captureBtn.style.display = '';
     }
-    // Set cursor based on annotation config
-    this._canvasContainer.style.cursor =
-      this._form.getAnnotConfig() ? 'crosshair' : 'default';
+    this._updateCursorForZoom();
   }
 
   /** Load audio for a row (called when a row is selected). */
@@ -115,6 +131,7 @@ export class Player {
     this._currentRow = row;
     this._startInput.value = String(row.start_time);
     this._endInput.value = String(row.end_time);
+    this._resetZoom();
     await this._loadAudio();
   }
 
@@ -125,8 +142,7 @@ export class Player {
 
   /** Update cursor for annotation mode. */
   updateCursor(): void {
-    this._canvasContainer.style.cursor =
-      this._form.getAnnotConfig() ? 'crosshair' : 'default';
+    this._updateCursorForZoom();
   }
 
   /** Set up the resize observer (call from Widget.onAfterAttach). */
@@ -165,7 +181,7 @@ export class Player {
     const playerCtrls = document.createElement('div');
     playerCtrls.style.cssText = barBottomStyle();
 
-    const mkNumLabel = (labelText: string, def: string, w = '65px'): HTMLInputElement => {
+    const mkNumInput = (labelText: string, def: string, w = '65px', container?: HTMLElement): HTMLInputElement => {
       const lbl = document.createElement('label');
       lbl.style.cssText = labelStyle();
       lbl.textContent = labelText;
@@ -174,7 +190,7 @@ export class Player {
       inp.value = def;
       inp.style.cssText = inputStyle(w);
       lbl.appendChild(inp);
-      playerCtrls.appendChild(lbl);
+      (container ?? playerCtrls).appendChild(lbl);
       return inp;
     };
 
@@ -191,26 +207,73 @@ export class Player {
     typeLbl.appendChild(this._spectTypeSelect);
     playerCtrls.appendChild(typeLbl);
 
-    this._bufferInput = mkNumLabel('Buffer (s)', '3', '50px');
-    this._startInput = mkNumLabel('Start (s)', '0', '70px');
-    this._endInput = mkNumLabel('End (s)', '12', '70px');
+    // Resolution selector
+    const resLbl = document.createElement('label');
+    resLbl.style.cssText = labelStyle();
+    resLbl.textContent = 'Res';
+    this._resolutionSelect = document.createElement('select');
+    this._resolutionSelect.style.cssText = selectStyle();
+    resLbl.appendChild(this._resolutionSelect);
+    playerCtrls.appendChild(resLbl);
 
-    const loadBtn = document.createElement('button');
-    loadBtn.textContent = 'Update';
-    loadBtn.style.cssText = btnStyle(true);
-    loadBtn.addEventListener('click', () => void this._loadAudio());
-    playerCtrls.appendChild(loadBtn);
+    this._bufferInput = mkNumInput('Buffer (s)', '3', '50px');
+    this._startInput = mkNumInput('Start (s)', '0', '70px');
+    this._endInput = mkNumInput('End (s)', '12', '70px');
 
-    const ctrNote = document.createElement('span');
-    ctrNote.textContent = '← update after changes';
-    ctrNote.style.cssText = `font-size:10px;color:${COLORS.textMuted};white-space:nowrap;`;
-    playerCtrls.appendChild(ctrNote);
+    this._loadBtn = document.createElement('button');
+    this._loadBtn.textContent = 'Update';
+    this._loadBtn.style.cssText = btnStyle(true);
+    this._loadBtn.addEventListener('click', () => void this._loadAudio());
+    playerCtrls.appendChild(this._loadBtn);
 
     this._captureBtn = document.createElement('button');
     this._captureBtn.textContent = 'Capture';
     this._captureBtn.style.cssText = btnStyle() + `display:none;margin-left:auto;`;
     this._captureBtn.addEventListener('click', () => void this._onCapture());
     playerCtrls.appendChild(this._captureBtn);
+
+    // View bounds bar (shows current zoom window)
+    const viewBar = document.createElement('div');
+    viewBar.style.cssText = barBottomStyle();
+
+    this._viewTimeMinDisplay = mkNumInput('Time min (s)', '0', '70px', viewBar);
+    this._viewTimeMaxDisplay = mkNumInput('Time max (s)', '0', '70px', viewBar);
+    this._viewFreqMinDisplay = mkNumInput('Freq min (Hz)', '0', '65px', viewBar);
+    this._viewFreqMaxDisplay = mkNumInput('Freq max (Hz)', '0', '65px', viewBar);
+
+    const applyViewBounds = () => {
+      if (this._segDuration <= 0) return;
+      const tMin = parseFloat(this._viewTimeMinDisplay.value);
+      const tMax = parseFloat(this._viewTimeMaxDisplay.value);
+      if (!isNaN(tMin) && !isNaN(tMax) && tMax > tMin) {
+        this._viewXMin = Math.max(0, (tMin - this._segLoadStart) / this._segDuration);
+        this._viewXMax = Math.min(1, (tMax - this._segLoadStart) / this._segDuration);
+      }
+      const fMin = parseFloat(this._viewFreqMinDisplay.value);
+      const fMax = parseFloat(this._viewFreqMaxDisplay.value);
+      const fRange = this._freqMax - this._freqMin;
+      if (!isNaN(fMin) && !isNaN(fMax) && fMax > fMin && fRange > 0) {
+        this._viewYMin = Math.max(0, (fMin - this._freqMin) / fRange);
+        this._viewYMax = Math.min(1, (fMax - this._freqMin) / fRange);
+      }
+      this._updateCursorForZoom();
+      this._renderFrame();
+    };
+
+    const onEnterOrBlur = (inp: HTMLInputElement) => {
+      inp.addEventListener('change', applyViewBounds);
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyViewBounds(); } });
+    };
+    onEnterOrBlur(this._viewTimeMinDisplay);
+    onEnterOrBlur(this._viewTimeMaxDisplay);
+    onEnterOrBlur(this._viewFreqMinDisplay);
+    onEnterOrBlur(this._viewFreqMaxDisplay);
+
+    const zoomResetBtn = document.createElement('button');
+    zoomResetBtn.textContent = 'Reset';
+    zoomResetBtn.style.cssText = btnStyle();
+    zoomResetBtn.addEventListener('click', () => this._resetZoom());
+    viewBar.appendChild(zoomResetBtn);
 
     // Spectrogram canvas
     this._canvasContainer = document.createElement('div');
@@ -219,10 +282,14 @@ export class Player {
 
     this._canvas = document.createElement('canvas');
     this._canvas.style.cssText = `display:block;width:100%;height:100%;`;
+    this._canvas.tabIndex = 0; // make focusable for keyboard events
+    this._canvas.style.outline = 'none';
     this._canvas.addEventListener('mousedown', e => this._onCanvasMouseDown(e));
     this._canvas.addEventListener('mousemove', e => this._onCanvasMouseMove(e));
     this._canvas.addEventListener('mouseup', () => this._onCanvasMouseUp());
     this._canvas.addEventListener('mouseleave', () => this._onCanvasMouseUp());
+    this._canvas.addEventListener('wheel', e => this._onCanvasWheel(e), { passive: false });
+    this._canvas.addEventListener('keydown', e => this._onCanvasKeyDown(e));
     this._canvasContainer.appendChild(this._canvas);
 
     // Playback bar
@@ -256,7 +323,7 @@ export class Player {
     });
 
     // Assemble
-    this.element.append(playerCtrls, this._canvasContainer, playBar, this._audio);
+    this.element.append(playerCtrls, viewBar, this._canvasContainer, playBar, this._audio);
   }
 
   // ─── Private: audio loading ────────────────────────────────
@@ -312,6 +379,11 @@ export class Player {
       return;
     }
 
+    // Disable Update button while loading
+    this._loadBtn.disabled = true;
+    this._loadBtn.textContent = 'Updating…';
+    this._loadBtn.style.opacity = '0.4';
+
     // Stop any current playback
     if (this._playing) {
       this._audio.pause();
@@ -347,10 +419,12 @@ export class Player {
     let result: { spec: string; wav: string; duration: number; sample_rate: number; freq_min: number; freq_max: number };
     try {
       const spectType = this._spectTypeSelect.value as 'mel' | 'plain';
-      const raw = await this._kernel.exec(spectrogramPipeline(audioPath, loadStart, loadDur, spectType));
+      const resW = parseInt(this._resolutionSelect.value) || 2000;
+      const raw = await this._kernel.exec(spectrogramPipeline(audioPath, loadStart, loadDur, spectType, resW));
       result = JSON.parse(raw) as typeof result;
     } catch (e: any) {
       this.statusChanged.emit({ message: `❌ ${String(e.message ?? e)}`, error: true });
+      this._enableLoadBtn();
       return;
     }
 
@@ -367,18 +441,26 @@ export class Player {
       this._specBitmap = await createImageBitmap(blob);
     } catch (e: any) {
       this.statusChanged.emit({ message: `❌ Image decode: ${String(e.message ?? e)}`, error: true });
+      this._enableLoadBtn();
       return;
     }
 
     this._audio.src = `data:audio/wav;base64,${result.wav}`;
     this._audio.load();
     this._renderFrame();
+    this._enableLoadBtn();
 
     const fname = audioPath.split('/').pop() ?? audioPath;
     this.statusChanged.emit({
       message: `✓ ${fname}  ${fmtTime(loadStart)}–${fmtTime(loadStart + result.duration)}`,
       error: false,
     });
+  }
+
+  private _enableLoadBtn(): void {
+    this._loadBtn.disabled = false;
+    this._loadBtn.textContent = 'Update';
+    this._loadBtn.style.opacity = '1';
   }
 
   private _renderFrame(): void {
@@ -388,22 +470,36 @@ export class Player {
     if (!W || !H) return;
 
     if (this._specBitmap) {
-      ctx.drawImage(this._specBitmap, 0, 0, W, H);
+      // Client-side zoom: draw only the visible portion of the spectrogram
+      const bw = this._specBitmap.width;
+      const bh = this._specBitmap.height;
+      const sx = this._viewXMin * bw;
+      const sw = (this._viewXMax - this._viewXMin) * bw;
+      // Note: image origin=lower, but bitmap is top-down, so Y is inverted
+      const sy = (1 - this._viewYMax) * bh;
+      const sh = (this._viewYMax - this._viewYMin) * bh;
+      ctx.drawImage(this._specBitmap, sx, sy, sw, sh, 0, 0, W, H);
     } else {
       ctx.fillStyle = COLORS.bgCrust;
       ctx.fillRect(0, 0, W, H);
     }
 
     if (this._specBitmap && this._segDuration > 0) {
-      const detStartFrac = Math.max(0, (this._detectionStart - this._segLoadStart) / this._segDuration);
-      const detEndFrac = Math.min(1, (this._detectionEnd - this._segLoadStart) / this._segDuration);
+      // Map detection bounds to the current view
+      const detStartFrac = (this._detectionStart - this._segLoadStart) / this._segDuration;
+      const detEndFrac = (this._detectionEnd - this._segLoadStart) / this._segDuration;
+      const viewW = this._viewXMax - this._viewXMin;
+      const toScreen = (frac: number) => ((frac - this._viewXMin) / viewW) * W;
 
+      const bufLeft = toScreen(detStartFrac);
+      const bufRight = toScreen(detEndFrac);
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      if (detStartFrac > 0) ctx.fillRect(0, 0, Math.floor(detStartFrac * W), H);
-      if (detEndFrac < 1) { const rx = Math.ceil(detEndFrac * W); ctx.fillRect(rx, 0, W - rx, H); }
+      if (bufLeft > 0) ctx.fillRect(0, 0, Math.floor(bufLeft), H);
+      if (bufRight < W) { const rx = Math.ceil(bufRight); ctx.fillRect(rx, 0, W - rx, H); }
 
-      const ph = Math.floor(
-        Math.max(0, Math.min(1, this._audio.currentTime / this._segDuration)) * (W - 1));
+      // Playhead
+      const playFrac = this._audio.currentTime / this._segDuration;
+      const ph = Math.floor(Math.max(0, Math.min(W, toScreen(playFrac))));
       ctx.strokeStyle = `rgba(205,214,244,0.9)`;
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(ph, 0); ctx.lineTo(ph, H); ctx.stroke();
@@ -415,6 +511,7 @@ export class Player {
     }
 
     this._renderAnnotation(ctx, W, H);
+    this._updateViewBoundsDisplay();
 
     const absNow = this._segLoadStart + this._audio.currentTime;
     const absEnd = this._segLoadStart + this._segDuration;
@@ -450,12 +547,17 @@ export class Player {
     };
   }
 
+  /** Convert absolute time to screen X, accounting for zoom. */
   private _timeToX(t: number): number {
-    return ((t - this._segLoadStart) / this._segDuration) * this._canvas.width;
+    const frac = (t - this._segLoadStart) / this._segDuration;
+    return ((frac - this._viewXMin) / (this._viewXMax - this._viewXMin)) * this._canvas.width;
   }
+  /** Convert screen X to absolute time, accounting for zoom. */
   private _xToTime(x: number): number {
-    return this._segLoadStart + (x / this._canvas.width) * this._segDuration;
+    const viewFrac = this._viewXMin + (x / this._canvas.width) * (this._viewXMax - this._viewXMin);
+    return this._segLoadStart + viewFrac * this._segDuration;
   }
+  /** Convert frequency to screen Y, accounting for zoom. */
   private _freqToY(f: number): number {
     const H = this._canvas.height;
     let frac: number;
@@ -468,11 +570,16 @@ export class Player {
       frac = (this._freqMax - this._freqMin) > 0
         ? (f - this._freqMin) / (this._freqMax - this._freqMin) : 0;
     }
-    return H * (1 - frac);
+    // Map full-image frac to view frac, then to screen
+    const viewFrac = (frac - this._viewYMin) / (this._viewYMax - this._viewYMin);
+    return H * (1 - viewFrac);
   }
+  /** Convert screen Y to frequency, accounting for zoom. */
   private _yToFreq(y: number): number {
     const H = this._canvas.height;
-    const frac = 1 - y / H;
+    const viewFrac = 1 - y / H;
+    // Map view frac back to full-image frac
+    const frac = this._viewYMin + viewFrac * (this._viewYMax - this._viewYMin);
     if (this._spectTypeSelect.value === 'mel') {
       const melMin = 2595 * Math.log10(1 + this._freqMin / 700);
       const melMax = 2595 * Math.log10(1 + this._freqMax / 700);
@@ -483,7 +590,18 @@ export class Player {
   }
 
   private _onCanvasMouseDown(e: MouseEvent): void {
+    // Pan mode: when no annotation tool is active and zoomed in
     const ac = this._form.getAnnotConfig();
+    const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
+    if ((!ac || !this._form.getActiveTool()) && isZoomed && this._specBitmap) {
+      this._panDrag = {
+        startX: e.clientX, startY: e.clientY,
+        origXMin: this._viewXMin, origXMax: this._viewXMax,
+        origYMin: this._viewYMin, origYMax: this._viewYMax,
+      };
+      this._canvasContainer.style.cursor = 'grabbing';
+      return;
+    }
     if (!ac || !this._specBitmap || this._segDuration === 0) return;
     const { cx, cy } = this._canvasXY(e);
     const tool = this._form.getActiveTool();
@@ -537,6 +655,26 @@ export class Player {
   }
 
   private _onCanvasMouseMove(e: MouseEvent): void {
+    // Handle pan drag
+    if (this._panDrag) {
+      const rect = this._canvas.getBoundingClientRect();
+      const dx = (e.clientX - this._panDrag.startX) / rect.width;
+      const dy = (e.clientY - this._panDrag.startY) / rect.height;
+      const viewW = this._panDrag.origXMax - this._panDrag.origXMin;
+      const viewH = this._panDrag.origYMax - this._panDrag.origYMin;
+      let newXMin = this._panDrag.origXMin - dx * viewW;
+      let newYMin = this._panDrag.origYMin + dy * viewH; // inverted Y
+      // Clamp
+      newXMin = Math.max(0, Math.min(1 - viewW, newXMin));
+      newYMin = Math.max(0, Math.min(1 - viewH, newYMin));
+      this._viewXMin = newXMin;
+      this._viewXMax = newXMin + viewW;
+      this._viewYMin = newYMin;
+      this._viewYMax = newYMin + viewH;
+      this._renderFrame();
+      return;
+    }
+
     const ac = this._form.getAnnotConfig();
     if (!ac || !this._specBitmap || this._segDuration === 0) return;
     const { cx, cy } = this._canvasXY(e);
@@ -593,6 +731,14 @@ export class Player {
   }
 
   private _onCanvasMouseUp(): void {
+    if (this._panDrag) {
+      this._panDrag = null;
+      const ac = this._form.getAnnotConfig();
+      const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
+      this._canvasContainer.style.cursor =
+        ac && this._form.getActiveTool() ? 'crosshair' : isZoomed ? 'grab' : 'default';
+      return;
+    }
     this._annotDrag = null;
   }
 
@@ -706,6 +852,114 @@ export class Player {
     }
   }
 
+  // ─── Private: zoom + pan ────────────────────────────────────
+
+  private _onCanvasKeyDown(e: KeyboardEvent): void {
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      this._zoomBy(0.8); // zoom in: shrink view to 80%
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      this._zoomBy(1.25); // zoom out: expand view to 125%
+    } else if (e.key === '0') {
+      e.preventDefault();
+      this._resetZoom();
+    }
+  }
+
+  private _onCanvasWheel(e: WheelEvent): void {
+    if (!this._specBitmap) return;
+    e.preventDefault();
+    // Zoom centered on mouse position
+    const rect = this._canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / rect.width;
+    const my = (e.clientY - rect.top) / rect.height;
+    const factor = e.deltaY > 0 ? 1.15 : 0.87;
+    this._zoomBy(factor, mx, 1 - my); // invert Y for freq axis
+  }
+
+  /**
+   * Zoom the view by a factor, centered on (cx, cy) in view fraction space.
+   * factor < 1 = zoom in, factor > 1 = zoom out.
+   * cx, cy default to center of current view.
+   */
+  private _zoomBy(factor: number, cx?: number, cy?: number): void {
+    const viewW = this._viewXMax - this._viewXMin;
+    const viewH = this._viewYMax - this._viewYMin;
+    // Default center
+    const centerX = cx !== undefined ? this._viewXMin + cx * viewW : (this._viewXMin + this._viewXMax) / 2;
+    const centerY = cy !== undefined ? this._viewYMin + cy * viewH : (this._viewYMin + this._viewYMax) / 2;
+
+    const newW = Math.min(1, viewW * factor);
+    const newH = Math.min(1, viewH * factor);
+
+    let newXMin = centerX - newW * ((centerX - this._viewXMin) / viewW);
+    let newYMin = centerY - newH * ((centerY - this._viewYMin) / viewH);
+
+    // Clamp to 0..1
+    newXMin = Math.max(0, Math.min(1 - newW, newXMin));
+    newYMin = Math.max(0, Math.min(1 - newH, newYMin));
+
+    this._viewXMin = newXMin;
+    this._viewXMax = newXMin + newW;
+    this._viewYMin = newYMin;
+    this._viewYMax = newYMin + newH;
+
+    this._updateCursorForZoom();
+    this._renderFrame();
+  }
+
+  private _resetZoom(): void {
+    this._viewXMin = 0;
+    this._viewXMax = 1;
+    this._viewYMin = 0;
+    this._viewYMax = 1;
+    this._updateCursorForZoom();
+    this._renderFrame();
+  }
+
+  private _updateCursorForZoom(): void {
+    const ac = this._form.getAnnotConfig();
+    const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
+    if (ac && this._form.getActiveTool()) {
+      this._canvasContainer.style.cursor = 'crosshair';
+    } else {
+      this._canvasContainer.style.cursor = isZoomed ? 'grab' : 'default';
+    }
+  }
+
+  private _updateViewBoundsDisplay(): void {
+    if (this._segDuration === 0) return;
+    const tMin = this._segLoadStart + this._viewXMin * this._segDuration;
+    const tMax = this._segLoadStart + this._viewXMax * this._segDuration;
+    const fMin = this._viewYMin * (this._freqMax - this._freqMin) + this._freqMin;
+    const fMax = this._viewYMax * (this._freqMax - this._freqMin) + this._freqMin;
+    // Only update inputs that aren't focused (avoid overwriting user edits)
+    if (document.activeElement !== this._viewTimeMinDisplay) this._viewTimeMinDisplay.value = tMin.toFixed(2);
+    if (document.activeElement !== this._viewTimeMaxDisplay) this._viewTimeMaxDisplay.value = tMax.toFixed(2);
+    if (document.activeElement !== this._viewFreqMinDisplay) this._viewFreqMinDisplay.value = Math.round(fMin).toString();
+    if (document.activeElement !== this._viewFreqMaxDisplay) this._viewFreqMaxDisplay.value = Math.round(fMax).toString();
+  }
+
+  private _rebuildResolutionSelect(): void {
+    this._resolutionSelect.innerHTML = '';
+    let hasSelected = false;
+    this._specResolutions.forEach(raw => {
+      const isDefault = String(raw).startsWith('selected::');
+      const val = String(raw).replace(/^selected::/, '');
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = `${val}px`;
+      if (isDefault) { o.selected = true; hasSelected = true; }
+      this._resolutionSelect.appendChild(o);
+    });
+    // If nothing was marked selected, default to the middle option
+    if (!hasSelected && this._resolutionSelect.options.length > 0) {
+      const mid = Math.min(1, this._resolutionSelect.options.length - 1);
+      this._resolutionSelect.options[mid].selected = true;
+    }
+  }
+
   // ─── Private: capture ──────────────────────────────────────
 
   private _buildCaptureFilename(): string {
@@ -738,20 +992,35 @@ export class Player {
     const filename = prompt('Save spectrogram as:', suggested);
     if (!filename) return;
 
-    const W = this._canvas.width, H = this._canvas.height;
+    // Use the selected resolution for capture width
+    const resW = parseInt(this._resolutionSelect.value) || this._canvas.width;
+    const aspect = this._canvas.height / Math.max(1, this._canvas.width);
+    const W = resW;
+    const H = Math.round(resW * aspect);
     const offscreen = document.createElement('canvas');
     offscreen.width = W; offscreen.height = H;
     const ctx = offscreen.getContext('2d');
     if (!ctx) return;
 
-    ctx.drawImage(this._specBitmap, 0, 0, W, H);
+    // Draw the current zoom window (same source-rect as _renderFrame)
+    const bw = this._specBitmap.width;
+    const bh = this._specBitmap.height;
+    const sx = this._viewXMin * bw;
+    const sw = (this._viewXMax - this._viewXMin) * bw;
+    const sy = (1 - this._viewYMax) * bh;
+    const sh = (this._viewYMax - this._viewYMin) * bh;
+    ctx.drawImage(this._specBitmap, sx, sy, sw, sh, 0, 0, W, H);
 
     if (this._segDuration > 0) {
-      const dsf = Math.max(0, (this._detectionStart - this._segLoadStart) / this._segDuration);
-      const def = Math.min(1, (this._detectionEnd - this._segLoadStart) / this._segDuration);
+      const viewW = this._viewXMax - this._viewXMin;
+      const toScreen = (frac: number) => ((frac - this._viewXMin) / viewW) * W;
+      const dsf = (this._detectionStart - this._segLoadStart) / this._segDuration;
+      const def = (this._detectionEnd - this._segLoadStart) / this._segDuration;
+      const bufLeft = toScreen(dsf);
+      const bufRight = toScreen(def);
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      if (dsf > 0) ctx.fillRect(0, 0, Math.floor(dsf * W), H);
-      if (def < 1) { const rx = Math.ceil(def * W); ctx.fillRect(rx, 0, W - rx, H); }
+      if (bufLeft > 0) ctx.fillRect(0, 0, Math.floor(bufLeft), H);
+      if (bufRight < W) { const rx = Math.ceil(bufRight); ctx.fillRect(rx, 0, W - rx, H); }
     }
 
     this._renderAnnotation(ctx, W, H);

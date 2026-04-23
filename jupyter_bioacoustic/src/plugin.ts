@@ -145,7 +145,8 @@ class BioacousticWidget extends Widget {
     let cfg: {
       data: string; audio: string; category_path: string; output: string;
       ident_col: string; app_title: string; display_cols: string; data_cols: string;
-      form_config: string; capture: string; capture_dir: string; duplicate_entries: string; default_buffer: string;
+      form_config: string; capture: string; capture_dir: string; duplicate_entries: string;
+      default_buffer: string; spec_resolutions: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -190,6 +191,7 @@ class BioacousticWidget extends Widget {
     const audioConfig = JSON.parse(cfg.audio) as {
       type: string; value: string; prefix: string; suffix: string; fallback: string;
     };
+    const specResolutions = JSON.parse(cfg.spec_resolutions || '["1000","2000","4000"]') as string[];
     this._player.setContext({
       audioConfig,
       captureLabel: cfg.capture ?? '',
@@ -197,6 +199,7 @@ class BioacousticWidget extends Widget {
       identCol: this._identCol,
       displayCols: this._displayCols,
       defaultBuffer: parseFloat(cfg.default_buffer) || 3,
+      specResolutions,
       rows,
     });
 

@@ -33,6 +33,7 @@ export function readKernelVars(): string {
     `  'capture_dir': _BA_CAPTURE_DIR,`,
     `  'duplicate_entries': _BA_DUPLICATE_ENTRIES,`,
     `  'default_buffer': _BA_DEFAULT_BUFFER,`,
+    `  'spec_resolutions': _BA_SPEC_RESOLUTIONS,`,
     `}))`,
   ].join('\n');
 }
@@ -133,14 +134,16 @@ export function readAudioUrl(url: string, startSec: number, durSec: number): str
 }
 
 /** Assemble the spectrogram pipeline from .py chunks (no template vars). */
-export function buildSpectrogram(spectType: 'mel' | 'plain'): string {
+export function buildSpectrogram(spectType: 'mel' | 'plain', resolutionW?: number): string {
   const filterBlock = spectType === 'mel' ? PY_SPEC_MEL : PY_SPEC_PLAIN;
-  return [PY_BUILD_SPEC, filterBlock, PY_SPEC_RENDER].join('\n');
+  const resLine = resolutionW ? `_fig_w = ${resolutionW}` : '';
+  return [PY_BUILD_SPEC, filterBlock, resLine, PY_SPEC_RENDER].join('\n');
 }
 
 /** Full spectrogram pipeline: read audio + process + return JSON. */
 export function spectrogramPipeline(
-  path: string, startSec: number, durSec: number, spectType: 'mel' | 'plain'
+  path: string, startSec: number, durSec: number,
+  spectType: 'mel' | 'plain', resolutionW?: number,
 ): string {
   let readCode: string;
   if (path.startsWith('s3://')) {
@@ -154,7 +157,7 @@ export function spectrogramPipeline(
   } else {
     readCode = readAudioLocal(path, startSec, durSec);
   }
-  return readCode + '\n' + buildSpectrogram(spectType);
+  return readCode + '\n' + buildSpectrogram(spectType, resolutionW);
 }
 
 // ─── Select items loading (FormPanel) ────────────────────────

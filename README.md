@@ -105,7 +105,7 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 | | |
 |---|---|
 | **Clip table** | Sort, GUI filter builder (column/operator/value dropdowns, filter chips), paginate, configurable columns |
-| **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, capture PNG |
+| **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, frequency/time zoom (keyboard, wheel, drag), configurable resolution, capture PNG |
 | **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes |
 | **Configurable forms** | YAML-driven: selects (with conditional form sections), textboxes, checkboxes, progress tracker |
 | **Per-row audio** | Each row can point to a different audio file with fallback. S3 partial byte-range reads. HTTPS URLs cached locally (full download on first access). |
@@ -277,6 +277,7 @@ form_config:
 | `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
+| `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. |
 | `inline` | bool | `True` | Embed below cell (`True`) vs split-right panel (`False`). |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
