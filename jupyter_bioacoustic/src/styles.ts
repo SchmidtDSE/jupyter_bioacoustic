@@ -141,6 +141,11 @@ export function injectGlobalStyles(): void {
   styleEl.id = ID;
   styleEl.textContent = `
     .jp-BA-chip-dismiss:hover { color: ${COLORS.red}; }
+    .jp-BA-filter-input::placeholder {
+      color: ${COLORS.overlay};
+      opacity: 0.6;
+      font-style: italic;
+    }
   `;
   document.head.appendChild(styleEl);
 }

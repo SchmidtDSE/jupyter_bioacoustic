@@ -412,27 +412,63 @@ export class FormPanel {
       const emptyOpt = document.createElement('option');
       emptyOpt.value = ''; emptyOpt.textContent = '— select —';
       sel.appendChild(emptyOpt);
+
+      // Parse items config options
+      const itemsCfg = cfg.items;
+      const hasFilterBox = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.filter_box;
+      const hasCustomValue = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.custom_value;
+      const notAvailCfg = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) ? itemsCfg.not_available : undefined;
+
       const items = await this._loadSelectItems(cfg.items);
-      // Collect form references: value → section name
+
+      // Prepend not_available option if configured
+      if (notAvailCfg) {
+        let naVal: string, naLabel: string;
+        if (notAvailCfg === true) {
+          naVal = naLabel = 'not-available';
+        } else if (typeof notAvailCfg === 'string') {
+          naVal = naLabel = notAvailCfg;
+        } else if (typeof notAvailCfg === 'object') {
+          naLabel = notAvailCfg.label ?? 'not-available';
+          naVal = notAvailCfg.value ?? naLabel;
+        } else {
+          naVal = naLabel = 'not-available';
+        }
+        items.unshift([naVal, naLabel]);
+      }
+
+      // Build all option data: [{val, label, formRef, isDefault}]
+      const allItems: Array<{ val: string; label: string; formRef?: string; isDefault: boolean }> = [];
       const formRefs = new Map<string, string>();
       let selectedDefault = '';
       items.forEach(([v, l, formRef]) => {
-        // "selected::" prefix marks the default
         const isDefault = v.startsWith('selected::');
         const cleanVal = isDefault ? v.slice(10) : v;
         const cleanLabel = l.startsWith('selected::') ? l.slice(10) : l;
-        const o = document.createElement('option');
-        o.value = cleanVal; o.textContent = cleanLabel;
-        if (isDefault) { o.selected = true; selectedDefault = cleanVal; }
-        sel.appendChild(o);
+        allItems.push({ val: cleanVal, label: cleanLabel, formRef, isDefault });
+        if (isDefault) selectedDefault = cleanVal;
         if (formRef) formRefs.set(cleanVal, formRef);
       });
-      // All section names referenced by this select
       const allFormSections = new Set(formRefs.values());
 
-      sel.addEventListener('change', () => {
+      // Helper: rebuild select options from filtered items
+      const rebuildOptions = (filter?: string) => {
+        // Remove all options except the empty one
+        while (sel.options.length > 1) sel.remove(1);
+        const f = (filter ?? '').toLowerCase();
+        allItems.forEach(item => {
+          if (f && !item.label.toLowerCase().includes(f) && !item.val.toLowerCase().includes(f)) return;
+          const o = document.createElement('option');
+          o.value = item.val; o.textContent = item.label;
+          if (item.isDefault && !f) o.selected = true;
+          sel.appendChild(o);
+        });
+      };
+      rebuildOptions();
+
+      // Change handler (shared)
+      const onSelectChange = () => {
         this._formValues[col] = sel.value;
-        // Show/hide form sections referenced by this select
         if (allFormSections.size > 0) {
           const activeSection = formRefs.get(sel.value);
           for (const sectionName of allFormSections) {
@@ -443,7 +479,90 @@ export class FormPanel {
           }
         }
         this._validateForm();
-      });
+      };
+      sel.addEventListener('change', onSelectChange);
+
+      if (hasFilterBox || hasCustomValue) {
+        // Wrap select with a filter input to the right (and optional Add button)
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = `display:inline-flex;align-items:center;gap:4px;`;
+
+        // Inject placeholder style directly into wrapper (avoids global stylesheet issues)
+        const phStyle = document.createElement('style');
+        phStyle.textContent = `.jp-BA-filter-input::placeholder{color:${COLORS.overlay}!important;opacity:0.7;font-style:italic;}`;
+        wrapper.appendChild(phStyle);
+
+        const filterInput = document.createElement('input');
+        filterInput.type = 'text';
+        filterInput.placeholder = 'filter options';
+        filterInput.className = 'jp-BA-filter-input';
+        filterInput.style.cssText = inputStyle('110px') + `font-size:13px;`;
+
+        let addBtn: HTMLButtonElement | null = null;
+        if (hasCustomValue) {
+          addBtn = document.createElement('button');
+          addBtn.textContent = '+ Add';
+          addBtn.style.cssText = btnStyle() + `font-size:11px;padding:2px 6px;display:none;`;
+          addBtn.addEventListener('click', () => {
+            const custom = filterInput.value.trim();
+            if (!custom) return;
+            allItems.push({ val: custom, label: custom, isDefault: false });
+            rebuildOptions();
+            sel.value = custom;
+            filterInput.value = '';
+            if (addBtn) addBtn.style.display = 'none';
+            onSelectChange();
+          });
+        }
+
+        filterInput.addEventListener('input', () => {
+          const f = filterInput.value.trim();
+          rebuildOptions(f);
+          // Open the dropdown so the user sees filtered results
+          sel.size = Math.min(8, sel.options.length);
+          if (!f) sel.size = 0; // collapse back when filter is cleared
+          // Show Add button if custom_value enabled and no exact match
+          if (addBtn) {
+            const hasExact = f && allItems.some(
+              item => item.val.toLowerCase() === f.toLowerCase() || item.label.toLowerCase() === f.toLowerCase());
+            addBtn.style.display = (f && !hasExact) ? '' : 'none';
+          }
+        });
+
+        // Arrow keys in filter input navigate the select; Enter selects
+        filterInput.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            sel.selectedIndex = Math.min(sel.selectedIndex + 1, sel.options.length - 1);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            sel.selectedIndex = Math.max(sel.selectedIndex - 1, 0);
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (sel.value) {
+              sel.size = 0;
+              filterInput.value = '';
+              onSelectChange();
+            }
+          }
+        });
+
+        // Collapse the expanded list when a selection is made
+        sel.addEventListener('change', () => { sel.size = 0; });
+
+        wrapper.append(sel, filterInput);
+        if (addBtn) wrapper.appendChild(addBtn);
+
+        // Replace the simple select with the wrapper in the label
+        this._formValues[col] = cfg.default ?? selectedDefault;
+        this._inputRefs.set(col, sel);
+        if (cfg.source_value) this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
+        if (required) this._requiredInputs.push({ col, el: sel });
+        lbl.appendChild(wrapper);
+        container.appendChild(lbl);
+        return;
+      }
+
       this._formValues[col] = cfg.default ?? selectedDefault;
       inputEl = sel;
 
