@@ -8,7 +8,7 @@
  * Communicates with the rest of the widget via Lumino signals.
  */
 import { Signal } from '@lumino/signaling';
-import { Detection, AnnotConfig } from '../types';
+import { Detection, AnnotConfig, MultiboxEntry } from '../types';
 import { KernelBridge } from '../kernel';
 import { escPy } from '../util';
 import {
@@ -25,6 +25,7 @@ import {
 } from '../python';
 import {
   COLORS,
+  DISPLAY_CHIP_COLORS,
   inputStyle,
   selectStyle,
   labelStyle,
@@ -93,6 +94,14 @@ export class FormPanel {
   private _annotConfig: AnnotConfig | null = null;
   private _activeTool = '';
   private _annotInputs: Map<string, HTMLInputElement> = new Map();
+
+  // Multibox state
+  private _multiboxEntries: MultiboxEntry[] = [];
+  private _activeBoxIndex = -1;
+  private _multiboxFormName: string | null = null;
+  private _multiboxNextId = 0;
+  private _multiboxColorIdx = 0;
+  private _multiboxContainer: HTMLDivElement | null = null;
 
   // Reviewed state (for duplicate_entries=false)
   private _reviewedMap: Map<number, Record<string, any>> = new Map();
@@ -282,6 +291,67 @@ export class FormPanel {
   getFormValue(col: string): any {
     return this._formValues[col];
   }
+
+  // ─── Multibox public API (for Player) ───────────────────────
+
+  isMultiboxMode(): boolean {
+    return this._activeTool === 'multibox';
+  }
+
+  getMultiboxEntries(): MultiboxEntry[] {
+    return this._multiboxEntries;
+  }
+
+  getActiveBoxIndex(): number {
+    return this._activeBoxIndex;
+  }
+
+  addMultiboxEntry(startTime: number, endTime: number, minFreq: number, maxFreq: number): void {
+    const colors = DISPLAY_CHIP_COLORS;
+    const entry: MultiboxEntry = {
+      id: this._multiboxNextId++,
+      startTime, endTime, minFreq, maxFreq,
+      formValues: {},
+      color: colors[this._multiboxColorIdx++ % colors.length],
+    };
+    this._multiboxEntries.push(entry);
+    this._activeBoxIndex = this._multiboxEntries.length - 1;
+    this._rebuildMultiboxUI();
+    this.annotationChanged.emit(void 0);
+    this._validateForm();
+  }
+
+  setActiveBox(index: number): void {
+    if (index >= 0 && index < this._multiboxEntries.length) {
+      this._activeBoxIndex = index;
+      this._highlightActiveBoxCard();
+      this.annotationChanged.emit(void 0);
+    }
+  }
+
+  updateMultiboxBounds(index: number, field: 'startTime' | 'endTime' | 'minFreq' | 'maxFreq', value: number): void {
+    const entry = this._multiboxEntries[index];
+    if (!entry) return;
+    entry[field] = value;
+    this.annotationChanged.emit(void 0);
+  }
+
+  removeMultiboxEntry(index: number): void {
+    if (index < 0 || index >= this._multiboxEntries.length) return;
+    this._multiboxEntries.splice(index, 1);
+    if (this._activeBoxIndex >= this._multiboxEntries.length) {
+      this._activeBoxIndex = this._multiboxEntries.length - 1;
+    }
+    this._rebuildMultiboxUI();
+    this.annotationChanged.emit(void 0);
+    this._validateForm();
+  }
+
+  removeActiveMultiboxEntry(): void {
+    if (this._activeBoxIndex >= 0) this.removeMultiboxEntry(this._activeBoxIndex);
+  }
+
+  // ─── End multibox API ──────────────────────────────────────
 
   /** Read the full reviewed map (for ClipTable row styling). */
   getReviewedMap(): Map<number, Record<string, any>> {
@@ -786,6 +856,12 @@ export class FormPanel {
       ac.tools = ['time_select'];
     }
 
+    // Parse annotation.form for multibox per-box forms
+    if (config.form) {
+      ac.form = typeof config.form === 'string' ? config.form : null;
+      this._multiboxFormName = ac.form;
+    }
+
     this._annotConfig = ac;
     this._activeTool = ac.tools[0] ?? '';
 
@@ -843,12 +919,157 @@ export class FormPanel {
     if (ac.maxFreq) mkInput('maxFreq', config.max_frequency?.label ?? 'max freq', 'Hz');
 
     container.appendChild(wrapper);
+
+    // Multibox container (shown when multibox tool is active)
+    if (ac.tools.includes('multibox')) {
+      this._multiboxContainer = document.createElement('div');
+      this._multiboxContainer.style.cssText =
+        `display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;`;
+      container.appendChild(this._multiboxContainer);
+    }
+  }
+
+  // ─── Private: multibox UI ──────────────────────────────────
+
+  private _rebuildMultiboxUI(): void {
+    if (!this._multiboxContainer) return;
+    this._multiboxContainer.innerHTML = '';
+
+    if (this._multiboxEntries.length === 0) {
+      const hint = document.createElement('div');
+      hint.style.cssText = mutedTextStyle({ fontSize: 11 });
+      hint.textContent = 'Draw on spectrogram to add boxes';
+      this._multiboxContainer.appendChild(hint);
+      return;
+    }
+
+    this._multiboxEntries.forEach((entry, i) => {
+      const card = document.createElement('div');
+      card.dataset.multiboxIdx = String(i);
+      card.style.cssText =
+        `display:flex;align-items:center;gap:8px;padding:4px 8px;` +
+        `border-radius:4px;border:2px solid ${i === this._activeBoxIndex ? entry.color : 'transparent'};` +
+        `background:${COLORS.bgSurface0};cursor:pointer;`;
+      card.addEventListener('click', () => this.setActiveBox(i));
+
+      // Color dot
+      const dot = document.createElement('span');
+      dot.style.cssText =
+        `width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${entry.color};`;
+      card.appendChild(dot);
+
+      // Bounds display
+      const bounds = document.createElement('span');
+      bounds.style.cssText = `font-size:10px;color:${COLORS.textSubtle};font-family:ui-monospace,monospace;white-space:nowrap;`;
+      bounds.textContent =
+        `${entry.startTime.toFixed(1)}–${entry.endTime.toFixed(1)}s` +
+        ` ${Math.round(entry.minFreq)}–${Math.round(entry.maxFreq)}Hz`;
+      card.appendChild(bounds);
+
+      // Per-box form (if configured) — build inline
+      if (this._multiboxFormName) {
+        const formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
+        if (formCfg && Array.isArray(formCfg)) {
+          const formDiv = document.createElement('div');
+          formDiv.style.cssText = `display:flex;align-items:center;gap:6px;flex-wrap:wrap;`;
+          // Build form elements that write to entry.formValues
+          void this._buildMultiboxFormSection(formCfg, formDiv, entry);
+          card.appendChild(formDiv);
+        }
+      }
+
+      // Spacer
+      const spacer = document.createElement('span');
+      spacer.style.flex = '1';
+      card.appendChild(spacer);
+
+      // Delete button
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove this box';
+      delBtn.style.cssText = btnStyle() + `font-size:14px;padding:0 6px;line-height:1;`;
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.removeMultiboxEntry(i);
+      });
+      card.appendChild(delBtn);
+
+      this._multiboxContainer.appendChild(card);
+    });
+  }
+
+  /** Build form elements for a multibox entry, writing to entry.formValues. */
+  private async _buildMultiboxFormSection(
+    elements: any[], container: HTMLElement, entry: MultiboxEntry
+  ): Promise<void> {
+    for (const item of elements) {
+      if (!item || typeof item !== 'object') continue;
+      const [type] = Object.keys(item);
+      const config = item[type];
+      if (type === 'select') {
+        const cfg = config ?? {};
+        const col = cfg.column ?? cfg.label ?? type;
+        const sel = document.createElement('select');
+        sel.style.cssText = selectStyle() + `font-size:11px;max-width:160px;`;
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = ''; emptyOpt.textContent = '— select —';
+        sel.appendChild(emptyOpt);
+        const items = await this._loadSelectItems(cfg.items);
+        items.forEach(([v, l]) => {
+          const isDefault = v.startsWith('selected::');
+          const cleanVal = isDefault ? v.slice(10) : v;
+          const cleanLabel = l.startsWith('selected::') ? l.slice(10) : l;
+          const o = document.createElement('option');
+          o.value = cleanVal; o.textContent = cleanLabel;
+          if (isDefault) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', () => { entry.formValues[col] = sel.value; this._validateForm(); });
+        entry.formValues[col] = entry.formValues[col] ?? '';
+        if (entry.formValues[col]) sel.value = entry.formValues[col];
+        const lbl = document.createElement('label');
+        lbl.style.cssText = labelStyle() + `font-size:11px;`;
+        lbl.textContent = cfg.label ?? col;
+        lbl.appendChild(sel);
+        container.appendChild(lbl);
+      } else if (type === 'textbox') {
+        const cfg = config ?? {};
+        const col = cfg.column ?? cfg.label ?? type;
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.style.cssText = inputStyle('100px') + `font-size:11px;`;
+        inp.addEventListener('input', () => { entry.formValues[col] = inp.value; this._validateForm(); });
+        entry.formValues[col] = entry.formValues[col] ?? '';
+        inp.value = entry.formValues[col];
+        const lbl = document.createElement('label');
+        lbl.style.cssText = labelStyle() + `font-size:11px;`;
+        lbl.textContent = cfg.label ?? col;
+        lbl.appendChild(inp);
+        container.appendChild(lbl);
+      }
+    }
+  }
+
+  private _highlightActiveBoxCard(): void {
+    if (!this._multiboxContainer) return;
+    const cards = this._multiboxContainer.querySelectorAll('[data-multibox-idx]');
+    cards.forEach((card, i) => {
+      const entry = this._multiboxEntries[i];
+      if (!entry) return;
+      (card as HTMLElement).style.borderColor =
+        i === this._activeBoxIndex ? entry.color : 'transparent';
+    });
   }
 
   // ─── Private: value management ─────────────────────────────
 
   private _applyRow(row: Detection): void {
     this._currentRow = row;
+    // Clear multibox state
+    this._multiboxEntries = [];
+    this._activeBoxIndex = -1;
+    this._rebuildMultiboxUI();
+
     // Hide all named form sections
     for (const sectionEl of this._namedSections.values()) {
       sectionEl.style.display = 'none';
@@ -921,12 +1142,16 @@ export class FormPanel {
   }
 
   private _validateForm(): void {
-    const allSatisfied = this._requiredInputs.every(({ col, el }) => {
+    let allSatisfied = this._requiredInputs.every(({ col, el }) => {
       const section = el.closest('[data-form-section]') as HTMLElement | null;
       if (section && section.style.display === 'none') return true;
       const val = this._formValues[col];
       return val !== null && val !== undefined && val !== '';
     });
+    // In multibox mode, require at least one box
+    if (this.isMultiboxMode() && this._multiboxEntries.length === 0) {
+      allSatisfied = false;
+    }
     this._submitBtns.forEach(btn => {
       btn.disabled = !allSatisfied;
       btn.style.opacity = allSatisfied ? '1' : '0.4';
@@ -1088,15 +1313,51 @@ export class FormPanel {
   // ─── Private: submit / delete ─────────────────────────────
 
   private async _onVerify(): Promise<void> {
-    const row = this._rows[this._rowById(this._currentRowId())];
-    // The orchestrator provides the selected row via the caller of updateFromRow.
-    // But we don't hold a direct ref; we reconstruct from selectedIdx + rows.
-    // NOTE: we rely on _applyRow having been called last with the correct row.
-    // This is fine because submit is user-driven (after a row was selected).
-    // We could instead remember _currentRow in _applyRow — do that for safety.
     if (!this._currentRow || !this._outputPath) return;
     const activeRow = this._currentRow;
+    const ac = this._annotConfig;
 
+    // Multibox mode: write one row per box
+    if (this.isMultiboxMode() && this._multiboxEntries.length > 0) {
+      const baseValues = this._collectFormValues();
+      // Remove annotation columns from base (they come from each box)
+      if (ac?.startTime) delete baseValues[ac.startTime.col];
+      if (ac?.endTime) delete baseValues[ac.endTime.col];
+      if (ac?.minFreq) delete baseValues[ac.minFreq.col];
+      if (ac?.maxFreq) delete baseValues[ac.maxFreq.col];
+
+      const n = this._multiboxEntries.length;
+      try {
+        for (const entry of this._multiboxEntries) {
+          const rowValues: Record<string, any> = { ...baseValues };
+          if (ac?.startTime) rowValues[ac.startTime.col] = entry.startTime;
+          if (ac?.endTime) rowValues[ac.endTime.col] = entry.endTime;
+          if (ac?.minFreq) rowValues[ac.minFreq.col] = entry.minFreq;
+          if (ac?.maxFreq) rowValues[ac.maxFreq.col] = entry.maxFreq;
+          // Merge per-box form values
+          Object.assign(rowValues, entry.formValues);
+          const code = writeOutputRow(this._outputPath, rowValues);
+          await this._kernel.exec(code);
+        }
+        this.statusChanged.emit({
+          message: `✓ Saved ${n} boxes for clip ${activeRow.id} → ${this._outputPath}`,
+          error: false,
+        });
+      } catch (e: any) {
+        this.statusChanged.emit({ message: `❌ Write failed: ${String(e.message ?? e)}`, error: true });
+        return;
+      }
+      this._sessionCount++;
+      if (!this._duplicateEntries) {
+        this._reviewedMap.set(activeRow.id, { _multibox: true, count: n });
+      }
+      this._updateProgress();
+      void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
+      this.submitted.emit({ _multibox: true, count: n });
+      return;
+    }
+
+    // Standard single-row submit
     const values = this._collectFormValues();
     const code = writeOutputRow(this._outputPath, values);
     try {
@@ -1111,9 +1372,7 @@ export class FormPanel {
       this._reviewedMap.set(activeRow.id, { ...values });
     }
     this._updateProgress();
-    void this._kernel.exec(
-      INVALIDATE_OUTPUT_CACHE
-    ).catch(() => {});
+    void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
     this.submitted.emit(values);
   }
 
