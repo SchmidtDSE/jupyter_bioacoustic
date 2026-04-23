@@ -116,6 +116,22 @@ export class FormPanel {
     this._dynFormEl = document.createElement('div');
     this._dynFormEl.style.cssText = `display:flex;flex-direction:column;gap:10px;`;
     this.element.append(this._dynFormEl);
+
+    // Enter to submit when form is focused
+    this.element.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        // Don't intercept Enter in textareas or inputs
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'TEXTAREA') return;
+        if (tag === 'INPUT' && (e.target as HTMLInputElement).type === 'text') return;
+        // Check if submit is enabled
+        const btn = this._submitBtns.find(b => !b.disabled);
+        if (btn) {
+          e.preventDefault();
+          btn.click();
+        }
+      }
+    });
   }
 
   // ─── Public API ────────────────────────────────────────────
