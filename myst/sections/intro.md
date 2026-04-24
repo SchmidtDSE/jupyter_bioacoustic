@@ -22,7 +22,7 @@ The same interface works for **collecting new data** (species labeling, time-fre
 - Configure forms with selects, textboxes, checkboxes, and conditional sections
 - Write results incrementally to CSV, Parquet, or JSONL
 - Track progress with duplicate prevention and session counts
-- Zoom and pan spectrograms interactively, with configurable rendering resolution
+- Built-in and custom visualizations with interactive zoom, pan, and configurable resolution
 - Capture spectrogram PNGs for reports
 
 ## Getting Started

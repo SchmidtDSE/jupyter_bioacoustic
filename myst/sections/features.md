@@ -24,7 +24,7 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 
 ![Spectrogram with buffer overlay](../../assets/spectrogram-2.png)
 
-- **Plain or mel STFT** — toggle between linear and mel-scale spectrograms
+- **Plain, mel, or custom visualizations** — toggle between built-in spectrograms or user-defined visualization functions (return a matrix for auto-rendering or PNG bytes for full control)
 - **Buffer control** — adjustable buffer time adds context before and after each clip, shown as a shaded overlay
 - **Playback** — play/pause with a moving playhead and time display
 - **Zoom and pan** — zoom into frequency and time regions using keyboard (`+`/`-`/`0`), the ⬚ zoom-to-selection tool (draw a box), or click-and-drag to pan. A view bounds bar shows the current time and frequency range in real time

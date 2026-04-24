@@ -105,7 +105,7 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 | | |
 |---|---|
 | **Clip table** | Sort, GUI filter builder (column/operator/value dropdowns, filter chips), paginate, configurable columns, keyboard navigation |
-| **Spectrogram** | Plain/mel STFT, buffer overlay, play/pause, frequency/time zoom (+/-/0, drag-to-pan), configurable resolution, capture PNG, keyboard shortcuts |
+| **Spectrogram** | Plain/mel STFT or custom visualizations, buffer overlay, play/pause, frequency/time zoom, configurable resolution, capture PNG, keyboard shortcuts |
 | **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes, multibox (multiple labeled boxes per clip) |
 | **Configurable forms** | YAML-driven: selects (with conditional sections, filter box, custom values), textboxes, checkboxes, progress tracker, `dynamic_forms` for reusable named sections |
 | **Per-row audio** | Each row can point to a different audio file with fallback. S3 partial byte-range reads. HTTPS URLs cached locally (full download on first access). |
@@ -278,6 +278,7 @@ form_config:
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
 | `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. Prefix an item with `selected::` to set the default (e.g. `[1000, 'selected::2000', 4000]`). |
+| `visualizations` | list | `['plain', 'mel']` | Visualization types for the dropdown. Built-in strings (`'plain'`, `'mel'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration#custom-visualizations). |
 | `inline` | bool | `True` | Embed below cell (`True`) vs split-right panel (`False`). |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
