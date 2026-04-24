@@ -72,6 +72,7 @@ def spectrogram(mono, sr, width, fft=DEFAULT_FFT, hop=None):
         'freq_min': 0.0,
         'freq_max': sr / 2.0,
         'freq_scale': 'linear',
+        'matrix_scale': 'linear',
     }
 
 
@@ -118,6 +119,7 @@ def mel(mono, sr, width, fft=DEFAULT_FFT, hop=None, n_mels=DEFAULT_N_MELS):
         'freq_min': f_min,
         'freq_max': f_max,
         'freq_scale': 'mel',
+        'matrix_scale': 'linear',
     }
 
 
@@ -155,10 +157,11 @@ def log_frequency(mono, sr, width, fft=2048, hop=None, n_bins=256, f_min=50.0):
         log_mag[i] = mag[idx] * (1 - t) + mag[min(idx + 1, mag.shape[0] - 1)] * t
 
     return {
-        'matrix': log_mag,
+        'matrix': np.maximum(log_mag, 0),
         'freq_min': f_min,
         'freq_max': f_max,
         'freq_scale': 'log',
+        'matrix_scale': 'linear',
     }
 
 
@@ -194,6 +197,7 @@ def bandpass(mono, sr, width, fft=1024, hop=None, f_lo=1000.0, f_hi=8000.0):
         'freq_min': f_lo,
         'freq_max': f_hi,
         'freq_scale': 'linear',
+        'matrix_scale': 'linear',
     }
 
 
@@ -256,7 +260,8 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
         (fig, ax) matplotlib figure and axes.
     """
     figsize = figsize or (12, 4)
-    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    with plt.ioff():
+        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
     if 'png_bytes' in viz_dict:
         img = plt.imread(io.BytesIO(viz_dict['png_bytes']), format='png')
@@ -264,7 +269,9 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
         ax.set_axis_off()
     elif 'matrix' in viz_dict:
         S = np.array(viz_dict['matrix'], dtype=float)
-        matrix_scale = viz_dict.get('matrix_scale', 'linear')
+        matrix_scale = viz_dict.get('matrix_scale', None)
+        if matrix_scale is None:
+            matrix_scale = 'db' if S.min() < 0 else 'linear'
         if matrix_scale == 'db':
             S_db = S
         else:
@@ -274,9 +281,37 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
 
         f_min = viz_dict.get('freq_min', 0)
         f_max = viz_dict.get('freq_max', 1)
-        extent = kwargs.pop('extent', [0, S.shape[1], f_min / 1000, f_max / 1000])
+        freq_scale = viz_dict.get('freq_scale', 'linear')
+
+        # The matrix rows map linearly to the image. For log/mel scales,
+        # the data is already resampled — we just need correct tick labels.
         ax.imshow(S_norm, aspect='auto', cmap=cmap, origin='lower',
-                  interpolation='bilinear', extent=extent, **kwargs)
+                  interpolation='bilinear',
+                  extent=[0, S.shape[1], 0, S.shape[0]], **kwargs)
+
+        if freq_scale == 'log' and f_min > 0:
+            n_ticks = 8
+            tick_freqs = np.logspace(np.log10(f_min), np.log10(f_max), n_ticks)
+            tick_positions = (np.log10(tick_freqs) - np.log10(f_min)) / (np.log10(f_max) - np.log10(f_min)) * S.shape[0]
+            ax.set_yticks(tick_positions)
+            ax.set_yticklabels([f'{f/1000:.1f}' if f < 1000 else f'{f/1000:.0f}' for f in tick_freqs])
+        elif freq_scale == 'mel':
+            n_ticks = 8
+            mel_min = 2595 * np.log10(1 + max(f_min, 1) / 700)
+            mel_max = 2595 * np.log10(1 + f_max / 700)
+            mel_ticks = np.linspace(mel_min, mel_max, n_ticks)
+            tick_freqs = 700 * (10 ** (mel_ticks / 2595) - 1)
+            tick_positions = (mel_ticks - mel_min) / (mel_max - mel_min) * S.shape[0]
+            ax.set_yticks(tick_positions)
+            ax.set_yticklabels([f'{f/1000:.1f}' if f < 1000 else f'{f/1000:.0f}' for f in tick_freqs])
+        else:
+            # Linear: just relabel y-axis from row indices to kHz
+            n_ticks = 8
+            tick_freqs = np.linspace(f_min, f_max, n_ticks)
+            tick_positions = np.linspace(0, S.shape[0], n_ticks)
+            ax.set_yticks(tick_positions)
+            ax.set_yticklabels([f'{f/1000:.1f}' if f < 1000 else f'{f/1000:.0f}' for f in tick_freqs])
+
         ax.set_ylabel('Frequency (kHz)')
         ax.set_xlabel('Frame')
 
@@ -300,12 +335,52 @@ REGISTRY = {
 # INTERNAL
 #
 def _stft(mono, fft=DEFAULT_FFT, hop=DEFAULT_HOP):
-    """Compute magnitude STFT. Returns (magnitude 2D array, n_freq_bins)."""
+    """Compute magnitude STFT. Returns magnitude 2D array (freq × time)."""
     win = 0.5 * (1 - np.cos(2 * np.pi * np.arange(fft) / (fft - 1)))
     n_frames = max(1, (len(mono) - fft) // hop + 1)
     idx = np.arange(fft)[None, :] + hop * np.arange(n_frames)[:, None]
     idx = np.clip(idx, 0, len(mono) - 1)
     mag = np.abs(np.fft.rfft(mono[idx] * win, axis=1)[:, :fft // 2]).T
     return mag
+
+
+def render_png(S, width=2000, matrix_scale=None,
+                         dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
+                         cmap='magma'):
+    """Render a 2D spectrogram matrix to PNG bytes.
+
+    Handles dB conversion, normalization, and colormap rendering.
+    Used internally by JupyterAudio for custom visualizations that
+    return a matrix instead of png_bytes.
+
+    Args:
+        S: 2D numpy array (freq × time).
+        width: Image width in pixels.
+        matrix_scale: 'linear', 'db', or None (auto-detect from negative values).
+        dynamic_range_db: dB range for normalization.
+        cmap: Matplotlib colormap name.
+
+    Returns:
+        PNG bytes.
+    """
+    S = np.array(S, dtype=float)
+    if matrix_scale is None:
+        matrix_scale = 'db' if S.min() < 0 else 'linear'
+    if matrix_scale == 'db':
+        S_db = S
+    else:
+        S_db = 20 * np.log10(np.maximum(S, 1e-10))
+    S_db = np.clip(S_db, S_db.max() - dynamic_range_db, S_db.max())
+    S_norm = (S_db - S_db.min()) / max(float(S_db.max() - S_db.min()), 1e-10)
+
+    dpi = 100
+    fig = plt.figure(figsize=(width / dpi, 5), dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.imshow(S_norm, aspect='auto', cmap=cmap, origin='lower', interpolation='bilinear')
+    ax.set_axis_off()
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', pad_inches=0)
+    plt.close(fig)
+    return buf.getvalue()
 
 
