@@ -119,7 +119,7 @@ export class FormPanel {
     // Build the section shell
     this.element = document.createElement('div');
     this.element.style.cssText =
-      `flex-shrink:0;min-height:140px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
+      `flex:0 0 auto;min-height:140px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
       `border-top:1px solid ${COLORS.bgSurface0};display:none;flex-direction:column;gap:10px;`;
 
     this._dynFormEl = document.createElement('div');
@@ -218,8 +218,16 @@ export class FormPanel {
         const forms = cfg.dynamic_forms;
         if (forms && typeof forms === 'object') {
           for (const formName of Object.keys(forms)) {
-            const formElements = forms[formName];
-            if (!Array.isArray(formElements)) continue;
+            let formElements = forms[formName];
+            // Accept both array of elements and a single element dict
+            if (!Array.isArray(formElements)) {
+              if (formElements && typeof formElements === 'object') {
+                // Wrap single element: {select: {...}} → [{select: {...}}]
+                formElements = Object.keys(formElements).map(k => ({ [k]: formElements[k] }));
+              } else {
+                continue;
+              }
+            }
             const sectionDiv = document.createElement('div');
             sectionDiv.dataset.formSection = formName;
             sectionDiv.style.cssText = formRowStyle(true); // hidden by default
@@ -240,7 +248,7 @@ export class FormPanel {
           this._dynFormEl.appendChild(sectionDiv);
           this._namedSections.set(key, sectionDiv);
         } else if (key === 'annotation') {
-          this._buildAnnotationElement(sectionData, this._dynFormEl);
+          await this._buildAnnotationElement(sectionData, this._dynFormEl);
         } else {
           // Single element (e.g. a top-level select, textbox, etc.)
           await this._buildInputElement(key, sectionData, this._dynFormEl);
@@ -316,7 +324,14 @@ export class FormPanel {
     };
     this._multiboxEntries.push(entry);
     this._activeBoxIndex = this._multiboxEntries.length - 1;
-    this._rebuildMultiboxUI();
+    // Sync annotation inputs
+    if (this._annotConfig) {
+      if (this._annotConfig.startTime) this._setAnnotValueInternal('startTime', startTime, false);
+      if (this._annotConfig.endTime) this._setAnnotValueInternal('endTime', endTime, false);
+      if (this._annotConfig.minFreq) this._setAnnotValueInternal('minFreq', minFreq, false);
+      if (this._annotConfig.maxFreq) this._setAnnotValueInternal('maxFreq', maxFreq, false);
+    }
+    void this._rebuildAnnotFormUI();
     this.annotationChanged.emit(void 0);
     this._validateForm();
   }
@@ -325,6 +340,14 @@ export class FormPanel {
     if (index >= 0 && index < this._multiboxEntries.length) {
       this._activeBoxIndex = index;
       this._highlightActiveBoxCard();
+      // Update annotation inputs to reflect the active box
+      const entry = this._multiboxEntries[index];
+      if (entry && this._annotConfig) {
+        if (this._annotConfig.startTime) this._setAnnotValueInternal('startTime', entry.startTime, false);
+        if (this._annotConfig.endTime) this._setAnnotValueInternal('endTime', entry.endTime, false);
+        if (this._annotConfig.minFreq) this._setAnnotValueInternal('minFreq', entry.minFreq, false);
+        if (this._annotConfig.maxFreq) this._setAnnotValueInternal('maxFreq', entry.maxFreq, false);
+      }
       this.annotationChanged.emit(void 0);
     }
   }
@@ -342,7 +365,7 @@ export class FormPanel {
     if (this._activeBoxIndex >= this._multiboxEntries.length) {
       this._activeBoxIndex = this._multiboxEntries.length - 1;
     }
-    this._rebuildMultiboxUI();
+    void this._rebuildAnnotFormUI();
     this.annotationChanged.emit(void 0);
     this._validateForm();
   }
@@ -432,7 +455,7 @@ export class FormPanel {
       } else if (type === 'progress_tracker') {
         this._appendProgressTracker(container);
       } else if (type === 'annotation') {
-        this._buildAnnotationElement(config, container);
+        await this._buildAnnotationElement(config, container);
       } else if (type === 'break') {
         container.appendChild(document.createElement('br'));
       } else if (type === 'line') {
@@ -817,7 +840,7 @@ export class FormPanel {
     this._dynFormEl.appendChild(btnContainer);
   }
 
-  private _buildAnnotationElement(config: any, container: HTMLElement): void {
+  private async _buildAnnotationElement(config: any, container: HTMLElement): Promise<void> {
     if (!config || typeof config !== 'object') return;
 
     const ac: AnnotConfig = { tools: [] };
@@ -882,6 +905,7 @@ export class FormPanel {
       });
       sel.addEventListener('change', () => {
         this._activeTool = sel.value;
+        void this._rebuildAnnotFormUI();
         this.activeToolChanged.emit(this._activeTool);
         this.annotationChanged.emit(void 0);
       });
@@ -920,21 +944,45 @@ export class FormPanel {
 
     container.appendChild(wrapper);
 
-    // Multibox container (shown when multibox tool is active)
-    if (ac.tools.includes('multibox')) {
+    // Annotation form container — shows per-box forms in multibox mode,
+    // or a single form instance for other annotation tools
+    if (ac.form) {
       this._multiboxContainer = document.createElement('div');
       this._multiboxContainer.style.cssText =
-        `display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;`;
+        `display:flex;flex-direction:column;gap:6px;overflow-y:auto;`;
       container.appendChild(this._multiboxContainer);
+      // Build initial single-form view (will switch to multibox cards when tool changes)
+      await this._rebuildAnnotFormUI();
     }
   }
 
   // ─── Private: multibox UI ──────────────────────────────────
 
-  private _rebuildMultiboxUI(): void {
+  private async _rebuildAnnotFormUI(): Promise<void> {
     if (!this._multiboxContainer) return;
     this._multiboxContainer.innerHTML = '';
 
+    // Non-multibox mode: show a single form instance
+    if (!this.isMultiboxMode()) {
+      if (this._multiboxFormName) {
+        let formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
+        if (formCfg) {
+          if (!Array.isArray(formCfg) && typeof formCfg === 'object') {
+            formCfg = Object.keys(formCfg).map((k: string) => ({ [k]: formCfg[k] }));
+          }
+          if (Array.isArray(formCfg)) {
+            const formDiv = document.createElement('div');
+            formDiv.style.cssText = `display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;`;
+            await this._buildFormSection(formCfg, formDiv);
+            this._multiboxContainer.appendChild(formDiv);
+          }
+        }
+      }
+      this._validateForm();
+      return;
+    }
+
+    // Multibox mode
     if (this._multiboxEntries.length === 0) {
       const hint = document.createElement('div');
       hint.style.cssText = mutedTextStyle({ fontSize: 11 });
@@ -943,47 +991,36 @@ export class FormPanel {
       return;
     }
 
-    this._multiboxEntries.forEach((entry, i) => {
+    for (let i = 0; i < this._multiboxEntries.length; i++) {
+      const entry = this._multiboxEntries[i];
       const card = document.createElement('div');
       card.dataset.multiboxIdx = String(i);
       card.style.cssText =
-        `display:flex;align-items:center;gap:8px;padding:4px 8px;` +
-        `border-radius:4px;border:2px solid ${i === this._activeBoxIndex ? entry.color : 'transparent'};` +
-        `background:${COLORS.bgSurface0};cursor:pointer;`;
+        `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
+        `border-radius:4px;border-left:3px solid ${entry.color};` +
+        `background:${i === this._activeBoxIndex ? COLORS.bgSurface0 : COLORS.bgMantle};cursor:pointer;`;
       card.addEventListener('click', () => this.setActiveBox(i));
 
-      // Color dot
+      // Header row: color dot + bounds + delete button
+      const headerRow = document.createElement('div');
+      headerRow.style.cssText = `display:flex;align-items:center;gap:8px;`;
+
       const dot = document.createElement('span');
       dot.style.cssText =
-        `width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${entry.color};`;
-      card.appendChild(dot);
+        `width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${entry.color};`;
+      headerRow.appendChild(dot);
 
-      // Bounds display
       const bounds = document.createElement('span');
       bounds.style.cssText = `font-size:10px;color:${COLORS.textSubtle};font-family:ui-monospace,monospace;white-space:nowrap;`;
       bounds.textContent =
         `${entry.startTime.toFixed(1)}–${entry.endTime.toFixed(1)}s` +
-        ` ${Math.round(entry.minFreq)}–${Math.round(entry.maxFreq)}Hz`;
-      card.appendChild(bounds);
+        `  ${(entry.minFreq / 1000).toFixed(1)}–${(entry.maxFreq / 1000).toFixed(1)} kHz`;
+      headerRow.appendChild(bounds);
 
-      // Per-box form (if configured) — build inline
-      if (this._multiboxFormName) {
-        const formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
-        if (formCfg && Array.isArray(formCfg)) {
-          const formDiv = document.createElement('div');
-          formDiv.style.cssText = `display:flex;align-items:center;gap:6px;flex-wrap:wrap;`;
-          // Build form elements that write to entry.formValues
-          void this._buildMultiboxFormSection(formCfg, formDiv, entry);
-          card.appendChild(formDiv);
-        }
-      }
-
-      // Spacer
       const spacer = document.createElement('span');
       spacer.style.flex = '1';
-      card.appendChild(spacer);
+      headerRow.appendChild(spacer);
 
-      // Delete button
       const delBtn = document.createElement('button');
       delBtn.textContent = '×';
       delBtn.title = 'Remove this box';
@@ -992,10 +1029,28 @@ export class FormPanel {
         e.stopPropagation();
         this.removeMultiboxEntry(i);
       });
-      card.appendChild(delBtn);
+      headerRow.appendChild(delBtn);
+      card.appendChild(headerRow);
+
+      // Per-box form (if configured)
+      if (this._multiboxFormName) {
+        let formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
+        if (formCfg) {
+          if (!Array.isArray(formCfg) && typeof formCfg === 'object') {
+            formCfg = Object.keys(formCfg).map((k: string) => ({ [k]: formCfg[k] }));
+          }
+          if (Array.isArray(formCfg)) {
+            const formDiv = document.createElement('div');
+            formDiv.style.cssText = `display:flex;align-items:center;gap:6px;flex-wrap:wrap;`;
+            await this._buildMultiboxFormSection(formCfg, formDiv, entry);
+            card.appendChild(formDiv);
+          }
+        }
+      }
 
       this._multiboxContainer.appendChild(card);
-    });
+    }
+    this._validateForm();
   }
 
   /** Build form elements for a multibox entry, writing to entry.formValues. */
@@ -1046,6 +1101,42 @@ export class FormPanel {
         lbl.textContent = cfg.label ?? col;
         lbl.appendChild(inp);
         container.appendChild(lbl);
+      } else if (type === 'number') {
+        const cfg = config ?? {};
+        const col = cfg.column ?? cfg.label ?? type;
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        if (cfg.min !== undefined) inp.min = String(cfg.min);
+        if (cfg.max !== undefined) inp.max = String(cfg.max);
+        if (cfg.step !== undefined) inp.step = String(cfg.step);
+        inp.style.cssText = inputStyle('60px') + `font-size:11px;`;
+        inp.addEventListener('input', () => {
+          entry.formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
+          this._validateForm();
+        });
+        entry.formValues[col] = entry.formValues[col] ?? null;
+        if (entry.formValues[col] != null) inp.value = String(entry.formValues[col]);
+        const lbl = document.createElement('label');
+        lbl.style.cssText = labelStyle() + `font-size:11px;`;
+        lbl.textContent = cfg.label ?? col;
+        lbl.appendChild(inp);
+        container.appendChild(lbl);
+      } else if (type === 'checkbox') {
+        const cfg = config ?? {};
+        const col = cfg.column ?? cfg.label ?? type;
+        const inp = document.createElement('input');
+        inp.type = 'checkbox';
+        inp.checked = Boolean(entry.formValues[col] ?? cfg.default);
+        inp.addEventListener('change', () => {
+          entry.formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+          this._validateForm();
+        });
+        entry.formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+        const lbl = document.createElement('label');
+        lbl.style.cssText = labelStyle() + `font-size:11px;`;
+        lbl.textContent = cfg.label ?? col;
+        lbl.appendChild(inp);
+        container.appendChild(lbl);
       }
     }
   }
@@ -1068,7 +1159,7 @@ export class FormPanel {
     // Clear multibox state
     this._multiboxEntries = [];
     this._activeBoxIndex = -1;
-    this._rebuildMultiboxUI();
+    void this._rebuildAnnotFormUI();
 
     // Hide all named form sections
     for (const sectionEl of this._namedSections.values()) {
@@ -1142,15 +1233,46 @@ export class FormPanel {
   }
 
   private _validateForm(): void {
+    // Check main form required inputs (skip those in detached/hidden sections)
     let allSatisfied = this._requiredInputs.every(({ col, el }) => {
+      if (!el.isConnected) return true; // skip stale refs from rebuilt multibox forms
       const section = el.closest('[data-form-section]') as HTMLElement | null;
       if (section && section.style.display === 'none') return true;
       const val = this._formValues[col];
       return val !== null && val !== undefined && val !== '';
     });
-    // In multibox mode, require at least one box
-    if (this.isMultiboxMode() && this._multiboxEntries.length === 0) {
-      allSatisfied = false;
+    // In multibox mode, require at least one box and check per-box required fields
+    if (this.isMultiboxMode()) {
+      if (this._multiboxEntries.length === 0) {
+        allSatisfied = false;
+      } else if (this._multiboxFormName) {
+        // Check each box has its required fields filled
+        let formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
+        if (formCfg && !Array.isArray(formCfg) && typeof formCfg === 'object') {
+          formCfg = Object.keys(formCfg).map((k: string) => ({ [k]: formCfg[k] }));
+        }
+        if (Array.isArray(formCfg)) {
+          const requiredCols: string[] = [];
+          for (const item of formCfg) {
+            if (!item || typeof item !== 'object') continue;
+            const [type] = Object.keys(item);
+            const cfg = item[type] ?? {};
+            if (cfg.required) requiredCols.push(cfg.column ?? cfg.label ?? type);
+          }
+          if (requiredCols.length > 0) {
+            for (const entry of this._multiboxEntries) {
+              for (const col of requiredCols) {
+                const val = entry.formValues[col];
+                if (val === null || val === undefined || val === '') {
+                  allSatisfied = false;
+                  break;
+                }
+              }
+              if (!allSatisfied) break;
+            }
+          }
+        }
+      }
     }
     this._submitBtns.forEach(btn => {
       btn.disabled = !allSatisfied;

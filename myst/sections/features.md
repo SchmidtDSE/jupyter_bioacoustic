@@ -36,7 +36,7 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 
 ## Annotation Tools
 
-Three interactive tools let you mark positions and regions directly on the spectrogram.
+Four interactive tools let you mark positions and regions directly on the spectrogram.
 
 ::::{grid} 1 1 2 2
 :::{card} Time Select
@@ -59,8 +59,8 @@ Drag a rectangle to define a frequency-time region. Handles both linear and mel-
 ![Bounding box tool](../../assets/tools-annotate-bb.png)
 :::
 
-:::{card} Multiple Tools
-Enable multiple tools with a dropdown selector. Each tool writes to its own output columns.
+:::{card} Multibox
+Draw multiple bounding boxes on a single spectrogram, each with its own form (e.g. species label). Submits one row per box. Color-coded with Delete key and × button to remove.
 
 ![Annotation tools](../../assets/tools-annotate.png)
 :::
@@ -101,6 +101,7 @@ Shortcuts are active when the corresponding component is focused.
 | Arrow keys | Pan when zoomed |
 | `Space` | Play / pause |
 | `Shift+Space` | Play from beginning |
+| `Delete` / `Backspace` | Remove active multibox entry |
 
 ### Clip Table
 
