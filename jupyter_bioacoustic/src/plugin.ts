@@ -57,7 +57,7 @@ class BioacousticWidget extends Widget {
       `display:flex;flex-direction:column;width:100%;height:100%;` +
       `background:${COLORS.bgBase};color:${COLORS.textPrimary};` +
       `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);` +
-      `overflow:hidden;box-sizing:border-box;`;
+      `overflow-y:auto;overflow-x:hidden;box-sizing:border-box;`;
 
     // ── Header ──────────────────────────────────────────────────
     const header = document.createElement('div');

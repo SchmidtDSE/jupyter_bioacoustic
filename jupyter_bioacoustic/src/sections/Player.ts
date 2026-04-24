@@ -296,7 +296,7 @@ export class Player {
     // Spectrogram canvas
     this._canvasContainer = document.createElement('div');
     this._canvasContainer.style.cssText =
-      `flex:1;position:relative;min-height:80px;background:${COLORS.bgCrust};overflow:hidden;cursor:default;`;
+      `flex:0 0 260px;position:relative;background:${COLORS.bgCrust};overflow:hidden;cursor:default;`;
 
     this._canvas = document.createElement('canvas');
     this._canvas.style.cssText = `display:block;width:100%;height:100%;`;
@@ -1007,12 +1007,6 @@ export class Player {
             ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
           }
         }
-        // Index label
-        ctx.fillStyle = entry.color;
-        ctx.font = '10px ui-monospace, monospace';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(String(i + 1), sx + 3, yhi + 3);
       });
     }
   }
