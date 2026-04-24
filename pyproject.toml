@@ -83,6 +83,7 @@ cwd = "demo"
 default = { features = [] }
 dev = { features = ["dev"] }
 demo = { features = ["demo"] }
+demo-oss = { features = ["demo", "oss"] }
 mystmd = { features = ["mystmd"] }
 
 [tool.pixi.feature.dev.dependencies]
@@ -98,6 +99,16 @@ seaborn = "*"
 requests = "*"
 duckdb = ">=1.5.2, <2"
 librosa = "*"
+
+[tool.pixi.feature.oss]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
+
+[tool.pixi.feature.oss.dependencies]
+python = ">=3.11,<3.13"
+numpy = "<2"
+
+[tool.pixi.feature.oss.pypi-dependencies]
+opensoundscape = ">=0.12,<1"
 
 [tool.pixi.feature.mystmd.pypi-dependencies]
 ipyleaflet = "*"
