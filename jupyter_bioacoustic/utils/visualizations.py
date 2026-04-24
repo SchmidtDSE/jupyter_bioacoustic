@@ -11,6 +11,7 @@ visualizations:
         'freq_min': float,          # lowest frequency in Hz
         'freq_max': float,          # highest frequency in Hz
         'freq_scale': str|callable, # 'linear', 'mel', 'log', or fn(f, fmin, fmax)->0..1
+        'matrix_scale': str,        # 'linear' (default) or 'db' — skips dB conversion
     }
 
 Usage:
@@ -262,8 +263,12 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
         ax.imshow(img, aspect='auto', **kwargs)
         ax.set_axis_off()
     elif 'matrix' in viz_dict:
-        S = viz_dict['matrix']
-        S_db = 20 * np.log10(np.maximum(S, 1e-10))
+        S = np.array(viz_dict['matrix'], dtype=float)
+        matrix_scale = viz_dict.get('matrix_scale', 'linear')
+        if matrix_scale == 'db':
+            S_db = S
+        else:
+            S_db = 20 * np.log10(np.maximum(S, 1e-10))
         S_db = np.clip(S_db, S_db.max() - dynamic_range_db, S_db.max())
         S_norm = (S_db - S_db.min()) / max(float(S_db.max() - S_db.min()), 1e-10)
 
