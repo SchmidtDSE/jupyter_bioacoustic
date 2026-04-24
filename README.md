@@ -278,7 +278,7 @@ form_config:
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
 | `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. Prefix an item with `selected::` to set the default (e.g. `[1000, 'selected::2000', 4000]`). |
-| `visualizations` | list | `['plain', 'mel']` | Visualization types for the dropdown. Built-in strings (`'plain'`, `'mel'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration#custom-visualizations). |
+| `visualizations` | list | `['plain', 'mel']` | Visualization types for the dropdown. Built-in strings (`'plain'`, `'mel'`, `'log_frequency'`, `'bandpass'`, `'waveform'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration#custom-visualizations). |
 | `inline` | bool | `True` | Embed below cell (`True`) vs split-right panel (`False`). |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
