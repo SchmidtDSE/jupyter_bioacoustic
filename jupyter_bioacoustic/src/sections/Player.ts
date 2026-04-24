@@ -1101,9 +1101,8 @@ export class Player {
     ctx.textBaseline = 'middle';
 
     for (let f = firstTick; f <= fMax; f += tickInterval) {
-      const frac = (f - fMin) / fRange;
-      // Labels are positioned within the padded spectrogram area — no clipping
-      const y = padY + specH * (1 - frac);
+      // Use _freqToY for correct positioning on mel/log/lut scales
+      const y = this._freqToY(f);
       // Tick mark
       ctx.beginPath();
       ctx.moveTo(AXIS_W - TICK_LEN, y);
@@ -1393,7 +1392,6 @@ export class Player {
     }
 
     this._renderAnnotation(ctx, W, H);
-    this._renderFreqAxis(ctx, W, H);
 
     let dataUrl: string;
     try {
