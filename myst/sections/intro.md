@@ -3,17 +3,29 @@
 
 ![JupyterBioacoustic Plugin](../../assets/app-review.png)
 
-## Why?
+Bioacoustic monitoring allows scientists to perform a number of important tasks including the tracking species presence and population, as well as migration patterns. There are hundreds of monitoring stations in California alone, producing 100+ TB of data annually.
 
-Bioacoustic monitoring generates enormous volumes of audio. Automated classifiers like BirdNET can process this at scale, but their outputs still need human review — was that really a Barred Owl at 3 AM, or just wind? Researchers also need to annotate training data, label new species, and validate field recordings before analysis.
+AI models such as [BirdNET](https://birdnet.cornell.edu/), [Perch](https://github.com/google-research/perch) and [PNW-Owl](https://www.sciencedirect.com/science/article/pii/S2352711023001693) allow scientist to process large amounts of data.  To do so however, they must first annotate the data for training, and then validate the results of the model runs.
 
-These tasks share a common pattern: browse a table of audio segments, listen to each one, look at its spectrogram, and record a decision. Existing tools typically require switching between applications, managing files manually, and writing glue code to connect the pieces.
+JupyterBioacoustic [BioacousticAnnotator](https://github.com/SchmidtDSE/dev-jupyter-audio) is a robust, flexible, easily configured tool that allows users to annotate and review bioacoustic data directly within a Jupyter Notebook.
 
-## What is JupyterBioacoustic?
+There are many other annotation tools available (see below), each with its various strengths and weaknesses.  `BioacousticAnnotator` attempts to handle all use cases, without introducing complexity.  Perhaps its biggest strength is that it is run directly within the JupyterLab environment.
 
-JupyterBioacoustic is a JupyterLab plugin that keeps the entire review loop inside the computational environment where the analysis lives. It pairs a sortable, filterable clip table with an interactive spectrogram player and a configurable annotation form — all within the notebook.
+**WHY JUPYTER LAB**
+A standard bioacoustic workflow is as follows:
 
-The same interface works for **collecting new data** (species labeling, time-frequency annotation) and for **reviewing existing results** (validating model predictions, quality-checking automated detections). The form layout is driven by YAML configuration, so switching between workflows requires no code changes.
+1. Data annotation 
+2. Organization and/or processing of annotated data
+3. Model Training
+4. Interim Model Validation
+5. Full Model Run
+6. Final Model Validation
+7. The production of datasets with the model results, as well as charts and figures explaining the outputs
+8. The release of papers and/or applications 
+
+While the majority these steps are managed within a python environment, often in jupyter-lab, the annotation and validation steps (1, 4 and 6), are usually handled with outside tools.  `BioacousticAnnotator` allows one to work in single environment - making the process easier, more reproducible.
+
+
 
 ## Key Capabilities
 
