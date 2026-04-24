@@ -13,7 +13,7 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 - [Features](#features)
 - [Documentation](#documentation)
 - [Usage](#usage)
-- [BioacousticAnnotator Parameters](#jupyteraudio-parameters)
+- [BioacousticAnnotator Parameters](#bioacousticannotator-parameters)
 - [Demo](#demo)
 - [License](#license)
 
@@ -23,10 +23,10 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 
 ### From pre-built wheel (fastest)
 
-Download the wheel from a [GitHub Release](https://github.com/SchmidtDSE/dev-jupyter-audio/releases) and install locally. No Node.js or build step needed:
+Download the wheel from a [GitHub Release](https://github.com/SchmidtDSE/jupyter_bioacoustic/releases) and install locally. No Node.js or build step needed:
 
 ```bash
-gh release download v0.1.8 --repo SchmidtDSE/dev-jupyter-audio -p "*.whl" -D dist/
+gh release download v0.1.8 --repo SchmidtDSE/jupyter_bioacoustic -p "*.whl" -D dist/
 pip install dist/jupyter_bioacoustic-0.1.8-py3-none-any.whl
 ```
 
@@ -40,7 +40,7 @@ jupyter-bioacoustic = { path = "dist/jupyter_bioacoustic-0.1.8-py3-none-any.whl"
 
 ```bash
 git clone <repo-url>
-cd dev-jupyter-audio
+cd jupyter_bioacoustic
 pixi run setup   # install deps, build TypeScript, register extension
 pixi run lab     # launch JupyterLab
 ```
@@ -98,7 +98,7 @@ BioacousticAnnotator(
 
 ![JupyterBioacoustic Plugin](assets/app-inline.png)
 
-See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Quick-Start) for test files and more examples.
+See the [Quick Start guide](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Quick-Start) for test files and more examples.
 
 ## Features
 
@@ -114,16 +114,16 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
 
 ## Documentation
 
-Full documentation is on the [wiki](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki):
+Full documentation is on the [wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki):
 
-- [Quick Start](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Quick-Start) — Installation and first usage
-- [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration) — All parameters, config files, capture, S3, kwargs
-- [Configurable Forms](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configurable-Forms) — YAML form layout reference
-- [Annotation Tools](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Annotation-Tools) — Spectrogram interaction tools
-- [Data Schema](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Data-Schema) — Input and output formats
-- [API Reference](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/API-Reference) — `BioacousticAnnotator` class, properties, methods
-- [Demo](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Demo) — Running the demo notebooks
-- [Development](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Development) — Project structure, build tasks, architecture
+- [Quick Start](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Quick-Start) — Installation and first usage
+- [Configuration](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration) — All parameters, config files, capture, S3, kwargs
+- [Configurable Forms](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms) — YAML form layout reference
+- [Annotation Tools](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Annotation-Tools) — Spectrogram interaction tools
+- [Data Schema](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Data-Schema) — Input and output formats
+- [API Reference](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/API-Reference) — `BioacousticAnnotator` class, properties, methods
+- [Demo](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Demo) — Running the demo notebooks
+- [Development](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) — Project structure, build tasks, architecture
 
 ## Usage 
 
@@ -148,7 +148,7 @@ result_df = ja.output()
 ja.source
 ```
 
-The parameters for `BioacousticAnnotator` are listed [below](#jupyteraudio-parameters). There is one special parameter `config` that can be used instead of providing the parameter values directly in the notebook. This is a great feature for reproduciblity, organization and avoiding bloated notebooks.  
+The parameters for `BioacousticAnnotator` are listed [below](#bioacousticannotator-parameters). There is one special parameter `config` that can be used instead of providing the parameter values directly in the notebook. This is a great feature for reproduciblity, organization and avoiding bloated notebooks.  
 
 Consider the example above:
 
@@ -183,7 +183,7 @@ output: 'reviews.csv'
 
 For this simple example, this might not seem helpful. However for more advanced configurations this is quite useful.  Moreover, in the example above the review-form has a configuration file `form-review.yaml`. If using `config` the form can be included directly.
 
-See [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration) for full details. Here is an advanced example:
+See [Configuration](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration) for full details. Here is an advanced example:
 
 ```yaml
 # BioacousticAnnotator Args
@@ -278,7 +278,7 @@ form_config:
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
 | `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. Prefix an item with `selected::` to set the default (e.g. `[1000, 'selected::2000', 4000]`). |
-| `visualizations` | list | `['plain', 'mel']` | Visualization types for the dropdown. Built-in strings (`'plain'`, `'mel'`, `'log_frequency'`, `'bandpass'`, `'waveform'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration#custom-visualizations). |
+| `visualizations` | list | `['plain', 'mel']` | Visualization types for the dropdown. Built-in strings (`'plain'`, `'mel'`, `'log_frequency'`, `'bandpass'`, `'waveform'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#custom-visualizations). |
 | `inline` | bool | `True` | Embed below cell (`True`) vs split-right panel (`False`). |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |

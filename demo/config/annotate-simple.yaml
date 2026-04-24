@@ -5,49 +5,54 @@ audio:
     # url: "https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230522_200000.flac"
     uri: "s3://dse-soundhub/public/audio/dev/20230522_200000.flac"
 # DATA CONFIG
-data:
-    columns: ['common_name', 'confidence', 'rank', 'county']
+# data:
+#     columns: ['common_name', 'confidence', 'rank', 'county']
 # ADDITIONAL PARAMS
 category_path: data/categories-small.csv
-capture: false
 default_buffer: 0
 capture: 'Save Spectrogram'
 capture_dir: 'spectrograms'
 # FORM CONFIG
 form_config:
-  annotate_form:
-    - title:
-        value: ANNOTATE
-        progress_tracker: true
-    - select:
-        label: species
-        column: common_name
-        required: true
-        items:
-          path: data/categories-small.csv
-          value: common_name
-    - annotation:
-        start_time:
-          label: start
-          column: start_time
-          source_value: start_time
-        end_time:
-          label: end
-          column: end_time
-          source_value: end_time
-        min_frequency:
-          label: min freq
-          column: min_freq
-        max_frequency:
-          label: max freq
-          column: max_freq
-        tools:
-          - time_select
-          - start_end_time_select
-          - bounding_box
-  submission_buttons:
-    line: true
-    next:
-      label: Skip
-    submit:
-      label: Submit
+  title:
+    value: ANNOTATE
+    progress_tracker: true
+  annotation:
+    start_time:
+      label: start
+      column: start_time
+      source_value: start_time
+    end_time:
+      label: end
+      column: end_time
+      source_value: end_time
+    min_frequency:
+      label: min freq
+      column: min_freq
+    max_frequency:
+      label: max freq
+      column: max_freq
+    tools:
+      - time_select
+      - start_end_time_select
+      - bounding_box
+      - multibox
+    form: label_form
+  dynamic_forms:
+      label_form:
+          - select:
+                label: species
+                column: common_name
+                required: true
+                items:
+                  path: data/categories-small.csv
+                  value: common_name
+          - number:
+                label: signal quality (1-5)
+                column: signal_quality
+                min: 1
+                max: 5
+                step: 1
+          - checkbox:
+                label: flag for expert review
+                column: flagged

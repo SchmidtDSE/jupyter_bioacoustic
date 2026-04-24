@@ -4,9 +4,9 @@ site:
   template: book-theme
   actions:
     - title: CODE
-      url: https://github.com/SchmidtDSE/dev-jupyter-audio
+      url: https://github.com/SchmidtDSE/jupyter_bioacoustic
     - title: DOCS
-      url: https://github.com/SchmidtDSE/dev-jupyter-audio/wiki
+      url: https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki
     - title: DSE
       url: https://dse.berkeley.edu/
   options:
@@ -39,7 +39,7 @@ project:
       institution: The Eric and Wendy Schmidt Center for Data Science & Environment
     - id: ucb
       institution: University of California, Berkeley
-  github: https://github.com/SchmidtDSE/dev-jupyter-audio
+  github: https://github.com/SchmidtDSE/jupyter_bioacoustic
   toc:
     - file: myst/main.md
     - file: myst/sections/usage.md
