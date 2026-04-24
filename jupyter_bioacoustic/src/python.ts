@@ -34,6 +34,7 @@ export function readKernelVars(): string {
     `  'duplicate_entries': _BA_DUPLICATE_ENTRIES,`,
     `  'default_buffer': _BA_DEFAULT_BUFFER,`,
     `  'spec_resolutions': _BA_SPEC_RESOLUTIONS,`,
+    `  'viz_meta': _BA_VIZ_META,`,
     `}))`,
   ].join('\n');
 }
@@ -140,10 +141,66 @@ export function buildSpectrogram(spectType: 'mel' | 'plain', resolutionW?: numbe
   return [PY_BUILD_SPEC, filterBlock, resLine, PY_SPEC_RENDER].join('\n');
 }
 
+/** Python code for a custom visualization callable. */
+function customVizCode(vizIndex: number, resolutionW: number): string {
+  return [
+    `import numpy as _np, io as _io, base64 as _b64, json as _j`,
+    `import matplotlib as _mpl; _mpl.use('Agg')`,
+    `import matplotlib.pyplot as _plt`,
+    `_mono = _raw.mean(axis=1) if _raw.shape[1] > 1 else _raw[:, 0]`,
+    `_actual_dur = len(_mono) / _sr`,
+    `_viz_entry = _BA_INSTANCE._visualizations[${vizIndex}]`,
+    `_viz_fn = _viz_entry['fn']`,
+    `_viz_result = _viz_fn(_mono, _sr, ${resolutionW})`,
+    `_f_min = float(_viz_result['freq_min'])`,
+    `_f_max = float(_viz_result['freq_max'])`,
+    `_freq_scale_raw = _viz_result.get('freq_scale', 'linear')`,
+    `_freq_scale_lut = None`,
+    `if callable(_freq_scale_raw):`,
+    `    _n_lut = 256`,
+    `    _lut_freqs = _np.linspace(_f_min, _f_max, _n_lut).tolist()`,
+    `    _freq_scale_lut = [float(_freq_scale_raw(f, _f_min, _f_max)) for f in _lut_freqs]`,
+    `    _freq_scale = 'lut'`,
+    `else:`,
+    `    _freq_scale = str(_freq_scale_raw)`,
+    `if 'png_bytes' in _viz_result:`,
+    `    _spec_b64 = _b64.b64encode(_viz_result['png_bytes']).decode()`,
+    `elif 'matrix' in _viz_result:`,
+    `    _S = _viz_result['matrix']`,
+    `    _S_db = 20 * _np.log10(_np.maximum(_S, 1e-10))`,
+    `    _S_db = _np.clip(_S_db, _S_db.max() - 80, _S_db.max())`,
+    `    _S_norm = (_S_db - _S_db.min()) / max(float(_S_db.max() - _S_db.min()), 1e-10)`,
+    `    _fig = _plt.figure(figsize=(${resolutionW}/100, 5), dpi=100)`,
+    `    _ax = _fig.add_axes([0, 0, 1, 1])`,
+    `    _ax.imshow(_S_norm, aspect='auto', cmap='magma', origin='lower', interpolation='bilinear')`,
+    `    _ax.set_axis_off()`,
+    `    _pb = _io.BytesIO()`,
+    `    _fig.savefig(_pb, format='png', dpi=100, bbox_inches='tight', pad_inches=0)`,
+    `    _plt.close(_fig)`,
+    `    _spec_b64 = _b64.b64encode(_pb.getvalue()).decode()`,
+    `else:`,
+    `    raise ValueError("Custom viz must return 'png_bytes' or 'matrix'")`,
+    `import soundfile as _sf2`,
+    `_wb = _io.BytesIO()`,
+    `_sf2.write(_wb, (_mono * 32767).astype(_np.int16)[:, None], _sr, format='WAV', subtype='PCM_16')`,
+    `print(_j.dumps({`,
+    `    'spec': _spec_b64,`,
+    `    'wav': _b64.b64encode(_wb.getvalue()).decode(),`,
+    `    'duration': float(_actual_dur),`,
+    `    'sample_rate': int(_sr),`,
+    `    'freq_min': _f_min,`,
+    `    'freq_max': _f_max,`,
+    `    'freq_scale': _freq_scale,`,
+    `    'freq_scale_lut': _freq_scale_lut,`,
+    `}))`,
+  ].join('\n');
+}
+
 /** Full spectrogram pipeline: read audio + process + return JSON. */
 export function spectrogramPipeline(
   path: string, startSec: number, durSec: number,
-  spectType: 'mel' | 'plain', resolutionW?: number,
+  vizType: 'builtin' | 'custom', builtinKey?: string,
+  vizIndex?: number, resolutionW?: number,
 ): string {
   let readCode: string;
   if (path.startsWith('s3://')) {
@@ -157,6 +214,10 @@ export function spectrogramPipeline(
   } else {
     readCode = readAudioLocal(path, startSec, durSec);
   }
+  if (vizType === 'custom' && vizIndex != null) {
+    return readCode + '\n' + customVizCode(vizIndex, resolutionW ?? 2000);
+  }
+  const spectType = (builtinKey === 'mel' ? 'mel' : 'plain') as 'mel' | 'plain';
   return readCode + '\n' + buildSpectrogram(spectType, resolutionW);
 }
 
