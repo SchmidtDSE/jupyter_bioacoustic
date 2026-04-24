@@ -60,6 +60,11 @@ export class Player {
   private _zoomBoxMoveHandler: ((e: MouseEvent) => void) | null = null;
   private _zoomBoxUpHandler: ((e: MouseEvent) => void) | null = null;
   private _specResolutions: string[] = ['1000', '2000', '4000'];
+
+  // ─── Visualization state ──────────────────────────────────
+  private _vizMeta: Array<{type: string; key?: string; label: string; freq_scale?: string; index: number}> = [];
+  private _currentFreqScale: string = 'linear';
+  private _freqScaleLUT: number[] | null = null; // 256 frac values for 'lut' scale
   /** Vertical padding (px) at top/bottom of canvas for freq axis labels. */
   private static readonly SPEC_PAD_Y = 8;
 
@@ -115,6 +120,7 @@ export class Player {
     displayCols: string[];
     defaultBuffer: number;
     specResolutions: string[];
+    vizMeta: Array<{type: string; key?: string; label: string; freq_scale?: string; index: number}>;
     rows: Detection[];
   }): void {
     this._audioConfig = opts.audioConfig;
@@ -126,6 +132,11 @@ export class Player {
     this._bufferInput.value = String(opts.defaultBuffer);
     this._specResolutions = opts.specResolutions;
     this._rebuildResolutionSelect();
+    this._vizMeta = opts.vizMeta.length > 0 ? opts.vizMeta : [
+      { type: 'builtin', key: 'plain', label: 'Plain', freq_scale: 'linear', index: 0 },
+      { type: 'builtin', key: 'mel', label: 'Mel', freq_scale: 'mel', index: 1 },
+    ];
+    this._rebuildVizSelect();
     if (this._captureLabel) {
       this._captureBtn.textContent = this._captureLabel;
       this._captureBtn.style.display = '';
@@ -206,11 +217,6 @@ export class Player {
     typeLbl.textContent = 'Type';
     this._spectTypeSelect = document.createElement('select');
     this._spectTypeSelect.style.cssText = selectStyle();
-    ['plain', 'mel'].forEach(v => {
-      const o = document.createElement('option');
-      o.value = o.textContent = v;
-      this._spectTypeSelect.appendChild(o);
-    });
     typeLbl.appendChild(this._spectTypeSelect);
     playerCtrls.appendChild(typeLbl);
 
@@ -434,11 +440,17 @@ export class Player {
           : 'Loading audio…';
     this.statusChanged.emit({ message: loadMsg, error: false });
 
-    let result: { spec: string; wav: string; duration: number; sample_rate: number; freq_min: number; freq_max: number };
+    let result: { spec: string; wav: string; duration: number; sample_rate: number;
+      freq_min: number; freq_max: number; freq_scale?: string; freq_scale_lut?: number[] | null };
     try {
-      const spectType = this._spectTypeSelect.value as 'mel' | 'plain';
+      const vizIdx = parseInt(this._spectTypeSelect.value) || 0;
+      const viz = this._vizMeta[vizIdx] ?? this._vizMeta[0];
       const resW = parseInt(this._resolutionSelect.value) || 2000;
-      const raw = await this._kernel.exec(spectrogramPipeline(audioPath, loadStart, loadDur, spectType, resW));
+      const raw = await this._kernel.exec(spectrogramPipeline(
+        audioPath, loadStart, loadDur,
+        viz.type === 'custom' ? 'custom' : 'builtin',
+        viz.key, viz.index, resW,
+      ));
       result = JSON.parse(raw) as typeof result;
     } catch (e: any) {
       this.statusChanged.emit({ message: `❌ ${String(e.message ?? e)}`, error: true });
@@ -450,6 +462,8 @@ export class Player {
     this._sampleRate = result.sample_rate;
     this._freqMin = result.freq_min;
     this._freqMax = result.freq_max;
+    this._currentFreqScale = result.freq_scale ?? 'linear';
+    this._freqScaleLUT = result.freq_scale_lut ?? null;
 
     this.statusChanged.emit({ message: 'Decoding spectrogram…', error: false });
     try {
@@ -516,7 +530,7 @@ export class Player {
 
       const bufLeft = toScreen(detStartFrac);
       const bufRight = toScreen(detEndFrac);
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
       if (bufLeft > 0) ctx.fillRect(0, 0, Math.floor(bufLeft), H);
       if (bufRight < W) { const rx = Math.ceil(bufRight); ctx.fillRect(rx, 0, W - rx, H); }
 
@@ -590,21 +604,63 @@ export class Player {
     const viewFrac = this._viewXMin + (x / this._canvas.width) * (this._viewXMax - this._viewXMin);
     return this._segLoadStart + viewFrac * this._segDuration;
   }
+  /** Map frequency to 0..1 fraction based on the current freq scale. */
+  private _freqToFrac(f: number): number {
+    const fMin = this._freqMin, fMax = this._freqMax;
+    if (this._currentFreqScale === 'mel') {
+      const melMin = 2595 * Math.log10(1 + fMin / 700);
+      const melMax = 2595 * Math.log10(1 + fMax / 700);
+      const mel = 2595 * Math.log10(1 + f / 700);
+      return (melMax - melMin) > 0 ? (mel - melMin) / (melMax - melMin) : 0;
+    } else if (this._currentFreqScale === 'log') {
+      const logMin = Math.log(Math.max(1, fMin));
+      const logMax = Math.log(Math.max(1, fMax));
+      return (logMax - logMin) > 0 ? (Math.log(Math.max(1, f)) - logMin) / (logMax - logMin) : 0;
+    } else if (this._currentFreqScale === 'lut' && this._freqScaleLUT) {
+      // Interpolate: frac value at position (f - fMin) / (fMax - fMin) in the LUT
+      const pos = (fMax - fMin) > 0 ? (f - fMin) / (fMax - fMin) * (this._freqScaleLUT.length - 1) : 0;
+      const lo = Math.floor(pos), hi = Math.min(lo + 1, this._freqScaleLUT.length - 1);
+      const t = pos - lo;
+      return this._freqScaleLUT[lo] * (1 - t) + this._freqScaleLUT[hi] * t;
+    }
+    // linear (default)
+    return (fMax - fMin) > 0 ? (f - fMin) / (fMax - fMin) : 0;
+  }
+
+  /** Inverse: map 0..1 fraction to frequency based on the current freq scale. */
+  private _fracToFreq(frac: number): number {
+    const fMin = this._freqMin, fMax = this._freqMax;
+    if (this._currentFreqScale === 'mel') {
+      const melMin = 2595 * Math.log10(1 + fMin / 700);
+      const melMax = 2595 * Math.log10(1 + fMax / 700);
+      const mel = melMin + frac * (melMax - melMin);
+      return 700 * (Math.pow(10, mel / 2595) - 1);
+    } else if (this._currentFreqScale === 'log') {
+      const logMin = Math.log(Math.max(1, fMin));
+      const logMax = Math.log(Math.max(1, fMax));
+      return Math.exp(logMin + frac * (logMax - logMin));
+    } else if (this._currentFreqScale === 'lut' && this._freqScaleLUT) {
+      // Binary search for the frac in the LUT, then interpolate freq
+      const lut = this._freqScaleLUT;
+      let lo = 0, hi = lut.length - 1;
+      while (lo < hi - 1) {
+        const mid = (lo + hi) >> 1;
+        if (lut[mid] <= frac) lo = mid; else hi = mid;
+      }
+      const t = (lut[hi] - lut[lo]) > 0 ? (frac - lut[lo]) / (lut[hi] - lut[lo]) : 0;
+      const pos = lo + t;
+      return fMin + (pos / (lut.length - 1)) * (fMax - fMin);
+    }
+    // linear
+    return fMin + frac * (fMax - fMin);
+  }
+
   /** Convert frequency to screen Y, accounting for zoom and padding. */
   private _freqToY(f: number): number {
     const H = this._canvas.height;
     const padY = Player.SPEC_PAD_Y;
     const specH = H - 2 * padY;
-    let frac: number;
-    if (this._spectTypeSelect.value === 'mel') {
-      const melMin = 2595 * Math.log10(1 + this._freqMin / 700);
-      const melMax = 2595 * Math.log10(1 + this._freqMax / 700);
-      const mel = 2595 * Math.log10(1 + f / 700);
-      frac = (melMax - melMin) > 0 ? (mel - melMin) / (melMax - melMin) : 0;
-    } else {
-      frac = (this._freqMax - this._freqMin) > 0
-        ? (f - this._freqMin) / (this._freqMax - this._freqMin) : 0;
-    }
+    const frac = this._freqToFrac(f);
     const viewFrac = (frac - this._viewYMin) / (this._viewYMax - this._viewYMin);
     return padY + specH * (1 - viewFrac);
   }
@@ -615,13 +671,7 @@ export class Player {
     const specH = H - 2 * padY;
     const viewFrac = 1 - (y - padY) / specH;
     const frac = this._viewYMin + viewFrac * (this._viewYMax - this._viewYMin);
-    if (this._spectTypeSelect.value === 'mel') {
-      const melMin = 2595 * Math.log10(1 + this._freqMin / 700);
-      const melMax = 2595 * Math.log10(1 + this._freqMax / 700);
-      const mel = melMin + frac * (melMax - melMin);
-      return 700 * (Math.pow(10, mel / 2595) - 1);
-    }
-    return this._freqMin + frac * (this._freqMax - this._freqMin);
+    return this._fracToFreq(frac);
   }
 
   private _onCanvasMouseDown(e: MouseEvent): void {
@@ -1261,6 +1311,17 @@ export class Player {
     }
   }
 
+  private _rebuildVizSelect(): void {
+    this._spectTypeSelect.innerHTML = '';
+    this._vizMeta.forEach((v, i) => {
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = v.label;
+      if (i === 0) o.selected = true;
+      this._spectTypeSelect.appendChild(o);
+    });
+  }
+
   // ─── Private: capture ──────────────────────────────────────
 
   private _buildCaptureFilename(): string {
@@ -1326,7 +1387,7 @@ export class Player {
       const def = (this._detectionEnd - this._segLoadStart) / this._segDuration;
       const bufLeft = toScreen(dsf);
       const bufRight = toScreen(def);
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
       if (bufLeft > 0) ctx.fillRect(0, 0, Math.floor(bufLeft), H);
       if (bufRight < W) { const rx = Math.ceil(bufRight); ctx.fillRect(rx, 0, W - rx, H); }
     }

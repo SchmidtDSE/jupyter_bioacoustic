@@ -74,6 +74,7 @@ print(_j.dumps({
     'sample_rate': int(_sr),
     'freq_min': float(_f_min),
     'freq_max': float(_f_max),
+    'freq_scale': _freq_scale if '_freq_scale' in dir() else ('mel' if '_n_mels' in dir() else 'linear'),
 }))
 `;
 

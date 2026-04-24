@@ -35,6 +35,7 @@ DEFAULT_BUFFER = 3
 DEFAULT_APP_TITLE = 'Jupyter Bioacoustic'
 DEFAULT_CAPTURE_LABEL = 'Capture'
 DEFAULT_SPEC_RESOLUTIONS = [1000, 2000, 4000]
+DEFAULT_VISUALIZATIONS = ['plain', 'mel']
 DEFAULT_INLINE = True
 DEFAULT_WIDTH = '100%'
 DEFAULT_HEIGHT = 900
@@ -516,6 +517,7 @@ class JupyterAudio:
         capture=_UNSET,
         capture_dir=_UNSET,
         spectrogram_resolution=_UNSET,
+        visualizations=_UNSET,
         inline=_UNSET,
         width=_UNSET,
         height=_UNSET,
@@ -741,6 +743,26 @@ class JupyterAudio:
             self._spec_resolutions = [str(r) for r in raw_res]
         else:
             self._spec_resolutions = [str(r) for r in DEFAULT_SPEC_RESOLUTIONS]
+        # Normalize visualizations list
+        raw_viz = resolve(visualizations, 'visualizations', DEFAULT_VISUALIZATIONS)
+        self._visualizations = []
+        self._viz_meta = []  # JSON-serializable metadata for TS side
+        for i, v in enumerate(raw_viz if isinstance(raw_viz, list) else [raw_viz]):
+            if isinstance(v, str):
+                # Built-in: 'plain', 'mel'
+                fs = 'mel' if v == 'mel' else 'linear'
+                label = v.replace('_', ' ').title()
+                self._visualizations.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs})
+                self._viz_meta.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs, 'index': i})
+            elif callable(v):
+                label = getattr(v, '__name__', f'custom_{i}')
+                self._visualizations.append({'type': 'custom', 'fn': v, 'label': label})
+                self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
+            elif isinstance(v, dict) and 'fn' in v and callable(v['fn']):
+                label = v.get('label', getattr(v['fn'], '__name__', f'custom_{i}'))
+                self._visualizations.append({'type': 'custom', 'fn': v['fn'], 'label': label})
+                self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
+
         self._inline           = resolve(inline,           'inline',           DEFAULT_INLINE)
         self._width            = resolve(width,            'width',            DEFAULT_WIDTH)
         self._height           = resolve(height,           'height',           DEFAULT_HEIGHT)
@@ -797,6 +819,7 @@ class JupyterAudio:
         ip.user_ns['_BA_CAPTURE'] = cap
         ip.user_ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
         ip.user_ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(self._spec_resolutions)
+        ip.user_ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
         ip.user_ns['_BA_DUPLICATE_ENTRIES'] = 'true' if self._duplicate_entries else ''
         ip.user_ns['_BA_DEFAULT_BUFFER'] = str(self._default_buffer)
         ip.user_ns['_BA_INSTANCE'] = self
