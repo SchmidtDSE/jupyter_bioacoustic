@@ -744,16 +744,29 @@ class JupyterAudio:
         else:
             self._spec_resolutions = [str(r) for r in DEFAULT_SPEC_RESOLUTIONS]
         # Normalize visualizations list
+        from jupyter_bioacoustic.utils.visualizations import REGISTRY as _VIZ_REGISTRY
         raw_viz = resolve(visualizations, 'visualizations', DEFAULT_VISUALIZATIONS)
         self._visualizations = []
         self._viz_meta = []  # JSON-serializable metadata for TS side
         for i, v in enumerate(raw_viz if isinstance(raw_viz, list) else [raw_viz]):
             if isinstance(v, str):
-                # Built-in: 'plain', 'mel'
-                fs = 'mel' if v == 'mel' else 'linear'
-                label = v.replace('_', ' ').title()
-                self._visualizations.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs})
-                self._viz_meta.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs, 'index': i})
+                if v in ('plain', 'mel'):
+                    # Legacy built-in: handled by the TS py_chunks pipeline
+                    fs = 'mel' if v == 'mel' else 'linear'
+                    label = v.replace('_', ' ').title()
+                    self._visualizations.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs})
+                    self._viz_meta.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs, 'index': i})
+                elif v in _VIZ_REGISTRY:
+                    # Registered visualization function (by name)
+                    fn = _VIZ_REGISTRY[v]
+                    label = v.replace('_', ' ').title()
+                    self._visualizations.append({'type': 'custom', 'fn': fn, 'label': label})
+                    self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
+                else:
+                    raise ValueError(
+                        f"Unknown visualization '{v}'. "
+                        f"Available: {', '.join(sorted(_VIZ_REGISTRY.keys()))}"
+                    )
             elif callable(v):
                 label = getattr(v, '__name__', f'custom_{i}')
                 self._visualizations.append({'type': 'custom', 'fn': v, 'label': label})
