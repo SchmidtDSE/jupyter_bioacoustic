@@ -60,11 +60,13 @@ Drag a rectangle to define a frequency-time region. Handles both linear and mel-
 :::
 
 :::{card} Multibox
-Draw multiple bounding boxes on a single spectrogram, each with its own form (e.g. species label). Submits one row per box. Color-coded with Delete key and × button to remove.
+Draw multiple bounding boxes on a single spectrogram, each with its own form (e.g. species label per box). Submits one row per box. Color-coded with Delete key and × button to remove.
 
 ![Annotation tools](../../assets/tools-annotate.png)
 :::
 ::::
+
+All annotation tools support an optional `annotation.form` that references a `dynamic_forms` section. For single-box tools this shows one form instance; for multibox, each box gets its own.
 
 
 ## Configurable Forms
