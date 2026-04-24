@@ -3,9 +3,9 @@
 
 ## The API
 
-`JupyterAudio` has a minimal interface:
+`BioacousticAnnotator` has a minimal interface:
 
-- **1 class** — `JupyterAudio(...)`
+- **1 class** — `BioacousticAnnotator(...)`
 - **2 methods** — `.open()` to launch the widget, `.output()` to read submitted data
 - **1 property** — `.source` to access the input DataFrame
 
@@ -88,7 +88,7 @@ With a config file, more complex setups are straightforward. This example adds:
 Submitted data is written to the output file after each submission. Access it programmatically at any time:
 
 ```python
-ja = JupyterAudio(data='detections.csv', audio='recording.flac',
+ja = BioacousticAnnotator(data='detections.csv', audio='recording.flac',
                    form_config='form.yaml', output='reviews.csv')
 ja.open()
 

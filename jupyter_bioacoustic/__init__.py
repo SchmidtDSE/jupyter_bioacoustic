@@ -1,3 +1,3 @@
-from .api import JupyterAudio
+from .api import BioacousticAnnotator
 
-__all__ = ['JupyterAudio']
+__all__ = ['BioacousticAnnotator']

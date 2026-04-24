@@ -104,7 +104,7 @@ audio:
 `audio_secrets` works identically to `data_secrets` — `env:VAR`, `dialog`, or literal values. The global `secrets` parameter serves as a fallback.
 
 ```python
-JupyterAudio(
+BioacousticAnnotator(
     data='detections.csv',
     audio='s3://private-bucket/recording.flac',
     audio_secrets={'key': 's3_access_key_id', 'value': 'env:AWS_KEY'},

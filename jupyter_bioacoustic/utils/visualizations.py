@@ -2,7 +2,7 @@
 Visualization functions for bioacoustic audio.
 
 Each function takes (mono, sr, width) and returns a dict compatible with
-JupyterAudio's custom visualization interface or used in standalone 
+BioacousticAnnotator's custom visualization interface or used in standalone 
 visualizations:
 
     {
@@ -16,10 +16,10 @@ visualizations:
 
 Usage:
 
-    JupyterAudio:
+    BioacousticAnnotator:
 
-        from jupyter_bioacoustic import JupyterAudio
-        JupyterAudio(
+        from jupyter_bioacoustic import BioacousticAnnotator
+        BioacousticAnnotator(
             data='data.csv', audio='audio.flac',
             visualizations=['spectrogram', 'mel', vis.log_frequency],
         ).open()
@@ -350,7 +350,7 @@ def render_png(S, width=2000, matrix_scale=None,
     """Render a 2D spectrogram matrix to PNG bytes.
 
     Handles dB conversion, normalization, and colormap rendering.
-    Used internally by JupyterAudio for custom visualizations that
+    Used internally by BioacousticAnnotator for custom visualizations that
     return a matrix instead of png_bytes.
 
     Args:
