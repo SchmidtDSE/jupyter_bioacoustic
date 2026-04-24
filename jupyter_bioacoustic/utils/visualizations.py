@@ -2,7 +2,8 @@
 Visualization functions for bioacoustic audio.
 
 Each function takes (mono, sr, width) and returns a dict compatible with
-JupyterAudio's custom visualization interface:
+JupyterAudio's custom visualization interface or used in standalone 
+visualizations:
 
     {
         'matrix': np.ndarray,       # 2D array (freq × time) — OR —
@@ -12,45 +13,44 @@ JupyterAudio's custom visualization interface:
         'freq_scale': str|callable, # 'linear', 'mel', 'log', or fn(f, fmin, fmax)->0..1
     }
 
-Usage standalone:
+Usage:
 
-    from jupyter_bioacoustic.utils import visualizations as vis
-    result = vis.mel(mono, sr, 2000)
-    fig, ax = vis.plot(result)
+    JupyterAudio:
 
-Usage with JupyterAudio:
+        from jupyter_bioacoustic import JupyterAudio
+        JupyterAudio(
+            data='data.csv', audio='audio.flac',
+            visualizations=['spectrogram', 'mel', vis.log_frequency],
+        ).open()
 
-    from jupyter_bioacoustic import JupyterAudio
-    JupyterAudio(
-        data='data.csv', audio='audio.flac',
-        visualizations=['spectrogram', 'mel', vis.log_frequency],
-    ).open()
+    Stand Alone:
+
+        from jupyter_bioacoustic.utils import visualizations as vis
+        result = vis.mel(mono, sr, 2000)
+        fig, ax = vis.plot(result)
+
+License: BSD 3-clause
 """
+import io
 
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
-# ─── Constants ────────────────────────────────────────────────
 
+#
+# CONSTANTS
+#
 DEFAULT_FFT = 512
 DEFAULT_HOP = 128
 DEFAULT_N_MELS = 80
 DEFAULT_DYNAMIC_RANGE_DB = 80
 
 
-# ─── Core STFT helper ────────────────────────────────────────
-
-def _stft(mono, fft=DEFAULT_FFT, hop=DEFAULT_HOP):
-    """Compute magnitude STFT. Returns (magnitude 2D array, n_freq_bins)."""
-    win = 0.5 * (1 - np.cos(2 * np.pi * np.arange(fft) / (fft - 1)))
-    n_frames = max(1, (len(mono) - fft) // hop + 1)
-    idx = np.arange(fft)[None, :] + hop * np.arange(n_frames)[:, None]
-    idx = np.clip(idx, 0, len(mono) - 1)
-    mag = np.abs(np.fft.rfft(mono[idx] * win, axis=1)[:, :fft // 2]).T
-    return mag
-
-
-# ─── Built-in visualizations ─────────────────────────────────
-
+#
+# VISUALIZATIONS
+#
 def spectrogram(mono, sr, width, fft=DEFAULT_FFT, hop=None):
     """Plain linear-frequency spectrogram.
 
@@ -212,11 +212,6 @@ def waveform(mono, sr, width):
     Returns:
         Visualization dict with 'png_bytes'.
     """
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    import io
-
     fig = plt.figure(figsize=(width / 100, 5), dpi=100)
     ax = fig.add_axes([0, 0, 1, 1])
     t = np.linspace(0, len(mono) / sr, len(mono))
@@ -239,8 +234,9 @@ def waveform(mono, sr, width):
     }
 
 
-# ─── Plotting utility ────────────────────────────────────────
-
+#
+# HELPERS
+#
 def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
          figsize=None, dpi=100, **kwargs):
     """Plot a visualization dict as a matplotlib figure.
@@ -259,18 +255,12 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
     Returns:
         (fig, ax) matplotlib figure and axes.
     """
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     figsize = figsize or (12, 4)
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
     if 'png_bytes' in viz_dict:
-        import io
-        from PIL import Image
-        img = Image.open(io.BytesIO(viz_dict['png_bytes']))
-        ax.imshow(np.array(img), aspect='auto', **kwargs)
+        img = plt.imread(io.BytesIO(viz_dict['png_bytes']), format='png')
+        ax.imshow(img, aspect='auto', **kwargs)
         ax.set_axis_off()
     elif 'matrix' in viz_dict:
         S = viz_dict['matrix']
@@ -289,8 +279,9 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
     return fig, ax
 
 
-# ─── Registry for string-based lookup ─────────────────────────
-
+#
+# Registry:  enables string based lookup for jupyter_bioacoustic tools
+#
 REGISTRY = {
     'spectrogram': spectrogram,
     'plain': spectrogram,
@@ -299,3 +290,18 @@ REGISTRY = {
     'bandpass': bandpass,
     'waveform': waveform,
 }
+
+
+#
+# INTERNAL
+#
+def _stft(mono, fft=DEFAULT_FFT, hop=DEFAULT_HOP):
+    """Compute magnitude STFT. Returns (magnitude 2D array, n_freq_bins)."""
+    win = 0.5 * (1 - np.cos(2 * np.pi * np.arange(fft) / (fft - 1)))
+    n_frames = max(1, (len(mono) - fft) // hop + 1)
+    idx = np.arange(fft)[None, :] + hop * np.arange(n_frames)[:, None]
+    idx = np.clip(idx, 0, len(mono) - 1)
+    mag = np.abs(np.fft.rfft(mono[idx] * win, axis=1)[:, :fft // 2]).T
+    return mag
+
+
