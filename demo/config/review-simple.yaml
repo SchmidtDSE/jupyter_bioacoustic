@@ -1,7 +1,7 @@
 # REVIEW CONFIG
 audio: audio_path
 data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
-prediction_column: common_name
+ident_column: common_name
 category_path: data/categories-small.csv
 capture: false
 
@@ -10,22 +10,31 @@ form_config:
   pass_value:
     source_column: id
     column: detection_id
-  is_valid_form:
-    - title:
-        value: REVIEW
-        progress_tracker: true
-    - is_valid_select: true
-    - textbox:
-        label: notes
-        column: notes
-  no_form:
-    - select:
-        label: verified name
-        column: verified_common_name
-        required: true
-        items:
-          path: data/categories-small.csv
-          value: common_name
+  title:
+    value: REVIEW
+    progress_tracker: true
+  select:
+    label: Is Valid
+    column: is_valid
+    required: true
+    items:
+      - label: 'yes'
+        value: 'yes'
+      - label: 'no'
+        value: 'no'
+        form: correction_form
+  dynamic_forms:
+    correction_form:
+      - select:
+          label: verified name
+          column: verified_common_name
+          required: true
+          items:
+            path: data/categories-small.csv
+            value: common_name
+      - textbox:
+          label: notes
+          column: notes
   submission_buttons:
     line: true
     next:

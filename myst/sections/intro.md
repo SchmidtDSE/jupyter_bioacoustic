@@ -7,7 +7,7 @@ Bioacoustic monitoring allows scientists to perform a number of important tasks 
 
 AI models such as [BirdNET](https://birdnet.cornell.edu/), [Perch](https://github.com/google-research/perch) and [PNW-Owl](https://www.sciencedirect.com/science/article/pii/S2352711023001693) allow scientist to process large amounts of data.  To do so however, they must first annotate the data for training, and then validate the results of the model runs.
 
-JupyterBioacoustic [BioacousticAnnotator](https://github.com/SchmidtDSE/dev-jupyter-audio) is a robust, flexible, easily configured tool that allows users to annotate and review bioacoustic data directly within a Jupyter Notebook.
+JupyterBioacoustic [BioacousticAnnotator](https://github.com/SchmidtDSE/jupyter_bioacoustic) is a robust, flexible, easily configured tool that allows users to annotate and review bioacoustic data directly within a Jupyter Notebook.
 
 There are many other annotation tools available (see below), each with its various strengths and weaknesses.  `BioacousticAnnotator` attempts to handle all use cases, without introducing complexity.  Perhaps its biggest strength is that it is run directly within the JupyterLab environment.
 

@@ -9,7 +9,7 @@
 - **2 methods** — `.open()` to launch the widget, `.output()` to read submitted data
 - **1 property** — `.source` to access the input DataFrame
 
-All configuration is handled through constructor parameters or a YAML/JSON config file. For the full parameter reference see the [wiki](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration).
+All configuration is handled through constructor parameters or a YAML/JSON config file. For the full parameter reference see the [wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration).
 
 
 ## Examples
