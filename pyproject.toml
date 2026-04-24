@@ -97,7 +97,6 @@ shapely = "*"
 seaborn = "*"
 requests = "*"
 duckdb = ">=1.5.2, <2"
-opensoundscape = ">=0.12,<1"
 librosa = "*"
 
 [tool.pixi.feature.mystmd.pypi-dependencies]
