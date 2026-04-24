@@ -27,7 +27,7 @@ While the majority these steps are managed within a python environment, often in
 
 
 
-## Key Capabilities
+## Features
 
 - Read data from CSV, Parquet, SQL (DuckDB), or API endpoints
 - Load audio from local files, S3 URIs (partial byte-range downloads), or HTTPS URLs
@@ -48,7 +48,7 @@ pip install jupyter_bioacoustic-0.1.8-py3-none-any.whl
 Open the widget in three lines:
 
 ```python
-from jupyter_bioacoustic import JupyterAudio
+from jupyter_bioacoustic import BioacousticAnnotator
 
-JupyterAudio(data='detections.csv', audio='recording.flac').open()
+BioacousticAnnotator(data='detections.csv', audio='recording.flac').open()
 ```

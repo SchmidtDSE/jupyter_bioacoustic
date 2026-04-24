@@ -1,15 +1,15 @@
 """
-JupyterAudio — opens the bioacoustic review panel from a notebook cell.
+BioacousticAnnotator — opens the bioacoustic review panel from a notebook cell.
 
 Usage (all args):
-    JupyterAudio(data=df, audio_path='test.flac', category_path='categories.csv',
+    BioacousticAnnotator(data=df, audio_path='test.flac', category_path='categories.csv',
                  output='observations-test.jsonl').open()
 
 Usage (config file):
-    JupyterAudio(config='config.yaml').open()
+    BioacousticAnnotator(config='config.yaml').open()
 
 Usage (config + overrides):
-    JupyterAudio(data=df, audio_path='test.flac', config='config.yaml').open()
+    BioacousticAnnotator(data=df, audio_path='test.flac', config='config.yaml').open()
 """
 
 import json
@@ -483,7 +483,7 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
     )
 
 
-class JupyterAudio:
+class BioacousticAnnotator:
     def __init__(
         self,
         data=_UNSET,
@@ -810,7 +810,7 @@ class JupyterAudio:
         ip = get_ipython()
         if ip is None:
             raise RuntimeError(
-                'JupyterAudio.open() must be called from inside a Jupyter kernel.'
+                'BioacousticAnnotator.open() must be called from inside a Jupyter kernel.'
             )
 
         ip.user_ns['_BA_DATA']           = self._data.to_json(orient='records')

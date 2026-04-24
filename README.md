@@ -13,7 +13,7 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 - [Features](#features)
 - [Documentation](#documentation)
 - [Usage](#usage)
-- [JupyterAudio Parameters](#jupyteraudio-parameters)
+- [BioacousticAnnotator Parameters](#jupyteraudio-parameters)
 - [Demo](#demo)
 - [License](#license)
 
@@ -85,9 +85,9 @@ gh release create v0.1.9 dist/jupyter_bioacoustic-0.1.9-py3-none-any.whl \
 ## Quick Start
 
 ```python
-from jupyter_bioacoustic import JupyterAudio
+from jupyter_bioacoustic import BioacousticAnnotator
 
-JupyterAudio(
+BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
     ident_column='common_name',
@@ -121,19 +121,19 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/dev-jupyter-au
 - [Configurable Forms](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configurable-Forms) — YAML form layout reference
 - [Annotation Tools](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Annotation-Tools) — Spectrogram interaction tools
 - [Data Schema](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Data-Schema) — Input and output formats
-- [API Reference](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/API-Reference) — `JupyterAudio` class, properties, methods
+- [API Reference](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/API-Reference) — `BioacousticAnnotator` class, properties, methods
 - [Demo](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Demo) — Running the demo notebooks
 - [Development](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Development) — Project structure, build tasks, architecture
 
 ## Usage 
 
-The `JupyterAudio` class is has an extremely simple interface; having only two methods (`.open()`, `.output()`) and one property (`.source`).
+The `BioacousticAnnotator` class is has an extremely simple interface; having only two methods (`.open()`, `.output()`) and one property (`.source`).
 
 ```python
-from jupyter_bioacoustic import JupyterAudio
+from jupyter_bioacoustic import BioacousticAnnotator
 
 # Create an instance
-ja = JupyterAudio(data='path_to_data.parquet', ...)
+ja = BioacousticAnnotator(data='path_to_data.parquet', ...)
 
 # Open the interface
 ja.open()
@@ -148,13 +148,13 @@ result_df = ja.output()
 ja.source
 ```
 
-The parameters for `JupyterAudio` are listed [below](#jupyteraudio-parameters). There is one special parameter `config` that can be used instead of providing the parameter values directly in the notebook. This is a great feature for reproduciblity, organization and avoiding bloated notebooks.  
+The parameters for `BioacousticAnnotator` are listed [below](#jupyteraudio-parameters). There is one special parameter `config` that can be used instead of providing the parameter values directly in the notebook. This is a great feature for reproduciblity, organization and avoiding bloated notebooks.  
 
 Consider the example above:
 
 
 ```python
-JupyterAudio(
+BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
     ident_column='common_name',
@@ -166,7 +166,7 @@ JupyterAudio(
 This can instead be produced this way
 
 ```python
-JupyterAudio(
+BioacousticAnnotator(
     data='detections-test.csv',
     config='config/review-configuration.yaml',
     inline=True,
@@ -186,7 +186,7 @@ For this simple example, this might not seem helpful. However for more advanced 
 See [Configuration](https://github.com/SchmidtDSE/dev-jupyter-audio/wiki/Configuration) for full details. Here is an advanced example:
 
 ```yaml
-# JupyterAudio Args
+# BioacousticAnnotator Args
 audio: "audio_path"    # column name — auto-detected (no slashes or dots)
 data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
 ident_column: 'common_name'
@@ -247,7 +247,7 @@ form_config:
         label: Verify
 ```
 
-### JupyterAudio Parameters
+### BioacousticAnnotator Parameters
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
