@@ -1,45 +1,30 @@
 (intro)=
 # Introduction
 
-![JupyterBioacoustic Plugin](../../assets/app-review.png)
+![BioacousticAnnotator](../../assets/app-review.png)
 
-Bioacoustic monitoring allows scientists to perform a number of important tasks including the tracking species presence and population, as well as migration patterns. There are hundreds of monitoring stations in California alone, producing 100+ TB of data annually.
+Bioacoustic monitoring allows scientists to track species presence, population dynamics, and migration patterns. Hundreds of monitoring stations across California alone produce over 100 TB of audio data annually.
 
-AI models such as [BirdNET](https://birdnet.cornell.edu/), [Perch](https://github.com/google-research/perch) and [PNW-Owl](https://www.sciencedirect.com/science/article/pii/S2352711023001693) allow scientist to process large amounts of data.  To do so however, they must first annotate the data for training, and then validate the results of the model runs.
+AI models such as [BirdNET](https://birdnet.cornell.edu/), [Perch](https://github.com/google-research/perch), and [PNW-Owl](https://www.sciencedirect.com/science/article/pii/S2352711023001693) can process large volumes of this data — but they require annotated training data, and their outputs need human validation.
 
-JupyterBioacoustic [BioacousticAnnotator](https://github.com/SchmidtDSE/jupyter_bioacoustic) is a robust, flexible, easily configured tool that allows users to annotate and review bioacoustic data directly within a Jupyter Notebook.
+[BioacousticAnnotator](https://github.com/SchmidtDSE/jupyter_bioacoustic) is a flexible, easily configured JupyterLab plugin for annotating and reviewing bioacoustic data directly within a notebook. It handles the full annotation-validation loop without leaving the computational environment where the analysis lives.
 
-There are many other annotation tools available (see below), each with its various strengths and weaknesses.  `BioacousticAnnotator` attempts to handle all use cases, without introducing complexity.  Perhaps its biggest strength is that it is run directly within the JupyterLab environment.
-
-**WHY JUPYTER LAB**
-A standard bioacoustic workflow is as follows:
-
-1. Data annotation 
-2. Organization and/or processing of annotated data
-3. Model Training
-4. Interim Model Validation
-5. Full Model Run
-6. Final Model Validation
-7. The production of datasets with the model results, as well as charts and figures explaining the outputs
-8. The release of papers and/or applications 
-
-While the majority these steps are managed within a python environment, often in jupyter-lab, the annotation and validation steps (1, 4 and 6), are usually handled with outside tools.  `BioacousticAnnotator` allows one to work in single environment - making the process easier, more reproducible.
-
+**Why JupyterLab?** A typical bioacoustic workflow includes data annotation, model training, validation, production runs, and reporting. Most of these steps happen in Python, often in JupyterLab — but annotation and validation are usually handled with external tools. `BioacousticAnnotator` brings these steps into the same environment, making the process simpler and more reproducible.
 
 
 ## Features
 
-- Read data from CSV, Parquet, SQL (DuckDB), or API endpoints
-- Load audio from local files, S3 URIs (partial byte-range downloads), or HTTPS URLs
-- Configure forms with selects, textboxes, checkboxes, and conditional sections
-- Write results incrementally to CSV, Parquet, or JSONL
-- Track progress with duplicate prevention and session counts
-- Built-in and custom visualizations with interactive zoom, pan, and configurable resolution
-- Capture spectrogram PNGs for reports
+- **Player / Visualizer** — browse audio clips with interactive spectrograms (plain, mel, log-frequency, or custom)
+- **Configurable forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, and conditional sections
+- **Annotation tools** — time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
+- **Custom visualizations** — integrate third-party libraries (OpenSoundscape, librosa, SciPy) or write your own
+- **Zoom and capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
+- **Flexible data sources** — CSV, Parquet, SQL (DuckDB), API endpoints, S3 byte-range reads
+
 
 ## Getting Started
 
-Install from a pre-built wheel — no Node.js or build step needed:
+Install from a pre-built wheel:
 
 ```bash
 pip install jupyter_bioacoustic-0.1.8-py3-none-any.whl
@@ -52,3 +37,11 @@ from jupyter_bioacoustic import BioacousticAnnotator
 
 BioacousticAnnotator(data='detections.csv', audio='recording.flac').open()
 ```
+
+
+## Table of Contents
+
+- [Overview](overview) — API, interface walkthrough
+- [Examples](examples) — player, annotator, reviewer, custom visualizations
+- [Parameters & Configuration](params) — data, audio, forms reference
+- [Form Examples](form-examples) — progressive form complexity
