@@ -41,96 +41,12 @@ export function readKernelVars(): string {
 
 // ─── Spectrogram + WAV generation (Player) ───────────────────
 
-export function readAudioLocal(path: string, startSec: number, durSec: number): string {
+export function readAudio(path: string, startSec: number, durSec: number): string {
   const p = escPy(path);
   return [
-    `import soundfile as _sf`,
-    `with _sf.SoundFile('${p}') as _f:`,
-    `    _sr = _f.samplerate`,
-    `    _f.seek(int(${startSec} * _sr))`,
-    `    _raw = _f.read(int(${durSec} * _sr), dtype='float32', always_2d=True)`,
-  ].join('\n');
-}
-
-export function readAudioS3(bucket: string, key: string, startSec: number, durSec: number): string {
-  // Try partial FLAC read (header + byte-range), fall back to full download + cache
-  return [
-    `import struct as _struct, os as _os, hashlib as _hl, boto3 as _b3, tempfile as _tmp, soundfile as _sf, sys as _sys`,
-    `_s3 = _b3.client('s3')`,
-    `_bkt, _key = '${escPy(bucket)}', '${escPy(key)}'`,
-    `_raw = None`,
-    `try:`,
-    `    # 1. Read FLAC header (4KB)`,
-    `    _hdr = _s3.get_object(Bucket=_bkt, Key=_key, Range='bytes=0-4095')['Body'].read()`,
-    `    assert _hdr[:4] == b'fLaC', 'Not a valid FLAC file'`,
-    `    _pos = 4`,
-    `    while _pos < len(_hdr) - 34:`,
-    `        _bt = _hdr[_pos] & 0x7f`,
-    `        _ln = _struct.unpack('>I', b'\\x00' + _hdr[_pos+1:_pos+4])[0]`,
-    `        if _bt == 0:`,
-    `            _si = _hdr[_pos+4:_pos+4+_ln]`,
-    `            _sr = _struct.unpack('>I', b'\\x00' + _si[10:13])[0] >> 4`,
-    `            _ts = _struct.unpack('>Q', b'\\x00\\x00\\x00' + _si[13:18])[0] & 0xfffffffff`,
-    `            _total_dur = _ts / _sr`,
-    `            break`,
-    `        _pos += 4 + _ln`,
-    `    # 2. Estimate byte range with 25% padding`,
-    `    _fsz = _s3.head_object(Bucket=_bkt, Key=_key)['ContentLength']`,
-    `    _dur = ${durSec}`,
-    `    _pad = _dur * 0.25`,
-    `    _ps = max(0, ${startSec} - _pad)`,
-    `    _pe = min(_total_dur, ${startSec} + _dur + _pad)`,
-    `    _bps = _fsz / _total_dur`,
-    `    _sb, _eb = int(_ps * _bps), min(_fsz - 1, int(_pe * _bps))`,
-    `    print(f'[S3 partial] header_sr={_sr} total_dur={_total_dur:.1f}s file_size={_fsz} byte_range={_sb}-{_eb} ({(_eb-_sb)/(1024*1024):.1f}MB)', file=_sys.stderr)`,
-    `    # 3. Download byte range + prepend header`,
-    `    _audio_bytes = _s3.get_object(Bucket=_bkt, Key=_key, Range=f'bytes={_sb}-{_eb}')['Body'].read()`,
-    `    with _tmp.NamedTemporaryFile(suffix='.flac', delete=False) as _t:`,
-    `        _t.write(_hdr)`,
-    `        _t.write(_audio_bytes)`,
-    `        _tp = _t.name`,
-    `    with _sf.SoundFile(_tp) as _f:`,
-    `        _rel_start = ${startSec} - _ps`,
-    `        _f.seek(int(_rel_start * _sr))`,
-    `        _raw = _f.read(int(_dur * _sr), dtype='float32', always_2d=True)`,
-    `    _os.unlink(_tp)`,
-    `    print(f'[S3 partial] SUCCESS: read {_raw.shape[0]} samples', file=_sys.stderr)`,
-    `except Exception as _e:`,
-    `    print(f'[S3 partial] FAILED: {type(_e).__name__}: {_e}', file=_sys.stderr)`,
-    `    print(f'[S3 partial] Falling back to full download + cache', file=_sys.stderr)`,
-    `    _cache_dir = '/tmp/jba_audio_cache'`,
-    `    _os.makedirs(_cache_dir, exist_ok=True)`,
-    `    _name = _hl.md5(f'{_bkt}/{_key}'.encode()).hexdigest() + '.flac'`,
-    `    _cached = _os.path.join(_cache_dir, _name)`,
-    `    if not _os.path.exists(_cached):`,
-    `        _s3.download_file(_bkt, _key, _cached)`,
-    `    with _sf.SoundFile(_cached) as _f:`,
-    `        _sr = _f.samplerate`,
-    `        _f.seek(int(${startSec} * _sr))`,
-    `        _raw = _f.read(int(${durSec} * _sr), dtype='float32', always_2d=True)`,
-  ].join('\n');
-}
-
-export function readAudioUrl(url: string, startSec: number, durSec: number): string {
-  // Download URL to a cached local file, then read with soundfile
-  const u = escPy(url);
-  return [
-    `import os as _os, hashlib as _hl, soundfile as _sf`,
-    `_cache_dir = '/tmp/jba_audio_cache'`,
-    `_os.makedirs(_cache_dir, exist_ok=True)`,
-    `_url = '${u}'`,
-    `_name = _hl.md5(_url.encode()).hexdigest() + _os.path.splitext(_url.split('?')[0])[1]`,
-    `_cached = _os.path.join(_cache_dir, _name)`,
-    `if not _os.path.exists(_cached):`,
-    `    import requests as _req`,
-    `    _resp = _req.get(_url, stream=True, timeout=300)`,
-    `    _resp.raise_for_status()`,
-    `    with open(_cached, 'wb') as _f:`,
-    `        for _chunk in _resp.iter_content(8192): _f.write(_chunk)`,
-    `with _sf.SoundFile(_cached) as _f:`,
-    `    _sr = _f.samplerate`,
-    `    _f.seek(int(${startSec} * _sr))`,
-    `    _raw = _f.read(int(${durSec} * _sr), dtype='float32', always_2d=True)`,
+    `from jupyter_bioacoustic.utils.audio import read_segment as _read_segment`,
+    `_partial = _BA_INSTANCE._partial_download if hasattr(_BA_INSTANCE, '_partial_download') else True`,
+    `_raw, _sr = _read_segment('${p}', ${startSec}, ${durSec}, partial=_partial)`,
   ].join('\n');
 }
 
@@ -191,18 +107,7 @@ export function spectrogramPipeline(
   vizType: 'builtin' | 'custom', builtinKey?: string,
   vizIndex?: number, resolutionW?: number,
 ): string {
-  let readCode: string;
-  if (path.startsWith('s3://')) {
-    const noProto = path.slice(5);
-    const slash = noProto.indexOf('/');
-    const bucket = slash < 0 ? noProto : noProto.slice(0, slash);
-    const key = slash < 0 ? '' : noProto.slice(slash + 1);
-    readCode = readAudioS3(bucket, key, startSec, durSec);
-  } else if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('gs://')) {
-    readCode = readAudioUrl(path, startSec, durSec);
-  } else {
-    readCode = readAudioLocal(path, startSec, durSec);
-  }
+  const readCode = readAudio(path, startSec, durSec);
   if (vizType === 'custom' && vizIndex != null) {
     return readCode + '\n' + customVizCode(vizIndex, resolutionW ?? 2000);
   }

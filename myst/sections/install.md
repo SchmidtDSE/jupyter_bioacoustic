@@ -20,6 +20,16 @@ jupyter-bioacoustic = { path = "dist/jupyter_bioacoustic-0.1.8-py3-none-any.whl"
 
 - Python >= 3.9
 - JupyterLab >= 4.0
+- **ffmpeg** (recommended) — enables partial byte-range downloads for remote audio files (S3, HTTPS, GCS). Without ffmpeg, remote files are fully downloaded and cached on first access.
+
+```bash
+# macOS
+brew install ffmpeg
+# Ubuntu
+sudo apt install ffmpeg
+# conda
+conda install -c conda-forge ffmpeg
+```
 
 The extension auto-registers on install — just launch JupyterLab and go.
 

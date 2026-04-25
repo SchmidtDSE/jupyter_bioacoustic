@@ -94,6 +94,12 @@ audio:
 
 Use `audio_sql` or `audio_api` with `audio_property` to resolve the audio path dynamically at init time.
 
+### Partial byte-range downloads
+
+Remote audio (S3, HTTPS, GCS) uses partial byte-range downloads by default — only the FLAC header and the estimated segment range are fetched. Multi-hour recordings load in seconds.
+
+This requires **ffmpeg** (via `pydub`). Without ffmpeg, it falls back to downloading and caching the full file. Disable partial downloads with `partial_download=False`.
+
 
 ## Forms
 
@@ -171,6 +177,7 @@ dynamic_forms:
 | `capture_dir` | `''` | Directory for captures |
 | `spectrogram_resolution` | `[1000, 2000, 4000]` | Image width(s) in px. `selected::` prefix for default |
 | `visualizations` | `['plain', 'mel']` | Built-in strings or callables |
+| `partial_download` | `True` | Byte-range downloads for remote audio (requires ffmpeg) |
 | `inline` | `True` | Embed below cell vs split-right panel |
 | `output` | `''` | Output file path. Auto-generated if form is configured |
 | `config` | `None` | Path to YAML/JSON config file |

@@ -3,45 +3,43 @@
 
 ## The API
 
-`jupyter_bioacoustic` has a single class with a minimal interface:
+The jupyter-bioacoustic `BioacousticAnnotator` has minimal interface:
 
-```{embed} myst:api-overview
-:remove-output: true
-```
-
-That's it — one class, two methods, one property. All configuration is handled through constructor parameters or a YAML/JSON config file.
-
-Parameters and config files are interchangeable. A config file is equivalent to:
 
 ```python
-import yaml
-config = yaml.safe_load(open('config.yaml'))
-ba = BioacousticAnnotator(**config)
-```
+from jupyter_bioacoustic import BioacousticAnnotator
 
-This makes it easy to share configurations between users and projects while keeping notebooks clean.
+ba =  BioacousticAnnotator(...)
+ba.open()      # opens the app (inline or in a new tab)
+ba.source      # returns the input data as a dataframe
+ba.output()    # returns the annotated data as a dataframe
+````
+
+## BioacousticAnnotator
 
 
-## The Interface
+`BioacousticAnnotator(...).open()` opens the annotator app within the jupyter-notebook, or optionally as stand alone jupyter-tab. The app itself is made up of three parts
 
-The widget is composed of three main sections:
+1. [Clip Table](clip-table)
+2. [Player and Visulizer](player-and-visulizer)
+3. [Form and Panel](form-and-panel)
 
 ### Clip Table
 
-![TODO: SCREENSHOT OF CLIP TABLE](../../assets/app-review-filter.png)
+![TODO: SCREENSHOT OF CLIP TABLE](../../assets/list-pending.png)
 
 The clip table displays your input data as a sortable, paginated table. Click any row to load its audio. Features include:
 
 - **GUI filter builder** — select a column, operator, and value to filter. Multiple filters combine with AND logic.
+- **Sortable** — Sort on any column by clicking on its column-name
 - **View modes** — toggle between `pending`, `reviewed`, and `all` rows (when duplicate prevention is enabled)
-- **Keyboard navigation** — Up/Down to highlight, Enter or Left/Right to select
+- **Keyboard navigation** — Up/Down to highlight and Enter to select, or Left/Right to select the previous/next clip
+- **Customizable** - only show columns of interest and highlight specfic column values for easy identification
 
-The columns shown are controlled by the [`data_columns`](params) parameter. By default, all columns from the data are displayed.
 
+### Player and Visulizer
 
-### Spectrogram Player
-
-![TODO: SCREENSHOT OF PLAYER](../../assets/spectrogram-2.png)
+![TODO: SCREENSHOT OF PLAYER](../../assets/spectrogram-3-playing.png)
 
 The spectrogram player renders each audio clip as an interactive spectrogram with playback controls:
 
@@ -52,18 +50,25 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 - **Playback** — play/pause with Space, restart with Shift+Space
 - **Capture** — save the current view as a PNG
 
-The frequency axis shows kHz labels that update correctly for all visualization scales. Editable time/frequency bounds allow precise navigation.
-
 
 ### Form Panel
 
 ![TODO: SCREENSHOT OF FORM](../../assets/form-review-no.png)
 
-The form panel is driven entirely by YAML configuration. It can be used for:
+The form panel can be easily configured to contain the simplest to the most complex forms for species labeling, time/frequency annotations, reviewing model predictions, and much more:
 
-- **Data collection** — species labeling, time/frequency annotation
-- **Validation** — confirm or reject model predictions with conditional correction forms
+- **Robust** there are many options for collecting data:
+	- `select`: creat simple dropdown box, source by short inline list or offering 100's of options loaded through external file. Optionally all users to filter list by typing in values, and/or save custom values
+	- `textbox`: for collect short or log textual inputs
+	- `checkbox`: for true/false inputs
+	- `spectrogram-annotations`: the user is optionally able to draw a bounding box, mark the start/end_time, as single time marker or draw multiple bounding boxes.
+	- `pass_value`: for passing values (unedited) from source to output. This is useful for say, taking and `id` column in the source row and passing it to a `source_id` column in the output file. 
+- **Dynamic**: additional form fields may be added based on responses from previous fields 
+- **Strict**: fields can be optionally requied. 
 
-Form elements include selects (with filter box, custom values, and conditional sections), textboxes, checkboxes, numbers, and annotation tools. See [Parameters & Configuration](params) for the full reference and [Form Examples](form-examples) for progressively complex configurations.
+See [Parameters & Configuration](params) for the full reference and [Form Examples](form-examples) for progressively complex configurations. On submit, a row is (or rows are) appended to the [`output`](params) file. Results are accessible via `ba.output()`. 
 
-On submit, a row is appended to the [`output`](params) file. Results are accessible via `ba.output()`.
+Note that, by default, the app will not allow for a row to be reviewed twice.  However the option to delete an existing review and re-review it is possible
+
+![TODO: SCREENSHOT OF FORM](../../assets/panel-reviewed.png)
+
