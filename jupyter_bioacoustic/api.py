@@ -518,6 +518,7 @@ class BioacousticAnnotator:
         capture_dir=_UNSET,
         spectrogram_resolution=_UNSET,
         visualizations=_UNSET,
+        partial_download=_UNSET,
         inline=_UNSET,
         width=_UNSET,
         height=_UNSET,
@@ -776,6 +777,7 @@ class BioacousticAnnotator:
                 self._visualizations.append({'type': 'custom', 'fn': v['fn'], 'label': label})
                 self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
 
+        self._partial_download = resolve(partial_download, 'partial_download', True)
         self._inline           = resolve(inline,           'inline',           DEFAULT_INLINE)
         self._width            = resolve(width,            'width',            DEFAULT_WIDTH)
         self._height           = resolve(height,           'height',           DEFAULT_HEIGHT)

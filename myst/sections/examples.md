@@ -1,11 +1,18 @@
 (examples)=
 # Examples
 
+
+The app is easy to configure and launch. Here are some basic examples
+
+```{embed} nb.simple-examples.setup
+:remove-output: true
+```
+
 ## Player / Visualizer
 
 No form, no data collection — just browse clips and view spectrograms.
 
-```{embed} myst:ex-player
+```{embed} nb.simple-examples.1.player
 :remove-output: true
 ```
 
@@ -16,7 +23,7 @@ No form, no data collection — just browse clips and view spectrograms.
 
 Add a `form_config` to collect data for each clip. Here the form presents a species dropdown populated from a categories file — all configured inline as Python dicts.
 
-```{embed} myst:ex-annotate-params
+```{embed} nb.simple-examples.2.annotator
 :remove-output: true
 ```
 

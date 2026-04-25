@@ -13,6 +13,7 @@ dependencies = [
     "matplotlib",
     "pandas",
     "soundfile",
+    "pydub",
     "boto3",
     "pyyaml",
 ]
@@ -51,6 +52,7 @@ pandas = "*"
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = { path = ".", editable = true }
 soundfile = "*"
+pydub = "*"
 boto3 = "*"
 pyyaml = "*"
 
