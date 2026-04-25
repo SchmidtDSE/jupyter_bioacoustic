@@ -47,7 +47,7 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 - **Resolution** — select rendering resolution from the [`spectrogram_resolution`](params) dropdown
 - **Buffer** — adjustable time padding before and after each clip
 - **Zoom** — `+`/`-`/`0` keys, zoom-to-selection box (⬚), click-and-drag to pan
-- **Playback** — play/pause with Space, restart with Shift+Space
+- **Playback** — play/pause with Space, restart with Shift+Space, drag the playhead to scrub
 - **Capture** — save the current view as a PNG
 
 

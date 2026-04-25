@@ -47,6 +47,7 @@ export class Player {
   private _freqMin = 0;
   private _freqMax = 0;
   private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number; boxIndex?: number } | null = null;
+  private _playheadDrag = false;
 
   // ─── Zoom state (client-side crop) ────────────────────────
   // View fractions: 0..1 range over the full spectrogram image
@@ -687,6 +688,20 @@ export class Player {
       return;
     }
 
+    // Playhead drag: click near the playhead line or triangle to scrub
+    if (this._specBitmap && this._segDuration > 0) {
+      const { cx } = this._canvasXY(e);
+      const W = this._canvas.width;
+      const viewW = this._viewXMax - this._viewXMin;
+      const playFrac = this._audio.currentTime / this._segDuration;
+      const ph = ((playFrac - this._viewXMin) / viewW) * W;
+      if (Math.abs(cx - ph) <= 10) {
+        this._playheadDrag = true;
+        this._canvasContainer.style.cursor = 'ew-resize';
+        return;
+      }
+    }
+
     // Pan mode: when no annotation tool is active and zoomed in
     const ac = this._form.getAnnotConfig();
     const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
@@ -784,6 +799,18 @@ export class Player {
     // Zoom-box is handled at document level — skip here
     if (this._zoomBoxDrag) return;
 
+    // Handle playhead drag
+    if (this._playheadDrag) {
+      const { cx } = this._canvasXY(e);
+      const W = this._canvas.width;
+      const viewW = this._viewXMax - this._viewXMin;
+      const frac = this._viewXMin + (cx / W) * viewW;
+      const newTime = Math.max(0, Math.min(this._segDuration, frac * this._segDuration));
+      this._audio.currentTime = newTime;
+      this._renderFrame();
+      return;
+    }
+
     // Handle pan drag
     if (this._panDrag) {
       const rect = this._canvas.getBoundingClientRect();
@@ -805,13 +832,27 @@ export class Player {
     }
 
     const ac = this._form.getAnnotConfig();
-    if (!ac || !this._specBitmap || this._segDuration === 0) return;
+    if (!this._specBitmap || this._segDuration === 0) return;
     const { cx, cy } = this._canvasXY(e);
 
     if (!this._annotDrag) {
-      this._updateAnnotCursor(cx, cy);
+      // Check if hovering near the playhead
+      const W = this._canvas.width;
+      const viewW = this._viewXMax - this._viewXMin;
+      const playFrac = this._audio.currentTime / this._segDuration;
+      const ph = ((playFrac - this._viewXMin) / viewW) * W;
+      if (Math.abs(cx - ph) <= 10) {
+        this._canvasContainer.style.cursor = 'ew-resize';
+        return;
+      }
+      if (ac) {
+        this._updateAnnotCursor(cx, cy);
+      } else {
+        this._updateCursorForZoom();
+      }
       return;
     }
+    if (!ac) return;
 
     const t = Math.max(this._segLoadStart, Math.min(
       this._segLoadStart + this._segDuration, this._xToTime(cx)));
@@ -891,15 +932,21 @@ export class Player {
   }
 
   private _onCanvasMouseLeave(): void {
-    // Cancel pan and annotation drags, but NOT zoom-box (it clamps to edges)
+    // Cancel pan, playhead, and annotation drags, but NOT zoom-box
     if (!this._zoomBoxDrag) {
       this._panDrag = null;
+      this._playheadDrag = false;
       this._annotDrag = null;
       if (this._specBitmap) this._renderFrame();
     }
   }
 
   private _onCanvasMouseUp(e?: MouseEvent): void {
+    if (this._playheadDrag) {
+      this._playheadDrag = false;
+      this._updateCursorForZoom();
+      return;
+    }
     // Zoom-box is handled at document level
     if (this._panDrag) {
       this._panDrag = null;
