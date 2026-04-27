@@ -22,7 +22,6 @@ export function readKernelVars(): string {
     `print(_j.dumps({`,
     `  'data': _BA_DATA,`,
     `  'audio': _BA_AUDIO,`,
-    `  'category_path': _BA_CATEGORY_PATH,`,
     `  'output': _BA_OUTPUT,`,
     `  'ident_col': _BA_IDENT_COL,`,
     `  'app_title': _BA_APP_TITLE,`,
@@ -194,53 +193,33 @@ export function loadSelectItemsText(path: string): string {
 
 // ─── Output file operations (FormPanel) ──────────────────────
 
-/** Count rows + valid rows in the output file. */
-export function countOutputProgress(
-  path: string, ext: string, isValidCol: string, yesVal: string
-): string {
+/** Count rows in the output file. */
+export function countOutputRows(path: string, ext: string): string {
   const p = escPy(path);
-  const validLine = isValidCol
-    ? (ext === 'csv'
-      ? `        _v = sum(1 for r in rows if r.get('${isValidCol}') == '${yesVal}')`
-      : ext === 'parquet'
-        ? `    if '${isValidCol}' in df.columns: _v = int((df['${isValidCol}'].astype(str) == '${yesVal}').sum())`
-        : `        _v = sum(1 for r in rows if str(r.get('${isValidCol}','')) == '${yesVal}')`)
-    : '';
-
   if (ext === 'csv') {
     return [
       `import csv, json, os`,
-      `_c = _v = 0`,
+      `_c = 0`,
       `if os.path.exists('${p}'):`,
-      `    with open('${p}') as f:`,
-      `        rows = list(csv.DictReader(f))`,
-      `        _c = len(rows)`,
-      ...(validLine ? [validLine] : []),
-      `print(json.dumps({'count': _c, 'valid': _v}))`,
+      `    with open('${p}') as f: _c = sum(1 for _ in csv.DictReader(f))`,
+      `print(json.dumps({'count': _c}))`,
     ].join('\n');
   }
   if (ext === 'parquet') {
     return [
       `import json, os`,
-      `_c = _v = 0`,
+      `_c = 0`,
       `if os.path.exists('${p}'):`,
-      `    import pandas as pd`,
-      `    df = pd.read_parquet('${p}')`,
-      `    _c = len(df)`,
-      ...(validLine ? [validLine] : []),
-      `print(json.dumps({'count': _c, 'valid': _v}))`,
+      `    import pandas as pd; _c = len(pd.read_parquet('${p}'))`,
+      `print(json.dumps({'count': _c}))`,
     ].join('\n');
   }
-  // jsonl / default
   return [
     `import json, os`,
-    `_c = _v = 0`,
+    `_c = 0`,
     `if os.path.exists('${p}'):`,
-    `    with open('${p}') as f:`,
-    `        rows = [json.loads(l) for l in f if l.strip()]`,
-    `        _c = len(rows)`,
-    ...(validLine ? [validLine] : []),
-    `print(json.dumps({'count': _c, 'valid': _v}))`,
+    `    with open('${p}') as f: _c = sum(1 for l in f if l.strip())`,
+    `print(json.dumps({'count': _c}))`,
   ].join('\n');
 }
 

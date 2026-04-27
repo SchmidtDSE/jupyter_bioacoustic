@@ -2,7 +2,7 @@
 BioacousticAnnotator — opens the bioacoustic review panel from a notebook cell.
 
 Usage (all args):
-    BioacousticAnnotator(data=df, audio_path='test.flac', category_path='categories.csv',
+    BioacousticAnnotator(data=df, audio_path='test.flac',
                  output='observations-test.jsonl').open()
 
 Usage (config file):
@@ -25,8 +25,8 @@ _UNSET = object()
 
 # ─── Defaults ─────────────────────────────────────────────────
 
-DEFAULT_OUTPUT_REVIEW = 'review_output'
-DEFAULT_OUTPUT_ANNOTATE = 'annotation_output'
+DEFAULT_OUTPUT_DIR = 'outputs'
+DEFAULT_OUTPUT_PREFIX = 'annotation_output'
 DEFAULT_OUTPUT_EXT = '.csv'
 DEFAULT_OUTPUT_TS_FMT = '%y%m%d_%H%M'
 DEFAULT_START_TIME_COL = 'start_time'
@@ -505,7 +505,6 @@ class BioacousticAnnotator:
         audio_property=_UNSET,
         audio_response_index=_UNSET,
         secrets=_UNSET,
-        category_path=_UNSET,
         output=_UNSET,
         ident_column=_UNSET,
         app_title=_UNSET,
@@ -534,17 +533,15 @@ class BioacousticAnnotator:
             and .ndjson are supported.
         audio_path : str, optional
             Local path or s3:// URI to the audio file.
-        category_path : str, optional
-            Path to categories.csv (used to populate the name dropdown).
         output : str, optional
-            Path where rows are appended on Verify/Submit.
+            Path where rows are appended on each submit.
             Format is inferred from extension: .csv, .parquet, or .jsonl/.ndjson.
-            Defaults to line-delimited JSON for any other/missing extension.
+            Parent directories are created automatically.
+            Defaults to ``outputs/annotation_output-YYMMDD_HHMM.csv``
+            when a ``form_config`` is set and no output is provided.
         ident_column : str, optional
-            Name of the column in ``data`` that holds the model's predicted
-            class (e.g. ``'common_name'``).  When set, the widget operates in
-            **verification mode**. When empty (default), operates in
-            **annotation mode**.
+            Name of the column in ``data`` to highlight in the info
+            card (e.g. ``'common_name'``).
         display_columns : list of str, optional
             Extra columns from ``data`` to display in the player info card.
         data_columns : list of str, optional
@@ -707,7 +704,6 @@ class BioacousticAnnotator:
             audio_secrets=raw_audio_secrets)
 
         self._data             = loaded_data
-        self._category_path    = resolve(category_path,    'category_path',    '')
         self._output           = resolve(output,           'output',           '')
         self._ident_column = resolve(ident_column, 'ident_column', '')
         self._app_title        = resolve(app_title,         'app_title',         DEFAULT_APP_TITLE)
@@ -717,8 +713,7 @@ class BioacousticAnnotator:
         if not self._output and raw_form_check is not None:
             from datetime import datetime
             ts = datetime.now().strftime(DEFAULT_OUTPUT_TS_FMT)
-            prefix = DEFAULT_OUTPUT_REVIEW if self._ident_column else DEFAULT_OUTPUT_ANNOTATE
-            self._output = f'{prefix}-{ts}{DEFAULT_OUTPUT_EXT}'
+            self._output = os.path.join(DEFAULT_OUTPUT_DIR, f'{DEFAULT_OUTPUT_PREFIX}-{ts}{DEFAULT_OUTPUT_EXT}')
         self._display_columns  = resolve(display_columns,  'display_columns',  None) or []
         self._data_columns     = resolved_columns
         raw_form = resolve(form_config, 'form_config', None)
@@ -817,7 +812,6 @@ class BioacousticAnnotator:
 
         ip.user_ns['_BA_DATA']           = self._data.to_json(orient='records')
         ip.user_ns['_BA_AUDIO']          = json.dumps(self._audio_config)
-        ip.user_ns['_BA_CATEGORY_PATH']  = self._category_path
         ip.user_ns['_BA_OUTPUT']         = self._output
         ip.user_ns['_BA_IDENT_COL']      = self._ident_column
         ip.user_ns['_BA_APP_TITLE']      = self._app_title

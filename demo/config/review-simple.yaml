@@ -2,7 +2,6 @@
 audio: audio_path
 data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
 ident_column: common_name
-category_path: data/categories-small.csv
 capture: false
 
 # FORM CONFIG

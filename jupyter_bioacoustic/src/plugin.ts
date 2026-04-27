@@ -143,7 +143,7 @@ class BioacousticWidget extends Widget {
     }
 
     let cfg: {
-      data: string; audio: string; category_path: string; output: string;
+      data: string; audio: string; output: string;
       ident_col: string; app_title: string; display_cols: string; data_cols: string;
       form_config: string; capture: string; capture_dir: string; duplicate_entries: string;
       default_buffer: string; spec_resolutions: string; viz_meta: string;
