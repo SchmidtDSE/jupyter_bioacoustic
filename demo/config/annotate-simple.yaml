@@ -1,24 +1,19 @@
-# AUDIO CONFIG
-audio:
-    # fallback: audio/test-default.flac
-    # column: audio_path
-    # url: "https://dse-soundhub.s3.us-west-2.amazonaws.com/public/audio/dev/20230522_200000.flac"
-    uri: "s3://dse-soundhub/public/audio/dev/20230522_200000.flac"
 # DATA CONFIG
-# data:
-#     columns: ['common_name', 'confidence', 'rank', 'county']
+data:
+    columns: ['common_name', 'confidence', 'rank', 'county']  # restrict the columns shown in the filterable/sortable list to these values
+ident_column: 'common_name'                                   # identifying column — shown first (without label) in the info card and capture filenames
+display_values: ['scientific_name', 'confidence']             # extra columns to show in the player info card.
 # ADDITIONAL PARAMS
-category_path: data/categories-small.csv
-default_buffer: 0
-capture: 'Save Spectrogram'
-capture_dir: 'spectrograms'
+default_buffer: 0                                             # set a custom buffer (addition time added before/after the clip)
+capture: 'Save Spectrogram'                                   # change the text on the "capture" button to "Save Spectrogram"
+capture_dir: 'spectrograms'                                   # add a default directory for the "captured" visualizations
 # FORM CONFIG
 form_config:
   title:
     value: ANNOTATE
-    progress_tracker: true
-  annotation:
-    start_time:
+    progress_tracker: true                                    # display session and total progress count, and score if validating data
+  annotation:                                                 # annotation section allows for time annotations: here we are using all availble options (time_select, start/end_time_select, bounding_box, multibox)
+    start_time:                                               # start/end_time contain a "soruce_value" which sets the initial value with a property in the input dataset
       label: start
       column: start_time
       source_value: start_time
@@ -26,12 +21,8 @@ form_config:
       label: end
       column: end_time
       source_value: end_time
-    min_frequency:
-      label: min freq
-      column: min_freq
-    max_frequency:
-      label: max freq
-      column: max_freq
+    min_frequency: min_freq                                   # min/max_frequency can also take dictionaries. this is the simplest config, specifying what the column in the output dataset should be
+    max_frequency: max_freq
     tools:
       - time_select
       - start_end_time_select

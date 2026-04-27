@@ -10,9 +10,9 @@
 import { Signal } from '@lumino/signaling';
 import { Detection, AnnotConfig, MultiboxEntry } from '../types';
 import { KernelBridge } from '../kernel';
-import { escPy } from '../util';
+import { escPy, AccuracyConfig, parseAccuracyConfig, isTruthyValue } from '../util';
 import {
-  countOutputProgress,
+  countOutputRows,
   readOutputRows,
   writeOutputRow,
   deleteOutputRow,
@@ -85,10 +85,10 @@ export class FormPanel {
 
   // Progress tracking
   private _sessionCount = 0;
-  private _sessionValid = 0;
   private _fileCount = 0;
-  private _fileValid = 0;
+  private _accuracy: number | null = null;
   private _progressEls: HTMLSpanElement[] = [];
+  private _accuracyConfig: AccuracyConfig | null = null;
 
   // Annotation tool
   private _annotConfig: AnnotConfig | null = null;
@@ -181,8 +181,9 @@ export class FormPanel {
     this._activeTool = '';
     this._annotInputs.clear();
     this._sessionCount = 0;
-    this._sessionValid = 0;
+    this._accuracy = null;
     this._progressEls = [];
+    this._accuracyConfig = null;
 
     const cfg = this._formConfig;
     if (!cfg) {
@@ -202,6 +203,7 @@ export class FormPanel {
       if (key === 'title') {
         this._appendTitleEntry(cfg.title, this._dynFormEl);
       } else if (key === 'progress_tracker') {
+        this._accuracyConfig = parseAccuracyConfig(cfg.progress_tracker);
         this._appendProgressTracker(this._dynFormEl);
       } else if (key === 'pass_value') {
         this._registerPassValue(cfg.pass_value);
@@ -391,16 +393,36 @@ export class FormPanel {
   async loadOutputFileProgress(): Promise<void> {
     if (!this._outputPath) return;
     const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-    const code = countOutputProgress(this._outputPath, ext, '', '');
+    const code = countOutputRows(this._outputPath, ext);
 
     try {
       const raw = await this._kernel.exec(code);
-      const result = JSON.parse(raw) as { count: number; valid: number };
+      const result = JSON.parse(raw) as { count: number };
       this._fileCount = result.count;
-      this._fileValid = result.valid;
-      this._updateProgress();
     } catch {
-      // output file may not exist yet — that's fine
+      // output file may not exist yet
+    }
+
+    await this._refreshAccuracy();
+    this._updateProgress();
+  }
+
+  private async _refreshAccuracy(): Promise<void> {
+    if (!this._accuracyConfig || !this._outputPath) {
+      this._accuracy = null;
+      return;
+    }
+    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
+    const code = readOutputRows(this._outputPath, ext);
+    try {
+      const rows = JSON.parse(await this._kernel.exec(code)) as Record<string, any>[];
+      if (rows.length === 0) { this._accuracy = null; return; }
+      const col = this._accuracyConfig.column;
+      const val = this._accuracyConfig.value;
+      const valid = rows.filter(r => this._isAccuracyValid(r[col], val)).length;
+      this._accuracy = Math.round(100 * valid / rows.length);
+    } catch {
+      this._accuracy = null;
     }
   }
 
@@ -453,6 +475,7 @@ export class FormPanel {
       } else if (type === 'title') {
         this._appendTitleEntry(config, container);
       } else if (type === 'progress_tracker') {
+        if (!this._accuracyConfig) this._accuracyConfig = parseAccuracyConfig(config);
         this._appendProgressTracker(container);
       } else if (type === 'annotation') {
         await this._buildAnnotationElement(config, container);
@@ -801,6 +824,7 @@ export class FormPanel {
       } else if (key === 'title') {
         this._appendTitleEntry(val, this._dynFormEl);
       } else if (key === 'progress_tracker') {
+        if (!this._accuracyConfig) this._accuracyConfig = parseAccuracyConfig(val);
         this._appendProgressTracker(this._dynFormEl);
       } else if (key === 'line') {
         const d = document.createElement('div');
@@ -1303,13 +1327,20 @@ export class FormPanel {
     return { ...this._formValues };
   }
 
+  private _isAccuracyValid(cellValue: any, configValue: string | null): boolean {
+    if (configValue !== null) {
+      return String(cellValue ?? '').toLowerCase() === configValue.toLowerCase();
+    }
+    return isTruthyValue(cellValue);
+  }
+
   // ─── Private: display elements ────────────────────────────
 
   private _appendTitleEntry(config: any, container: HTMLElement): void {
     if (!config) return;
     const isObj = typeof config === 'object';
     const text = isObj ? (config.value ?? '') : String(config);
-    const withProgress = isObj && config.progress_tracker === true;
+    const withProgress = isObj && config.progress_tracker != null && config.progress_tracker !== false;
 
     const d = document.createElement('div');
     d.style.cssText = sectionTitleStyle() + `display:flex;align-items:baseline;`;
@@ -1319,6 +1350,7 @@ export class FormPanel {
     d.appendChild(span);
 
     if (withProgress) {
+      if (!this._accuracyConfig) this._accuracyConfig = parseAccuracyConfig(config.progress_tracker);
       const spacer = document.createElement('span');
       spacer.style.flex = '1';
       d.append(spacer, this._createProgressEl());
@@ -1347,15 +1379,16 @@ export class FormPanel {
   private _updateProgress(): void {
     const total = this._rows.length;
     const fileN = Math.min(this._fileCount, total);
-    const fileV = Math.min(this._fileValid, fileN);
     const totalDone = fileN + this._sessionCount;
     const parts: string[] = [];
     if (this._sessionCount > 0) {
       parts.push(`session ${this._sessionCount}/${total}`);
     }
     parts.push(`total ${totalDone}/${total}`);
-    // Accuracy tracking removed — no longer tied to a specific is_valid column
-    const text = parts.join(' · ');
+    if (this._accuracy !== null) {
+      parts.push(`accuracy ${this._accuracy}%`);
+    }
+    const text = parts.join(' \u00b7 ');
     for (const el of this._progressEls) {
       el.textContent = text;
     }
@@ -1473,7 +1506,7 @@ export class FormPanel {
       if (!this._duplicateEntries) {
         this._reviewedMap.set(activeRow.id, { _multibox: true, count: n });
       }
-      this._updateProgress();
+      void this._refreshAccuracy().then(() => this._updateProgress());
       void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
       this.submitted.emit({ _multibox: true, count: n });
       return;
@@ -1493,7 +1526,7 @@ export class FormPanel {
     if (!this._duplicateEntries) {
       this._reviewedMap.set(activeRow.id, { ...values });
     }
-    this._updateProgress();
+    void this._refreshAccuracy().then(() => this._updateProgress());
     void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
     this.submitted.emit(values);
   }
@@ -1522,9 +1555,9 @@ export class FormPanel {
     }
 
     this._reviewedMap.delete(row.id);
-    this._sessionCount = Math.max(0, this._sessionCount - 1);
-    this._fileCount = Math.max(0, this._fileCount - 1);
-    this._updateProgress();
+    this._sessionCount = 0;
+    this._fileCount = 0;
+    await this.loadOutputFileProgress();
 
     // Rebuild the form and show it
     await this.build();

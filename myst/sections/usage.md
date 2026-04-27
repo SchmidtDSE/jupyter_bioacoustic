@@ -36,7 +36,7 @@ Add a `form_config` to collect structured data for each clip.
 :remove-output: true
 ```
 
-![TODO: APP SCREENSHOT OF ANNOTATION MODE](../../assets/form-annotate.png)
+![TODO: APP SCREENSHOT OF ANNOTATION](../../assets/form-annotate.png)
 
 
 ### Review
@@ -47,7 +47,7 @@ The same form system works for validating existing data. Here a validity dropdow
 :remove-output: true
 ```
 
-![TODO: APP SCREENSHOT OF REVIEW MODE](../../assets/app-review.png)
+![TODO: APP SCREENSHOT OF REVIEW](../../assets/app-review.png)
 
 
 ## Config Files
