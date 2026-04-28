@@ -26,7 +26,9 @@ ba.output()    # returns the annotated data as a dataframe
 
 ### Clip Table
 
-![TODO: SCREENSHOT OF CLIP TABLE](../../assets/list-pending.png)
+```{figure} ../../assets/list/filtered.png
+:class: bordered
+```
 
 The clip table displays your input data as a sortable, paginated table. Click any row to load its audio. Features include:
 
@@ -39,7 +41,9 @@ The clip table displays your input data as a sortable, paginated table. Click an
 
 ### Player and Visulizer
 
-![TODO: SCREENSHOT OF PLAYER](../../assets/spectrogram-3-playing.png)
+```{figure} ../../assets/vis/spectrogram-playing.png
+:class: bordered
+```
 
 The spectrogram player renders each audio clip as an interactive spectrogram with playback controls:
 
@@ -53,7 +57,9 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 
 ### Form Panel
 
-![TODO: SCREENSHOT OF FORM](../../assets/form-review-no.png)
+```{figure} ../../assets/form_panel/multibox.png
+:class: bordered
+```
 
 The form panel can be easily configured to contain the simplest to the most complex forms for species labeling, time/frequency annotations, reviewing model predictions, and much more:
 
@@ -70,5 +76,6 @@ See [Parameters & Configuration](params) for the full reference and [Form Exampl
 
 Note that, by default, the app will not allow for a row to be reviewed twice.  However the option to delete an existing review and re-review it is possible
 
-![TODO: SCREENSHOT OF FORM](../../assets/panel-reviewed.png)
-
+```{figure} ../../assets/form_panel/reviewed.png
+:class: bordered
+```

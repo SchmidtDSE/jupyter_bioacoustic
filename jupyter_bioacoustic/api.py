@@ -518,7 +518,6 @@ class BioacousticAnnotator:
         spectrogram_resolution=_UNSET,
         visualizations=_UNSET,
         partial_download=_UNSET,
-        inline=_UNSET,
         width=_UNSET,
         height=_UNSET,
         config=None,
@@ -547,9 +546,6 @@ class BioacousticAnnotator:
         data_columns : list of str, optional
             Ordered list of columns to display in the clip table.
             Overrides the default column selection.
-        inline : bool, optional
-            If True, embed the widget below the cell instead of opening a
-            split-right panel. Default False.
         width : int or str, optional
             Width of the inline widget. Integers are treated as pixels.
             Default '100%'.
@@ -773,7 +769,6 @@ class BioacousticAnnotator:
                 self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
 
         self._partial_download = resolve(partial_download, 'partial_download', True)
-        self._inline           = resolve(inline,           'inline',           DEFAULT_INLINE)
         self._width            = resolve(width,            'width',            DEFAULT_WIDTH)
         self._height           = resolve(height,           'height',           DEFAULT_HEIGHT)
         self._output_cache     = None
@@ -802,8 +797,15 @@ class BioacousticAnnotator:
         """Called by the widget after each submit to force a re-read."""
         self._output_cache = None
 
-    def open(self) -> None:
-        """Serialize data into kernel variables and open the review panel."""
+    def open(self, inline: bool = DEFAULT_INLINE) -> None:
+        """Serialize data into kernel variables and open the widget.
+
+        Parameters
+        ----------
+        inline : bool, optional
+            If True, embed the widget below the cell instead of opening
+            a split-right panel. Default True.
+        """
         ip = get_ipython()
         if ip is None:
             raise RuntimeError(
@@ -833,7 +835,7 @@ class BioacousticAnnotator:
         ip.user_ns['_BA_DEFAULT_BUFFER'] = str(self._default_buffer)
         ip.user_ns['_BA_INSTANCE'] = self
 
-        if self._inline:
+        if inline:
             self._open_inline()
         else:
             display(Javascript(
@@ -850,7 +852,7 @@ class BioacousticAnnotator:
             f'<div id="{div_id}" style="'
             f'width:{w};height:{h};'
             f'border:1px solid #313244;border-radius:6px;'
-            f'overflow:hidden;position:relative;'
+            f'overflow:auto;position:relative;resize:both;'
             f'"></div>'
         ))
 

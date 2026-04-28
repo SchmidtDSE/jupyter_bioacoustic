@@ -24,7 +24,7 @@ export interface FilterClause {
 export interface FilterColumnMeta {
   key: string;
   label: string;
-  dtype: 'float' | 'string';
+  dtype: 'float' | 'string' | 'date';
 }
 
 /** Column definition for the clip table. */

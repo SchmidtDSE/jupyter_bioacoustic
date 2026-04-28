@@ -142,8 +142,8 @@ export function injectGlobalStyles(): void {
   styleEl.textContent = `
     .jp-BA-chip-dismiss:hover { color: ${COLORS.red}; }
     .jp-BA-filter-input::placeholder {
-      color: ${COLORS.overlay};
-      opacity: 0.6;
+      color: ${COLORS.overlay} !important;
+      opacity: 0.7 !important;
       font-style: italic;
     }
   `;

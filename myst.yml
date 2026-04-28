@@ -15,6 +15,7 @@ site:
     favicon: assets/favicon.ico
     logo: assets/dse-2.black-crop.small.png
     logo_dark: assets/dse-2.white-crop.small.png
+    style: myst/styles.css
 project:
   title: Jupyter Bioacoustic
   subtitle: jupyter-lab tools for annotating and reviewing bioacoustic data
