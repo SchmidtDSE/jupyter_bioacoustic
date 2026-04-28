@@ -36,6 +36,21 @@ const FLOAT_OPS: OpDef[] = [
   { value: 'is_not_empty', label: 'is not empty', needsValue: false },
 ];
 
+const DATE_OPS: OpDef[] = [
+  { value: '=',            label: 'equals',       needsValue: true },
+  { value: '!=',           label: 'not equals',   needsValue: true },
+  { value: '>=',           label: 'on or after',  needsValue: true },
+  { value: '<=',           label: 'on or before', needsValue: true },
+  { value: '>',            label: 'after',        needsValue: true },
+  { value: '<',            label: 'before',       needsValue: true },
+  { value: 'is_null',      label: 'is null',      needsValue: false },
+  { value: 'is_not_null',  label: 'is not null',  needsValue: false },
+  { value: 'is_empty',     label: 'is empty',     needsValue: false },
+  { value: 'is_not_empty', label: 'is not empty', needsValue: false },
+];
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 const STRING_OPS: OpDef[] = [
   { value: '=',            label: 'equals',        needsValue: true },
   { value: '!=',           label: 'not equals',    needsValue: true },
@@ -50,7 +65,7 @@ const STRING_OPS: OpDef[] = [
 
 // Human-readable label for an operator (used in chips)
 const OP_LABELS: Record<string, string> = {};
-[...FLOAT_OPS, ...STRING_OPS].forEach(o => { OP_LABELS[o.value] = o.label; });
+[...FLOAT_OPS, ...STRING_OPS, ...DATE_OPS].forEach(o => { OP_LABELS[o.value] = o.label; });
 
 export class ClipTable {
   /** Root element — contains filter bar, chip bar, table wrapper, pagination bar. */
@@ -161,20 +176,26 @@ export class ClipTable {
 
     allKeys.forEach(key => {
       let isFloat = true;
+      let isDate = true;
       let checked = 0;
       for (let i = 0; i < sampleSize; i++) {
         const v = (this._rows[i] as any)[key];
         if (v === null || v === undefined || v === '') continue;
         checked++;
+        const s = String(v);
+        if (!DATE_RE.test(s)) isDate = false;
         if (typeof v === 'number') continue;
-        const n = parseFloat(String(v));
-        if (isNaN(n) || !isFinite(n)) { isFloat = false; break; }
+        const n = parseFloat(s);
+        if (isNaN(n) || !isFinite(n) || s !== String(n)) { isFloat = false; }
       }
-      // If we found no non-empty values, default to string
-      if (checked === 0) isFloat = false;
+      if (checked === 0) { isFloat = false; isDate = false; }
+
+      let dtype: 'float' | 'string' | 'date' = 'string';
+      if (isDate) dtype = 'date';
+      else if (isFloat) dtype = 'float';
 
       const label = this._tableCols.find(c => c.key === key)?.label ?? prettify(key);
-      meta.push({ key, label, dtype: isFloat ? 'float' : 'string' });
+      meta.push({ key, label, dtype });
     });
 
     this._filterColMeta = meta;
@@ -198,9 +219,15 @@ export class ClipTable {
     return this._filterColMeta.find(m => m.key === this._colSelect.value);
   }
 
+  private _opsForDtype(dtype?: string): OpDef[] {
+    if (dtype === 'float') return FLOAT_OPS;
+    if (dtype === 'date') return DATE_OPS;
+    return STRING_OPS;
+  }
+
   private _updateOpSelect(): void {
     const meta = this._getSelectedColMeta();
-    const ops = meta?.dtype === 'float' ? FLOAT_OPS : STRING_OPS;
+    const ops = this._opsForDtype(meta?.dtype);
     this._opSelect.innerHTML = '';
     ops.forEach(o => {
       const opt = document.createElement('option');
@@ -213,7 +240,7 @@ export class ClipTable {
 
   private _currentOpNeedsValue(): boolean {
     const meta = this._getSelectedColMeta();
-    const ops = meta?.dtype === 'float' ? FLOAT_OPS : STRING_OPS;
+    const ops = this._opsForDtype(meta?.dtype);
     const op = ops.find(o => o.value === this._opSelect.value);
     return op ? op.needsValue : true;
   }
@@ -223,21 +250,23 @@ export class ClipTable {
     if (!this._currentOpNeedsValue()) return;
 
     const meta = this._getSelectedColMeta();
+    const inp = document.createElement('input');
     if (meta?.dtype === 'float') {
-      const inp = document.createElement('input');
       inp.type = 'number';
       inp.step = 'any';
       inp.style.cssText = inputStyle('100px');
-      inp.addEventListener('keydown', e => { if (e.key === 'Enter') this._addFilter(); });
-      this._valueContainer.appendChild(inp);
+    } else if (meta?.dtype === 'date') {
+      inp.type = 'text';
+      inp.placeholder = 'YYYY-MM-DD';
+      inp.className = 'jp-BA-filter-input';
+      inp.style.cssText = inputStyle('120px');
     } else {
-      const inp = document.createElement('input');
       inp.type = 'text';
       inp.placeholder = 'value';
       inp.style.cssText = inputStyle('140px');
-      inp.addEventListener('keydown', e => { if (e.key === 'Enter') this._addFilter(); });
-      this._valueContainer.appendChild(inp);
     }
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') this._addFilter(); });
+    this._valueContainer.appendChild(inp);
   }
 
   private _addFilter(): void {
@@ -251,8 +280,11 @@ export class ClipTable {
       if (!inp || !inp.value.trim()) return;
       const raw = inp.value.trim();
       const meta = this._getSelectedColMeta();
-      const val: string | number = meta?.dtype === 'float' ? parseFloat(raw) : raw;
-      if (meta?.dtype === 'float' && isNaN(val as number)) return;
+      let val: string | number = raw;
+      if (meta?.dtype === 'float') {
+        val = parseFloat(raw);
+        if (isNaN(val)) return;
+      }
       this._activeFilters.push({ col, op, val });
       inp.value = '';
     }
@@ -441,7 +473,11 @@ export class ClipTable {
       }
     });
 
+    const phStyle = document.createElement('style');
+    phStyle.textContent = `.jp-BA-filter-input::placeholder{color:${COLORS.overlay}!important;opacity:0.7!important;font-style:italic;}`;
+
     filterBar.append(
+      phStyle,
       filterLbl, this._colSelect, this._opSelect, this._valueContainer,
       addBtn, this._viewModeSelect, this._refreshBtn,
     );
@@ -626,6 +662,7 @@ export class ClipTable {
     let rows = this._rows.filter(row => {
       return filters.every(f => {
         const v = (row as any)[f.col];
+        const colMeta = this._filterColMeta.find(m => m.key === f.col);
 
         // Null / empty operators (no value comparison)
         if (f.op === 'is_null') return v === null || v === undefined;
@@ -641,6 +678,17 @@ export class ClipTable {
         if (f.op === 'contains') return vs.includes(fvs);
         if (f.op === 'starts_with') return vs.startsWith(fvs);
         if (f.op === 'ends_with') return vs.endsWith(fvs);
+
+        // Date comparisons (lexicographic on YYYY-MM-DD strings)
+        if (colMeta?.dtype === 'date') {
+          const ds = String(v);
+          const dfs = String(f.val);
+          if (f.op === '>=') return ds >= dfs;
+          if (f.op === '<=') return ds <= dfs;
+          if (f.op === '>') return ds > dfs;
+          if (f.op === '<') return ds < dfs;
+          return true;
+        }
 
         // Numeric operators
         const n = parseFloat(String(v));
