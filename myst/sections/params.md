@@ -178,6 +178,7 @@ dynamic_forms:
 | `spectrogram_resolution` | `[1000, 2000, 4000]` | Image width(s) in px. `selected::` prefix for default |
 | `visualizations` | `['plain', 'mel']` | Built-in strings or callables |
 | `partial_download` | `True` | Byte-range downloads for remote audio (requires ffmpeg) |
-| `inline` | `True` | Embed below cell vs split-right panel |
+| `width` | `'100%'` | Inline widget width |
+| `height` | `900` | Inline widget height |
 | `output` | `''` | Output file path. Auto-generated if form is configured |
 | `config` | `None` | Path to YAML/JSON config file |

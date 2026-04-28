@@ -1,28 +1,34 @@
 (overview)=
 # Overview
 
-## The API
+## BioacousticAnnotator
+
+
+```{figure} ../../assets/app/inline_standalone.png
+:class: bordered
+```
 
 The jupyter-bioacoustic `BioacousticAnnotator` has minimal interface:
-
 
 ```python
 from jupyter_bioacoustic import BioacousticAnnotator
 
 ba =  BioacousticAnnotator(...)
-ba.open()      # opens the app (inline or in a new tab)
-ba.source      # returns the input data as a dataframe
-ba.output()    # returns the annotated data as a dataframe
 ````
 
-## BioacousticAnnotator
+- `ba.open()`: opens the application. `.open` takes a single parameter `inline: bool = True`.  If `True` the app will open within the notebook. If `False` the app will open as a stand-alone application in a new tab.
+- `ba.source`: returns the input data as a dataframe 
+- `ba.output()`: returns the output data as a dataframe. the data is by default only re-loaded if an update has been made. `.output`: takes a single parameter `force: bool = False`.  if `True` the data will be re-loaded even if a change has not occured.  Note this is useful if the output data is modified externally. 
 
+---
 
-`BioacousticAnnotator(...).open()` opens the annotator app within the jupyter-notebook, or optionally as stand alone jupyter-tab. The app itself is made up of three parts
+The app itself is composed of 3 distinct components: 
 
-1. [Clip Table](clip-table)
-2. [Player and Visulizer](player-and-visulizer)
-3. [Form and Panel](form-and-panel)
+1. [Clip Table](clip-table): for selecting, sorting, filtering audio-clips
+2. [Player and Visulizer](player-and-visulizer): for playing, visualizing, and annotating clips
+3. [Form and Panel](form-and-panel): for data collection and model review of the selected clip
+
+---
 
 ### Clip Table
 
@@ -36,8 +42,9 @@ The clip table displays your input data as a sortable, paginated table. Click an
 - **Sortable** — Sort on any column by clicking on its column-name
 - **View modes** — toggle between `pending`, `reviewed`, and `all` rows (when duplicate prevention is enabled)
 - **Keyboard navigation** — Up/Down to highlight and Enter to select, or Left/Right to select the previous/next clip
-- **Customizable** - only show columns of interest and highlight specfic column values for easy identification
+- **Customizable** - order and select columns of interest (defaults to all columns in the dataset)
 
+---
 
 ### Player and Visulizer
 
@@ -52,8 +59,10 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 - **Buffer** — adjustable time padding before and after each clip
 - **Zoom** — `+`/`-`/`0` keys, zoom-to-selection box (⬚), click-and-drag to pan
 - **Playback** — play/pause with Space, restart with Shift+Space, drag the playhead to scrub
-- **Capture** — save the current view as a PNG
+- **Capture** — save the selected visualization as a PNG
+- **Customizable** - configure availabe configuration types, resolutions and default buffer. for the selected clip, specifiy which values to display 
 
+---
 
 ### Form Panel
 
@@ -68,9 +77,10 @@ The form panel can be easily configured to contain the simplest to the most comp
 	- `textbox`: for collect short or log textual inputs
 	- `checkbox`: for true/false inputs
 	- `spectrogram-annotations`: the user is optionally able to draw a bounding box, mark the start/end_time, as single time marker or draw multiple bounding boxes.
-	- `pass_value`: for passing values (unedited) from source to output. This is useful for say, taking and `id` column in the source row and passing it to a `source_id` column in the output file. 
+	- `pass_value`: for passing values (unedited) from source to output. This is useful for, say, taking and `id` column in the source row and passing it to a `source_id` column in the output file. 
 - **Dynamic**: additional form fields may be added based on responses from previous fields 
 - **Strict**: fields can be optionally requied. 
+- **Simple**: Even complex forms can be created using simple yaml configuration files
 
 See [Parameters & Configuration](params) for the full reference and [Form Examples](form-examples) for progressively complex configurations. On submit, a row is (or rows are) appended to the [`output`](params) file. Results are accessible via `ba.output()`. 
 

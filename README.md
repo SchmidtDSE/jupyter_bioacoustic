@@ -127,7 +127,7 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/jupyter_bioaco
 
 ## Usage 
 
-The `BioacousticAnnotator` class is has an extremely simple interface; having only two methods (`.open()`, `.output()`) and one property (`.source`).
+The `BioacousticAnnotator` class has an extremely simple interface; having only two methods (`.open(inline=True)`, `.output(force=False)`) and one property (`.source`).
 
 ```python
 from jupyter_bioacoustic import BioacousticAnnotator
@@ -143,6 +143,7 @@ ja.open()
 #       file each time you submit.
 #       however between submissions it will be cached.
 result_df = ja.output()
+result_df = ja.output(force=True)  # force re-read from disk
 
 # Dataframe access to the source data (here 'path_to_data.parquet')
 ja.source
@@ -169,8 +170,7 @@ This can instead be produced this way
 BioacousticAnnotator(
     data='detections-test.csv',
     config='config/review-configuration.yaml',
-    inline=True,
-)
+).open()
 ```
 
 ```yaml
@@ -279,7 +279,8 @@ form_config:
 | `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. Prefix an item with `selected::` to set the default (e.g. `[1000, 'selected::2000', 4000]`). |
 | `visualizations` | list | `['plain', 'mel']` | Visualization types for the dropdown. Built-in strings (`'plain'`, `'mel'`, `'log_frequency'`, `'bandpass'`, `'waveform'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#custom-visualizations). |
 | `partial_download` | bool | `True` | Use byte-range downloads for remote audio (requires ffmpeg/pydub). Set to `False` to always download and cache the full file. |
-| `inline` | bool | `True` | Embed below cell (`True`) vs split-right panel (`False`). |
+| `width` | str | `'100%'` | Inline widget width. |
+| `height` | int | `900` | Inline widget height. |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
 

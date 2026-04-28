@@ -33,7 +33,7 @@ Install from a pre-built wheel:
 pip install jupyter_bioacoustic-0.1.8-py3-none-any.whl
 ```
 
-Open the widget in three lines:
+Open the widget:
 
 ```python
 from jupyter_bioacoustic import BioacousticAnnotator
@@ -45,6 +45,5 @@ BioacousticAnnotator(data='detections.csv', audio='recording.flac').open()
 ## Table of Contents
 
 - [Overview](overview) — API, interface walkthrough
-- [Examples](examples) — player, annotator, reviewer, custom visualizations
-- [Parameters & Configuration](params) — data, audio, forms reference
-- [Form Examples](form-examples) — progressive form complexity
+- [Examples](examples)
+- [Visualizations](visualizations)

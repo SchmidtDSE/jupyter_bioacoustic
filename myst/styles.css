@@ -1,3 +1,10 @@
 .bordered img {     
 	border: 3px solid #666;
  }
+
+.article code { 
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 85%;
+  line-height: 1.45;
+  color: #aaa;
+}

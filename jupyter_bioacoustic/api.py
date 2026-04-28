@@ -778,13 +778,16 @@ class BioacousticAnnotator:
         """The input DataFrame passed as ``data``."""
         return self._data
 
-    def output(self):
+    def output(self, force: bool = False):
         """Read and return the output file as a DataFrame.
 
-        Caches the result until the next call to ``open()`` (which resets it),
-        so repeated calls don't re-read the file.
+        Parameters
+        ----------
+        force : bool, optional
+            If True, re-read the file even if a cached copy exists.
+            Default False.
         """
-        if self._output_cache is not None:
+        if self._output_cache is not None and not force:
             return self._output_cache
         if not self._output:
             return None
