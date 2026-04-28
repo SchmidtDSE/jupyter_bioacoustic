@@ -45,13 +45,14 @@ project:
     - file: myst/main.md
     - file: myst/sections/overview.md
     - file: myst/sections/examples.md
+    - file: myst/sections/visualizations.md
     - file: myst/sections/params.md
     - file: myst/sections/form-examples.md
     - file: myst/sections/install.md
     - title: Notebooks
       children:
-        - file: demo/myst-examples.ipynb
         - file: demo/simple-examples.ipynb
-        - file: demo/data-parameter-examples.ipynb
-        - file: demo/custom-visualizations.ipynb
-        - file: demo/geo-analysis-example.ipynb
+        - file: demo/visualizations.ipynb
+        - file: demo/visualizations-3rd_party.ipynb
+          title: "Custom Visualizations"
+        # - file: demo/geo-analysis-example.ipynb

@@ -2,75 +2,56 @@
 # Examples
 
 
-The app is easy to configure and launch. Here are some basic examples
+The most basic configuration of `BioacousticAnnotator` is a simple Player / Visualizer.  
 
-```{embed} nb.simple-examples.setup
-:remove-output: true
+```python
+BioacousticAnnotator(data='detections.csv', audio='recording.flac').open()
 ```
 
-## Player / Visualizer
-
-No form, no data collection — just browse clips and view spectrograms.
-
-```{embed} nb.simple-examples.1.player
-:remove-output: true
-```
-
-![TODO: SCREENSHOT OF PLAYER](../../assets/app-inline.png)
+Here we have used a CSV for the source `data`. We could similarly have provided a Parquet, or JSONL file path, an API-endpoit, a Database Query (using DuckDB), or have passed a dataframe directly. For `audio` we have passed a path to an audio file. For this example all the clips will come from the same file. You can also pass an `audio_column` so that each clip can be read from different audio file. The audio files can be local paths or be read over `https://`, `s3://`,  and `gs://`. 
 
 
-## Annotation (parameters)
+For more advanced configurations it is suggested that to use a configurtion file. 
 
-Add a `form_config` to collect data for each clip. Here the form presents a species dropdown populated from a categories file — all configured inline as Python dicts.
+Here's a basic example:
 
-```{embed} nb.simple-examples.2.annotator
-:remove-output: true
-```
-
-![TODO: SCREENSHOT OF ANNOTATOR](../../assets/form-annotate.png)
-
-
-## Annotation (config file)
-
-The same result using a YAML config file. This separates the form layout from the notebook code.
-
-```{embed} myst:ex-annotate-config
-:remove-output: true
-```
-
-The config file:
-
-```{literalinclude} ../demo/config/annotate-simple.yaml
+```{literalinclude} ../../demo/config/simple-examples-3c2.yaml
 :language: yaml
+```    
+
+Note that we have not included the data and audio parameters. Although they could be included, by keeping them external to the config the user can use the same configuration files across projects and end-users. 
+
+**FORM CONFIG**
+
+We could have included the form config directly, however seperating the form config allows different projects to use the same forms. Forms themeselves can range to a simple select-dropdown to multipart dynamic forms. Even the most complex forms however are easy to configure.
+
+---
+
+Here we create a "species" select list populated with values from a csv:
+```{figure} ../../assets/form_panel/annotate-species.png
+:class: bordered
 ```
 
-
-## Review (advanced config)
-
-A validation workflow with conditional sections, progress tracking, multiple form element types, and spectrogram capture. The config file drives the entire layout:
-
-```{embed} myst:ex-review
-:remove-output: true
-```
-
-```{literalinclude} ../demo/config/simple-examples-3c.yaml
+```{literalinclude} ../../demo/config/forms/simple-examples-3a.yaml
 :language: yaml
+```    
+
+---
+
+The configuration below adds a custom title and a progress-tracker, passes the source _id_ to the output dataset with name _detection\_id_, and asks the user if the model has correctly identified the species.
+
+If the response is yes the confirmed_form allows for the user to add additional detials.
+```{figure} ../../assets/form_panel/review-yes.png
+:class: bordered
 ```
 
-![TODO: SCREENSHOT OF REVIEWER](../../assets/app-review.png)
-
-
-## Custom Visualizations (OpenSoundscape)
-
-Integrate third-party spectrogram libraries by wrapping them in a function that returns the standard viz dict. Here we use [OpenSoundscape](https://opensoundscape.org):
-
-```{embed} myst:ex-custom-viz
-:remove-output: true
+If the response is no the rejected_form allows the user to select the correct species, ask for a review, etc.
+```{figure} ../../assets/form_panel/review-no.png
+:class: bordered
 ```
 
-The `visualizations` module also works standalone for analysis:
+```{literalinclude} ../../demo/config/forms/simple-examples-3c2.yaml
+:language: yaml
+```    
 
-```{embed} myst:standalone-vis
-:remove-output: false
-:remove-input: false
-```
+
