@@ -46,9 +46,9 @@ project:
     - file: myst/sections/overview.md
     - file: myst/sections/examples.md
     - file: myst/sections/visualizations.md
-    - file: myst/sections/params.md
     - file: myst/sections/form-examples.md
-    - file: myst/sections/install.md
+    # - file: myst/sections/params.md
+    # - file: myst/sections/install.md
     - title: Notebooks
       children:
         - file: demo/simple-examples.ipynb
