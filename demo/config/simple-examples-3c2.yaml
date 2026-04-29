@@ -1,10 +1,10 @@
-data_columns:                                           # restrict the columns shown in the filterable/sortable list to these values
-  - 'common_name'
-  - 'confidence'
-  - 'rank'
-  - 'county'
-ident_column: 'common_name'                             # identifying column — shown first (without label) in the info card and capture filenames
-display_columns: ['scientific_name']                    # extra columns to show in the player info card.
-capture: 'Save Spectrogram'                             # change the text on the "capture" button to "Save Spectrogram"
-capture_dir: 'spectrograms'                             # add a default directory for the "captured" visualizations
-form_config: 'config/forms/simple-examples-3c2.yaml'    # path to form configuration
+data_columns:
+    - 'common_name'
+    - 'confidence'
+    - 'rank'
+    - 'county'
+ident_column: 'common_name'
+display_columns: ['scientific_name']
+capture: 'Save Spectrogram'
+capture_dir: 'spectrograms'
+form_config: 'config/forms/simple-examples-3c2.yaml'

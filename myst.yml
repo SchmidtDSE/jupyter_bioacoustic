@@ -47,6 +47,7 @@ project:
     - file: myst/sections/examples.md
     - file: myst/sections/visualizations.md
     - file: myst/sections/form-examples.md
+    - file: myst/sections/annotations.md
     # - file: myst/sections/params.md
     # - file: myst/sections/install.md
     - title: Notebooks
@@ -54,5 +55,7 @@ project:
         - file: demo/simple-examples.ipynb
         - file: demo/visualizations.ipynb
         - file: demo/visualizations-3rd_party.ipynb
-          title: "Custom Visualizations"
+          title: "3rd Party Visualizations"
+        - file: demo/data-collection-example.ipynb
+          title: "Data Collection"
         # - file: demo/geo-analysis-example.ipynb
