@@ -26,14 +26,14 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 Download the wheel from a [GitHub Release](https://github.com/SchmidtDSE/jupyter_bioacoustic/releases) and install locally. No Node.js or build step needed:
 
 ```bash
-gh release download v0.1.8 --repo SchmidtDSE/jupyter_bioacoustic -p "*.whl" -D dist/
-pip install dist/jupyter_bioacoustic-0.1.8-py3-none-any.whl
+gh release download v0.5.0 --repo SchmidtDSE/jupyter_bioacoustic -p "*.whl" -D dist/
+pip install dist/jupyter_bioacoustic-0.5.0-py3-none-any.whl
 ```
 
 Or in a pixi `pyproject.toml` (after downloading the wheel):
 
 ```toml
-jupyter-bioacoustic = { path = "dist/jupyter_bioacoustic-0.1.8-py3-none-any.whl" }
+jupyter-bioacoustic = { path = "dist/jupyter_bioacoustic-0.5.0-py3-none-any.whl" }
 ```
 
 ### For development
