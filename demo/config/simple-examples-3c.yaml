@@ -1,0 +1,76 @@
+ident_column: common_name
+data_columns: [common_name, confidence, rank, county]
+display_columns: [scientific_name]
+capture: 'Save Spectrogram'
+capture_dir: spectrograms
+
+form_config:
+  title:
+    value: REVIEW DETECTION
+    progress_tracker: true
+  pass_value:
+    source_column: id
+    column: detection_id
+  select:
+    label: Is Valid
+    column: is_valid
+    required: true
+    items:
+      - label: 'yes'
+        value: 'yes'
+        form: confirmed_form
+      - label: 'no'
+        value: 'no'
+        form: rejected_form
+  dynamic_forms:
+    confirmed_form:
+      - select:
+          label: confidence
+          column: reviewer_confidence
+          required: true
+          items: [low, medium, high]
+      - textbox:
+          label: notes
+          column: notes
+    rejected_form:
+      - select:
+          label: corrected species
+          column: corrected_common_name
+          required: true
+          items:
+            path: data/categories-small.csv
+            value: common_name
+            filter_box: true
+            custom_value: true
+            not_available:
+              label: Unknown Species
+              value: unknown
+      - select:
+          label: rejection reason
+          column: rejection_reason
+          required: true
+          items:
+            - noise
+            - wrong species
+            - overlapping signals
+            - too faint
+            - other
+      - number:
+          label: signal quality (1-5)
+          column: signal_quality
+          min: 1
+          max: 5
+          step: 1
+      - checkbox:
+          label: flag for expert review
+          column: flagged
+      - textbox:
+          label: notes
+          column: notes
+          multiline: true
+  submission_buttons:
+    line: true
+    next:
+      label: Skip
+    submit:
+      label: Verify

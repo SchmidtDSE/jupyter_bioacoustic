@@ -1,0 +1,7 @@
+select: 
+    label: 'species'
+    column: 'common_name'
+    required: True
+    items:        
+        path: 'data/categories-small.csv'
+        value: 'common_name'
