@@ -1,0 +1,48 @@
+# Multibox annotation: draw multiple bounding boxes per clip,
+# each with its own species label.
+audio: audio_path
+ident_column: common_name
+capture: false
+
+form_config:
+  title:
+    value: MULTIBOX ANNOTATION
+    progress_tracker: true
+  pass_value:
+    source_column: id
+    column: detection_id
+  annotation:
+    start_time:
+      label: start
+      column: start_time
+      source_value: start_time
+    end_time:
+      label: end
+      column: end_time
+      source_value: end_time
+    min_frequency:
+      label: min freq
+      column: min_freq
+    max_frequency:
+      label: max freq
+      column: max_freq
+    tools:
+      - bounding_box
+      - multibox
+    form: box_form
+  dynamic_forms:
+    box_form:
+      - select:
+          label: species
+          column: common_name
+          required: true
+          items:
+            path: data/categories-small.csv
+            value: common_name
+            filter_box: true
+  submission_buttons:
+    line: true
+    next:
+      label: Skip
+    submit:
+      label: Submit

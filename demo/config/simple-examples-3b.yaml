@@ -1,0 +1,21 @@
+form_config:
+  select:
+    label: Is Valid
+    column: is_valid
+    required: true
+    items:
+      - value: 'yes'
+      - value: 'no'
+        form: correction_form
+  dynamic_forms:
+    correction_form:
+      - select:
+          label: corrected species
+          column: corrected_common_name
+          required: true
+          items:
+            path: "data/categories-small.csv"
+            value: "common_name"
+            required': true
+            filter_box': true
+            not_available': 'Unknown Species'
