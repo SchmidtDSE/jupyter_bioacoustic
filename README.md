@@ -60,7 +60,7 @@ ls jupyter_bioacoustic/labextension/package.json  # must exist
 
 # 4. Commit everything (source changes + rebuilt labextension)
 git add -A
-git commit -m "v0.1.9 — description of changes"
+git commit -m "v0.5.0: major update - custom vis, zoom into spectrograms, remote file support, bug fixes ..."
 
 # 5. Build the wheel (requires the `dev` pixi environment)
 rm -f dist/*.whl
@@ -68,10 +68,10 @@ pixi run -e dev python -m build --wheel
 ls dist/*.whl
 
 # 6. Tag and release
-git tag v0.1.9
-git push origin main v0.1.9
-gh release create v0.1.9 dist/jupyter_bioacoustic-0.1.9-py3-none-any.whl \
-    --title "v0.1.9" --notes "description of changes"
+git tag v0.5.0
+git push origin main v0.5.0
+gh release create v0.5.0 dist/jupyter_bioacoustic-0.5.0-py3-none-any.whl \
+    --title "v0.5.0" --notes "major update - custom vis, zoom into spectrograms, remote file support, bug fixes ..."
 ```
 
 > **Important:** The build step (2) regenerates `jupyter_bioacoustic/labextension/`, which is tracked in git. Always rebuild _before_ committing so the wheel and the tagged commit contain the same JS bundle.
