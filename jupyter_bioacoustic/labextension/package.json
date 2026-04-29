@@ -1,0 +1,46 @@
+{
+  "name": "jupyter-bioacoustic",
+  "version": "0.5.0",
+  "description": "JupyterLab bioacoustic audio review plugin",
+  "keywords": [
+    "jupyter",
+    "jupyterlab",
+    "jupyterlab-extension"
+  ],
+  "license": "MIT",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/**/*.{d.ts,js,js.map}"
+  ],
+  "scripts": {
+    "build:labextension:dev": "rimraf labextension && jupyter labextension build --development True .",
+    "build:labextension": "rimraf labextension && jupyter labextension build .",
+    "build:prod": "jlpm run build:lib:prod && jlpm run build:labextension",
+    "gen:py": "node src/py/gen_chunks.js",
+    "build:lib": "jlpm run gen:py && tsc --sourceMap",
+    "build:lib:prod": "jlpm run gen:py && tsc",
+    "watch:src": "tsc -w --sourceMap",
+    "clean": "rimraf lib labextension tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@jupyterlab/application": "^4.0.0",
+    "@jupyterlab/apputils": "^4.0.0",
+    "@jupyterlab/coreutils": "^6.0.0",
+    "@jupyterlab/notebook": "^4.0.0",
+    "@lumino/widgets": "^2.0.0"
+  },
+  "devDependencies": {
+    "@jupyterlab/builder": "^4.0.0",
+    "rimraf": "^5.0.0",
+    "typescript": "~5.1.0"
+  },
+  "jupyterlab": {
+    "extension": true,
+    "outputDir": "labextension",
+    "_build": {
+      "load": "static/remoteEntry.f37a4b947d71d96ba0c6.js",
+      "extension": "./extension"
+    }
+  }
+}
