@@ -11,7 +11,7 @@ import {
 } from './styles';
 import { Detection } from './types';
 import { KernelBridge } from './kernel';
-import { readKernelVars } from './python';
+import { readKernelVars, syncOutput } from './python';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
@@ -102,6 +102,7 @@ class BioacousticWidget extends Widget {
       this._player.updateCursor();
       this._player.renderFrame();
     });
+    this._form.syncRequested.connect(() => void this._onSync());
     this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
 
     // Wire Player signals
@@ -147,6 +148,7 @@ class BioacousticWidget extends Widget {
       ident_col: string; app_title: string; display_cols: string; data_cols: string;
       form_config: string; capture: string; capture_dir: string; duplicate_entries: string;
       default_buffer: string; spec_resolutions: string; viz_meta: string;
+      sync_config: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -176,12 +178,17 @@ class BioacousticWidget extends Widget {
     this.title.label = appTitle;
 
     // Initialize form panel
+    const syncConfig = JSON.parse(cfg.sync_config || '{}') as {
+      uri?: string; button?: string; recursive?: boolean;
+    };
+
     this._form.setContext({
       formConfig,
       rows,
       identCol: this._identCol,
       duplicateEntries,
       outputPath,
+      syncConfig,
     });
     await this._form.build();
     await this._form.loadOutputFileProgress();
@@ -259,6 +266,19 @@ class BioacousticWidget extends Widget {
       this._table.ensurePageShowsSelected();
       void this._player.loadRow(this._table.filtered[idx + 1]);
     }
+  }
+
+  // ─── Sync ──────────────────────────────────────────────────
+
+  private async _onSync(): Promise<void> {
+    this._setStatus('Syncing…');
+    try {
+      await this._kernelBridge.exec(syncOutput());
+      this._setStatus('✓ Sync complete');
+    } catch (e: any) {
+      this._setStatus(`❌ Sync failed: ${String(e.message ?? e)}`, true);
+    }
+    this._form._enableSyncBtn();
   }
 
   // ─── Capture ─────────────────────────────────────────────────

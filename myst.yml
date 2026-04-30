@@ -48,6 +48,7 @@ project:
     - file: myst/sections/visualizations.md
     - file: myst/sections/form-examples.md
     - file: myst/sections/annotations.md
+    - file: myst/sections/audio-io.md
     # - file: myst/sections/params.md
     # - file: myst/sections/install.md
     - title: Notebooks
@@ -58,4 +59,8 @@ project:
           title: "3rd Party Visualizations"
         - file: demo/data-collection-example.ipynb
           title: "Data Collection"
+        - file: demo/sync-example.ipynb
+          title: "Sync"
+        - file: demo/audio-io.ipynb
+          title: "Sync & Audio IO"
         # - file: demo/geo-analysis-example.ipynb

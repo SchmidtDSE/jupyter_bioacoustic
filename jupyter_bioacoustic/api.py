@@ -700,7 +700,27 @@ class BioacousticAnnotator:
             audio_secrets=raw_audio_secrets)
 
         self._data             = loaded_data
-        self._output           = resolve(output,           'output',           '')
+        raw_output = resolve(output, 'output', '')
+        if isinstance(raw_output, dict):
+            self._output = raw_output.get('path', '')
+            self._sync_uri = raw_output.get('uri') or raw_output.get('url') or ''
+            sync_btn_raw = raw_output.get('sync_button', None)
+            if sync_btn_raw is None:
+                self._sync_button = 'Sync' if self._sync_uri else ''
+            elif isinstance(sync_btn_raw, str):
+                self._sync_button = sync_btn_raw
+            elif sync_btn_raw:
+                self._sync_button = 'Sync'
+            else:
+                self._sync_button = ''
+            self._sync_recursive = raw_output.get('recursive', False)
+            self._sync_secrets_raw = raw_output.get('secrets')
+        else:
+            self._output = raw_output
+            self._sync_uri = ''
+            self._sync_button = ''
+            self._sync_recursive = False
+            self._sync_secrets_raw = None
         self._ident_column = resolve(ident_column, 'ident_column', '')
         self._app_title        = resolve(app_title,         'app_title',         DEFAULT_APP_TITLE)
 
@@ -818,6 +838,11 @@ class BioacousticAnnotator:
         ip.user_ns['_BA_DATA']           = self._data.to_json(orient='records')
         ip.user_ns['_BA_AUDIO']          = json.dumps(self._audio_config)
         ip.user_ns['_BA_OUTPUT']         = self._output
+        ip.user_ns['_BA_SYNC_CONFIG']    = json.dumps({
+            'uri': self._sync_uri,
+            'button': self._sync_button,
+            'recursive': self._sync_recursive,
+        })
         ip.user_ns['_BA_IDENT_COL']      = self._ident_column
         ip.user_ns['_BA_APP_TITLE']      = self._app_title
         ip.user_ns['_BA_DISPLAY_COLS']   = json.dumps(self._display_columns)
@@ -844,6 +869,45 @@ class BioacousticAnnotator:
             display(Javascript(
                 "window._bioacousticApp?.commands.execute('bioacoustic:open')"
             ))
+
+    def sync(self, dest: str = None, recursive: bool = None, **kwargs) -> str:
+        """Upload the current output file to the configured remote location.
+
+        Parameters
+        ----------
+        dest : str, optional
+            Override the destination URI. Defaults to the configured
+            ``output.uri`` / ``output.url``.
+        recursive : bool, optional
+            Override the configured ``output.recursive`` setting.
+        **kwargs
+            Additional auth kwargs passed to ``io.write()``
+            (e.g. profile_name, client, cookies, token).
+            Overrides any configured ``output.secrets``.
+        """
+        from jupyter_bioacoustic.audio import io
+
+        src = self._output
+        if not src:
+            raise ValueError('No output path configured')
+        if not os.path.exists(src):
+            raise FileNotFoundError(f'Output file not found: {src}')
+
+        target = dest or self._sync_uri
+        if not target:
+            raise ValueError(
+                'No sync destination configured. '
+                'Set output.uri/url in config or pass dest= to sync().'
+            )
+
+        rec = recursive if recursive is not None else self._sync_recursive
+
+        merged_kwargs = {}
+        if self._sync_secrets_raw:
+            merged_kwargs.update(_resolve_secrets(self._sync_secrets_raw))
+        merged_kwargs.update(kwargs)
+
+        return io.write(src, target, recursive=rec, **merged_kwargs)
 
     def _open_inline(self) -> None:
         """Inject the widget into the cell output area."""

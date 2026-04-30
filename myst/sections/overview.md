@@ -82,10 +82,28 @@ The form panel can be easily configured to contain the simplest to the most comp
 - **Strict**: fields can be optionally requied. 
 - **Simple**: Even complex forms can be created using simple yaml configuration files
 
-See [Parameters & Configuration](params) for the full reference and [Form Examples](form-examples) for progressively complex configurations. On submit, a row is (or rows are) appended to the [`output`](params) file. Results are accessible via `ba.output()`. 
+See [Parameters & Configuration](params) for the full reference and [Form Examples](form-examples) for progressively complex configurations. On submit, a row is (or rows are) appended to the [`output`](params) file. Results are accessible via `ba.output()`.
 
 Note that, by default, the app will not allow for a row to be reviewed twice.  However the option to delete an existing review and re-review it is possible
 
 ```{figure} ../../assets/form_panel/reviewed.png
 :class: bordered
+```
+
+---
+
+### Output Sync
+
+Output files can be synced to remote storage (S3, GCS) via a **Sync button** in the widget or programmatically with `ba.sync()`. Configure sync by passing a dict to the `output` parameter with a `uri` (or `url`) field. See [Audio IO & Sync](audio-io) for details.
+
+```python
+ba = BioacousticAnnotator(
+    data='detections.csv', audio='recording.flac',
+    output={
+        'path': 'outputs/reviews.csv',
+        'uri': 's3://my-bucket/project/reviews.csv',
+        'sync_button': 'Sync to S3',
+    },
+    ...
+)
 ```
