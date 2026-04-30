@@ -42,4 +42,6 @@ pixi run setup   # install deps, build TypeScript, register extension
 pixi run lab     # launch JupyterLab
 ```
 
+> If not using pixi, launch with `jupyter lab --ServerApp.iopub_data_rate_limit=1e10` (or set `c.ServerApp.iopub_data_rate_limit = 1e10` in `jupyter_lab_config.py`). Spectrograms are sent as base64 images over the kernel's IOPub channel, which can exceed Jupyter's default 1 MB/s rate limit.
+
 See the [Development guide](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) on the wiki for project structure and build details.
