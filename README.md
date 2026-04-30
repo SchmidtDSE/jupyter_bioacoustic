@@ -113,7 +113,7 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/jupyter_bioacoustic/wi
 | **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes, multibox (multiple labeled boxes per clip) |
 | **Configurable forms** | YAML-driven: selects (with conditional sections, filter box, custom values), textboxes, checkboxes, progress tracker, `dynamic_forms` for reusable named sections |
 | **Per-row audio** | Each row can point to a different audio file with fallback. S3 and HTTPS partial byte-range downloads (requires ffmpeg). Falls back to full download + cache without ffmpeg. |
-| **Output** | CSV, Parquet, or line-delimited JSON with `pass_value`, `fixed_value`, and `**kwargs` |
+| **Output & Sync** | CSV, Parquet, or line-delimited JSON with `pass_value`, `fixed_value`, and `**kwargs`. Sync output to S3/GCS via button or `ba.sync()`. |
 | **Duplicate prevention** | Reviewed rows faded, read-only results, deletable. Filter by pending/reviewed/all with refresh. |
 
 ## Documentation
@@ -126,6 +126,7 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/jupyter_bioaco
 - [Annotation Tools](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Annotation-Tools) — Spectrogram interaction tools
 - [Data Schema](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Data-Schema) — Input and output formats
 - [API Reference](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/API-Reference) — `BioacousticAnnotator` class, properties, methods
+- [Audio IO](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Audio-IO) — `jupyter_bioacoustic.audio` module reference
 - [Demo](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Demo) — Running the demo notebooks
 - [Development](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) — Project structure, build tasks, architecture
 
@@ -271,7 +272,7 @@ form_config:
 | `audio_property` | str | `None` | Field/column to extract from SQL/API response as the audio path. |
 | `audio_response_index` | int | `1` | 1-based row index for SQL/API response (1 = first row). |
 | `secrets` | dict or list | `None` | Global auth — fallback for both `data_secrets` and `audio_secrets`. |
-| `output` | str | `''` | Output file path (`.csv`, `.parquet`, `.jsonl`). Parent directories are created automatically. When a form is configured and no output is provided, defaults to `outputs/annotation_output-YYMMDD_HHMM.csv`. |
+| `output` | str or dict | `''` | Output file path or sync config dict. String: local path. Dict: `{path, uri/url, sync_button, recursive, secrets}`. See [Output & Sync](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#output--sync). |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
 | `ident_column` | str | `''` | Identifying column — shown first (without label) in the info card and capture filenames. |
 | `app_title` | str | `'Jupyter Bioacoustic'` | Custom title shown in the widget header and tab. |

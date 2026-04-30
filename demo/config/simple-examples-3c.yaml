@@ -1,3 +1,6 @@
+audio:
+    column: bob
+
 ident_column: common_name
 data_columns: [common_name, confidence, rank, county]
 display_columns: [scientific_name]

@@ -64,6 +64,9 @@ export class FormPanel {
   /** The active annotation tool changed (via the dropdown). */
   readonly activeToolChanged = new Signal<this, string>(this);
 
+  /** Sync button was clicked — orchestrator handles the kernel call. */
+  readonly syncRequested = new Signal<this, void>(this);
+
   /** A status message to show in the widget header. */
   readonly statusChanged = new Signal<this, { message: string; error: boolean }>(this);
 
@@ -112,6 +115,8 @@ export class FormPanel {
   private _identCol = '';
   private _duplicateEntries = false;
   private _outputPath = '';
+  private _syncConfig: { uri?: string; button?: string; recursive?: boolean } = {};
+  private _syncBtn: HTMLButtonElement | null = null;
   private _selectedIdx = -1;
   private _filteredLength = 0;
 
@@ -152,12 +157,14 @@ export class FormPanel {
     identCol: string;
     duplicateEntries: boolean;
     outputPath: string;
+    syncConfig?: { uri?: string; button?: string; recursive?: boolean };
   }): void {
     this._formConfig = opts.formConfig;
     this._rows = opts.rows;
     this._identCol = opts.identCol;
     this._duplicateEntries = opts.duplicateEntries;
     this._outputPath = opts.outputPath;
+    this._syncConfig = opts.syncConfig ?? {};
   }
 
   /** Update selection info (called each time a row is selected). Used for
@@ -861,7 +868,35 @@ export class FormPanel {
       }
     }
 
+    if (this._syncConfig.button) {
+      const spacer = document.createElement('span');
+      spacer.style.flex = '1';
+      btnContainer.appendChild(spacer);
+
+      this._syncBtn = document.createElement('button');
+      this._syncBtn.textContent = this._syncConfig.button;
+      this._syncBtn.style.cssText = btnStyle() + `font-size:12px;`;
+      this._syncBtn.addEventListener('click', () => void this._onSync());
+      btnContainer.appendChild(this._syncBtn);
+    }
+
     this._dynFormEl.appendChild(btnContainer);
+  }
+
+  private async _onSync(): Promise<void> {
+    if (!this._syncBtn) return;
+    const label = this._syncBtn.textContent ?? 'Sync';
+    this._syncBtn.disabled = true;
+    this._syncBtn.textContent = 'Syncing…';
+    this._syncBtn.style.opacity = '0.4';
+    this.syncRequested.emit(void 0);
+  }
+
+  _enableSyncBtn(): void {
+    if (!this._syncBtn) return;
+    this._syncBtn.disabled = false;
+    this._syncBtn.textContent = this._syncConfig.button ?? 'Sync';
+    this._syncBtn.style.opacity = '1';
   }
 
   private async _buildAnnotationElement(config: any, container: HTMLElement): Promise<void> {

@@ -34,6 +34,7 @@ export function readKernelVars(): string {
     `  'default_buffer': _BA_DEFAULT_BUFFER,`,
     `  'spec_resolutions': _BA_SPEC_RESOLUTIONS,`,
     `  'viz_meta': _BA_VIZ_META,`,
+    `  'sync_config': _BA_SYNC_CONFIG,`,
     `}))`,
   ].join('\n');
 }
@@ -349,3 +350,11 @@ export function savePng(filename: string, b64Data: string): string {
 
 export const INVALIDATE_OUTPUT_CACHE =
   'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()';
+
+export function syncOutput(dest?: string): string {
+  const destArg = dest ? `dest='${escPy(dest)}'` : '';
+  return [
+    `_BA_INSTANCE.sync(${destArg})`,
+    `print('ok')`,
+  ].join('\n');
+}
