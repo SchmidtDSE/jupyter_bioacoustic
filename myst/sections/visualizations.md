@@ -33,7 +33,7 @@ The first item in the list is the default. Use `selected::` prefix to override t
 
 ## Capture
 
-The capture button saves the current spectrogram view as a PNG file. Configure it with:
+The capture button saves the current spectrogram/visualization as a PNG file. Configure it with:
 
 - `capture: True` — show the button with default label
 - `capture: 'Save Spectrogram'` — custom button label
@@ -80,14 +80,30 @@ Available functions: `vis.spectrogram()`, `vis.mel()`, `vis.log_frequency()`, `v
 
 ## Custom Visualizations
 
-Custom visualization functions can be passed directly to the `visualizations` parameter alongside built-in names. Each function takes `(mono, sr, width)` and returns a dict with either:
+Custom visualization functions can be passed directly to the `visualizations` parameter alongside built-in names. Each function must have the signature `(mono, sr, width)` and returns a dict with  `freq_min`, `freq_max`, `freq_scale` and either 
 
 - **`matrix`** — a 2D numpy array (freq × time). The widget renders it automatically with dB normalization.
 - **`png_bytes`** — raw PNG image bytes for full rendering control.
 
 Both forms require `freq_min`, `freq_max`, and `freq_scale` (`'linear'`, `'mel'`, or `'log'`). Matrix returns can optionally include `matrix_scale: 'db'` to skip the dB conversion.
 
-### Matrix return
+```python
+def my_custum_vis(mono: np.ndarray, sr: float, width: int) -> dict:
+    ...
+    return {
+        'freq_min':  ...,    # min frequency
+        'freq_max':  ...,    # max frequency
+        'freq_scale':  ...,  # frequency scale: one of linear, mel, or log
+        'png_bytes': ...,    # [Required if matrix is None] raw PNG image bytes
+        'matrix': ...,       # [Required if png_bytes is None] a 2D numpy array (freq × time)
+        'matrix_scale': ..., # [Optional] db or None - only works with 'matrix'
+    }
+```
+
+### Matrix Example
+
+TODO: UPDATE WITH NOT SOURCE VIS EXAMPLES BUT SIMPLE
+TOTO: include ScreenShots
 
 ```python
 from jupyter_bioacoustic.utils import visualizations as vis
@@ -107,7 +123,10 @@ BioacousticAnnotator(
 ).open()
 ```
 
-### PNG return
+### PNG Example
+
+TODO: UPDATE WITH NOT SOURCE VIS EXAMPLES BUT SIMPLE
+TOTO: include ScreenShots
 
 For complete control — custom colormaps, layouts, overlays, or multi-panel figures:
 
@@ -125,7 +144,18 @@ def inferno_spectrogram(mono, sr, width):
     }
 ```
 
-For full matplotlib control (custom layouts, overlays, multi-panel):
+### Third-party libraries
+
+
+Any audio library can be wrapped as a custom visualization. The demo notebooks show integrations with:
+
+- **OpenSoundscape** — `Spectrogram.from_audio()`, `MelSpectrogram`, `.bandpass()`
+- **Librosa** — `librosa.feature.melspectrogram()`, HPSS harmonic separation, chromagrams
+- **SciPy** — `scipy.signal.spectrogram()` with configurable window functions (Hann, Blackman, Kaiser, Tukey)
+
+#### Matplotlib
+
+This example uses `matplotlib` for full control (custom layouts, overlays, multi-panel) over the visualizations:
 
 ```python
 import matplotlib.pyplot as plt
@@ -159,13 +189,14 @@ def waveform_and_spectrogram(mono, sr, width):
     }
 ```
 
-### Third-party libraries
+#### OpenSoundscapes
 
-Any audio library can be wrapped as a custom visualization. The demo notebooks show integrations with:
+TODO: include open soundscapes
+TOTO: include ScreenShots
 
-- **OpenSoundscape** — `Spectrogram.from_audio()`, `MelSpectrogram`, `.bandpass()`
-- **Librosa** — `librosa.feature.melspectrogram()`, HPSS harmonic separation, chromagrams
-- **SciPy** — `scipy.signal.spectrogram()` with configurable window functions (Hann, Blackman, Kaiser, Tukey)
+#### Librosa
+
+TOTO: include ScreenShots
 
 ```python
 import librosa

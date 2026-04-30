@@ -43,7 +43,7 @@ export function readKernelVars(): string {
 export function readAudio(path: string, startSec: number, durSec: number): string {
   const p = escPy(path);
   return [
-    `from jupyter_bioacoustic.utils.audio import read_segment as _read_segment`,
+    `from jupyter_bioacoustic.audio import read_segment as _read_segment`,
     `_partial = _BA_INSTANCE._partial_download if hasattr(_BA_INSTANCE, '_partial_download') else True`,
     `_raw, _sr = _read_segment('${p}', ${startSec}, ${durSec}, partial=_partial)`,
   ].join('\n');

@@ -9,12 +9,6 @@ dev*
 tmp/
 logs/
 
-# Demo
-demo/*.png
-demo/*.ipynb
-demo/outputs/
-demo/spectrograms/
-
 #***************************************************************************
 # JupyterBioacoustic Extension
 #***************************************************************************
@@ -35,12 +29,24 @@ Dockerfile.myst
 _build/
 
 # Audio/data files (not part of the extension)
+/audio/
 *.flac
 *.csv
-*.yaml
 *.jsonl
-audio/
+
+# Demo
+demo/*.png
+demo/*.ipynb
+demo/audio/
+demo/outputs/
+demo/spectrograms/
+
 spectrograms/
+
+# Yaml (ignore data yamls but keep config and package yamls)
+*.yaml
+!myst.yml
+!jupyter_bioacoustic/audio/*.py
 
 #***************************************************************************
 # Build / Distribution

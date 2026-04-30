@@ -303,7 +303,8 @@ export class Player {
     // Spectrogram canvas
     this._canvasContainer = document.createElement('div');
     this._canvasContainer.style.cssText =
-      `flex:0 0 260px;position:relative;background:${COLORS.bgCrust};overflow:hidden;cursor:default;`;
+      `flex:0 0 260px;position:relative;background:${COLORS.bgCrust};overflow:hidden;cursor:default;` +
+      `transition:opacity 0.2s ease;`;
 
     this._canvas = document.createElement('canvas');
     this._canvas.style.cssText = `display:block;width:100%;height:100%;`;
@@ -408,6 +409,7 @@ export class Player {
     this._loadBtn.disabled = true;
     this._loadBtn.textContent = 'Updating…';
     this._loadBtn.style.opacity = '0.4';
+    this._canvasContainer.style.opacity = '0.5';
 
     // Stop any current playback
     if (this._playing) {
@@ -494,6 +496,7 @@ export class Player {
     this._loadBtn.disabled = false;
     this._loadBtn.textContent = 'Update';
     this._loadBtn.style.opacity = '1';
+    this._canvasContainer.style.opacity = '1';
   }
 
   private _renderFrame(): void {
