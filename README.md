@@ -262,7 +262,12 @@ form_config:
 | `data_api` | str | `None` | Explicit API endpoint for data (overrides `data` source). |
 | `data_secrets` | dict or list | `None` | Auth for data loading. `{key, value}` pairs. Value: `env:VAR`, `dialog`, or literal. |
 | `data_columns` | list | `[]` | Columns for the clip table. |
-| `audio` | str or dict | *required* | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{path\|url\|uri\|column\|sql\|api, prefix, suffix, fallback, secrets, property, response_index}`. |
+| `audio` | str or dict | *required** | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{path\|url\|uri\|column\|sql\|api\|src, prefix, suffix, fallback, secrets, property, response_index}`. |
+| `audio_src` | str | `None` | Audio source string (auto-detected as path, URL, or column name). Same as passing a bare string to `audio`. |
+| `audio_path` | str | `None` | Explicit local file path for audio (overrides `audio` source). |
+| `audio_url` | str | `None` | Explicit URL for audio (overrides `audio` source). |
+| `audio_uri` | str | `None` | Alias for `audio_url`. |
+| `audio_column` | str | `None` | Explicit column name for per-row audio (overrides `audio` source). |
 | `audio_prefix` | str | `''` | Prefix joined with `/` to audio paths. |
 | `audio_suffix` | str | `''` | Suffix joined with `/` to audio paths. |
 | `audio_fallback` | str | `''` | Fallback when `audio` is a column and the row value is empty. |
@@ -288,6 +293,8 @@ form_config:
 | `height` | int | `900` | Inline widget height. |
 | `config` | str | `None` | Path to YAML/JSON config file |
 | `**kwargs` | | | Fixed columns in every output row |
+
+> \* `data` is not required if `data_path`, `data_url`, `data_sql`, or `data_api` is provided. `audio` is not required if `audio_src`, `audio_path`, `audio_url`, `audio_uri`, `audio_column`, `audio_sql`, or `audio_api` is provided.
 
 ## Demo
 

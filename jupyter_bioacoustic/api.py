@@ -423,10 +423,10 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
     fallback = audio_fallback or ''
 
     if isinstance(audio, dict):
-        # Check for sql/api source (resolves at init time)
         source_keys = {'sql', 'api'}
+        guess_keys = {'src'}
         static_keys = {'path', 'url', 'uri', 'column'}
-        all_type_keys = source_keys | static_keys
+        all_type_keys = source_keys | guess_keys | static_keys
         found = [k for k in all_type_keys if k in audio]
         if len(found) != 1:
             raise ValueError(
@@ -435,17 +435,14 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
             )
         key = found[0]
 
-        # Param secrets override dict secrets
         secrets_raw = audio_secrets if audio_secrets is not None else audio.get('secrets')
         resolved_secrets = _resolve_secrets(secrets_raw)
 
         if key in source_keys:
-            # Resolve audio path from SQL/API
             prop = audio.get('property')
             index = audio.get('response_index')
             resolved_value = _resolve_audio_from_source(
                 key, audio[key], prop, index, resolved_secrets)
-            # Auto-detect the resolved value type
             atype = _detect_audio_type(resolved_value)
             return {
                 'type': atype,
@@ -456,8 +453,12 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
                 'secrets': resolved_secrets,
             }
 
-        # Static source (path/url/uri/column)
-        atype = 'url' if key in ('url', 'uri') else key
+        if key == 'src':
+            atype = _detect_audio_type(audio[key])
+        elif key in ('url', 'uri'):
+            atype = 'url'
+        else:
+            atype = key
         return {
             'type': atype,
             'value': audio[key],
@@ -496,6 +497,11 @@ class BioacousticAnnotator:
         data_duration=_UNSET,
         data_secrets=_UNSET,
         audio=_UNSET,
+        audio_src=_UNSET,
+        audio_path=_UNSET,
+        audio_url=_UNSET,
+        audio_uri=_UNSET,
+        audio_column=_UNSET,
         audio_prefix=_UNSET,
         audio_suffix=_UNSET,
         audio_fallback=_UNSET,
@@ -664,6 +670,11 @@ class BioacousticAnnotator:
         # Resolve audio
         # audio_secrets > secrets > audio.secrets
         raw_audio = resolve(audio, 'audio', _UNSET)
+        raw_audio_src = resolve(audio_src, 'audio_src', None)
+        raw_audio_path = resolve(audio_path, 'audio_path', None)
+        raw_audio_url = resolve(audio_url, 'audio_url', None)
+        raw_audio_uri = resolve(audio_uri, 'audio_uri', None)
+        raw_audio_column = resolve(audio_column, 'audio_column', None)
         raw_prefix = resolve(audio_prefix, 'audio_prefix', '')
         raw_suffix = resolve(audio_suffix, 'audio_suffix', '')
         raw_fallback = resolve(audio_fallback, 'audio_fallback', '')
@@ -675,17 +686,43 @@ class BioacousticAnnotator:
         if raw_audio_secrets is None:
             raw_audio_secrets = raw_global_secrets
 
-        # Build audio dict from top-level sql/api params if audio not set
-        if raw_audio is _UNSET and (raw_audio_sql or raw_audio_api):
-            raw_audio = {}
-            if raw_audio_sql:
-                raw_audio['sql'] = raw_audio_sql
-            elif raw_audio_api:
-                raw_audio['api'] = raw_audio_api
+        _top_audio = {
+            'src': raw_audio_src,
+            'path': raw_audio_path, 'url': raw_audio_url or raw_audio_uri,
+            'column': raw_audio_column,
+            'sql': raw_audio_sql, 'api': raw_audio_api,
+        }
+        _top_audio_found = {k: v for k, v in _top_audio.items() if v is not None}
+
+        if len(_top_audio_found) > 1:
+            raise ValueError(
+                f"Only one of audio_src, audio_path, audio_url, audio_uri, "
+                f"audio_column, audio_sql, audio_api may be set. "
+                f"Got: {list(_top_audio_found.keys())}"
+            )
+
+        if _top_audio_found:
+            _akey, _aval = next(iter(_top_audio_found.items()))
+            if raw_audio is _UNSET:
+                if _akey == 'src':
+                    raw_audio = _aval
+                elif _akey in ('sql', 'api'):
+                    raw_audio = {_akey: _aval}
+                else:
+                    raw_audio = _aval
+            elif isinstance(raw_audio, dict):
+                for k in ('src', 'path', 'url', 'uri', 'column', 'sql', 'api'):
+                    raw_audio.pop(k, None)
+                if _akey == 'src':
+                    raw_audio = _aval
+                else:
+                    raw_audio[_akey] = _aval
+            else:
+                raw_audio = _aval
         elif raw_audio is _UNSET:
             raise ValueError(
                 "'audio' is required — pass a path, URL, column name, dict, "
-                "or use audio_sql/audio_api."
+                "or use audio_src/audio_path/audio_url/audio_column/audio_sql/audio_api."
             )
 
         # Inject top-level property/response_index into dict if audio is a dict
