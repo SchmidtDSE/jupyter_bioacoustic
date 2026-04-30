@@ -68,6 +68,8 @@ export class Player {
   private _freqScaleLUT: number[] | null = null; // 256 frac values for 'lut' scale
   /** Vertical padding (px) at top/bottom of canvas for freq axis labels. */
   private static readonly SPEC_PAD_Y = 8;
+  /** Width (px) of the frequency axis strip on the left. */
+  private static readonly AXIS_W = 40;
 
   // ─── DOM refs ──────────────────────────────────────────────
 
@@ -506,41 +508,41 @@ export class Player {
     if (!W || !H) return;
 
     const padY = Player.SPEC_PAD_Y;
-    // Fill padding areas with dark background
+    const AX = Player.AXIS_W;
+    const specW = W - AX;
+
     ctx.fillStyle = COLORS.bgCrust;
     ctx.fillRect(0, 0, W, padY);
     ctx.fillRect(0, H - padY, W, padY);
+    ctx.fillRect(0, 0, AX, H);
 
     if (this._specBitmap) {
-      // Client-side zoom: draw only the visible portion of the spectrogram
       const bw = this._specBitmap.width;
       const bh = this._specBitmap.height;
       const sx = this._viewXMin * bw;
       const sw = (this._viewXMax - this._viewXMin) * bw;
       const sy = (1 - this._viewYMax) * bh;
       const sh = (this._viewYMax - this._viewYMin) * bh;
-      ctx.drawImage(this._specBitmap, sx, sy, sw, sh, 0, padY, W, H - 2 * padY);
+      ctx.drawImage(this._specBitmap, sx, sy, sw, sh, AX, padY, specW, H - 2 * padY);
     } else {
       ctx.fillStyle = COLORS.bgCrust;
       ctx.fillRect(0, 0, W, H);
     }
 
     if (this._specBitmap && this._segDuration > 0) {
-      // Map detection bounds to the current view
       const detStartFrac = (this._detectionStart - this._segLoadStart) / this._segDuration;
       const detEndFrac = (this._detectionEnd - this._segLoadStart) / this._segDuration;
       const viewW = this._viewXMax - this._viewXMin;
-      const toScreen = (frac: number) => ((frac - this._viewXMin) / viewW) * W;
+      const toScreen = (frac: number) => AX + ((frac - this._viewXMin) / viewW) * specW;
 
       const bufLeft = toScreen(detStartFrac);
       const bufRight = toScreen(detEndFrac);
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      if (bufLeft > 0) ctx.fillRect(0, 0, Math.floor(bufLeft), H);
+      if (bufLeft > AX) ctx.fillRect(AX, 0, Math.floor(bufLeft) - AX, H);
       if (bufRight < W) { const rx = Math.ceil(bufRight); ctx.fillRect(rx, 0, W - rx, H); }
 
-      // Playhead
       const playFrac = this._audio.currentTime / this._segDuration;
-      const ph = Math.floor(Math.max(0, Math.min(W, toScreen(playFrac))));
+      const ph = Math.floor(Math.max(AX, Math.min(W, toScreen(playFrac))));
       ctx.strokeStyle = `rgba(205,214,244,0.9)`;
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(ph, 0); ctx.lineTo(ph, H); ctx.stroke();
@@ -599,13 +601,17 @@ export class Player {
   }
 
   /** Convert absolute time to screen X, accounting for zoom. */
-  private _timeToX(t: number): number {
+  private _timeToX(t: number, canvasW?: number, axisW?: number): number {
+    const AX = axisW ?? Player.AXIS_W;
+    const specW = (canvasW ?? this._canvas.width) - AX;
     const frac = (t - this._segLoadStart) / this._segDuration;
-    return ((frac - this._viewXMin) / (this._viewXMax - this._viewXMin)) * this._canvas.width;
+    return AX + ((frac - this._viewXMin) / (this._viewXMax - this._viewXMin)) * specW;
   }
   /** Convert screen X to absolute time, accounting for zoom. */
   private _xToTime(x: number): number {
-    const viewFrac = this._viewXMin + (x / this._canvas.width) * (this._viewXMax - this._viewXMin);
+    const AX = Player.AXIS_W;
+    const specW = this._canvas.width - AX;
+    const viewFrac = this._viewXMin + ((x - AX) / specW) * (this._viewXMax - this._viewXMin);
     return this._segLoadStart + viewFrac * this._segDuration;
   }
   /** Map frequency to 0..1 fraction based on the current freq scale. */
@@ -694,10 +700,11 @@ export class Player {
     // Playhead drag: click near the playhead line or triangle to scrub
     if (this._specBitmap && this._segDuration > 0) {
       const { cx } = this._canvasXY(e);
-      const W = this._canvas.width;
+      const AX = Player.AXIS_W;
+      const specW = this._canvas.width - AX;
       const viewW = this._viewXMax - this._viewXMin;
       const playFrac = this._audio.currentTime / this._segDuration;
-      const ph = ((playFrac - this._viewXMin) / viewW) * W;
+      const ph = AX + ((playFrac - this._viewXMin) / viewW) * specW;
       if (Math.abs(cx - ph) <= 10) {
         this._playheadDrag = true;
         this._canvasContainer.style.cursor = 'ew-resize';
@@ -805,9 +812,10 @@ export class Player {
     // Handle playhead drag
     if (this._playheadDrag) {
       const { cx } = this._canvasXY(e);
-      const W = this._canvas.width;
+      const AX = Player.AXIS_W;
+      const specW = this._canvas.width - AX;
       const viewW = this._viewXMax - this._viewXMin;
-      const frac = this._viewXMin + (cx / W) * viewW;
+      const frac = this._viewXMin + ((cx - AX) / specW) * viewW;
       const newTime = Math.max(0, Math.min(this._segDuration, frac * this._segDuration));
       this._audio.currentTime = newTime;
       this._renderFrame();
@@ -817,7 +825,8 @@ export class Player {
     // Handle pan drag
     if (this._panDrag) {
       const rect = this._canvas.getBoundingClientRect();
-      const dx = (e.clientX - this._panDrag.startX) / rect.width;
+      const specCssW = rect.width * (1 - Player.AXIS_W / this._canvas.width);
+      const dx = (e.clientX - this._panDrag.startX) / specCssW;
       const dy = (e.clientY - this._panDrag.startY) / rect.height;
       const viewW = this._panDrag.origXMax - this._panDrag.origXMin;
       const viewH = this._panDrag.origYMax - this._panDrag.origYMin;
@@ -840,10 +849,11 @@ export class Player {
 
     if (!this._annotDrag) {
       // Check if hovering near the playhead
-      const W = this._canvas.width;
+      const AX = Player.AXIS_W;
+      const specW = this._canvas.width - AX;
       const viewW = this._viewXMax - this._viewXMin;
       const playFrac = this._audio.currentTime / this._segDuration;
-      const ph = ((playFrac - this._viewXMin) / viewW) * W;
+      const ph = AX + ((playFrac - this._viewXMin) / viewW) * specW;
       if (Math.abs(cx - ph) <= 10) {
         this._canvasContainer.style.cursor = 'ew-resize';
         return;
@@ -1028,15 +1038,17 @@ export class Player {
     this._signalTimeDisplay.textContent = parts.length ? `⏱ ${parts.join(' ')}` : '';
   }
 
-  private _renderAnnotation(ctx: CanvasRenderingContext2D, W: number, H: number): void {
+  private _renderAnnotation(ctx: CanvasRenderingContext2D, W: number, H: number, axisW?: number): void {
     const ac = this._form.getAnnotConfig();
     if (!ac || this._segDuration === 0) return;
     const tool = this._form.getActiveTool();
+    const ax = axisW ?? Player.AXIS_W;
+    const tx = (t: number) => this._timeToX(t, W, ax);
 
     if (tool === 'time_select') {
       const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
       if (st == null) return;
-      const x = this._timeToX(st);
+      const x = tx(st);
       ctx.strokeStyle = 'rgba(137,180,250,0.85)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
       ctx.fillStyle = COLORS.blue;
@@ -1046,12 +1058,12 @@ export class Player {
       const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
       const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
       if (st != null && et != null) {
-        const sx = this._timeToX(st), ex = this._timeToX(et);
+        const sx = tx(st), ex = tx(et);
         ctx.fillStyle = 'rgba(137,180,250,0.08)';
         ctx.fillRect(sx, 0, ex - sx, H);
       }
       if (st != null) {
-        const x = this._timeToX(st);
+        const x = tx(st);
         ctx.strokeStyle = 'rgba(166,227,161,0.85)'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
         ctx.fillStyle = COLORS.green;
@@ -1059,7 +1071,7 @@ export class Player {
         ctx.closePath(); ctx.fill();
       }
       if (et != null) {
-        const x = this._timeToX(et);
+        const x = tx(et);
         ctx.strokeStyle = 'rgba(243,139,168,0.85)'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
         ctx.fillStyle = COLORS.red;
@@ -1072,7 +1084,7 @@ export class Player {
       const flo = ac.minFreq?.col ? this._form.getFormValue(ac.minFreq.col) : null;
       const fhi = ac.maxFreq?.col ? this._form.getFormValue(ac.maxFreq.col) : null;
       if (st == null || et == null || flo == null || fhi == null) return;
-      const sx = this._timeToX(st), ex = this._timeToX(et);
+      const sx = tx(st), ex = tx(et);
       const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
       ctx.fillStyle = 'rgba(137,180,250,0.1)';
       ctx.fillRect(sx, yhi, ex - sx, ylo - yhi);
@@ -1086,8 +1098,8 @@ export class Player {
       const entries = this._form.getMultiboxEntries();
       const activeIdx = this._form.getActiveBoxIndex();
       entries.forEach((entry, i) => {
-        const sx = this._timeToX(entry.startTime);
-        const ex = this._timeToX(entry.endTime);
+        const sx = tx(entry.startTime);
+        const ex = tx(entry.endTime);
         const yhi = this._freqToY(entry.maxFreq);
         const ylo = this._freqToY(entry.minFreq);
         const isActive = i === activeIdx;
@@ -1116,14 +1128,13 @@ export class Player {
   private _renderFreqAxis(ctx: CanvasRenderingContext2D, _W: number, H: number): void {
     if (!this._specBitmap || this._freqMax <= this._freqMin) return;
 
-    const AXIS_W = 40;
+    const AXIS_W = Player.AXIS_W;
     const FONT_SIZE = 10;
     const TICK_LEN = 4;
     const padY = Player.SPEC_PAD_Y;
     const specH = H - 2 * padY;
 
-    // Background strip
-    ctx.fillStyle = 'rgba(17,17,27,0.75)';
+    ctx.fillStyle = COLORS.bgCrust;
     ctx.fillRect(0, 0, AXIS_W, H);
 
     // Compute visible freq range
@@ -1205,8 +1216,10 @@ export class Player {
     if (!this._zoomBoxDrag) return;
     const { cx, cy } = this._canvasXYClamped(e);
     const W = this._canvas.width, H = this._canvas.height;
-    const x1 = Math.min(this._zoomBoxDrag.startCx, cx) / W;
-    const x2 = Math.max(this._zoomBoxDrag.startCx, cx) / W;
+    const AX = Player.AXIS_W;
+    const specW = W - AX;
+    const x1 = Math.max(0, Math.min(this._zoomBoxDrag.startCx, cx) - AX) / specW;
+    const x2 = Math.max(0, Math.max(this._zoomBoxDrag.startCx, cx) - AX) / specW;
     const y1 = Math.min(this._zoomBoxDrag.startCy, cy) / H;
     const y2 = Math.max(this._zoomBoxDrag.startCy, cy) / H;
     this._zoomBoxDrag = null;
@@ -1411,7 +1424,7 @@ export class Player {
     const sy = (1 - this._viewYMax) * bh;
     const sh = (this._viewYMax - this._viewYMin) * bh;
     const W = Math.round(sw);
-    const displayAspect = this._canvas.height / Math.max(1, this._canvas.width);
+    const displayAspect = this._canvas.height / Math.max(1, this._canvas.width - Player.AXIS_W);
     const H = Math.round(W * displayAspect);
 
     if (W <= 0 || H <= 0) {
@@ -1441,7 +1454,7 @@ export class Player {
       if (bufRight < W) { const rx = Math.ceil(bufRight); ctx.fillRect(rx, 0, W - rx, H); }
     }
 
-    this._renderAnnotation(ctx, W, H);
+    this._renderAnnotation(ctx, W, H, 0);
 
     let dataUrl: string;
     try {
