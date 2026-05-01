@@ -107,8 +107,9 @@ export class FormPanel {
   private _multiboxContainer: HTMLDivElement | null = null;
 
   // Reviewed state (for duplicate_entries=false)
-  private _reviewedMap: Map<number, Record<string, any>> = new Map();
+  private _reviewedMap: Map<number, Record<string, any>[]> = new Map();
   private _showingReviewedView = false;
+  private _reviewedTool = '';
 
   // Context provided by the orchestrator
   private _rows: Detection[] = [];
@@ -282,6 +283,8 @@ export class FormPanel {
     // Rebuild form if it was replaced by a reviewed result view
     if (this._showingReviewedView) {
       this._showingReviewedView = false;
+      this._reviewedTool = '';
+      this._reviewedMultiboxEntries = [];
       void this.build().then(() => this._applyRow(row));
     } else {
       this._applyRow(row);
@@ -386,7 +389,7 @@ export class FormPanel {
   // ─── End multibox API ──────────────────────────────────────
 
   /** Read the full reviewed map (for ClipTable row styling). */
-  getReviewedMap(): Map<number, Record<string, any>> {
+  getReviewedMap(): Map<number, Record<string, any>[]> {
     return this._reviewedMap;
   }
 
@@ -465,7 +468,9 @@ export class FormPanel {
         }
       }
       if (inputId !== null) {
-        this._reviewedMap.set(inputId, outRow);
+        const arr = this._reviewedMap.get(inputId);
+        if (arr) arr.push(outRow);
+        else this._reviewedMap.set(inputId, [outRow]);
       }
     }
   }
@@ -964,6 +969,7 @@ export class FormPanel {
       });
       sel.addEventListener('change', () => {
         this._activeTool = sel.value;
+        if (this._currentRow) this._applyAnnotValues(this._currentRow);
         void this._rebuildAnnotFormUI();
         this.activeToolChanged.emit(this._activeTool);
         this.annotationChanged.emit(void 0);
@@ -1248,22 +1254,7 @@ export class FormPanel {
       }
     }
 
-    // Apply annotation fields from row
-    if (this._annotConfig) {
-      const ac = this._annotConfig;
-      if (ac.startTime) {
-        const sv = ac.startTime.sourceValue;
-        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.start_time;
-        this._setAnnotValueInternal('startTime', v, /*emit*/ false);
-      }
-      if (ac.endTime) {
-        const sv = ac.endTime.sourceValue;
-        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.end_time;
-        this._setAnnotValueInternal('endTime', v, /*emit*/ false);
-      }
-      if (ac.minFreq) this._setAnnotValueInternal('minFreq', null, /*emit*/ false);
-      if (ac.maxFreq) this._setAnnotValueInternal('maxFreq', null, /*emit*/ false);
-    }
+    this._applyAnnotValues(row);
 
     // Apply pass_value fields
     for (const { sourceCol, col } of this._passValueDefs) {
@@ -1273,6 +1264,34 @@ export class FormPanel {
     // Annotation rendering on the canvas depends on these values
     this.annotationChanged.emit(void 0);
     this._validateForm();
+  }
+
+  private _applyAnnotValues(row: Detection): void {
+    if (!this._annotConfig) return;
+    const ac = this._annotConfig;
+    const tool = this._activeTool;
+    const fillStart = tool === 'time_select' || tool === 'start_end_time_select';
+    const fillEnd = tool === 'start_end_time_select';
+    if (ac.startTime) {
+      if (fillStart) {
+        const sv = ac.startTime.sourceValue;
+        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.start_time;
+        this._setAnnotValueInternal('startTime', v, false);
+      } else {
+        this._setAnnotValueInternal('startTime', null, false);
+      }
+    }
+    if (ac.endTime) {
+      if (fillEnd) {
+        const sv = ac.endTime.sourceValue;
+        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.end_time;
+        this._setAnnotValueInternal('endTime', v, false);
+      } else {
+        this._setAnnotValueInternal('endTime', null, false);
+      }
+    }
+    if (ac.minFreq) this._setAnnotValueInternal('minFreq', null, false);
+    if (ac.maxFreq) this._setAnnotValueInternal('maxFreq', null, false);
   }
 
   private _setAnnotValueInternal(field: string, val: number | null, emit: boolean): void {
@@ -1439,19 +1458,18 @@ export class FormPanel {
     this._dynFormEl.innerHTML = '';
     this._submitBtns = [];
     this._showingReviewedView = true;
-    const data = this._reviewedMap.get(row.id);
-    if (!data) return;
+    const rows = this._reviewedMap.get(row.id);
+    if (!rows || rows.length === 0) return;
 
-    // Title (same as sectionTitleStyle but green)
     const title = document.createElement('div');
     title.style.cssText =
       `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:${COLORS.green};`;
     title.textContent = 'REVIEWED';
     this._dynFormEl.appendChild(title);
 
-    // Key-value pairs
     const container = document.createElement('div');
     container.style.cssText = `display:flex;flex-direction:column;gap:4px;padding:4px 0;`;
+    const data = rows[0];
     for (const [key, val] of Object.entries(data)) {
       const line = document.createElement('div');
       line.style.cssText = `display:flex;gap:8px;font-size:12px;`;
@@ -1464,7 +1482,15 @@ export class FormPanel {
       line.append(keyEl, valEl);
       container.appendChild(line);
     }
+    if (rows.length > 1) {
+      const note = document.createElement('div');
+      note.style.cssText = `font-size:11px;color:${COLORS.textMuted};margin-top:4px;`;
+      note.textContent = `+ ${rows.length - 1} additional annotation${rows.length > 2 ? 's' : ''}`;
+      container.appendChild(note);
+    }
     this._dynFormEl.appendChild(container);
+
+    this._setReviewedAnnotations(rows);
 
     // Divider + buttons
     const divider = document.createElement('div');
@@ -1498,6 +1524,71 @@ export class FormPanel {
 
     btnRow.append(prevBtn, nextBtn, spacer, deleteBtn);
     this._dynFormEl.appendChild(btnRow);
+  }
+
+  getReviewedTool(): string {
+    return this._reviewedTool;
+  }
+
+  getReviewedMultiboxEntries(): MultiboxEntry[] {
+    return this._reviewedMultiboxEntries;
+  }
+
+  isShowingReviewedView(): boolean {
+    return this._showingReviewedView;
+  }
+
+  private _reviewedMultiboxEntries: MultiboxEntry[] = [];
+
+  private _setReviewedAnnotations(rows: Record<string, any>[]): void {
+    this._reviewedTool = '';
+    this._reviewedMultiboxEntries = [];
+    const ac = this._annotConfig;
+    if (!ac || rows.length === 0) {
+      this.annotationChanged.emit(void 0);
+      return;
+    }
+
+    const stCol = ac.startTime?.col;
+    const etCol = ac.endTime?.col;
+    const loCol = ac.minFreq?.col;
+    const hiCol = ac.maxFreq?.col;
+
+    const first = rows[0];
+    const hasSt = stCol && first[stCol] != null && first[stCol] !== '';
+    const hasEt = etCol && first[etCol] != null && first[etCol] !== '';
+    const hasLo = loCol && first[loCol] != null && first[loCol] !== '';
+    const hasHi = hiCol && first[hiCol] != null && first[hiCol] !== '';
+    const hasFreqs = hasLo && hasHi;
+
+    if (rows.length > 1 && hasSt && hasEt && hasFreqs) {
+      this._reviewedTool = 'multibox';
+      const colors = DISPLAY_CHIP_COLORS;
+      this._reviewedMultiboxEntries = rows.map((r, i) => ({
+        id: i,
+        startTime: parseFloat(String(r[stCol!])),
+        endTime: parseFloat(String(r[etCol!])),
+        minFreq: parseFloat(String(r[loCol!])),
+        maxFreq: parseFloat(String(r[hiCol!])),
+        formValues: {},
+        color: colors[i % colors.length],
+      }));
+    } else if (rows.length === 1 && hasSt && hasEt && hasFreqs) {
+      this._reviewedTool = 'bounding_box';
+      this._formValues[stCol!] = parseFloat(String(first[stCol!]));
+      this._formValues[etCol!] = parseFloat(String(first[etCol!]));
+      this._formValues[loCol!] = parseFloat(String(first[loCol!]));
+      this._formValues[hiCol!] = parseFloat(String(first[hiCol!]));
+    } else if (hasSt && hasEt) {
+      this._reviewedTool = 'start_end_time_select';
+      this._formValues[stCol!] = parseFloat(String(first[stCol!]));
+      this._formValues[etCol!] = parseFloat(String(first[etCol!]));
+    } else if (hasSt) {
+      this._reviewedTool = 'time_select';
+      this._formValues[stCol!] = parseFloat(String(first[stCol!]));
+    }
+
+    this.annotationChanged.emit(void 0);
   }
 
   // ─── Private: submit / delete ─────────────────────────────
@@ -1539,7 +1630,16 @@ export class FormPanel {
       }
       this._sessionCount++;
       if (!this._duplicateEntries) {
-        this._reviewedMap.set(activeRow.id, { _multibox: true, count: n });
+        const multiRows: Record<string, any>[] = this._multiboxEntries.map(entry => {
+          const rv: Record<string, any> = { ...this._collectFormValues() };
+          if (ac?.startTime) { delete rv[ac.startTime.col]; rv[ac.startTime.col] = entry.startTime; }
+          if (ac?.endTime) { delete rv[ac.endTime.col]; rv[ac.endTime.col] = entry.endTime; }
+          if (ac?.minFreq) { delete rv[ac.minFreq.col]; rv[ac.minFreq.col] = entry.minFreq; }
+          if (ac?.maxFreq) { delete rv[ac.maxFreq.col]; rv[ac.maxFreq.col] = entry.maxFreq; }
+          Object.assign(rv, entry.formValues);
+          return rv;
+        });
+        this._reviewedMap.set(activeRow.id, multiRows);
       }
       void this._refreshAccuracy().then(() => this._updateProgress());
       void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
@@ -1559,7 +1659,7 @@ export class FormPanel {
     }
     this._sessionCount++;
     if (!this._duplicateEntries) {
-      this._reviewedMap.set(activeRow.id, { ...values });
+      this._reviewedMap.set(activeRow.id, [{ ...values }]);
     }
     void this._refreshAccuracy().then(() => this._updateProgress());
     void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
@@ -1590,6 +1690,8 @@ export class FormPanel {
     }
 
     this._reviewedMap.delete(row.id);
+    this._reviewedTool = '';
+    this._reviewedMultiboxEntries = [];
     this._sessionCount = 0;
     this._fileCount = 0;
     await this.loadOutputFileProgress();

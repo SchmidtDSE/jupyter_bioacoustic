@@ -11,3 +11,4 @@ for _m in range(1, _n_mels + 1):
     if _pk > _lo: _fb[_m-1, _lo:_pk] = (_np.arange(_lo, _pk) - _lo) / (_pk - _lo)
     if _hi > _pk: _fb[_m-1, _pk:_hi] = (_hi - _np.arange(_pk, _hi)) / (_hi - _pk)
 _S = _fb @ _mag
+_freq_scale = 'mel'
