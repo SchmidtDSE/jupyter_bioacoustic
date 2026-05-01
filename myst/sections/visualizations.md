@@ -14,7 +14,7 @@ Five visualization types are included and can be referenced by string name in th
 
 | Name | Description |
 |---|---|
-| `'plain'` (or `'spectrogram'`) | Linear-frequency STFT magnitude spectrogram |
+| `'linear'` (or `'spectrogram'`) | Linear-frequency STFT magnitude spectrogram |
 | `'mel'` | Mel-scale spectrogram — compresses the frequency axis to better match human auditory perception |
 | `'log_frequency'` | Log-frequency spectrogram — more visual detail at lower frequencies, similar to a constant-Q transform |
 | `'bandpass'` | Bandpass spectrogram focused on 1–8 kHz (typical birdsong range) |
@@ -24,11 +24,11 @@ Five visualization types are included and can be referenced by string name in th
 BioacousticAnnotator(
     data='detections.csv',
     audio='recording.flac',
-    visualizations=['plain', 'mel', 'log_frequency', 'bandpass', 'waveform'],
+    visualizations=['linear', 'mel', 'log_frequency', 'bandpass', 'waveform'],
 ).open()
 ```
 
-The first item in the list is the default. Use `selected::` prefix to override the default (e.g. `['plain', 'selected::mel', 'log_frequency']`).
+The first item in the list is the default. Use `selected::` prefix to override the default (e.g. `['linear', 'selected::mel', 'log_frequency']`).
 
 
 ## Capture
@@ -116,7 +116,7 @@ BioacousticAnnotator(
     data='detections.csv',
     audio='recording.flac',
     visualizations=[
-        'plain',
+        'linear',
         'mel',
         {'fn': birdsong_spectrogram, 'label': 'Birdsong (1-8 kHz)'},
     ],
@@ -216,7 +216,7 @@ BioacousticAnnotator(
     data='detections.csv',
     audio='recording.flac',
     visualizations=[
-        'plain',
+        'linear',
         'mel',
         {'fn': librosa_harmonic, 'label': 'Librosa Harmonic'},
     ],
