@@ -1,6 +1,6 @@
 {
   "name": "jupyter-bioacoustic",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "JupyterLab bioacoustic audio review plugin",
   "keywords": [
     "jupyter",
