@@ -45,6 +45,7 @@ spectrograms/
 
 # Yaml (ignore data yamls but keep config and package yamls)
 *.yaml
+!.pre-commit-config.yaml
 !myst.yml
 !jupyter_bioacoustic/audio/*.py
 
