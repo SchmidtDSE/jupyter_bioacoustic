@@ -46,7 +46,7 @@ project:
     - file: myst/sections/overview.md
     - file: myst/sections/examples.md
     - file: myst/sections/visualizations.md
-    - file: myst/sections/form-examples.md
+    - file: myst/sections/customizable-forms.md
     - file: myst/sections/annotations.md
     - file: myst/sections/audio-io.md
     # - file: myst/sections/params.md
