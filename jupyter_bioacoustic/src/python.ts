@@ -51,7 +51,7 @@ export function readAudio(path: string, startSec: number, durSec: number): strin
 }
 
 /** Assemble the spectrogram pipeline from .py chunks (no template vars). */
-export function buildSpectrogram(spectType: 'mel' | 'plain', resolutionW?: number): string {
+export function buildSpectrogram(spectType: 'mel' | 'linear', resolutionW?: number): string {
   const filterBlock = spectType === 'mel' ? PY_SPEC_MEL : PY_SPEC_PLAIN;
   const resLine = resolutionW ? `_fig_w = ${resolutionW}` : '';
   return [PY_BUILD_SPEC, filterBlock, resLine, PY_SPEC_RENDER].join('\n');
@@ -111,7 +111,7 @@ export function spectrogramPipeline(
   if (vizType === 'custom' && vizIndex != null) {
     return readCode + '\n' + customVizCode(vizIndex, resolutionW ?? 2000);
   }
-  const spectType = (builtinKey === 'mel' ? 'mel' : 'plain') as 'mel' | 'plain';
+  const spectType = (builtinKey === 'mel' ? 'mel' : 'linear') as 'mel' | 'linear';
   return readCode + '\n' + buildSpectrogram(spectType, resolutionW);
 }
 

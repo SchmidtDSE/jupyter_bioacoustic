@@ -35,7 +35,7 @@ DEFAULT_BUFFER = 3
 DEFAULT_APP_TITLE = 'Jupyter Bioacoustic'
 DEFAULT_CAPTURE_LABEL = 'Capture'
 DEFAULT_SPEC_RESOLUTIONS = [1000, 2000, 4000]
-DEFAULT_VISUALIZATIONS = ['plain', 'mel']
+DEFAULT_VISUALIZATIONS = ['linear', 'mel']
 DEFAULT_INLINE = True
 DEFAULT_WIDTH = '100%'
 DEFAULT_HEIGHT = 900
@@ -799,12 +799,12 @@ class BioacousticAnnotator:
         self._viz_meta = []  # JSON-serializable metadata for TS side
         for i, v in enumerate(raw_viz if isinstance(raw_viz, list) else [raw_viz]):
             if isinstance(v, str):
-                if v in ('plain', 'mel'):
-                    # Legacy built-in: handled by the TS py_chunks pipeline
-                    fs = 'mel' if v == 'mel' else 'linear'
-                    label = v.replace('_', ' ').title()
-                    self._visualizations.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs})
-                    self._viz_meta.append({'type': 'builtin', 'key': v, 'label': label, 'freq_scale': fs, 'index': i})
+                if v in ('linear', 'plain', 'mel'):
+                    key = 'linear' if v in ('plain', 'linear') else 'mel'
+                    fs = 'mel' if key == 'mel' else 'linear'
+                    label = key.replace('_', ' ').title()
+                    self._visualizations.append({'type': 'builtin', 'key': key, 'label': label, 'freq_scale': fs})
+                    self._viz_meta.append({'type': 'builtin', 'key': key, 'label': label, 'freq_scale': fs, 'index': i})
                 elif v in _VIZ_REGISTRY:
                     # Registered visualization function (by name)
                     fn = _VIZ_REGISTRY[v]
