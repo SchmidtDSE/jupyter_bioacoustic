@@ -1468,25 +1468,37 @@ export class FormPanel {
     this._dynFormEl.appendChild(title);
 
     const container = document.createElement('div');
-    container.style.cssText = `display:flex;flex-direction:column;gap:4px;padding:4px 0;`;
-    const data = rows[0];
-    for (const [key, val] of Object.entries(data)) {
-      const line = document.createElement('div');
-      line.style.cssText = `display:flex;gap:8px;font-size:12px;`;
-      const keyEl = document.createElement('span');
-      keyEl.style.cssText = `color:${COLORS.textMuted};min-width:140px;flex-shrink:0;`;
-      keyEl.textContent = key;
-      const valEl = document.createElement('span');
-      valEl.style.cssText = `color:${COLORS.textPrimary};`;
-      valEl.textContent = val != null && val !== '' ? String(val) : '—';
-      line.append(keyEl, valEl);
-      container.appendChild(line);
-    }
-    if (rows.length > 1) {
-      const note = document.createElement('div');
-      note.style.cssText = `font-size:11px;color:${COLORS.textMuted};margin-top:4px;`;
-      note.textContent = `+ ${rows.length - 1} additional annotation${rows.length > 2 ? 's' : ''}`;
-      container.appendChild(note);
+    container.style.cssText = `display:flex;flex-direction:column;gap:6px;padding:4px 0;overflow-y:auto;`;
+    const colors = DISPLAY_CHIP_COLORS;
+    for (let ri = 0; ri < rows.length; ri++) {
+      const data = rows[ri];
+      const card = document.createElement('div');
+      if (rows.length > 1) {
+        card.style.cssText =
+          `display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;padding:4px 8px;` +
+          `border-radius:4px;border-left:3px solid ${colors[ri % colors.length]};`;
+      } else {
+        card.style.cssText = `display:flex;flex-direction:column;gap:2px;`;
+      }
+      for (const [key, val] of Object.entries(data)) {
+        const line = document.createElement('span');
+        if (rows.length > 1) {
+          line.style.cssText = `display:inline-flex;gap:4px;font-size:12px;white-space:nowrap;`;
+        } else {
+          line.style.cssText = `display:flex;gap:8px;font-size:12px;`;
+        }
+        const keyEl = document.createElement('span');
+        keyEl.style.cssText = rows.length > 1
+          ? `color:${COLORS.textMuted};`
+          : `color:${COLORS.textMuted};min-width:140px;flex-shrink:0;`;
+        keyEl.textContent = key;
+        const valEl = document.createElement('span');
+        valEl.style.cssText = `color:${COLORS.textPrimary};`;
+        valEl.textContent = val != null && val !== '' ? String(val) : '—';
+        line.append(keyEl, valEl);
+        card.appendChild(line);
+      }
+      container.appendChild(card);
     }
     this._dynFormEl.appendChild(container);
 
