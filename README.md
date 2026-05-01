@@ -49,7 +49,7 @@ BioacousticAnnotator(
 ).open()
 ```
 
-![JupyterBioacoustic Plugin](assets/app-inline.png)
+![JupyterBioacoustic Plugin](assets/app/inline.png)
 
 See the [Quick Start guide](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Quick-Start) for test files and more examples.
 
