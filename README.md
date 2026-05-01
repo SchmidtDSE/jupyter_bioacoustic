@@ -55,15 +55,13 @@ See the [Quick Start guide](https://github.com/SchmidtDSE/jupyter_bioacoustic/wi
 
 ## Features
 
-| | |
-|---|---|
-| **Clip table** | Sort, GUI filter builder (column/operator/value dropdowns, filter chips), paginate, configurable columns, keyboard navigation |
-| **Spectrogram** | Linear/mel STFT or custom visualizations, buffer overlay, play/pause, frequency/time zoom, configurable resolution, capture PNG, keyboard shortcuts |
-| **Annotation tools** | Draggable time markers, start/end lines, frequency-time bounding boxes, multibox (multiple labeled boxes per clip) |
-| **Configurable forms** | YAML-driven: selects (with conditional sections, filter box, custom values), textboxes, checkboxes, progress tracker, `dynamic_forms` for reusable named sections |
-| **Per-row audio** | Each row can point to a different audio file with fallback. S3 and HTTPS partial byte-range downloads (requires ffmpeg). Falls back to full download + cache without ffmpeg. |
-| **Output & Sync** | CSV, Parquet, or line-delimited JSON with `pass_value`, `fixed_value`, and `**kwargs`. Sync output to S3/GCS via button or `ba.sync()`. |
-| **Duplicate prevention** | Reviewed rows faded, read-only results, deletable. Filter by pending/reviewed/all with refresh. |
+- **Player / Visualizer** — browse audio clips with interactive spectrograms and other visualizations (linear, mel, log-frequency, or custom)
+- **Configurable Forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, and conditional sections
+- **Annotation Tools** — time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
+- **Built-In & Custom Visualizations** — built-in linear and mel spectrograms, log-frequency, bandpass and waveform visualizations. Easily integrate third-party libraries (OpenSoundscape, librosa, SciPy, ...) or write your own
+- **Zoom and Capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
+- **Flexible data sources** — CSV, Parquet, SQL (DuckDB), API endpoints, S3 byte-range reads
+- **Syncing** — sync local annotation files to remote storage such as S3 and GCS
 
 ## Documentation
 
