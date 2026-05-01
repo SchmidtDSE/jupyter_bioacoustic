@@ -52,7 +52,7 @@ DEFAULT_DYNAMIC_RANGE_DB = 80
 # VISUALIZATIONS
 #
 def spectrogram(mono, sr, width, fft=DEFAULT_FFT, hop=None):
-    """Plain linear-frequency spectrogram.
+    """Linear-frequency spectrogram.
 
     Args:
         mono: 1D float32 audio array.
@@ -322,6 +322,7 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
 # Registry:  enables string based lookup for jupyter_bioacoustic tools
 #
 REGISTRY = {
+    'linear': spectrogram,
     'spectrogram': spectrogram,
     'plain': spectrogram,
     'mel': mel,

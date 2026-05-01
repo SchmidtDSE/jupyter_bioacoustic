@@ -136,7 +136,7 @@ export class Player {
     this._specResolutions = opts.specResolutions;
     this._rebuildResolutionSelect();
     this._vizMeta = opts.vizMeta.length > 0 ? opts.vizMeta : [
-      { type: 'builtin', key: 'plain', label: 'Plain', freq_scale: 'linear', index: 0 },
+      { type: 'builtin', key: 'linear', label: 'Linear', freq_scale: 'linear', index: 0 },
       { type: 'builtin', key: 'mel', label: 'Mel', freq_scale: 'mel', index: 1 },
     ];
     this._rebuildVizSelect();
