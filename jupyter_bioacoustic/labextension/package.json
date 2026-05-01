@@ -37,6 +37,10 @@
   },
   "jupyterlab": {
     "extension": true,
-    "outputDir": "labextension"
+    "outputDir": "labextension",
+    "_build": {
+      "load": "static/remoteEntry.b40918d0ae24b643e86d.js",
+      "extension": "./extension"
+    }
   }
 }
