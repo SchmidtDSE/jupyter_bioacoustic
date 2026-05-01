@@ -10,6 +10,7 @@ The spectrogram player renders each audio clip as an interactive visualization. 
 
 ## Built-in Visualizations
 
+
 Five visualization types are included and can be referenced by string name in the `visualizations` parameter:
 
 | Name | Description |
@@ -20,12 +21,9 @@ Five visualization types are included and can be referenced by string name in th
 | `'bandpass'` | Bandpass spectrogram focused on 1–8 kHz (typical birdsong range) |
 | `'waveform'` | Time-domain waveform plot (amplitude vs. time, not a spectrogram) |
 
-```python
-BioacousticAnnotator(
-    data='detections.csv',
-    audio='recording.flac',
-    visualizations=['linear', 'mel', 'log_frequency', 'bandpass', 'waveform'],
-).open()
+
+
+```{embed} nb.vis.1.built_in
 ```
 
 The first item in the list is the default. Use `selected::` prefix to override the default (e.g. `['linear', 'selected::mel', 'log_frequency']`).
@@ -56,19 +54,8 @@ Filenames are auto-generated from the `ident_column` value (if set), timestamp, 
 
 The visualization functions in `jupyter_bioacoustic.utils.visualizations` can be used outside the widget — for analysis, figures, or custom pipelines.
 
-```python
-import soundfile as sf
-from jupyter_bioacoustic.utils import visualizations as vis
 
-audio_data, sample_rate = sf.read('recording.flac')
-mono = audio_data[:sample_rate * 15].mean(axis=1)
-
-result = vis.log_frequency(mono, sample_rate, 2000)
-print(result['matrix'].shape)
-print(result['freq_min'], result['freq_max'], result['freq_scale'])
-
-fig, ax = vis.plot(result, cmap='inferno')
-ax.set_title('Log-Frequency Spectrogram')
+```{embed} nb.vis.2.standalone
 ```
 
 The `vis.plot()` helper renders any visualization dict as a matplotlib figure. It handles dB normalization, colormap rendering, and frequency-axis tick labels for linear, mel, and log scales.
@@ -102,47 +89,16 @@ def my_custum_vis(mono: np.ndarray, sr: float, width: int) -> dict:
 
 ### Matrix Example
 
-TODO: UPDATE WITH NOT SOURCE VIS EXAMPLES BUT SIMPLE
-TOTO: include ScreenShots
 
-```python
-from jupyter_bioacoustic.utils import visualizations as vis
-
-def birdsong_spectrogram(mono, sr, width):
-    result = vis.bandpass(mono, sr, width, f_lo=1000.0, f_hi=8000.0)
-    return result
-
-BioacousticAnnotator(
-    data='detections.csv',
-    audio='recording.flac',
-    visualizations=[
-        'linear',
-        'mel',
-        {'fn': birdsong_spectrogram, 'label': 'Birdsong (1-8 kHz)'},
-    ],
-).open()
+```{embed} nb.vis.4.bandpass
 ```
 
 ### PNG Example
 
-TODO: UPDATE WITH NOT SOURCE VIS EXAMPLES BUT SIMPLE
-TOTO: include ScreenShots
 
-For complete control — custom colormaps, layouts, overlays, or multi-panel figures:
-
-```python
-from jupyter_bioacoustic.utils import visualizations as vis
-
-def inferno_spectrogram(mono, sr, width):
-    result = vis.spectrogram(mono, sr, width)
-    png = vis.render_png(result['matrix'], width=width, cmap='inferno')
-    return {
-        'png_bytes': png,
-        'freq_min': result['freq_min'],
-        'freq_max': result['freq_max'],
-        'freq_scale': result['freq_scale'],
-    }
+```{embed} nb.vis.3.png
 ```
+
 
 ### Third-party libraries
 
@@ -153,74 +109,23 @@ Any audio library can be wrapped as a custom visualization. The demo notebooks s
 - **Librosa** — `librosa.feature.melspectrogram()`, HPSS harmonic separation, chromagrams
 - **SciPy** — `scipy.signal.spectrogram()` with configurable window functions (Hann, Blackman, Kaiser, Tukey)
 
-#### Matplotlib
-
-This example uses `matplotlib` for full control (custom layouts, overlays, multi-panel) over the visualizations:
-
-```python
-import matplotlib.pyplot as plt
-import numpy as np
-import io
-
-def waveform_and_spectrogram(mono, sr, width):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(width / 100, 5),
-                                    gridspec_kw={'height_ratios': [1, 3]}, dpi=100)
-    t = np.linspace(0, len(mono) / sr, len(mono))
-    ax1.plot(t, mono, color='#89b4fa', linewidth=0.3)
-    ax1.set_xlim(0, len(mono) / sr)
-    ax1.set_facecolor('#1e1e2e')
-    ax1.set_axis_off()
-
-    ax2.specgram(mono, Fs=sr, NFFT=1024, noverlap=512, cmap='inferno')
-    ax2.set_facecolor('#1e1e2e')
-    ax2.set_axis_off()
-
-    fig.patch.set_facecolor('#1e1e2e')
-    fig.subplots_adjust(hspace=0.05)
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', pad_inches=0.02)
-    plt.close(fig)
-
-    return {
-        'png_bytes': buf.getvalue(),
-        'freq_min': 0.0,
-        'freq_max': sr / 2.0,
-        'freq_scale': 'linear',
-    }
-```
-
 #### OpenSoundscapes
 
-TODO: include open soundscapes
-TOTO: include ScreenShots
+```{figure} ../../assets/nb/vis.3rd.oss.png
+:class: bordered
+```
 
 #### Librosa
 
-TOTO: include ScreenShots
+```{figure} ../../assets/nb/vis.3rd.librosa.png
+:class: bordered
+```
 
-```python
-import librosa
 
-def librosa_harmonic(mono, sr, width):
-    hop = max(1, len(mono) // width) if width > 0 else 512
-    S = np.abs(librosa.stft(mono.astype(np.float32), n_fft=2048, hop_length=hop))
-    S_harmonic, _ = librosa.decompose.hpss(S)
-    return {
-        'matrix': S_harmonic,
-        'freq_min': 0.0,
-        'freq_max': sr / 2.0,
-        'freq_scale': 'linear',
-    }
+#### SciPy
 
-BioacousticAnnotator(
-    data='detections.csv',
-    audio='recording.flac',
-    visualizations=[
-        'linear',
-        'mel',
-        {'fn': librosa_harmonic, 'label': 'Librosa Harmonic'},
-    ],
-).open()
+```{figure} ../../assets/nb/vis.3rd.scipy.png
+:class: bordered
 ```
 
 See the [Custom Visualizations](../demo/custom-visualizations.ipynb) and [Third-Party Libraries](../demo/custom-visualizations-2.ipynb) notebooks for complete examples.
