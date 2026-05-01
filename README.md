@@ -2,7 +2,7 @@
 
 _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 
-![JupyterBioacoustic Plugin](assets/app-review.png)
+![JupyterBioacoustic Plugin](assets/app/data-collection-mbox.png)
 
 **Documentation**
 - site:  https://schmidtdse.github.io/jupyter_bioacoustic/
