@@ -25,11 +25,12 @@ BioacousticAnnotator(data='detections.csv', audio='recording.flac').open()
 ## Features
 
 - **Player / Visualizer** — browse audio clips with interactive spectrograms and other visualizations (linear, mel, log-frequency, or custom)
-- **Configurable forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, and conditional sections
-- **Annotation tools** — time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
-- **Custom visualizations** — integrate third-party libraries (OpenSoundscape, librosa, SciPy) or write your own
-- **Zoom and capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
+- **Configurable Forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, and conditional sections
+- **Annotation Tools** — time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
+- **Built-In & Custom Visualizations** — built-in linear and mel spectrograms, log-frequency, bandpass and waveform visualizations. Easily integrate third-party libraries (OpenSoundscape, librosa, SciPy, ...) or write your own
+- **Zoom and Capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
 - **Flexible data sources** — CSV, Parquet, SQL (DuckDB), API endpoints, S3 byte-range reads
+- **Syncing**: — sync local annotation files to remote storage such as `s3` and `GCS`
 
 
 ## Table of Contents
