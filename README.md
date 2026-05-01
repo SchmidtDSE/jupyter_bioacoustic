@@ -4,10 +4,8 @@ _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 
 ![JupyterBioacoustic Plugin](assets/app-review.png)
 
-Browse a table of audio clips, play each one with a spectrogram, and optionally record verification decisions or annotations — all without leaving the notebook. The form layout is fully configurable via YAML; without a form config the widget is a pure visualizer/player.
-
 **Documentation**
-- walkthrough:  https://schmidtdse.github.io/jupyter_bioacoustic/
+- site:  https://schmidtdse.github.io/jupyter_bioacoustic/
 - docs: https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki
 
 **Table of Contents**
