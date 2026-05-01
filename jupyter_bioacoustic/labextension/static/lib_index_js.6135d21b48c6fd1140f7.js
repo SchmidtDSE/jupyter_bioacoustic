@@ -382,7 +382,7 @@ for _m in range(1, _n_mels + 1):
 _S = _fb @ _mag
 _freq_scale = 'mel'
 `;
-exports.spectrogramPlain = `# Plain STFT (no mel filterbank). Sets _f_min, _f_max, _S.
+exports.spectrogramPlain = `# Linear STFT (no mel filterbank). Sets _f_min, _f_max, _S.
 
 _f_min, _f_max = 0.0, _sr / 2.0
 _S = _mag
@@ -534,7 +534,7 @@ function spectrogramPipeline(path, startSec, durSec, vizType, builtinKey, vizInd
     if (vizType === 'custom' && vizIndex != null) {
         return readCode + '\n' + customVizCode(vizIndex, resolutionW !== null && resolutionW !== void 0 ? resolutionW : 2000);
     }
-    const spectType = (builtinKey === 'mel' ? 'mel' : 'plain');
+    const spectType = (builtinKey === 'mel' ? 'mel' : 'linear');
     return readCode + '\n' + buildSpectrogram(spectType, resolutionW);
 }
 exports.spectrogramPipeline = spectrogramPipeline;
@@ -3368,7 +3368,7 @@ class Player {
         this._specResolutions = opts.specResolutions;
         this._rebuildResolutionSelect();
         this._vizMeta = opts.vizMeta.length > 0 ? opts.vizMeta : [
-            { type: 'builtin', key: 'plain', label: 'Plain', freq_scale: 'linear', index: 0 },
+            { type: 'builtin', key: 'linear', label: 'Linear', freq_scale: 'linear', index: 0 },
             { type: 'builtin', key: 'mel', label: 'Mel', freq_scale: 'mel', index: 1 },
         ];
         this._rebuildVizSelect();
@@ -5004,4 +5004,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.089c95d40dcb9cbb202f.js.map
+//# sourceMappingURL=lib_index_js.6135d21b48c6fd1140f7.js.map

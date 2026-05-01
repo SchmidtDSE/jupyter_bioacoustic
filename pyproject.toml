@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jupyter-bioacoustic"
-version = "0.5.3"
+version = "0.5.4"
 description = "JupyterLab bioacoustic audio review plugin"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
