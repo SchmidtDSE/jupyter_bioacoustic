@@ -724,7 +724,7 @@ export class Player {
       this._canvasContainer.style.cursor = 'grabbing';
       return;
     }
-    if (!ac || !this._specBitmap || this._segDuration === 0) return;
+    if (!ac || !this._specBitmap || this._segDuration === 0 || this._form.isShowingReviewedView()) return;
     const { cx, cy } = this._canvasXY(e);
     const tool = this._form.getActiveTool();
     const GRAB = 10;
@@ -858,7 +858,7 @@ export class Player {
         this._canvasContainer.style.cursor = 'ew-resize';
         return;
       }
-      if (ac) {
+      if (ac && !this._form.isShowingReviewedView()) {
         this._updateAnnotCursor(cx, cy);
       } else {
         this._updateCursorForZoom();
@@ -1041,7 +1041,8 @@ export class Player {
   private _renderAnnotation(ctx: CanvasRenderingContext2D, W: number, H: number, axisW?: number): void {
     const ac = this._form.getAnnotConfig();
     if (!ac || this._segDuration === 0) return;
-    const tool = this._form.getActiveTool();
+    const reviewed = this._form.isShowingReviewedView();
+    const tool = reviewed ? this._form.getReviewedTool() : this._form.getActiveTool();
     const ax = axisW ?? Player.AXIS_W;
     const tx = (t: number) => this._timeToX(t, W, ax);
 
@@ -1095,8 +1096,8 @@ export class Player {
         ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
       }
     } else if (tool === 'multibox') {
-      const entries = this._form.getMultiboxEntries();
-      const activeIdx = this._form.getActiveBoxIndex();
+      const entries = reviewed ? this._form.getReviewedMultiboxEntries() : this._form.getMultiboxEntries();
+      const activeIdx = reviewed ? -1 : this._form.getActiveBoxIndex();
       entries.forEach((entry, i) => {
         const sx = tx(entry.startTime);
         const ex = tx(entry.endTime);
