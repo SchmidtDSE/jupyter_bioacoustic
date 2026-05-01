@@ -87,21 +87,21 @@ def my_custum_vis(mono: np.ndarray, sr: float, width: int) -> dict:
     }
 ```
 
-### Matrix Example
+--- 
 
-
+**Matrix Example**
 ```{embed} nb.vis.4.bandpass
 ```
 
-### PNG Example
+--- 
 
-
+**PNG Example**
 ```{embed} nb.vis.3.png
 ```
 
+--- 
 
-### Third-party libraries
-
+## Third-party Visualizations
 
 Any audio library can be wrapped as a custom visualization. The demo notebooks show integrations with:
 
@@ -109,23 +109,30 @@ Any audio library can be wrapped as a custom visualization. The demo notebooks s
 - **Librosa** — `librosa.feature.melspectrogram()`, HPSS harmonic separation, chromagrams
 - **SciPy** — `scipy.signal.spectrogram()` with configurable window functions (Hann, Blackman, Kaiser, Tukey)
 
-#### OpenSoundscapes
+--- 
 
-```{figure} ../../assets/nb/vis.3rd.oss.png
+**OpenSoundscapes**
+
+```{embed} nb.vis.3rd.oss
 :class: bordered
 ```
 
-#### Librosa
+--- 
 
-```{figure} ../../assets/nb/vis.3rd.librosa.png
+**Librosa**
+
+```{embed} nb.vis.3rd.librosa
 :class: bordered
 ```
 
+---
 
-#### SciPy
+**SciPy**
 
-```{figure} ../../assets/nb/vis.3rd.scipy.png
+```{embed} nb.vis.3rd.scipy
 :class: bordered
 ```
+
+---
 
 See the [Custom Visualizations](../demo/custom-visualizations.ipynb) and [Third-Party Libraries](../demo/custom-visualizations-2.ipynb) notebooks for complete examples.

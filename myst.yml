@@ -1,4 +1,4 @@
-  version: 1
+version: 1
 site:
   title: Jupyter Bioacoustic
   template: book-theme
@@ -63,4 +63,3 @@ project:
           title: "Sync"
         - file: demo/audio-io.ipynb
           title: "Sync & Audio IO"
-        # - file: demo/geo-analysis-example.ipynb
