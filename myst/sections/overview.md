@@ -54,7 +54,7 @@ The clip table displays your input data as a sortable, paginated table. Click an
 
 The spectrogram player renders each audio clip as an interactive spectrogram with playback controls:
 
-- **Visualization type** — switch between plain STFT, mel, log-frequency, or [custom visualizations](params) from a dropdown
+- **Visualization type** — switch between linear STFT, mel, log-frequency, or [custom visualizations](params) from a dropdown
 - **Resolution** — select rendering resolution from the [`spectrogram_resolution`](params) dropdown
 - **Buffer** — adjustable time padding before and after each clip
 - **Zoom** — `+`/`-`/`0` keys, zoom-to-selection box (⬚), click-and-drag to pan

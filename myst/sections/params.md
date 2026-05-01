@@ -176,7 +176,7 @@ dynamic_forms:
 | `capture` | `True` | Capture button (`False` to hide, string for label) |
 | `capture_dir` | `''` | Directory for captures |
 | `spectrogram_resolution` | `[1000, 2000, 4000]` | Image width(s) in px. `selected::` prefix for default |
-| `visualizations` | `['plain', 'mel']` | Built-in strings or callables |
+| `visualizations` | `['linear', 'mel']` | Built-in strings or callables |
 | `partial_download` | `True` | Byte-range downloads for remote audio (requires ffmpeg) |
 | `width` | `'100%'` | Inline widget width |
 | `height` | `900` | Inline widget height |

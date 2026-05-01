@@ -24,7 +24,7 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 
 ![Spectrogram with buffer overlay](../../assets/spectrogram-2.png)
 
-- **Built-in and custom visualizations** — plain, mel, log-frequency, bandpass, and waveform built in. Add custom callables or use third-party libraries (OpenSoundscape, librosa, SciPy). Return a matrix for auto-rendering with `vis.render_png()`, or PNG bytes for full control. The `visualizations` module also works standalone for analysis and figures via `vis.plot()`.
+- **Built-in and custom visualizations** — linear, mel, log-frequency, bandpass, and waveform built in. Add custom callables or use third-party libraries (OpenSoundscape, librosa, SciPy). Return a matrix for auto-rendering with `vis.render_png()`, or PNG bytes for full control. The `visualizations` module also works standalone for analysis and figures via `vis.plot()`.
 - **Buffer control** — adjustable buffer time adds context before and after each clip, shown as a shaded overlay
 - **Playback** — play/pause with a moving playhead and time display
 - **Zoom and pan** — zoom into frequency and time regions using keyboard (`+`/`-`/`0`), the ⬚ zoom-to-selection tool (draw a box), or click-and-drag to pan. A view bounds bar shows the current time and frequency range in real time
