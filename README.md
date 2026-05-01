@@ -25,68 +25,17 @@ Browse a table of audio clips, play each one with a spectrogram, and optionally 
 
 ## Install
 
-### From pre-built wheel (fastest)
+```bash
+pip install jupyter-bioacoustic
+```
 
-Download the wheel from a [GitHub Release](https://github.com/SchmidtDSE/jupyter_bioacoustic/releases) and install locally. No Node.js or build step needed:
+Or from a [GitHub Release](https://github.com/SchmidtDSE/jupyter_bioacoustic/releases) wheel:
 
 ```bash
-gh release download v0.5.0 --repo SchmidtDSE/jupyter_bioacoustic -p "*.whl" -D dist/
-pip install dist/jupyter_bioacoustic-0.5.0-py3-none-any.whl
+pip install jupyter_bioacoustic-0.5.0-py3-none-any.whl
 ```
 
-Or in a pixi `pyproject.toml` (after downloading the wheel):
-
-```toml
-jupyter-bioacoustic = { path = "dist/jupyter_bioacoustic-0.5.0-py3-none-any.whl" }
-```
-
-### For development
-
-```bash
-git clone <repo-url>
-cd jupyter_bioacoustic
-pixi run setup   # install deps, build TypeScript, register extension
-pixi run lab     # launch JupyterLab
-```
-
-> If not using pixi, launch with `jupyter lab --ServerApp.iopub_data_rate_limit=1e10` (or set `c.ServerApp.iopub_data_rate_limit = 1e10` in `jupyter_lab_config.py`). Spectrograms are sent as base64 images over the kernel's IOPub channel, which can exceed Jupyter's default 1 MB/s rate limit.
-
-### Building a new wheel
-
-After TypeScript or Python changes:
-
-```bash
-# 1. Bump version in pyproject.toml and jupyter_bioacoustic/package.json
-
-# 2. Build TypeScript + labextension
-pixi run build
-
-# 3. Verify the labextension is complete
-ls jupyter_bioacoustic/labextension/package.json  # must exist
-
-# 4. Commit everything (source changes + rebuilt labextension)
-git add -A
-git commit -m "v0.5.0: major update - custom vis, zoom into spectrograms, remote file support, bug fixes ..."
-
-# 5. Build the wheel (requires the `dev` pixi environment)
-rm -f dist/*.whl
-pixi run -e dev python -m build --wheel
-ls dist/*.whl
-
-# 6. Tag and release
-git tag v0.5.0
-git push origin main v0.5.0
-gh release create v0.5.0 dist/jupyter_bioacoustic-0.5.0-py3-none-any.whl \
-    --title "v0.5.0" --notes "major update - custom vis, zoom into spectrograms, remote file support, bug fixes ..."
-```
-
-> **Important:** The build step (2) regenerates `jupyter_bioacoustic/labextension/`, which is tracked in git. Always rebuild _before_ committing so the wheel and the tagged commit contain the same JS bundle.
-
-> **Checklist:**
-> - Bump version in both `pyproject.toml` and `jupyter_bioacoustic/package.json`
-> - Verify `jupyter_bioacoustic/labextension/package.json` exists after build
-> - Delete old wheels before building (`rm -f dist/*.whl`)
-> - Update the wheel filename in downstream `pyproject.toml` files if the version changed
+See the [Development wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) for building from source.
 
 ## Quick Start
 
