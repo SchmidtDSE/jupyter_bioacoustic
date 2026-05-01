@@ -11,9 +11,9 @@ keywords:
     - annotation
 ---
 
+
 Code Repository: https://github.com/SchmidtDSE/jupyter_bioacoustic \
-API Documentation: https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki \
-Demo: https://github.com/SchmidtDSE/jupyter_bioacoustic-demo
+API Documentation: https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki
 
 ---
 
