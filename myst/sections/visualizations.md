@@ -28,8 +28,9 @@ Five visualization types are included and can be referenced by string name in th
 
 The first item in the list is the default. Use `selected::` prefix to override the default (e.g. `['linear', 'selected::mel', 'log_frequency']`).
 
+---
 
-## Capture
+**Capture**
 
 The capture button saves the current spectrogram/visualization as a PNG file. Configure it with:
 
@@ -46,9 +47,6 @@ BioacousticAnnotator(
     capture_dir='spectrograms',
 ).open()
 ```
-
-Filenames are auto-generated from the `ident_column` value (if set), timestamp, and visualization type.
-
 
 ## Standalone Usage
 
