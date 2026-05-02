@@ -1,10 +1,14 @@
 (annotations)=
 # Annotation Tools
 
-The `annotation` form element adds interactive spectrogram tools for marking time positions and frequency-time regions. Four annotation tools are available, from a single time marker to drawing multiple labeled bounding boxes. Without an `annotation` element in the form config, the spectrogram has no click/drag interaction.
+The `annotation` form element adds interactive tools for marking time positions and frequency-time regions. Four annotation tools are available:
 
-When multiple tools are listed, a dropdown appears in the form panel to switch between them.
+* [`time_select`](#time-select): a single time marker
+* [`start_end_time_select`](#start-end-time-select): time markers for both start and end times
+* [`bounding_box`](#bounding-box): draw and label a bounding box (start/end-time, min/max-frequency)
+* [`multibox`](#multibox): draw and label multiple bounding boxes on a single visualization 
 
+Without an `annotation` element in the form config, the spectrogram has no click/drag interaction. When multiple tools are listed, a dropdown appears in the form panel to switch between them.
 
 ## Time Select
 
