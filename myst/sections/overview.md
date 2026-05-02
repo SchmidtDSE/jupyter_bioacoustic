@@ -16,9 +16,9 @@ from jupyter_bioacoustic import BioacousticAnnotator
 ba =  BioacousticAnnotator(...)
 ````
 
-- `ba.open()`: opens the application. `.open` takes a single parameter `inline: bool = True`.  If `True` the app will open within the notebook. If `False` the app will open as a stand-alone application in a new tab.
+- `ba.open()`: opens the application within the notebook itself. alternatively, `ba.open(inline=False)` will open the app as a stand-alone application in a new tab.
 - `ba.source`: returns the input data as a dataframe 
-- `ba.output()`: returns the output data as a dataframe. the data is by default only re-loaded if an update has been made. `.output`: takes a single parameter `force: bool = False`.  if `True` the data will be re-loaded even if a change has not occured.  Note this is useful if the output data is modified externally. 
+- `ba.output()`: returns the output data as a dataframe. the data is by default only re-loaded if an update has been made. The user can force a reload `ba.output(force=True)`. Note this is useful if the output data is modified externally. 
 
 ---
 
@@ -82,8 +82,6 @@ The form panel can be easily configured to contain the simplest to the most comp
 - **Strict**: fields can be optionally requied. 
 - **Simple**: Even complex forms can be created using simple yaml configuration files
 - **Syncing**: Optionally add a `sync-btn` to push local annotation files to remote storage (such as `s3` and `GCS`).
-
-See [Parameters & Configuration](params) for the full reference and [Form Examples](form-examples) for progressively complex configurations. On submit, a row is (or rows are) appended to the [`output`](params) file. Results are accessible via `ba.output()`.
 
 Note that, by default, the app will not allow for a row to be reviewed twice.  However the option to delete an existing review and re-review it is possible
 
