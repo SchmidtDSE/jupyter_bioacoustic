@@ -29,5 +29,5 @@ BioacousticAnnotator(data='detections.csv', audio='recording.flac').open()
 - **Annotation Tools** — time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
 - **Built-In & Custom Visualizations** — built-in linear and mel spectrograms, log-frequency, bandpass and waveform visualizations. Easily integrate third-party libraries (OpenSoundscape, librosa, SciPy, ...) or write your own
 - **Zoom and Capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
-- **Flexible data sources** — CSV, Parquet, SQL (DuckDB), API endpoints, S3 byte-range reads
+- **Flexible data sources** — CSV, Parquet, SQL (DuckDB), API endpoints. local and remote (`https://`, `s3://`, and `gs://`) support
 - **Syncing**: — sync local annotation files to remote storage such as `s3` and `GCS`
