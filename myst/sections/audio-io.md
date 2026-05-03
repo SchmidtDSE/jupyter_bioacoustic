@@ -3,6 +3,11 @@
 
 ## Sync Button
 
+
+```{figure} ../../assets/sync-btn.png
+:class: bordered
+```
+
 The `output` parameter on `BioacousticAnnotator` accepts a dict with a `uri` (or `url`) field. When configured, a **Sync button** appears in the bottom-right of the form panel. Clicking it uploads the current output file to the remote location, overwriting the remote copy.
 
 ```python
