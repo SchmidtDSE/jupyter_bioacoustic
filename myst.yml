@@ -63,3 +63,10 @@ project:
           title: "Sync"
         - file: demo/audio-io.ipynb
           title: "Sync & Audio IO"
+    - title: Github
+      url: https://github.com/SchmidtDSE/jupyter_bioacoustic
+    - title: Docs
+      url: https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki
+    - title: DSE
+      url: https://dse.berkeley.edu/
+
