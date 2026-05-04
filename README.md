@@ -207,7 +207,7 @@ form_config:
 | `data_url` | str | `None` | Explicit URL for data (overrides `data` source). |
 | `data_sql` | str | `None` | Explicit SQL query for data (overrides `data` source). |
 | `data_api` | str | `None` | Explicit API endpoint for data (overrides `data` source). |
-| `data_secrets` | dict or list | `None` | Auth for data loading. `{key, value}` pairs. Value: `env:VAR`, `dialog`, or literal. |
+| `data_secrets` | dict, list, or `false` | `None` | Auth for data loading. `{key, value}` pairs. Value: `env:VAR`, `dialog`, or literal. Set to `false` to opt out of global `secrets` fallback. |
 | `data_columns` | list | `[]` | Columns for the clip table. |
 | `audio` | str or dict | *required** | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{path\|url\|uri\|column\|sql\|api\|src, prefix, suffix, fallback, secrets, property, response_index}`. |
 | `audio_src` | str | `None` | Audio source string (auto-detected as path, URL, or column name). Same as passing a bare string to `audio`. |
@@ -218,13 +218,19 @@ form_config:
 | `audio_prefix` | str | `''` | Prefix joined with `/` to audio paths. |
 | `audio_suffix` | str | `''` | Suffix joined with `/` to audio paths. |
 | `audio_fallback` | str | `''` | Fallback when `audio` is a column and the row value is empty. |
-| `audio_secrets` | dict or list | `None` | Auth for audio loading (same format as `data_secrets`). |
+| `audio_secrets` | dict, list, or `false` | `None` | Auth for audio loading (same format as `data_secrets`). Set to `false` to opt out of global `secrets` fallback. |
 | `audio_sql` | str | `None` | SQL query to resolve audio path. Requires `audio_property`. |
 | `audio_api` | str | `None` | API URL to resolve audio path. Requires `audio_property`. |
 | `audio_property` | str | `None` | Field/column to extract from SQL/API response as the audio path. |
 | `audio_response_index` | int | `1` | 1-based row index for SQL/API response (1 = first row). |
-| `secrets` | dict or list | `None` | Global auth — fallback for both `data_secrets` and `audio_secrets`. |
-| `output` | str or dict | `''` | Output file path or sync config dict. String: local path. Dict: `{path, uri/url, sync_button, recursive, secrets}`. See [Output & Sync](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#output--sync). |
+| `secrets` | dict or list | `None` | Global auth — fallback for `data_secrets`, `audio_secrets`, and `output_secrets`. Each can opt out by setting to `false`. |
+| `output` | str or dict | `''` | Output file path or sync config dict. String: local path. Dict: `{path, uri/url, sync_button, recursive, secrets}`. See [Output & Sync](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#output-parameters). |
+| `output_path` | str | `None` | Explicit local output file path (overrides `output` string or `output.path` dict key). |
+| `output_url` | str | `None` | Remote sync destination (overrides `output.uri`/`output.url` dict key). |
+| `output_uri` | str | `None` | Alias for `output_url`. |
+| `output_sync_button` | bool / str | `None` | Show a sync button (`true` = "Sync", string = custom label). |
+| `output_recursive` | bool | `None` | Passed to `io.write()` for uploading directories. |
+| `output_secrets` | dict, list, or `false` | `None` | Auth for sync uploads (same format as `data_secrets`). Set to `false` to opt out of global `secrets` fallback. |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
 | `ident_column` | str | `''` | Identifying column — shown first (without label) in the info card and capture filenames. |
 | `app_title` | str | `'Jupyter Bioacoustic'` | Custom title shown in the widget header and tab. |
