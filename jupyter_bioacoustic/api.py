@@ -512,6 +512,12 @@ class BioacousticAnnotator:
         audio_response_index=_UNSET,
         secrets=_UNSET,
         output=_UNSET,
+        output_path=_UNSET,
+        output_url=_UNSET,
+        output_uri=_UNSET,
+        output_sync_button=_UNSET,
+        output_recursive=_UNSET,
+        output_secrets=_UNSET,
         ident_column=_UNSET,
         app_title=_UNSET,
         display_columns=_UNSET,
@@ -574,7 +580,7 @@ class BioacousticAnnotator:
                 return cfg[key]
             return default
 
-        # Global secrets — fallback for data_secrets and audio_secrets
+        # Global secrets — fallback for data_secrets, audio_secrets, output_secrets
         raw_global_secrets = resolve(secrets, 'secrets', None)
 
         raw_data = resolve(data, 'data', _UNSET)
@@ -621,10 +627,12 @@ class BioacousticAnnotator:
         # Determine dtype for top-level source params
         _top_dtype = next(iter(_top_found.keys()), None) if _top_found else None
 
-        # data_secrets > secrets > data.secrets
+        # data_secrets > secrets > data.secrets (False opts out of global fallback)
         raw_data_secrets = resolve(data_secrets, 'data_secrets', None)
         if raw_data_secrets is None:
             raw_data_secrets = raw_global_secrets
+        elif raw_data_secrets is False:
+            raw_data_secrets = None
         raw_data_columns = resolve(data_columns, 'data_columns', None)
 
         # Resolve data config — handles str, dict, and DataFrame
@@ -685,6 +693,8 @@ class BioacousticAnnotator:
         raw_audio_response_index = resolve(audio_response_index, 'audio_response_index', None)
         if raw_audio_secrets is None:
             raw_audio_secrets = raw_global_secrets
+        elif raw_audio_secrets is False:
+            raw_audio_secrets = None
 
         _top_audio = {
             'src': raw_audio_src,
@@ -738,6 +748,17 @@ class BioacousticAnnotator:
 
         self._data             = loaded_data
         raw_output = resolve(output, 'output', '')
+        raw_output_path = resolve(output_path, 'output_path', None)
+        raw_output_url = resolve(output_url, 'output_url', None)
+        raw_output_uri = resolve(output_uri, 'output_uri', None)
+        raw_output_sync_button = resolve(output_sync_button, 'output_sync_button', None)
+        raw_output_recursive = resolve(output_recursive, 'output_recursive', None)
+        raw_output_secrets = resolve(output_secrets, 'output_secrets', None)
+        if raw_output_secrets is None:
+            raw_output_secrets = raw_global_secrets
+        elif raw_output_secrets is False:
+            raw_output_secrets = None
+
         if isinstance(raw_output, dict):
             self._output = raw_output.get('path', '')
             self._sync_uri = raw_output.get('uri') or raw_output.get('url') or ''
@@ -758,6 +779,27 @@ class BioacousticAnnotator:
             self._sync_button = ''
             self._sync_recursive = False
             self._sync_secrets_raw = None
+
+        # Top-level output_* params override dict values
+        if raw_output_path is not None:
+            self._output = raw_output_path
+        if raw_output_url is not None or raw_output_uri is not None:
+            self._sync_uri = raw_output_url or raw_output_uri or ''
+        if raw_output_sync_button is not None:
+            if isinstance(raw_output_sync_button, str):
+                self._sync_button = raw_output_sync_button
+            elif raw_output_sync_button:
+                self._sync_button = 'Sync'
+            else:
+                self._sync_button = ''
+        if raw_output_recursive is not None:
+            self._sync_recursive = raw_output_recursive
+        if raw_output_secrets is not None:
+            self._sync_secrets_raw = raw_output_secrets
+
+        # Default sync button if URI is set but no button configured
+        if self._sync_uri and not self._sync_button:
+            self._sync_button = 'Sync'
         self._ident_column = resolve(ident_column, 'ident_column', '')
         self._app_title        = resolve(app_title,         'app_title',         DEFAULT_APP_TITLE)
 
