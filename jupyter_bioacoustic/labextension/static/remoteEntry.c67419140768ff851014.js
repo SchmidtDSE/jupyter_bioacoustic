@@ -222,7 +222,7 @@ __webpack_require__.d(exports, {
 /******/ 			var promises = [];
 /******/ 			switch(name) {
 /******/ 				case "default": {
-/******/ 					register("jupyter-bioacoustic", "0.5.4", () => (__webpack_require__.e("lib_index_js").then(() => (() => (__webpack_require__(/*! ./lib/index.js */ "./lib/index.js"))))));
+/******/ 					register("jupyter-bioacoustic", "0.5.5", () => (__webpack_require__.e("lib_index_js").then(() => (() => (__webpack_require__(/*! ./lib/index.js */ "./lib/index.js"))))));
 /******/ 				}
 /******/ 				break;
 /******/ 			}
@@ -526,4 +526,4 @@ __webpack_require__.d(exports, {
 /******/ 	
 /******/ })()
 ;
-//# sourceMappingURL=remoteEntry.b40918d0ae24b643e86d.js.map
+//# sourceMappingURL=remoteEntry.c67419140768ff851014.js.map
