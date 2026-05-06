@@ -9,6 +9,10 @@ import { Detection } from '../types';
 import { fmtTime } from '../util';
 import { COLORS, DISPLAY_CHIP_COLORS, btnStyle } from '../styles';
 
+// ─── Constants ────────────────────────────────────────────────
+
+const DEFAULT_INFO_CARD_MIN_HEIGHT = 34;
+
 export class InfoCard {
   readonly element: HTMLDivElement;
 
@@ -19,9 +23,15 @@ export class InfoCard {
     this.element = document.createElement('div');
     this.element.style.cssText =
       `display:flex;align-items:center;gap:10px;padding:6px 12px;` +
-      `background:${COLORS.bgMantle};border-bottom:1px solid ${COLORS.bgSurface0};flex-shrink:0;min-height:34px;`;
+      `background:${COLORS.bgMantle};border-bottom:1px solid ${COLORS.bgSurface0};flex-shrink:0;min-height:${DEFAULT_INFO_CARD_MIN_HEIGHT}px;`;
     this.element.innerHTML =
       `<span style="font-size:12px;color:${COLORS.textMuted};font-style:italic;">No selection</span>`;
+  }
+
+  setHeight(h?: number): void {
+    if (h) {
+      this.element.style.minHeight = `${h}px`;
+    }
   }
 
   /** Render the info card for the given row. */

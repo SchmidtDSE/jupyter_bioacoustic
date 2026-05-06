@@ -345,7 +345,7 @@ def _stft(mono, fft=DEFAULT_FFT, hop=DEFAULT_HOP):
     return mag
 
 
-def render_png(S, width=2000, matrix_scale=None,
+def render_png(S, width=2000, height=None, matrix_scale=None,
                          dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
                          cmap='magma'):
     """Render a 2D spectrogram matrix to PNG bytes.
@@ -357,6 +357,7 @@ def render_png(S, width=2000, matrix_scale=None,
     Args:
         S: 2D numpy array (freq × time).
         width: Image width in pixels.
+        height: Image height in pixels. Default 500.
         matrix_scale: 'linear', 'db', or None (auto-detect from negative values).
         dynamic_range_db: dB range for normalization.
         cmap: Matplotlib colormap name.
@@ -364,6 +365,8 @@ def render_png(S, width=2000, matrix_scale=None,
     Returns:
         PNG bytes.
     """
+    if height is None:
+        height = 500
     S = np.array(S, dtype=float)
     if matrix_scale is None:
         matrix_scale = 'db' if S.min() < 0 else 'linear'
@@ -375,7 +378,7 @@ def render_png(S, width=2000, matrix_scale=None,
     S_norm = (S_db - S_db.min()) / max(float(S_db.max() - S_db.min()), 1e-10)
 
     dpi = 100
-    fig = plt.figure(figsize=(width / dpi, 5), dpi=dpi)
+    fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.imshow(S_norm, aspect='auto', cmap=cmap, origin='lower', interpolation='bilinear')
     ax.set_axis_off()

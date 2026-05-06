@@ -38,7 +38,11 @@ DEFAULT_SPEC_RESOLUTIONS = [1000, 2000, 4000]
 DEFAULT_VISUALIZATIONS = ['linear', 'mel']
 DEFAULT_INLINE = True
 DEFAULT_WIDTH = '100%'
-DEFAULT_HEIGHT = 900
+DEFAULT_CLIP_TABLE_HEIGHT = 175
+DEFAULT_PLAYER_HEIGHT = 260
+DEFAULT_INFO_CARD_HEIGHT = 34
+DEFAULT_FORM_PANEL_HEIGHT = 140
+_TOOLBAR_AND_PADDING_PX = 290
 
 
 # ─── Secret resolution ────────────────────────────────────────
@@ -531,7 +535,10 @@ class BioacousticAnnotator:
         visualizations=_UNSET,
         partial_download=_UNSET,
         width=_UNSET,
-        height=_UNSET,
+        clip_table_height=_UNSET,
+        player_height=_UNSET,
+        info_card_height=_UNSET,
+        form_panel_height=_UNSET,
         config=None,
         **kwargs,
     ):
@@ -561,9 +568,14 @@ class BioacousticAnnotator:
         width : int or str, optional
             Width of the inline widget. Integers are treated as pixels.
             Default '100%'.
-        height : int or str, optional
-            Height of the inline widget. Integers are treated as pixels.
-            Default 900 (px).
+        clip_table_height : int, optional
+            Height in pixels of the clip table section. Default 175.
+        player_height : int, optional
+            Height in pixels of the player/spectrogram section. Default 260.
+        info_card_height : int, optional
+            Height in pixels of the info card section. Default 34.
+        form_panel_height : int, optional
+            Height in pixels of the form panel section. Default 140.
         config : str, optional
             Path to a JSON or YAML config file (.json, .yaml, .yml; no
             extension assumes YAML). Any parameter above can be set in the
@@ -868,8 +880,11 @@ class BioacousticAnnotator:
                 self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
 
         self._partial_download = resolve(partial_download, 'partial_download', True)
-        self._width            = resolve(width,            'width',            DEFAULT_WIDTH)
-        self._height           = resolve(height,           'height',           DEFAULT_HEIGHT)
+        self._width              = resolve(width,              'width',              DEFAULT_WIDTH)
+        self._clip_table_height  = resolve(clip_table_height,  'clip_table_height',  DEFAULT_CLIP_TABLE_HEIGHT)
+        self._player_height      = resolve(player_height,      'player_height',      DEFAULT_PLAYER_HEIGHT)
+        self._info_card_height   = resolve(info_card_height,   'info_card_height',   DEFAULT_INFO_CARD_HEIGHT)
+        self._form_panel_height  = resolve(form_panel_height,  'form_panel_height',  DEFAULT_FORM_PANEL_HEIGHT)
         self._output_cache     = None
 
     @property
@@ -940,6 +955,10 @@ class BioacousticAnnotator:
         ip.user_ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
         ip.user_ns['_BA_DUPLICATE_ENTRIES'] = 'true' if self._duplicate_entries else ''
         ip.user_ns['_BA_DEFAULT_BUFFER'] = str(self._default_buffer)
+        ip.user_ns['_BA_CLIP_TABLE_HEIGHT'] = str(self._clip_table_height)
+        ip.user_ns['_BA_PLAYER_HEIGHT']     = str(self._player_height)
+        ip.user_ns['_BA_INFO_CARD_HEIGHT']  = str(self._info_card_height)
+        ip.user_ns['_BA_FORM_PANEL_HEIGHT'] = str(self._form_panel_height)
         ip.user_ns['_BA_INSTANCE'] = self
 
         if inline:
@@ -992,7 +1011,15 @@ class BioacousticAnnotator:
         """Inject the widget into the cell output area."""
         div_id = f'bioacoustic-{uuid.uuid4().hex[:8]}'
         w = self._width if isinstance(self._width, str) else f'{self._width}px'
-        h = self._height if isinstance(self._height, str) else f'{self._height}px'
+        has_form = self._form_config is not None
+        total_h = (
+            int(self._clip_table_height)
+            + int(self._player_height)
+            + int(self._info_card_height)
+            + (int(self._form_panel_height) if has_form else 0)
+            + _TOOLBAR_AND_PADDING_PX
+        )
+        h = f'{total_h}px'
 
         display(HTML(
             f'<div id="{div_id}" style="'

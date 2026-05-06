@@ -35,6 +35,10 @@ export function readKernelVars(): string {
     `  'spec_resolutions': _BA_SPEC_RESOLUTIONS,`,
     `  'viz_meta': _BA_VIZ_META,`,
     `  'sync_config': _BA_SYNC_CONFIG,`,
+    `  'clip_table_height': _BA_CLIP_TABLE_HEIGHT,`,
+    `  'player_height': _BA_PLAYER_HEIGHT,`,
+    `  'info_card_height': _BA_INFO_CARD_HEIGHT,`,
+    `  'form_panel_height': _BA_FORM_PANEL_HEIGHT,`,
     `}))`,
   ].join('\n');
 }
@@ -51,14 +55,15 @@ export function readAudio(path: string, startSec: number, durSec: number): strin
 }
 
 /** Assemble the spectrogram pipeline from .py chunks (no template vars). */
-export function buildSpectrogram(spectType: 'mel' | 'linear', resolutionW?: number): string {
+export function buildSpectrogram(spectType: 'mel' | 'linear', resolutionW?: number, resolutionH?: number): string {
   const filterBlock = spectType === 'mel' ? PY_SPEC_MEL : PY_SPEC_PLAIN;
   const resLine = resolutionW ? `_fig_w = ${resolutionW}` : '';
-  return [PY_BUILD_SPEC, filterBlock, resLine, PY_SPEC_RENDER].join('\n');
+  const hLine = resolutionH ? `_fig_h = ${resolutionH}` : '';
+  return [PY_BUILD_SPEC, filterBlock, resLine, hLine, PY_SPEC_RENDER].join('\n');
 }
 
 /** Python code for a custom visualization callable. */
-function customVizCode(vizIndex: number, resolutionW: number): string {
+function customVizCode(vizIndex: number, resolutionW: number, resolutionH?: number): string {
   return [
     `import numpy as _np, io as _io, base64 as _b64, json as _j`,
     `from jupyter_bioacoustic.utils.visualizations import render_png as _render_matrix`,
@@ -81,7 +86,7 @@ function customVizCode(vizIndex: number, resolutionW: number): string {
     `if 'png_bytes' in _viz_result:`,
     `    _spec_b64 = _b64.b64encode(_viz_result['png_bytes']).decode()`,
     `elif 'matrix' in _viz_result:`,
-    `    _png = _render_matrix(_viz_result['matrix'], width=${resolutionW}, matrix_scale=_viz_result.get('matrix_scale', None))`,
+    `    _png = _render_matrix(_viz_result['matrix'], width=${resolutionW}, height=${resolutionH || 0} or None, matrix_scale=_viz_result.get('matrix_scale', None))`,
     `    _spec_b64 = _b64.b64encode(_png).decode()`,
     `else:`,
     `    raise ValueError("Custom viz must return 'png_bytes' or 'matrix'")`,
@@ -105,14 +110,14 @@ function customVizCode(vizIndex: number, resolutionW: number): string {
 export function spectrogramPipeline(
   path: string, startSec: number, durSec: number,
   vizType: 'builtin' | 'custom', builtinKey?: string,
-  vizIndex?: number, resolutionW?: number,
+  vizIndex?: number, resolutionW?: number, resolutionH?: number,
 ): string {
   const readCode = readAudio(path, startSec, durSec);
   if (vizType === 'custom' && vizIndex != null) {
-    return readCode + '\n' + customVizCode(vizIndex, resolutionW ?? 2000);
+    return readCode + '\n' + customVizCode(vizIndex, resolutionW ?? 2000, resolutionH);
   }
   const spectType = (builtinKey === 'mel' ? 'mel' : 'linear') as 'mel' | 'linear';
-  return readCode + '\n' + buildSpectrogram(spectType, resolutionW);
+  return readCode + '\n' + buildSpectrogram(spectType, resolutionW, resolutionH);
 }
 
 // ─── Select items loading (FormPanel) ────────────────────────
