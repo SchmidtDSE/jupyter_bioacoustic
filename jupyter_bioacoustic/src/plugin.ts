@@ -275,10 +275,11 @@ class BioacousticWidget extends Widget {
     try {
       await this._kernelBridge.exec(syncOutput());
       this._setStatus('✓ Sync complete');
+      this._form._resetSyncBtnLabel()
     } catch (e: any) {
       this._setStatus(`❌ Sync failed: ${String(e.message ?? e)}`, true);
+      this._form._enableSyncBtn();
     }
-    this._form._enableSyncBtn();
   }
 
   // ─── Capture ─────────────────────────────────────────────────
