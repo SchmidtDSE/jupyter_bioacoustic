@@ -63,6 +63,10 @@ const STRING_OPS: OpDef[] = [
   { value: 'is_not_empty', label: 'is not empty',  needsValue: false },
 ];
 
+// ─── Constants ────────────────────────────────────────────────
+
+const DEFAULT_TABLE_MAX_HEIGHT = 175;
+
 // Human-readable label for an operator (used in chips)
 const OP_LABELS: Record<string, string> = {};
 [...FLOAT_OPS, ...STRING_OPS, ...DATE_OPS].forEach(o => { OP_LABELS[o.value] = o.label; });
@@ -104,6 +108,7 @@ export class ClipTable {
   private _pageSizeSelect!: HTMLSelectElement;
   private _customPageSizeInput!: HTMLInputElement;
   private _pageInput!: HTMLInputElement;
+  private _tableWrap!: HTMLDivElement;
 
   constructor(private _form: FormPanel) {
     this.element = document.createElement('div');
@@ -119,7 +124,11 @@ export class ClipTable {
     displayCols: string[];
     dataCols: string[];
     duplicateEntries: boolean;
+    height?: number;
   }): void {
+    if (opts.height) {
+      this._tableWrap.style.maxHeight = `${opts.height}px`;
+    }
     this._rows = opts.rows;
     this._configureColumns(opts);
     this._detectColumnTypes();
@@ -490,12 +499,12 @@ export class ClipTable {
       `border-bottom:1px solid ${COLORS.bgSurface0};`;
 
     // Table
-    const tableWrap = document.createElement('div');
-    tableWrap.tabIndex = 0;
-    tableWrap.style.cssText =
-      `flex:0 0 auto;overflow-y:auto;max-height:175px;` +
+    this._tableWrap = document.createElement('div');
+    this._tableWrap.tabIndex = 0;
+    this._tableWrap.style.cssText =
+      `flex:0 0 auto;overflow-y:auto;max-height:${DEFAULT_TABLE_MAX_HEIGHT}px;` +
       `border-bottom:1px solid ${COLORS.bgSurface0};outline:none;`;
-    tableWrap.addEventListener('keydown', e => this._onTableKeyDown(e));
+    this._tableWrap.addEventListener('keydown', e => this._onTableKeyDown(e));
 
     const table = document.createElement('table');
     table.style.cssText = `width:100%;border-collapse:collapse;font-size:12px;`;
@@ -512,7 +521,7 @@ export class ClipTable {
     this._rebuildTableHeader();
     this._tableBody = document.createElement('tbody');
     table.append(this._thead, this._tableBody);
-    tableWrap.appendChild(table);
+    this._tableWrap.appendChild(table);
 
     // Pagination bar
     const pagBar = document.createElement('div');
@@ -590,7 +599,7 @@ export class ClipTable {
     pagBar.append(firstBtn, prevBtn, this._pageInput, this._pageInfo, nextBtn, lastBtn,
                   rowsLbl, this._pageSizeSelect, this._customPageSizeInput);
 
-    this.element.append(filterBar, this._chipContainer, tableWrap, pagBar);
+    this.element.append(filterBar, this._chipContainer, this._tableWrap, pagBar);
   }
 
   // ─── Private: columns ──────────────────────────────────────

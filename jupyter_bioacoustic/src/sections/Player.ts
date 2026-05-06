@@ -22,6 +22,10 @@ import {
   monoTextStyle,
 } from '../styles';
 
+// ─── Constants ────────────────────────────────────────────────
+
+const DEFAULT_CANVAS_HEIGHT = 260;
+
 export class Player {
   /** The root element — contains player controls, canvas, playback bar, audio. */
   readonly element: HTMLDivElement;
@@ -61,6 +65,7 @@ export class Player {
   private _zoomBoxMoveHandler: ((e: MouseEvent) => void) | null = null;
   private _zoomBoxUpHandler: ((e: MouseEvent) => void) | null = null;
   private _specResolutions: string[] = ['1000', '2000', '4000'];
+  private _canvasHeight: number = DEFAULT_CANVAS_HEIGHT;
 
   // ─── Visualization state ──────────────────────────────────
   private _vizMeta: Array<{type: string; key?: string; label: string; freq_scale?: string; index: number}> = [];
@@ -125,7 +130,12 @@ export class Player {
     specResolutions: string[];
     vizMeta: Array<{type: string; key?: string; label: string; freq_scale?: string; index: number}>;
     rows: Detection[];
+    height?: number;
   }): void {
+    if (opts.height) {
+      this._canvasHeight = opts.height;
+      this._canvasContainer.style.flex = `0 0 ${opts.height}px`;
+    }
     this._audioConfig = opts.audioConfig;
     this._captureLabel = opts.captureLabel;
     this._captureDir = opts.captureDir;
@@ -305,7 +315,7 @@ export class Player {
     // Spectrogram canvas
     this._canvasContainer = document.createElement('div');
     this._canvasContainer.style.cssText =
-      `flex:0 0 260px;position:relative;background:${COLORS.bgCrust};overflow:hidden;cursor:default;` +
+      `flex:0 0 ${DEFAULT_CANVAS_HEIGHT}px;position:relative;background:${COLORS.bgCrust};overflow:hidden;cursor:default;` +
       `transition:opacity 0.2s ease;`;
 
     this._canvas = document.createElement('canvas');
@@ -454,7 +464,7 @@ export class Player {
       const raw = await this._kernel.exec(spectrogramPipeline(
         audioPath, loadStart, loadDur,
         viz.type === 'custom' ? 'custom' : 'builtin',
-        viz.key, viz.index, resW,
+        viz.key, viz.index, resW, this._canvasHeight,
       ));
       result = JSON.parse(raw) as typeof result;
     } catch (e: any) {

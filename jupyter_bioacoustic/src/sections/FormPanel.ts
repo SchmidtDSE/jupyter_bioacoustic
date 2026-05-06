@@ -39,6 +39,10 @@ import {
   cssSize,
 } from '../styles';
 
+// ─── Constants ────────────────────────────────────────────────
+
+const DEFAULT_FORM_MIN_HEIGHT = 140;
+
 export class FormPanel {
   /** The root element — append to the widget. */
   readonly element: HTMLDivElement;
@@ -125,7 +129,7 @@ export class FormPanel {
     // Build the section shell
     this.element = document.createElement('div');
     this.element.style.cssText =
-      `flex:0 0 auto;min-height:140px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
+      `flex:0 0 auto;min-height:${DEFAULT_FORM_MIN_HEIGHT}px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
       `border-top:1px solid ${COLORS.bgSurface0};display:none;flex-direction:column;gap:10px;`;
 
     this._dynFormEl = document.createElement('div');
@@ -159,7 +163,11 @@ export class FormPanel {
     duplicateEntries: boolean;
     outputPath: string;
     syncConfig?: { uri?: string; button?: string; recursive?: boolean };
+    height?: number;
   }): void {
+    if (opts.height) {
+      this.element.style.minHeight = `${opts.height}px`;
+    }
     this._formConfig = opts.formConfig;
     this._rows = opts.rows;
     this._identCol = opts.identCol;

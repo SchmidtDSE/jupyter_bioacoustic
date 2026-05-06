@@ -149,6 +149,8 @@ class BioacousticWidget extends Widget {
       form_config: string; capture: string; capture_dir: string; duplicate_entries: string;
       default_buffer: string; spec_resolutions: string; viz_meta: string;
       sync_config: string;
+      clip_table_height: string; player_height: string;
+      info_card_height: string; form_panel_height: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -189,6 +191,7 @@ class BioacousticWidget extends Widget {
       duplicateEntries,
       outputPath,
       syncConfig,
+      height: parseInt(cfg.form_panel_height) || undefined,
     });
     await this._form.build();
     await this._form.loadOutputFileProgress();
@@ -210,6 +213,7 @@ class BioacousticWidget extends Widget {
       specResolutions,
       vizMeta,
       rows,
+      height: parseInt(cfg.player_height) || undefined,
     });
 
     // Initialize table
@@ -219,7 +223,10 @@ class BioacousticWidget extends Widget {
       displayCols: this._displayCols,
       dataCols,
       duplicateEntries,
+      height: parseInt(cfg.clip_table_height) || undefined,
     });
+
+    this._infoCard.setHeight(parseInt(cfg.info_card_height) || undefined);
 
     // Auto-select first row
     if (this._table.filtered.length > 0) {
