@@ -897,10 +897,14 @@ export class FormPanel {
     this.syncRequested.emit(void 0);
   }
 
+  _resetSyncBtnLabel(): void {
+      this._syncBtn.textContent = this._syncConfig.button ?? 'Sync';
+  }
+
   _enableSyncBtn(): void {
     if (!this._syncBtn) return;
+    this._resetSyncBtnLabel()
     this._syncBtn.disabled = false;
-    this._syncBtn.textContent = this._syncConfig.button ?? 'Sync';
     this._syncBtn.style.opacity = '1';
   }
 
@@ -1655,6 +1659,7 @@ export class FormPanel {
       }
       void this._refreshAccuracy().then(() => this._updateProgress());
       void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
+      this._enableSyncBtn()
       this.submitted.emit({ _multibox: true, count: n });
       return;
     }
@@ -1675,6 +1680,7 @@ export class FormPanel {
     }
     void this._refreshAccuracy().then(() => this._updateProgress());
     void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
+    this._enableSyncBtn()
     this.submitted.emit(values);
   }
 
