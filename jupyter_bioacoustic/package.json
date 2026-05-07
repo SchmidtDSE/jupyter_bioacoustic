@@ -30,6 +30,7 @@
     "@jupyterlab/filebrowser": "^4.0.0",
     "@jupyterlab/launcher": "^4.0.0",
     "@jupyterlab/notebook": "^4.0.0",
+    "@jupyterlab/ui-components": "^4.0.0",
     "@lumino/widgets": "^2.0.0"
   },
   "devDependencies": {
