@@ -167,8 +167,10 @@ dynamic_forms:
 
 | Parameter | Default | Description |
 |---|---|---|
+| `project` | `None` | Project file path or dict. No other config params allowed when set. |
 | `ident_column` | `''` | Shown first in info card (no label) and capture filenames |
-| `app_title` | `'Jupyter Bioacoustic'` | Widget header title |
+| `project_name` | `None` | Widget header title. Auto-derived from project filename if not set. |
+| `project_save_btn` | `False` | Save-project button (`True` for "Save Project", string for label) |
 | `display_columns` | `[]` | Extra columns in the info card |
 | `data_columns` | `[]` | Columns for the clip table |
 | `duplicate_entries` | `False` | Allow multiple submissions per row |
@@ -179,6 +181,9 @@ dynamic_forms:
 | `visualizations` | `['linear', 'mel']` | Built-in strings or callables |
 | `partial_download` | `True` | Byte-range downloads for remote audio (requires ffmpeg) |
 | `width` | `'100%'` | Inline widget width |
-| `height` | `900` | Inline widget height |
+| `clip_table_height` | `175` | Clip table height (px) |
+| `player_height` | `260` | Player/spectrogram height (px). **Sets spectrogram resolution height.** |
+| `info_card_height` | `34` | Info card height (px) |
+| `form_panel_height` | `140` | Form panel height (px) |
 | `output` | `''` | Output file path. Auto-generated if form is configured |
 | `config` | `None` | Path to YAML/JSON config file |
