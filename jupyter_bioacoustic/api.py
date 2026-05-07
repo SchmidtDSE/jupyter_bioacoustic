@@ -32,7 +32,7 @@ DEFAULT_OUTPUT_TS_FMT = '%y%m%d_%H%M'
 DEFAULT_START_TIME_COL = 'start_time'
 DEFAULT_END_TIME_COL = 'end_time'
 DEFAULT_BUFFER = 3
-DEFAULT_APP_TITLE = 'Jupyter Bioacoustic'
+DEFAULT_PROJECT_NAME = 'Jupyter Bioacoustic'
 DEFAULT_CAPTURE_LABEL = 'Capture'
 DEFAULT_SPEC_RESOLUTIONS = [1000, 2000, 4000]
 DEFAULT_VISUALIZATIONS = ['linear', 'mel']
@@ -488,9 +488,31 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
     )
 
 
+_CONFIG_PARAMS = {
+    'data', 'data_path', 'data_url', 'data_sql', 'data_api',
+    'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
+    'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
+    'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
+    'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
+    'audio_response_index',
+    'secrets',
+    'output', 'output_path', 'output_url', 'output_uri',
+    'output_sync_button', 'output_recursive', 'output_secrets',
+    'ident_column', 'display_columns', 'data_columns',
+    'form_config', 'duplicate_entries', 'default_buffer',
+    'capture', 'capture_dir', 'spectrogram_resolution',
+    'visualizations', 'partial_download',
+    'width', 'clip_table_height', 'player_height',
+    'info_card_height', 'form_panel_height',
+    'project_name', 'project_save_btn',
+    'config',
+}
+
+
 class BioacousticAnnotator:
     def __init__(
         self,
+        project=None,
         data=_UNSET,
         data_path=_UNSET,
         data_url=_UNSET,
@@ -523,7 +545,8 @@ class BioacousticAnnotator:
         output_recursive=_UNSET,
         output_secrets=_UNSET,
         ident_column=_UNSET,
-        app_title=_UNSET,
+        project_name=_UNSET,
+        project_save_btn=_UNSET,
         display_columns=_UNSET,
         data_columns=_UNSET,
         form_config=_UNSET,
@@ -582,7 +605,52 @@ class BioacousticAnnotator:
             file. Explicitly passed arguments always take precedence over
             config file values.
         """
-        cfg = _load_config(config) if config else {}
+        if project is not None:
+            passed = {
+                k for k in _CONFIG_PARAMS
+                if locals().get(k, _UNSET) is not _UNSET
+            }
+            if passed:
+                raise ValueError(
+                    f"When 'project' is set, no other config parameters may be "
+                    f"passed. Got: {sorted(passed)}"
+                )
+            if isinstance(project, str):
+                proj_cfg = _load_config(project)
+            elif isinstance(project, dict):
+                proj_cfg = dict(project)
+            else:
+                raise TypeError(
+                    f"'project' must be a file path (str) or dict, got {type(project).__name__}"
+                )
+            nested = proj_cfg.pop('config', None)
+            if nested:
+                if isinstance(nested, str):
+                    base = _load_config(nested)
+                elif isinstance(nested, dict):
+                    base = dict(nested)
+                else:
+                    raise TypeError(
+                        f"Nested 'config' in project must be a file path or dict, "
+                        f"got {type(nested).__name__}"
+                    )
+                base.update(proj_cfg)
+                cfg = base
+            else:
+                cfg = proj_cfg
+        else:
+            cfg = _load_config(config) if config else {}
+
+        self._project_file = project if isinstance(project, str) else None
+
+        if project_name is not _UNSET:
+            self._project_name = project_name
+        elif 'project_name' in cfg:
+            self._project_name = cfg['project_name']
+        elif isinstance(project, str):
+            self._project_name = os.path.splitext(os.path.basename(project))[0].replace('_', ' ').replace('-', ' ').title()
+        else:
+            self._project_name = DEFAULT_PROJECT_NAME
 
         def resolve(val, key, default):
             """Return val if explicitly provided, else config value, else default."""
@@ -759,6 +827,9 @@ class BioacousticAnnotator:
             audio_secrets=raw_audio_secrets)
 
         self._data             = loaded_data
+        self._data_source      = source if isinstance(source, str) else None
+        self._data_start_time  = st_col
+        self._data_end_time    = et_col
         raw_output = resolve(output, 'output', '')
         raw_output_path = resolve(output_path, 'output_path', None)
         raw_output_url = resolve(output_url, 'output_url', None)
@@ -813,7 +884,6 @@ class BioacousticAnnotator:
         if self._sync_uri and not self._sync_button:
             self._sync_button = 'Sync'
         self._ident_column = resolve(ident_column, 'ident_column', '')
-        self._app_title        = resolve(app_title,         'app_title',         DEFAULT_APP_TITLE)
 
         # Default output filename when a form is configured but no output path given
         raw_form_check = resolve(form_config, 'form_config', None)
@@ -885,6 +955,15 @@ class BioacousticAnnotator:
         self._player_height      = resolve(player_height,      'player_height',      DEFAULT_PLAYER_HEIGHT)
         self._info_card_height   = resolve(info_card_height,   'info_card_height',   DEFAULT_INFO_CARD_HEIGHT)
         self._form_panel_height  = resolve(form_panel_height,  'form_panel_height',  DEFAULT_FORM_PANEL_HEIGHT)
+
+        raw_save_btn = resolve(project_save_btn, 'project_save_btn', False)
+        if raw_save_btn is True:
+            self._project_save_btn = 'Save Project'
+        elif isinstance(raw_save_btn, str):
+            self._project_save_btn = raw_save_btn
+        else:
+            self._project_save_btn = ''
+
         self._output_cache     = None
 
     @property
@@ -938,7 +1017,7 @@ class BioacousticAnnotator:
             'recursive': self._sync_recursive,
         })
         ip.user_ns['_BA_IDENT_COL']      = self._ident_column
-        ip.user_ns['_BA_APP_TITLE']      = self._app_title
+        ip.user_ns['_BA_APP_TITLE']      = self._project_name
         ip.user_ns['_BA_DISPLAY_COLS']   = json.dumps(self._display_columns)
         ip.user_ns['_BA_DATA_COLS']      = json.dumps(self._data_columns)
 
@@ -959,6 +1038,7 @@ class BioacousticAnnotator:
         ip.user_ns['_BA_PLAYER_HEIGHT']     = str(self._player_height)
         ip.user_ns['_BA_INFO_CARD_HEIGHT']  = str(self._info_card_height)
         ip.user_ns['_BA_FORM_PANEL_HEIGHT'] = str(self._form_panel_height)
+        ip.user_ns['_BA_PROJECT_SAVE_BTN'] = self._project_save_btn
         ip.user_ns['_BA_INSTANCE'] = self
 
         if inline:
@@ -1006,6 +1086,97 @@ class BioacousticAnnotator:
         merged_kwargs.update(kwargs)
 
         return io.write(src, target, recursive=rec, **merged_kwargs)
+
+    def save_as_project(
+        self,
+        filename: str = None,
+        folder: str = 'projects',
+        overwrite: bool = False,
+    ) -> str:
+        """Save the current configuration as a fully-specified project YAML.
+
+        Parameters
+        ----------
+        filename : str, optional
+            Output filename. Defaults to a slugified version of project_name.
+        folder : str, optional
+            Parent directory. Default ``'projects'``.
+        overwrite : bool, optional
+            If False (default) and the file exists, raise FileExistsError.
+
+        Returns
+        -------
+        str
+            The path to the saved project file.
+        """
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError(
+                "pyyaml is required to save project files: pip install pyyaml"
+            )
+
+        if filename is None:
+            slug = re.sub(r'[^a-z0-9]+', '_', self._project_name.lower()).strip('_')
+            filename = f'{slug}.yaml'
+        elif not os.path.splitext(filename)[1]:
+            filename = f'{filename}.yaml'
+
+        path = os.path.join(folder, filename)
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+
+        if os.path.exists(path) and not overwrite:
+            raise FileExistsError(
+                f"Project file already exists: {path}  (pass overwrite=True to replace)"
+            )
+
+        output_cfg = self._output
+        if self._sync_uri or self._sync_button or self._sync_recursive:
+            output_cfg = {'path': self._output}
+            if self._sync_uri:
+                output_cfg['uri'] = self._sync_uri
+            if self._sync_button:
+                output_cfg['sync_button'] = self._sync_button
+            if self._sync_recursive:
+                output_cfg['recursive'] = self._sync_recursive
+
+        viz_out = []
+        for v in self._visualizations:
+            if v['type'] == 'builtin':
+                viz_out.append(v['key'])
+            else:
+                viz_out.append(v['label'])
+
+        cfg = {
+            'project_name': self._project_name,
+            'data': self._data_source,
+            'data_start_time': self._data_start_time,
+            'data_end_time': self._data_end_time,
+            'audio': self._audio_config,
+            'output': output_cfg,
+            'ident_column': self._ident_column,
+            'display_columns': self._display_columns,
+            'form_config': self._form_config,
+            'duplicate_entries': self._duplicate_entries,
+            'default_buffer': self._default_buffer,
+            'capture': self._capture,
+            'capture_dir': self._capture_dir,
+            'spectrogram_resolution': [int(r.replace('selected::', '')) for r in self._spec_resolutions],
+            'visualizations': viz_out,
+            'partial_download': self._partial_download,
+            'width': self._width,
+            'clip_table_height': self._clip_table_height,
+            'player_height': self._player_height,
+            'info_card_height': self._info_card_height,
+            'form_panel_height': self._form_panel_height,
+        }
+
+        cfg = {k: v for k, v in cfg.items() if v is not None and v != '' and v != []}
+
+        with open(path, 'w') as f:
+            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
+        return path
 
     def _open_inline(self) -> None:
         """Inject the widget into the cell output area."""
