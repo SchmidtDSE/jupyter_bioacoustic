@@ -39,6 +39,7 @@ export function readKernelVars(): string {
     `  'player_height': _BA_PLAYER_HEIGHT,`,
     `  'info_card_height': _BA_INFO_CARD_HEIGHT,`,
     `  'form_panel_height': _BA_FORM_PANEL_HEIGHT,`,
+    `  'project_save_btn': _BA_PROJECT_SAVE_BTN,`,
     `}))`,
   ].join('\n');
 }
@@ -361,5 +362,16 @@ export function syncOutput(dest?: string): string {
   return [
     `_BA_INSTANCE.sync(${destArg})`,
     `print('ok')`,
+  ].join('\n');
+}
+
+export function saveProject(filename?: string, folder?: string, overwrite = false): string {
+  const args: string[] = [];
+  if (filename) args.push(`filename='${escPy(filename)}'`);
+  if (folder) args.push(`folder='${escPy(folder)}'`);
+  if (overwrite) args.push(`overwrite=True`);
+  return [
+    `_path = _BA_INSTANCE.save_as_project(${args.join(', ')})`,
+    `import json; print(json.dumps({'path': _path}))`,
   ].join('\n');
 }
