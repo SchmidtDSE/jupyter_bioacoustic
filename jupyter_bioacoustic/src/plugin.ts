@@ -1,5 +1,7 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
-import { ICommandPalette } from '@jupyterlab/apputils';
+import { ICommandPalette, InputDialog } from '@jupyterlab/apputils';
+import { IFileBrowserFactory } from '@jupyterlab/filebrowser';
+import { ILauncher } from '@jupyterlab/launcher';
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { Message } from '@lumino/messaging';
 import { Widget } from '@lumino/widgets';
@@ -11,7 +13,7 @@ import {
 } from './styles';
 import { Detection } from './types';
 import { KernelBridge } from './kernel';
-import { readKernelVars, syncOutput } from './python';
+import { readKernelVars, syncOutput, saveProject } from './python';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
@@ -103,6 +105,7 @@ class BioacousticWidget extends Widget {
       this._player.renderFrame();
     });
     this._form.syncRequested.connect(() => void this._onSync());
+    this._form.saveProjectRequested.connect(() => void this._onSaveProject());
     this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
 
     // Wire Player signals
@@ -151,6 +154,7 @@ class BioacousticWidget extends Widget {
       sync_config: string;
       clip_table_height: string; player_height: string;
       info_card_height: string; form_panel_height: string;
+      project_save_btn: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -192,6 +196,7 @@ class BioacousticWidget extends Widget {
       outputPath,
       syncConfig,
       height: parseInt(cfg.form_panel_height) || undefined,
+      projectSaveBtn: cfg.project_save_btn || '',
     });
     await this._form.build();
     await this._form.loadOutputFileProgress();
@@ -289,6 +294,21 @@ class BioacousticWidget extends Widget {
     }
   }
 
+  // ─── Save Project ──────────────────────────────────────────
+
+  private async _onSaveProject(): Promise<void> {
+    this._setStatus('Saving project…');
+    try {
+      const raw = await this._kernelBridge.exec(saveProject());
+      const result = JSON.parse(raw);
+      this._setStatus(`✓ Project saved: ${result.path}`);
+      this._form._enableSaveProjectBtn();
+    } catch (e: any) {
+      this._setStatus(`❌ Save failed: ${String(e.message ?? e)}`, true);
+      this._form._enableSaveProjectBtn();
+    }
+  }
+
   // ─── Capture ─────────────────────────────────────────────────
 
 
@@ -308,14 +328,19 @@ class BioacousticWidget extends Widget {
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
 
+let _lastProjectFolder = '';
+
 export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-bioacoustic:plugin',
   autoStart: true,
   requires: [ICommandPalette, INotebookTracker],
+  optional: [ILauncher, IFileBrowserFactory],
   activate: (
     app: JupyterFrontEnd,
     palette: ICommandPalette,
-    tracker: INotebookTracker
+    tracker: INotebookTracker,
+    launcher: ILauncher | null,
+    browserFactory: IFileBrowserFactory | null,
   ) => {
     (window as any)._bioacousticApp = app;
 
@@ -336,7 +361,43 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
       }
     });
 
+    app.commands.addCommand('bioacoustic:open-project', {
+      label: 'Open Bioacoustic Project',
+      execute: async () => {
+        const result = await InputDialog.getText({
+          title: 'Open Bioacoustic Project',
+          label: 'Project file path (.yaml)',
+          placeholder: _lastProjectFolder || 'projects/my_project.yaml',
+        });
+        if (!result.button.accept || !result.value) return;
+        const projectPath = result.value.trim();
+        _lastProjectFolder = projectPath.substring(0, projectPath.lastIndexOf('/') + 1);
+
+        const panel = tracker.currentWidget;
+        if (!panel?.sessionContext?.session?.kernel) {
+          console.warn('No active notebook kernel for bioacoustic project launch');
+          return;
+        }
+        const kernel = panel.sessionContext.session.kernel;
+        const escaped = projectPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const code = [
+          `from jupyter_bioacoustic import BioacousticAnnotator`,
+          `BioacousticAnnotator('${escaped}').open(inline=False)`,
+        ].join('\n');
+        await kernel.requestExecute({ code }).done;
+      }
+    });
+
     palette.addItem({ command: 'bioacoustic:open', category: 'Bioacoustic' });
+    palette.addItem({ command: 'bioacoustic:open-project', category: 'Bioacoustic' });
+
+    if (launcher) {
+      launcher.add({
+        command: 'bioacoustic:open-project',
+        category: 'Other',
+      });
+    }
+
     console.log('jupyter-bioacoustic activated');
   }
 };
