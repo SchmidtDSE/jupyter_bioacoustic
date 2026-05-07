@@ -1,8 +1,9 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
-import { ICommandPalette, InputDialog } from '@jupyterlab/apputils';
-import { IFileBrowserFactory } from '@jupyterlab/filebrowser';
+import { ICommandPalette } from '@jupyterlab/apputils';
+import { FileDialog, IFileBrowserFactory } from '@jupyterlab/filebrowser';
 import { ILauncher } from '@jupyterlab/launcher';
 import { INotebookTracker } from '@jupyterlab/notebook';
+import { LabIcon } from '@jupyterlab/ui-components';
 import { Message } from '@lumino/messaging';
 import { Widget } from '@lumino/widgets';
 
@@ -328,7 +329,15 @@ class BioacousticWidget extends Widget {
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
 
-let _lastProjectFolder = '';
+const bioacousticIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2 12 C2 12 4 6 6 6 C8 6 8 18 10 18 C12 18 12 3 14 3 C16 3 16 21 18 21 C20 21 22 12 22 12"/>
+  <circle cx="12" cy="12" r="11" stroke-width="1"/>
+</svg>`;
+
+const bioacousticIcon = new LabIcon({
+  name: 'jupyter-bioacoustic:icon',
+  svgstr: bioacousticIconSvg,
+});
 
 export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-bioacoustic:plugin',
@@ -362,29 +371,56 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
     });
 
     app.commands.addCommand('bioacoustic:open-project', {
-      label: 'Open Bioacoustic Project',
+      label: 'Bioacoustic Annotator',
+      icon: bioacousticIcon,
       execute: async () => {
-        const result = await InputDialog.getText({
-          title: 'Open Bioacoustic Project',
-          label: 'Project file path (.yaml)',
-          placeholder: _lastProjectFolder || 'projects/my_project.yaml',
-        });
-        if (!result.button.accept || !result.value) return;
-        const projectPath = result.value.trim();
-        _lastProjectFolder = projectPath.substring(0, projectPath.lastIndexOf('/') + 1);
-
         const panel = tracker.currentWidget;
         if (!panel?.sessionContext?.session?.kernel) {
-          console.warn('No active notebook kernel for bioacoustic project launch');
+          console.warn('bioacoustic: no active notebook kernel — open a notebook first');
+          void app.commands.execute('apputils:display-information', {
+            message: 'Open a notebook first, then use the Bioacoustic Annotator launcher.',
+          }).catch(() => {
+            window.alert('Open a notebook first, then use the Bioacoustic Annotator launcher.');
+          });
           return;
         }
+
+        let projectPath = '';
+
+        if (browserFactory) {
+          const manager = browserFactory.defaultBrowser.model.manager;
+          const result = await FileDialog.getOpenFiles({
+            manager,
+            title: 'Select a Bioacoustic Project',
+            filter: (model) => {
+              const name = model.name.toLowerCase();
+              if (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json')) {
+                return {};
+              }
+              return null;
+            },
+          });
+          if (!result.button.accept || !result.value || result.value.length === 0) return;
+          projectPath = result.value[0].path;
+        } else {
+          const path = window.prompt('Project file path (.yaml)');
+          if (!path) return;
+          projectPath = path.trim();
+        }
+
         const kernel = panel.sessionContext.session.kernel;
         const escaped = projectPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const code = [
           `from jupyter_bioacoustic import BioacousticAnnotator`,
           `BioacousticAnnotator('${escaped}').open(inline=False)`,
         ].join('\n');
-        await kernel.requestExecute({ code }).done;
+        const future = kernel.requestExecute({ code });
+        future.onIOPub = (msg: any) => {
+          if (msg.header?.msg_type === 'error') {
+            console.error('bioacoustic project open error:', msg.content);
+          }
+        };
+        await future.done;
       }
     });
 
