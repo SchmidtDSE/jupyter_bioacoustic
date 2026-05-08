@@ -15,7 +15,7 @@ import {
 } from './styles';
 import { Detection } from './types';
 import { KernelBridge } from './kernel';
-import { readKernelVars, syncOutput, saveProject } from './python';
+import { readKernelVars, syncOutput, getDefaultProjectPath, saveProject, checkFileExists } from './python';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
@@ -30,6 +30,7 @@ let _counter = 0;
 
 class BioacousticWidget extends Widget {
   private _kernelBridge: KernelBridge;
+  private _ownedKernel: any;
 
   // ── Config (from kernel vars) ────────────────────────────────
   private _identCol = '';
@@ -44,14 +45,26 @@ class BioacousticWidget extends Widget {
   private _player!: Player;
   private _form!: FormPanel;
 
-  constructor(tracker: INotebookTracker) {
+  constructor(tracker: INotebookTracker, directKernel?: any) {
     super();
-    this._kernelBridge = new KernelBridge(tracker);
+    this._kernelBridge = new KernelBridge(
+      directKernel ? null : tracker,
+      directKernel,
+    );
+    this._ownedKernel = directKernel ?? null;
     this.id = `jp-bioacoustic-${_counter++}`;
     this.title.label = DEFAULT_TITLE;
     this.title.closable = true;
     injectGlobalStyles();
     this._buildUI();
+  }
+
+  dispose(): void {
+    if (this._ownedKernel) {
+      this._ownedKernel.shutdown().catch(() => {});
+      this._ownedKernel = null;
+    }
+    super.dispose();
   }
 
   // ─── UI construction ────────────────────────────────────────
@@ -299,9 +312,32 @@ class BioacousticWidget extends Widget {
   // ─── Save Project ──────────────────────────────────────────
 
   private async _onSaveProject(): Promise<void> {
-    this._setStatus('Saving project…');
     try {
-      const raw = await this._kernelBridge.exec(saveProject());
+      const defRaw = await this._kernelBridge.exec(getDefaultProjectPath());
+      const defPath = JSON.parse(defRaw).path as string;
+
+      const chosen = window.prompt('Save project as:', defPath);
+      if (!chosen) {
+        this._form._enableSaveProjectBtn();
+        return;
+      }
+      const savePath = chosen.trim();
+
+      let overwrite = false;
+      try {
+        const existsRaw = await this._kernelBridge.exec(checkFileExists(savePath));
+        const exists = JSON.parse(existsRaw).exists as boolean;
+        if (exists) {
+          overwrite = window.confirm(`${savePath} already exists. Overwrite?`);
+          if (!overwrite) {
+            this._form._enableSaveProjectBtn();
+            return;
+          }
+        }
+      } catch { /* proceed — worst case save_as_project raises */ }
+
+      this._setStatus('Saving project…');
+      const raw = await this._kernelBridge.exec(saveProject(savePath, overwrite));
       const result = JSON.parse(raw);
       this._setStatus(`✓ Project saved: ${result.path}`);
       this._form._enableSaveProjectBtn();
@@ -357,36 +393,18 @@ async function pickProjectFile(
   return path?.trim() ?? '';
 }
 
-const KERNEL_WAIT_MS = 200;
-const KERNEL_TIMEOUT_MS = 15_000;
-
-async function ensureKernel(
-  app: JupyterFrontEnd,
-  tracker: INotebookTracker,
-): Promise<any | null> {
-  let panel = tracker.currentWidget;
-
-  if (!panel?.sessionContext?.session?.kernel) {
-    await app.commands.execute('notebook:create-new', { kernelName: 'python3' });
-    panel = tracker.currentWidget;
-    if (!panel) return null;
-
-    await panel.sessionContext.ready;
-
-    if (!panel.sessionContext.session?.kernel) {
-      const deadline = Date.now() + KERNEL_TIMEOUT_MS;
-      await new Promise<void>((resolve, reject) => {
-        const poll = () => {
-          if (panel!.sessionContext.session?.kernel) return resolve();
-          if (Date.now() > deadline) return reject(new Error('Kernel start timed out'));
-          setTimeout(poll, KERNEL_WAIT_MS);
-        };
-        poll();
-      });
-    }
+async function startKernel(app: JupyterFrontEnd): Promise<any | null> {
+  try {
+    const kernel = await app.serviceManager.kernels.startNew({ name: 'python3' });
+    return kernel;
+  } catch (e) {
+    console.error('bioacoustic: failed to start kernel', e);
+    return null;
   }
+}
 
-  return panel?.sessionContext?.session?.kernel ?? null;
+function getExistingKernel(tracker: INotebookTracker): any | null {
+  return tracker.currentWidget?.sessionContext?.session?.kernel ?? null;
 }
 
 async function execInKernel(kernel: any, code: string): Promise<string> {
@@ -450,8 +468,12 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
         const projectPath = await pickProjectFile(defaultBrowser, browserPath);
         if (!projectPath) return;
 
-        const kernel = await ensureKernel(app, tracker);
-        if (!kernel) return;
+        const kernel = getExistingKernel(tracker) ?? await startKernel(app);
+        if (!kernel) {
+          window.alert('Failed to start a Python kernel.');
+          return;
+        }
+        const ownsKernel = !getExistingKernel(tracker);
 
         const serverRoot = PageConfig.getOption('serverRoot');
         const workDir = browserPath
@@ -470,10 +492,17 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
         ].join('\n'));
 
         if (error) {
+          if (ownsKernel) kernel.shutdown().catch(() => {});
           window.alert(`Bioacoustic Annotator error:\n${error}`);
           return;
         }
-        await app.commands.execute('bioacoustic:open');
+
+        const widget = new BioacousticWidget(
+          tracker,
+          ownsKernel ? kernel : undefined,
+        );
+        app.shell.add(widget, 'main');
+        app.shell.activateById(widget.id);
       }
     });
 
