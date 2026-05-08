@@ -562,7 +562,7 @@ class BioacousticAnnotator:
         player_height=_UNSET,
         info_card_height=_UNSET,
         form_panel_height=_UNSET,
-        config=None,
+        config=_UNSET,
         **kwargs,
     ):
         """
@@ -639,7 +639,7 @@ class BioacousticAnnotator:
             else:
                 cfg = proj_cfg
         else:
-            cfg = _load_config(config) if config else {}
+            cfg = _load_config(config) if config not in (_UNSET, None) else {}
 
         self._project_file = project if isinstance(project, str) else None
 
@@ -993,19 +993,12 @@ class BioacousticAnnotator:
         """Called by the widget after each submit to force a re-read."""
         self._output_cache = None
 
-    def open(self, inline: bool = DEFAULT_INLINE) -> None:
-        """Serialize data into kernel variables and open the widget.
-
-        Parameters
-        ----------
-        inline : bool, optional
-            If True, embed the widget below the cell instead of opening
-            a split-right panel. Default True.
-        """
+    def setup(self) -> None:
+        """Serialize data into kernel variables without opening the widget."""
         ip = get_ipython()
         if ip is None:
             raise RuntimeError(
-                'BioacousticAnnotator.open() must be called from inside a Jupyter kernel.'
+                'BioacousticAnnotator.setup() must be called from inside a Jupyter kernel.'
             )
 
         ip.user_ns['_BA_DATA']           = self._data.to_json(orient='records')
@@ -1022,7 +1015,6 @@ class BioacousticAnnotator:
         ip.user_ns['_BA_DATA_COLS']      = json.dumps(self._data_columns)
 
         ip.user_ns['_BA_FORM_CONFIG'] = json.dumps(self._form_config)
-        # capture: True → default label, str → that string, False → ''
         cap = self._capture
         if cap is True:
             cap = DEFAULT_CAPTURE_LABEL
@@ -1040,6 +1032,17 @@ class BioacousticAnnotator:
         ip.user_ns['_BA_FORM_PANEL_HEIGHT'] = str(self._form_panel_height)
         ip.user_ns['_BA_PROJECT_SAVE_BTN'] = self._project_save_btn
         ip.user_ns['_BA_INSTANCE'] = self
+
+    def open(self, inline: bool = DEFAULT_INLINE) -> None:
+        """Serialize data into kernel variables and open the widget.
+
+        Parameters
+        ----------
+        inline : bool, optional
+            If True, embed the widget below the cell instead of opening
+            a split-right panel. Default True.
+        """
+        self.setup()
 
         if inline:
             self._open_inline()
