@@ -115,7 +115,7 @@ __webpack_require__.d(exports, {
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + "94dd5fe306f02addf723" + ".js";
+/******/ 			return "" + chunkId + "." + "f3535c8c428af4517fa0" + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -380,7 +380,11 @@ __webpack_require__.d(exports, {
 /******/ 		var installedModules = {};
 /******/ 		var moduleToHandlerMapping = {
 /******/ 			"webpack/sharing/consume/default/@jupyterlab/apputils": () => (loadSingletonVersion("default", "@jupyterlab/apputils", false, [1,4,6,7])),
+/******/ 			"webpack/sharing/consume/default/@jupyterlab/coreutils": () => (loadSingletonVersion("default", "@jupyterlab/coreutils", false, [1,6,5,7])),
+/******/ 			"webpack/sharing/consume/default/@jupyterlab/filebrowser": () => (loadSingletonVersion("default", "@jupyterlab/filebrowser", false, [1,4,5,7])),
+/******/ 			"webpack/sharing/consume/default/@jupyterlab/launcher": () => (loadSingletonVersion("default", "@jupyterlab/launcher", false, [1,4,5,7])),
 /******/ 			"webpack/sharing/consume/default/@jupyterlab/notebook": () => (loadSingletonVersion("default", "@jupyterlab/notebook", false, [1,4,5,7])),
+/******/ 			"webpack/sharing/consume/default/@jupyterlab/ui-components": () => (loadSingletonVersion("default", "@jupyterlab/ui-components", false, [1,4,5,7])),
 /******/ 			"webpack/sharing/consume/default/@lumino/widgets": () => (loadSingletonVersion("default", "@lumino/widgets", false, [1,2,3,1,,"alpha",1])),
 /******/ 			"webpack/sharing/consume/default/@lumino/signaling": () => (loadSingletonVersion("default", "@lumino/signaling", false, [1,2,0,0]))
 /******/ 		};
@@ -388,7 +392,11 @@ __webpack_require__.d(exports, {
 /******/ 		var chunkMapping = {
 /******/ 			"lib_index_js": [
 /******/ 				"webpack/sharing/consume/default/@jupyterlab/apputils",
+/******/ 				"webpack/sharing/consume/default/@jupyterlab/coreutils",
+/******/ 				"webpack/sharing/consume/default/@jupyterlab/filebrowser",
+/******/ 				"webpack/sharing/consume/default/@jupyterlab/launcher",
 /******/ 				"webpack/sharing/consume/default/@jupyterlab/notebook",
+/******/ 				"webpack/sharing/consume/default/@jupyterlab/ui-components",
 /******/ 				"webpack/sharing/consume/default/@lumino/widgets",
 /******/ 				"webpack/sharing/consume/default/@lumino/signaling"
 /******/ 			]
@@ -526,4 +534,4 @@ __webpack_require__.d(exports, {
 /******/ 	
 /******/ })()
 ;
-//# sourceMappingURL=remoteEntry.57ff0b5e502dba1994e1.js.map
+//# sourceMappingURL=remoteEntry.6f485f3a9f1c79018246.js.map

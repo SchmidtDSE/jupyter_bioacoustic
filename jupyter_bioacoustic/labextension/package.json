@@ -27,7 +27,10 @@
     "@jupyterlab/application": "^4.0.0",
     "@jupyterlab/apputils": "^4.0.0",
     "@jupyterlab/coreutils": "^6.0.0",
+    "@jupyterlab/filebrowser": "^4.0.0",
+    "@jupyterlab/launcher": "^4.0.0",
     "@jupyterlab/notebook": "^4.0.0",
+    "@jupyterlab/ui-components": "^4.0.0",
     "@lumino/widgets": "^2.0.0"
   },
   "devDependencies": {
@@ -39,7 +42,7 @@
     "extension": true,
     "outputDir": "labextension",
     "_build": {
-      "load": "static/remoteEntry.57ff0b5e502dba1994e1.js",
+      "load": "static/remoteEntry.6f485f3a9f1c79018246.js",
       "extension": "./extension"
     }
   }
