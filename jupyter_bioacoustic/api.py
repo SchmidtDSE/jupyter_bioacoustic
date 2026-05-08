@@ -652,6 +652,21 @@ class BioacousticAnnotator:
         else:
             self._project_name = DEFAULT_PROJECT_NAME
 
+        _init_cfg = dict(cfg)
+        _init_overrides = {}
+        for _k in _CONFIG_PARAMS:
+            _v = locals().get(_k, _UNSET)
+            if _v is not _UNSET:
+                _init_overrides[_k] = _v
+        _init_cfg.update(_init_overrides)
+        _init_cfg.pop('config', None)
+        import pandas as _pd
+        self._init_args = {
+            k: v for k, v in _init_cfg.items()
+            if v is not _UNSET and v is not None and not isinstance(v, _pd.DataFrame)
+        }
+        self._init_kwargs = dict(kwargs)
+
         def resolve(val, key, default):
             """Return val if explicitly provided, else config value, else default."""
             if val is not _UNSET:
@@ -1133,47 +1148,10 @@ class BioacousticAnnotator:
                 f"Project file already exists: {path}  (pass overwrite=True to replace)"
             )
 
-        output_cfg = self._output
-        if self._sync_uri or self._sync_button or self._sync_recursive:
-            output_cfg = {'path': self._output}
-            if self._sync_uri:
-                output_cfg['uri'] = self._sync_uri
-            if self._sync_button:
-                output_cfg['sync_button'] = self._sync_button
-            if self._sync_recursive:
-                output_cfg['recursive'] = self._sync_recursive
-
-        viz_out = []
-        for v in self._visualizations:
-            if v['type'] == 'builtin':
-                viz_out.append(v['key'])
-            else:
-                viz_out.append(v['label'])
-
-        cfg = {
-            'project_name': self._project_name,
-            'data': self._data_source,
-            'data_start_time': self._data_start_time,
-            'data_end_time': self._data_end_time,
-            'audio': self._audio_config,
-            'output': output_cfg,
-            'ident_column': self._ident_column,
-            'display_columns': self._display_columns,
-            'form_config': self._form_config,
-            'duplicate_entries': self._duplicate_entries,
-            'default_buffer': self._default_buffer,
-            'capture': self._capture,
-            'capture_dir': self._capture_dir,
-            'spectrogram_resolution': [int(r.replace('selected::', '')) for r in self._spec_resolutions],
-            'visualizations': viz_out,
-            'partial_download': self._partial_download,
-            'width': self._width,
-            'clip_table_height': self._clip_table_height,
-            'player_height': self._player_height,
-            'info_card_height': self._info_card_height,
-            'form_panel_height': self._form_panel_height,
-        }
-
+        cfg = dict(self._init_args)
+        cfg['project_name'] = self._project_name
+        if self._init_kwargs:
+            cfg.update(self._init_kwargs)
         cfg = {k: v for k, v in cfg.items() if v is not None and v != '' and v != []}
 
         with open(path, 'w') as f:
