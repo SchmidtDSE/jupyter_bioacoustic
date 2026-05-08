@@ -25,13 +25,13 @@ exports["default"] = [plugin_1.bioacousticPlugin];
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.KernelBridge = void 0;
 class KernelBridge {
-    constructor(_tracker) {
-        this._tracker = _tracker;
+    constructor(tracker, directKernel) {
+        this._tracker = tracker;
+        this._directKernel = directKernel !== null && directKernel !== void 0 ? directKernel : null;
     }
-    /** Get the currently-active kernel (may be null during startup). */
     _kernel() {
-        var _a, _b, _c;
-        return (_c = (_b = (_a = this._tracker.currentWidget) === null || _a === void 0 ? void 0 : _a.sessionContext.session) === null || _b === void 0 ? void 0 : _b.kernel) !== null && _c !== void 0 ? _c : null;
+        var _a, _b, _c, _d, _e;
+        return (_e = (_a = this._directKernel) !== null && _a !== void 0 ? _a : (_d = (_c = (_b = this._tracker) === null || _b === void 0 ? void 0 : _b.currentWidget) === null || _c === void 0 ? void 0 : _c.sessionContext.session) === null || _d === void 0 ? void 0 : _d.kernel) !== null && _e !== void 0 ? _e : null;
     }
     /**
      * Execute a Python snippet and return stdout (trimmed).
@@ -79,7 +79,11 @@ exports.KernelBridge = KernelBridge;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.bioacousticPlugin = void 0;
 const apputils_1 = __webpack_require__(/*! @jupyterlab/apputils */ "webpack/sharing/consume/default/@jupyterlab/apputils");
+const coreutils_1 = __webpack_require__(/*! @jupyterlab/coreutils */ "webpack/sharing/consume/default/@jupyterlab/coreutils");
+const filebrowser_1 = __webpack_require__(/*! @jupyterlab/filebrowser */ "webpack/sharing/consume/default/@jupyterlab/filebrowser");
+const launcher_1 = __webpack_require__(/*! @jupyterlab/launcher */ "webpack/sharing/consume/default/@jupyterlab/launcher");
 const notebook_1 = __webpack_require__(/*! @jupyterlab/notebook */ "webpack/sharing/consume/default/@jupyterlab/notebook");
+const ui_components_1 = __webpack_require__(/*! @jupyterlab/ui-components */ "webpack/sharing/consume/default/@jupyterlab/ui-components");
 const widgets_1 = __webpack_require__(/*! @lumino/widgets */ "webpack/sharing/consume/default/@lumino/widgets");
 const styles_1 = __webpack_require__(/*! ./styles */ "./lib/styles.js");
 const kernel_1 = __webpack_require__(/*! ./kernel */ "./lib/kernel.js");
@@ -94,17 +98,25 @@ const InfoCard_1 = __webpack_require__(/*! ./sections/InfoCard */ "./lib/section
 const DEFAULT_TITLE = 'Jupyter Bioacoustic';
 let _counter = 0;
 class BioacousticWidget extends widgets_1.Widget {
-    constructor(tracker) {
+    constructor(tracker, directKernel) {
         super();
         // ── Config (from kernel vars) ────────────────────────────────
         this._identCol = '';
         this._displayCols = [];
-        this._kernelBridge = new kernel_1.KernelBridge(tracker);
+        this._kernelBridge = new kernel_1.KernelBridge(directKernel ? null : tracker, directKernel);
+        this._ownedKernel = directKernel !== null && directKernel !== void 0 ? directKernel : null;
         this.id = `jp-bioacoustic-${_counter++}`;
         this.title.label = DEFAULT_TITLE;
         this.title.closable = true;
         (0, styles_1.injectGlobalStyles)();
         this._buildUI();
+    }
+    dispose() {
+        if (this._ownedKernel) {
+            this._ownedKernel.shutdown().catch(() => { });
+            this._ownedKernel = null;
+        }
+        super.dispose();
     }
     // ─── UI construction ────────────────────────────────────────
     _buildUI() {
@@ -150,6 +162,7 @@ class BioacousticWidget extends widgets_1.Widget {
             this._player.renderFrame();
         });
         this._form.syncRequested.connect(() => void this._onSync());
+        this._form.saveProjectRequested.connect(() => void this._onSaveProject());
         this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
         // Wire Player signals
         this._player.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
@@ -214,6 +227,7 @@ class BioacousticWidget extends widgets_1.Widget {
             outputPath,
             syncConfig,
             height: parseInt(cfg.form_panel_height) || undefined,
+            projectSaveBtn: cfg.project_save_btn || '',
         });
         await this._form.build();
         await this._form.loadOutputFileProgress();
@@ -298,6 +312,42 @@ class BioacousticWidget extends widgets_1.Widget {
             this._form._enableSyncBtn();
         }
     }
+    // ─── Save Project ──────────────────────────────────────────
+    async _onSaveProject() {
+        var _a;
+        try {
+            const defRaw = await this._kernelBridge.exec((0, python_1.getDefaultProjectPath)());
+            const defPath = JSON.parse(defRaw).path;
+            const chosen = window.prompt('Save project as:', defPath);
+            if (!chosen) {
+                this._form._enableSaveProjectBtn();
+                return;
+            }
+            const savePath = chosen.trim();
+            let overwrite = false;
+            try {
+                const existsRaw = await this._kernelBridge.exec((0, python_1.checkFileExists)(savePath));
+                const exists = JSON.parse(existsRaw).exists;
+                if (exists) {
+                    overwrite = window.confirm(`${savePath} already exists. Overwrite?`);
+                    if (!overwrite) {
+                        this._form._enableSaveProjectBtn();
+                        return;
+                    }
+                }
+            }
+            catch ( /* proceed — worst case save_as_project raises */_b) { /* proceed — worst case save_as_project raises */ }
+            this._setStatus('Saving project…');
+            const raw = await this._kernelBridge.exec((0, python_1.saveProject)(savePath, overwrite));
+            const result = JSON.parse(raw);
+            this._setStatus(`✓ Project saved: ${result.path}`);
+            this._form._enableSaveProjectBtn();
+        }
+        catch (e) {
+            this._setStatus(`❌ Save failed: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+            this._form._enableSaveProjectBtn();
+        }
+    }
     // ─── Capture ─────────────────────────────────────────────────
     // ─── Kernel helpers ──────────────────────────────────────────
     // ─── Utilities ───────────────────────────────────────────────
@@ -309,11 +359,71 @@ class BioacousticWidget extends widgets_1.Widget {
 // ═══════════════════════════════════════════════════════════════
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
+function escPy(s) {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+async function pickProjectFile(browser, defaultPath) {
+    var _a, _b;
+    if (browser) {
+        const result = await filebrowser_1.FileDialog.getOpenFiles({
+            manager: browser.model.manager,
+            title: 'Select a Bioacoustic Project',
+            defaultPath,
+            filter: (model) => {
+                if (model.type === 'directory')
+                    return {};
+                const name = model.name.toLowerCase();
+                return (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json'))
+                    ? {} : null;
+            },
+        });
+        if (!result.button.accept || !((_a = result.value) === null || _a === void 0 ? void 0 : _a.length))
+            return '';
+        return result.value[0].path;
+    }
+    const path = window.prompt('Project file path (.yaml)');
+    return (_b = path === null || path === void 0 ? void 0 : path.trim()) !== null && _b !== void 0 ? _b : '';
+}
+async function startKernel(app) {
+    try {
+        const kernel = await app.serviceManager.kernels.startNew({ name: 'python3' });
+        return kernel;
+    }
+    catch (e) {
+        console.error('bioacoustic: failed to start kernel', e);
+        return null;
+    }
+}
+function getExistingKernel(tracker) {
+    var _a, _b, _c, _d;
+    return (_d = (_c = (_b = (_a = tracker.currentWidget) === null || _a === void 0 ? void 0 : _a.sessionContext) === null || _b === void 0 ? void 0 : _b.session) === null || _c === void 0 ? void 0 : _c.kernel) !== null && _d !== void 0 ? _d : null;
+}
+async function execInKernel(kernel, code) {
+    const future = kernel.requestExecute({ code });
+    let error = '';
+    future.onIOPub = (msg) => {
+        var _a;
+        if (((_a = msg.header) === null || _a === void 0 ? void 0 : _a.msg_type) === 'error') {
+            error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
+        }
+    };
+    await future.done;
+    return error;
+}
+const bioacousticIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2 12 C2 12 4 6 6 6 C8 6 8 18 10 18 C12 18 12 3 14 3 C16 3 16 21 18 21 C20 21 22 12 22 12"/>
+  <circle cx="12" cy="12" r="11" stroke-width="1"/>
+</svg>`;
+const bioacousticIcon = new ui_components_1.LabIcon({
+    name: 'jupyter-bioacoustic:icon',
+    svgstr: bioacousticIconSvg,
+});
 exports.bioacousticPlugin = {
     id: 'jupyter-bioacoustic:plugin',
     autoStart: true,
     requires: [apputils_1.ICommandPalette, notebook_1.INotebookTracker],
-    activate: (app, palette, tracker) => {
+    optional: [launcher_1.ILauncher, filebrowser_1.IDefaultFileBrowser],
+    activate: (app, palette, tracker, launcher, defaultBrowser) => {
         window._bioacousticApp = app;
         window._bioacousticOpenInline = (divId) => {
             const container = document.getElementById(divId);
@@ -331,7 +441,54 @@ exports.bioacousticPlugin = {
                 app.shell.activateById(widget.id);
             }
         });
+        app.commands.addCommand('bioacoustic:open-project', {
+            label: 'Bioacoustic Annotator',
+            icon: bioacousticIcon,
+            execute: async () => {
+                var _a, _b;
+                const browserPath = (_a = defaultBrowser === null || defaultBrowser === void 0 ? void 0 : defaultBrowser.model.path) !== null && _a !== void 0 ? _a : '';
+                const projectPath = await pickProjectFile(defaultBrowser, browserPath);
+                if (!projectPath)
+                    return;
+                const kernel = (_b = getExistingKernel(tracker)) !== null && _b !== void 0 ? _b : await startKernel(app);
+                if (!kernel) {
+                    window.alert('Failed to start a Python kernel.');
+                    return;
+                }
+                const ownsKernel = !getExistingKernel(tracker);
+                const serverRoot = coreutils_1.PageConfig.getOption('serverRoot');
+                const workDir = browserPath
+                    ? serverRoot + '/' + browserPath
+                    : serverRoot;
+                const relPath = browserPath && projectPath.startsWith(browserPath + '/')
+                    ? projectPath.substring(browserPath.length + 1)
+                    : projectPath;
+                const error = await execInKernel(kernel, [
+                    `import os as _os`,
+                    `_os.chdir(_os.path.expanduser('${escPy(workDir)}'))`,
+                    `from jupyter_bioacoustic import BioacousticAnnotator`,
+                    `_ba = BioacousticAnnotator(project='${escPy(relPath)}')`,
+                    `_ba.setup()`,
+                ].join('\n'));
+                if (error) {
+                    if (ownsKernel)
+                        kernel.shutdown().catch(() => { });
+                    window.alert(`Bioacoustic Annotator error:\n${error}`);
+                    return;
+                }
+                const widget = new BioacousticWidget(tracker, ownsKernel ? kernel : undefined);
+                app.shell.add(widget, 'main');
+                app.shell.activateById(widget.id);
+            }
+        });
         palette.addItem({ command: 'bioacoustic:open', category: 'Bioacoustic' });
+        palette.addItem({ command: 'bioacoustic:open-project', category: 'Bioacoustic' });
+        if (launcher) {
+            launcher.add({
+                command: 'bioacoustic:open-project',
+                category: 'Other',
+            });
+        }
         console.log('jupyter-bioacoustic activated');
     }
 };
@@ -438,7 +595,7 @@ print(_j.dumps({
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.syncOutput = exports.INVALIDATE_OUTPUT_CACHE = exports.savePng = exports.deleteOutputRow = exports.writeOutputRow = exports.readOutputRows = exports.countOutputRows = exports.loadSelectItemsText = exports.loadSelectItemsYaml = exports.loadSelectItemsJsonl = exports.loadSelectItemsParquet = exports.loadSelectItemsCsv = exports.spectrogramPipeline = exports.buildSpectrogram = exports.readAudio = exports.readKernelVars = void 0;
+exports.checkFileExists = exports.saveProject = exports.getDefaultProjectPath = exports.syncOutput = exports.INVALIDATE_OUTPUT_CACHE = exports.savePng = exports.deleteOutputRow = exports.writeOutputRow = exports.readOutputRows = exports.countOutputRows = exports.loadSelectItemsText = exports.loadSelectItemsYaml = exports.loadSelectItemsJsonl = exports.loadSelectItemsParquet = exports.loadSelectItemsCsv = exports.spectrogramPipeline = exports.buildSpectrogram = exports.readAudio = exports.readKernelVars = void 0;
 /**
  * Python code snippets executed in the Jupyter kernel.
  *
@@ -473,6 +630,7 @@ function readKernelVars() {
         `  'player_height': _BA_PLAYER_HEIGHT,`,
         `  'info_card_height': _BA_INFO_CARD_HEIGHT,`,
         `  'form_panel_height': _BA_FORM_PANEL_HEIGHT,`,
+        `  'project_save_btn': _BA_PROJECT_SAVE_BTN,`,
         `}))`,
     ].join('\n');
 }
@@ -783,6 +941,32 @@ function syncOutput(dest) {
     ].join('\n');
 }
 exports.syncOutput = syncOutput;
+function getDefaultProjectPath() {
+    return [
+        `import os as _os, re as _re, json as _json`,
+        `_slug = _re.sub(r'[^a-z0-9]+', '_', _BA_INSTANCE._project_name.lower()).strip('_')`,
+        `_def_path = _os.path.join('projects', _slug + '.yaml')`,
+        `print(_json.dumps({'path': _def_path}))`,
+    ].join('\n');
+}
+exports.getDefaultProjectPath = getDefaultProjectPath;
+function saveProject(path, overwrite = false) {
+    return [
+        `import os as _os, json as _json`,
+        `_folder = _os.path.dirname('${(0, util_1.escPy)(path)}') or '.'`,
+        `_fname = _os.path.basename('${(0, util_1.escPy)(path)}')`,
+        `_path = _BA_INSTANCE.save_as_project(filename=_fname, folder=_folder, overwrite=${overwrite ? 'True' : 'False'})`,
+        `print(_json.dumps({'path': _path}))`,
+    ].join('\n');
+}
+exports.saveProject = saveProject;
+function checkFileExists(path) {
+    return [
+        `import os, json`,
+        `print(json.dumps({'exists': os.path.exists('${(0, util_1.escPy)(path)}')}))`,
+    ].join('\n');
+}
+exports.checkFileExists = checkFileExists;
 
 
 /***/ },
@@ -1551,6 +1735,8 @@ class FormPanel {
         this.activeToolChanged = new signaling_1.Signal(this);
         /** Sync button was clicked — orchestrator handles the kernel call. */
         this.syncRequested = new signaling_1.Signal(this);
+        /** Save-project button was clicked — orchestrator handles the kernel call. */
+        this.saveProjectRequested = new signaling_1.Signal(this);
         /** A status message to show in the widget header. */
         this.statusChanged = new signaling_1.Signal(this);
         // ─── Form state ────────────────────────────────────────────
@@ -1591,6 +1777,8 @@ class FormPanel {
         this._outputPath = '';
         this._syncConfig = {};
         this._syncBtn = null;
+        this._projectSaveBtn = '';
+        this._projectSaveBtnEl = null;
         this._selectedIdx = -1;
         this._filteredLength = 0;
         this._reviewedMultiboxEntries = [];
@@ -1625,7 +1813,7 @@ class FormPanel {
     // ─── Public API ────────────────────────────────────────────
     /** Set context needed by the form (called once after reading kernel vars). */
     setContext(opts) {
-        var _a;
+        var _a, _b;
         if (opts.height) {
             this.element.style.minHeight = `${opts.height}px`;
         }
@@ -1635,6 +1823,7 @@ class FormPanel {
         this._duplicateEntries = opts.duplicateEntries;
         this._outputPath = opts.outputPath;
         this._syncConfig = (_a = opts.syncConfig) !== null && _a !== void 0 ? _a : {};
+        this._projectSaveBtn = (_b = opts.projectSaveBtn) !== null && _b !== void 0 ? _b : '';
     }
     /** Update selection info (called each time a row is selected). Used for
      *  Prev/Next disabled states in the reviewed view. */
@@ -2362,15 +2551,24 @@ class FormPanel {
                 btnContainer.appendChild(btn);
             }
         }
-        if (this._syncConfig.button) {
+        if (this._syncConfig.button || this._projectSaveBtn) {
             const spacer = document.createElement('span');
             spacer.style.flex = '1';
             btnContainer.appendChild(spacer);
+        }
+        if (this._syncConfig.button) {
             this._syncBtn = document.createElement('button');
             this._syncBtn.textContent = this._syncConfig.button;
             this._syncBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:12px;`;
             this._syncBtn.addEventListener('click', () => void this._onSync());
             btnContainer.appendChild(this._syncBtn);
+        }
+        if (this._projectSaveBtn) {
+            this._projectSaveBtnEl = document.createElement('button');
+            this._projectSaveBtnEl.textContent = this._projectSaveBtn;
+            this._projectSaveBtnEl.style.cssText = (0, styles_1.btnStyle)() + `font-size:12px;margin-left:6px;`;
+            this._projectSaveBtnEl.addEventListener('click', () => void this._onSaveProject());
+            btnContainer.appendChild(this._projectSaveBtnEl);
         }
         this._dynFormEl.appendChild(btnContainer);
     }
@@ -2394,6 +2592,21 @@ class FormPanel {
         this._resetSyncBtnLabel();
         this._syncBtn.disabled = false;
         this._syncBtn.style.opacity = '1';
+    }
+    async _onSaveProject() {
+        if (!this._projectSaveBtnEl)
+            return;
+        this._projectSaveBtnEl.disabled = true;
+        this._projectSaveBtnEl.textContent = 'Saving…';
+        this._projectSaveBtnEl.style.opacity = '0.4';
+        this.saveProjectRequested.emit(void 0);
+    }
+    _enableSaveProjectBtn(msg) {
+        if (!this._projectSaveBtnEl)
+            return;
+        this._projectSaveBtnEl.textContent = msg !== null && msg !== void 0 ? msg : this._projectSaveBtn;
+        this._projectSaveBtnEl.disabled = false;
+        this._projectSaveBtnEl.style.opacity = '1';
     }
     async _buildAnnotationElement(config, container) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
@@ -5043,4 +5256,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.94dd5fe306f02addf723.js.map
+//# sourceMappingURL=lib_index_js.f3535c8c428af4517fa0.js.map
