@@ -1,15 +1,22 @@
 /**
  * Python kernel bridge — executes snippets in the current notebook kernel
- * and returns stdout. Throws with stderr+traceback on error.
+ * (or a standalone kernel) and returns stdout. Throws with stderr+traceback on error.
  */
 import { INotebookTracker } from '@jupyterlab/notebook';
 
 export class KernelBridge {
-  constructor(private _tracker: INotebookTracker) {}
+  private _tracker: INotebookTracker | null;
+  private _directKernel: any;
 
-  /** Get the currently-active kernel (may be null during startup). */
+  constructor(tracker: INotebookTracker | null, directKernel?: any) {
+    this._tracker = tracker;
+    this._directKernel = directKernel ?? null;
+  }
+
   private _kernel(): any {
-    return this._tracker.currentWidget?.sessionContext.session?.kernel ?? null;
+    return this._directKernel
+      ?? this._tracker?.currentWidget?.sessionContext.session?.kernel
+      ?? null;
   }
 
   /**
