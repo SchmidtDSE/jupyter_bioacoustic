@@ -1,6 +1,7 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { ICommandPalette } from '@jupyterlab/apputils';
-import { FileDialog, IFileBrowserFactory } from '@jupyterlab/filebrowser';
+import { PageConfig } from '@jupyterlab/coreutils';
+import { FileDialog, IDefaultFileBrowser } from '@jupyterlab/filebrowser';
 import { ILauncher } from '@jupyterlab/launcher';
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { LabIcon } from '@jupyterlab/ui-components';
@@ -329,6 +330,77 @@ class BioacousticWidget extends Widget {
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
 
+function escPy(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function pickProjectFile(
+  browser: IDefaultFileBrowser | null,
+  defaultPath: string,
+): Promise<string> {
+  if (browser) {
+    const result = await FileDialog.getOpenFiles({
+      manager: browser.model.manager,
+      title: 'Select a Bioacoustic Project',
+      defaultPath,
+      filter: (model) => {
+        if (model.type === 'directory') return {};
+        const name = model.name.toLowerCase();
+        return (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json'))
+          ? {} : null;
+      },
+    });
+    if (!result.button.accept || !result.value?.length) return '';
+    return result.value[0].path;
+  }
+  const path = window.prompt('Project file path (.yaml)');
+  return path?.trim() ?? '';
+}
+
+const KERNEL_WAIT_MS = 200;
+const KERNEL_TIMEOUT_MS = 15_000;
+
+async function ensureKernel(
+  app: JupyterFrontEnd,
+  tracker: INotebookTracker,
+): Promise<any | null> {
+  let panel = tracker.currentWidget;
+
+  if (!panel?.sessionContext?.session?.kernel) {
+    await app.commands.execute('notebook:create-new', { kernelName: 'python3' });
+    panel = tracker.currentWidget;
+    if (!panel) return null;
+
+    await panel.sessionContext.ready;
+
+    if (!panel.sessionContext.session?.kernel) {
+      const deadline = Date.now() + KERNEL_TIMEOUT_MS;
+      await new Promise<void>((resolve, reject) => {
+        const poll = () => {
+          if (panel!.sessionContext.session?.kernel) return resolve();
+          if (Date.now() > deadline) return reject(new Error('Kernel start timed out'));
+          setTimeout(poll, KERNEL_WAIT_MS);
+        };
+        poll();
+      });
+    }
+  }
+
+  return panel?.sessionContext?.session?.kernel ?? null;
+}
+
+async function execInKernel(kernel: any, code: string): Promise<string> {
+  const future = kernel.requestExecute({ code });
+  let error = '';
+  future.onIOPub = (msg: any) => {
+    if (msg.header?.msg_type === 'error') {
+      error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
+    }
+  };
+  await future.done;
+  return error;
+}
+
 const bioacousticIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
   <path d="M2 12 C2 12 4 6 6 6 C8 6 8 18 10 18 C12 18 12 3 14 3 C16 3 16 21 18 21 C20 21 22 12 22 12"/>
   <circle cx="12" cy="12" r="11" stroke-width="1"/>
@@ -343,13 +415,13 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-bioacoustic:plugin',
   autoStart: true,
   requires: [ICommandPalette, INotebookTracker],
-  optional: [ILauncher, IFileBrowserFactory],
+  optional: [ILauncher, IDefaultFileBrowser],
   activate: (
     app: JupyterFrontEnd,
     palette: ICommandPalette,
     tracker: INotebookTracker,
     launcher: ILauncher | null,
-    browserFactory: IFileBrowserFactory | null,
+    defaultBrowser: IDefaultFileBrowser | null,
   ) => {
     (window as any)._bioacousticApp = app;
 
@@ -374,53 +446,34 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
       label: 'Bioacoustic Annotator',
       icon: bioacousticIcon,
       execute: async () => {
-        const panel = tracker.currentWidget;
-        if (!panel?.sessionContext?.session?.kernel) {
-          console.warn('bioacoustic: no active notebook kernel — open a notebook first');
-          void app.commands.execute('apputils:display-information', {
-            message: 'Open a notebook first, then use the Bioacoustic Annotator launcher.',
-          }).catch(() => {
-            window.alert('Open a notebook first, then use the Bioacoustic Annotator launcher.');
-          });
+        const browserPath = defaultBrowser?.model.path ?? '';
+        const projectPath = await pickProjectFile(defaultBrowser, browserPath);
+        if (!projectPath) return;
+
+        const kernel = await ensureKernel(app, tracker);
+        if (!kernel) return;
+
+        const serverRoot = PageConfig.getOption('serverRoot');
+        const workDir = browserPath
+          ? serverRoot + '/' + browserPath
+          : serverRoot;
+        const relPath = browserPath && projectPath.startsWith(browserPath + '/')
+          ? projectPath.substring(browserPath.length + 1)
+          : projectPath;
+
+        const error = await execInKernel(kernel, [
+          `import os as _os`,
+          `_os.chdir(_os.path.expanduser('${escPy(workDir)}'))`,
+          `from jupyter_bioacoustic import BioacousticAnnotator`,
+          `_ba = BioacousticAnnotator(project='${escPy(relPath)}')`,
+          `_ba.setup()`,
+        ].join('\n'));
+
+        if (error) {
+          window.alert(`Bioacoustic Annotator error:\n${error}`);
           return;
         }
-
-        let projectPath = '';
-
-        if (browserFactory) {
-          const manager = browserFactory.defaultBrowser.model.manager;
-          const result = await FileDialog.getOpenFiles({
-            manager,
-            title: 'Select a Bioacoustic Project',
-            filter: (model) => {
-              const name = model.name.toLowerCase();
-              if (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json')) {
-                return {};
-              }
-              return null;
-            },
-          });
-          if (!result.button.accept || !result.value || result.value.length === 0) return;
-          projectPath = result.value[0].path;
-        } else {
-          const path = window.prompt('Project file path (.yaml)');
-          if (!path) return;
-          projectPath = path.trim();
-        }
-
-        const kernel = panel.sessionContext.session.kernel;
-        const escaped = projectPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        const code = [
-          `from jupyter_bioacoustic import BioacousticAnnotator`,
-          `BioacousticAnnotator('${escaped}').open(inline=False)`,
-        ].join('\n');
-        const future = kernel.requestExecute({ code });
-        future.onIOPub = (msg: any) => {
-          if (msg.header?.msg_type === 'error') {
-            console.error('bioacoustic project open error:', msg.content);
-          }
-        };
-        await future.done;
+        await app.commands.execute('bioacoustic:open');
       }
     });
 
