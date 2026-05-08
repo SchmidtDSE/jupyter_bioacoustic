@@ -365,13 +365,28 @@ export function syncOutput(dest?: string): string {
   ].join('\n');
 }
 
-export function saveProject(filename?: string, folder?: string, overwrite = false): string {
-  const args: string[] = [];
-  if (filename) args.push(`filename='${escPy(filename)}'`);
-  if (folder) args.push(`folder='${escPy(folder)}'`);
-  if (overwrite) args.push(`overwrite=True`);
+export function getDefaultProjectPath(): string {
   return [
-    `_path = _BA_INSTANCE.save_as_project(${args.join(', ')})`,
-    `import json; print(json.dumps({'path': _path}))`,
+    `import os as _os, re as _re, json as _json`,
+    `_slug = _re.sub(r'[^a-z0-9]+', '_', _BA_INSTANCE._project_name.lower()).strip('_')`,
+    `_def_path = _os.path.join('projects', _slug + '.yaml')`,
+    `print(_json.dumps({'path': _def_path}))`,
+  ].join('\n');
+}
+
+export function saveProject(path: string, overwrite = false): string {
+  return [
+    `import os as _os, json as _json`,
+    `_folder = _os.path.dirname('${escPy(path)}') or '.'`,
+    `_fname = _os.path.basename('${escPy(path)}')`,
+    `_path = _BA_INSTANCE.save_as_project(filename=_fname, folder=_folder, overwrite=${overwrite ? 'True' : 'False'})`,
+    `print(_json.dumps({'path': _path}))`,
+  ].join('\n');
+}
+
+export function checkFileExists(path: string): string {
+  return [
+    `import os, json`,
+    `print(json.dumps({'exists': os.path.exists('${escPy(path)}')}))`,
   ].join('\n');
 }
