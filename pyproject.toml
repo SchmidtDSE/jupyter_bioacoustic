@@ -36,6 +36,9 @@ Homepage = "https://github.com/SchmidtDSE/jupyter_bioacoustic"
 Documentation = "https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki"
 
 [project.optional-dependencies]
+builder = [
+    "litellm",
+]
 demo = [
     "ipyleaflet",
     "shapely",
@@ -64,6 +67,7 @@ python = ">=3.11"
 numpy = "*"
 matplotlib = "*"
 pandas = "*"
+litellm = ">=1.83.14,<2"
 
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = { path = ".", editable = true }
