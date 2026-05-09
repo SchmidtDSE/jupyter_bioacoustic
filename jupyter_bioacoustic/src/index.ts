@@ -1,2 +1,3 @@
 import { bioacousticPlugin } from './plugin';
-export default [bioacousticPlugin];
+import { configBuilderPlugin } from './config_builder';
+export default [bioacousticPlugin, configBuilderPlugin];
