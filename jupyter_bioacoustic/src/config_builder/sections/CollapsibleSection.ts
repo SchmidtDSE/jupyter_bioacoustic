@@ -1,0 +1,119 @@
+import { Signal } from '@lumino/signaling';
+import { COLORS } from '../../styles';
+
+export abstract class CollapsibleSection {
+  readonly element: HTMLDetailsElement;
+  readonly focused = new Signal<this, string>(this);
+  readonly changed = new Signal<this, void>(this);
+
+  protected _body: HTMLDivElement;
+  protected _sectionName: string;
+
+  constructor(title: string, sectionName: string, open = false) {
+    this._sectionName = sectionName;
+
+    this.element = document.createElement('details');
+    if (open) this.element.open = true;
+    this.element.style.cssText =
+      `border-bottom:1px solid ${COLORS.bgSurface0};`;
+
+    const summary = document.createElement('summary');
+    summary.textContent = title;
+    summary.style.cssText =
+      `padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;` +
+      `background:${COLORS.bgMantle};color:${COLORS.textPrimary};` +
+      `list-style:none;user-select:none;letter-spacing:0.5px;` +
+      `border-bottom:1px solid ${COLORS.bgSurface0};`;
+    summary.addEventListener('click', () => {
+      this.focused.emit(this._sectionName);
+    });
+
+    this._body = document.createElement('div');
+    this._body.style.cssText =
+      `padding:10px 12px;display:flex;flex-direction:column;gap:8px;` +
+      `background:${COLORS.bgBase};`;
+
+    this.element.append(summary, this._body);
+  }
+
+  protected _makeRow(): HTMLDivElement {
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;`;
+    return row;
+  }
+
+  protected _makeLabel(text: string): HTMLLabelElement {
+    const lbl = document.createElement('label');
+    lbl.textContent = text;
+    lbl.style.cssText =
+      `color:${COLORS.textSubtle};font-size:12px;min-width:100px;flex-shrink:0;`;
+    return lbl;
+  }
+
+  protected _makeInput(placeholder = '', width = '200px'): HTMLInputElement {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = placeholder;
+    inp.style.cssText =
+      `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+      `border-radius:4px;color:${COLORS.textPrimary};padding:4px 8px;` +
+      `font-size:12px;width:${width};box-sizing:border-box;`;
+    return inp;
+  }
+
+  protected _makeSelect(options: string[], selected?: string): HTMLSelectElement {
+    const sel = document.createElement('select');
+    sel.style.cssText =
+      `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+      `border-radius:4px;color:${COLORS.textPrimary};padding:4px 6px;font-size:12px;`;
+    for (const opt of options) {
+      const o = document.createElement('option');
+      o.value = opt;
+      o.textContent = opt;
+      if (opt === selected) o.selected = true;
+      sel.appendChild(o);
+    }
+    return sel;
+  }
+
+  protected _makeCheckbox(label: string, checked = false): { row: HTMLDivElement; input: HTMLInputElement } {
+    const row = this._makeRow();
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checked;
+    cb.style.cssText = `accent-color:${COLORS.blue};`;
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    lbl.style.cssText = `color:${COLORS.textSubtle};font-size:12px;cursor:pointer;`;
+    lbl.prepend(cb);
+    lbl.style.display = 'flex';
+    lbl.style.alignItems = 'center';
+    lbl.style.gap = '6px';
+    row.appendChild(lbl);
+    return { row, input: cb };
+  }
+
+  protected _makeButton(text: string, primary = false): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.textContent = text;
+    btn.style.cssText = primary
+      ? `background:${COLORS.blue};border:none;border-radius:4px;color:${COLORS.bgBase};padding:4px 12px;font-size:12px;cursor:pointer;font-weight:700;`
+      : `background:${COLORS.bgSurface1};border:none;border-radius:4px;color:${COLORS.textPrimary};padding:4px 10px;font-size:12px;cursor:pointer;`;
+    return btn;
+  }
+
+  protected _makeFieldRow(labelText: string, input: HTMLElement): HTMLDivElement {
+    const row = this._makeRow();
+    row.appendChild(this._makeLabel(labelText));
+    row.appendChild(input);
+    return row;
+  }
+
+  protected _emitChanged(): void {
+    this.changed.emit(void 0);
+  }
+
+  abstract getData(): Record<string, any>;
+
+  abstract setData(data: Record<string, any>): void;
+}
