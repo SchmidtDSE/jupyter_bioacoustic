@@ -1,2 +1,3 @@
 import { bioacousticPlugin } from './plugin';
-export default [bioacousticPlugin];
+import { builderPlugin } from './builder';
+export default [bioacousticPlugin, builderPlugin];
