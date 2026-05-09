@@ -1,6 +1,759 @@
 "use strict";
 (self["webpackChunkjupyter_bioacoustic"] = self["webpackChunkjupyter_bioacoustic"] || []).push([["lib_index_js"],{
 
+/***/ "./lib/builder/ChatPanel.js"
+/*!**********************************!*\
+  !*** ./lib/builder/ChatPanel.js ***!
+  \**********************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ChatPanel = void 0;
+const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
+const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
+class ChatPanel {
+    constructor() {
+        this.messageSent = new signaling_1.Signal(this);
+        this.element = document.createElement('div');
+        this.element.style.cssText =
+            `display:flex;flex-direction:column;flex:1;min-width:0;overflow:hidden;`;
+        this._messages = document.createElement('div');
+        this._messages.style.cssText =
+            `flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;`;
+        this._loading = document.createElement('div');
+        this._loading.style.cssText =
+            `padding:8px 12px;font-size:12px;color:${styles_1.COLORS.textMuted};font-style:italic;display:none;`;
+        this._loading.textContent = 'Thinking…';
+        const inputRow = document.createElement('div');
+        inputRow.style.cssText =
+            `display:flex;gap:6px;padding:8px 12px;border-top:1px solid ${styles_1.COLORS.bgSurface0};` +
+                `background:${styles_1.COLORS.bgMantle};flex-shrink:0;`;
+        this._input = document.createElement('textarea');
+        this._input.style.cssText =
+            (0, styles_1.inputStyle)() +
+                `flex:1;resize:none;min-height:36px;max-height:120px;font-family:inherit;font-size:13px;`;
+        this._input.placeholder = 'Type a message…';
+        this._input.rows = 1;
+        this._input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this._send();
+            }
+        });
+        this._input.addEventListener('input', () => {
+            this._input.style.height = 'auto';
+            this._input.style.height = Math.min(this._input.scrollHeight, 120) + 'px';
+        });
+        this._sendBtn = document.createElement('button');
+        this._sendBtn.textContent = 'Send';
+        this._sendBtn.style.cssText = (0, styles_1.btnStyle)() + `flex-shrink:0;align-self:flex-end;`;
+        this._sendBtn.addEventListener('click', () => this._send());
+        inputRow.append(this._input, this._sendBtn);
+        this.element.append(this._messages, this._loading, inputRow);
+    }
+    _send() {
+        const text = this._input.value.trim();
+        if (!text)
+            return;
+        this._input.value = '';
+        this._input.style.height = 'auto';
+        this.messageSent.emit(text);
+    }
+    addMessage(msg) {
+        const bubble = document.createElement('div');
+        const isUser = msg.role === 'user';
+        const isSystem = msg.role === 'system';
+        bubble.style.cssText =
+            `max-width:85%;padding:8px 12px;border-radius:8px;font-size:13px;line-height:1.5;` +
+                `word-wrap:break-word;white-space:pre-wrap;` +
+                (isUser
+                    ? `align-self:flex-end;background:${styles_1.COLORS.bgSelected};color:${styles_1.COLORS.textPrimary};`
+                    : isSystem
+                        ? `align-self:center;background:${styles_1.COLORS.bgSurface0};color:${styles_1.COLORS.textSubtle};font-style:italic;text-align:center;`
+                        : `align-self:flex-start;background:${styles_1.COLORS.bgSurface0};color:${styles_1.COLORS.textPrimary};`);
+        bubble.innerHTML = this._renderMarkdown(msg.content);
+        this._messages.appendChild(bubble);
+        this._messages.scrollTop = this._messages.scrollHeight;
+    }
+    setLoading(loading) {
+        this._loading.style.display = loading ? 'block' : 'none';
+        this._sendBtn.disabled = loading;
+        this._input.disabled = loading;
+        if (loading) {
+            this._messages.scrollTop = this._messages.scrollHeight;
+        }
+    }
+    setInputEnabled(enabled) {
+        this._input.disabled = !enabled;
+        this._sendBtn.disabled = !enabled;
+    }
+    _renderMarkdown(text) {
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        html = html.replace(/```yaml-config\s*\n[\s\S]*?```/g, `<span style="color:${styles_1.COLORS.green};font-size:11px;">✓ Config updated</span>`);
+        html = html.replace(/```save-config\s*\n[\s\S]*?```/g, `<span style="color:${styles_1.COLORS.green};font-size:11px;">✓ Config saved</span>`);
+        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => `<pre style="background:${styles_1.COLORS.bgMantle};padding:8px;border-radius:4px;` +
+            `overflow-x:auto;font-size:12px;margin:4px 0;color:${styles_1.COLORS.textPrimary};">${code}</pre>`);
+        html = html.replace(/`([^`]+)`/g, `<code style="background:${styles_1.COLORS.bgSurface1};padding:1px 4px;border-radius:3px;font-size:12px;color:${styles_1.COLORS.textPrimary};">$1</code>`);
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        html = html.replace(/^(\d+)\.\s+(.+)$/gm, `<span style="margin-left:8px;">$1. $2</span>`);
+        html = html.replace(/^[-•]\s+(.+)$/gm, `<span style="margin-left:8px;">• $1</span>`);
+        return html;
+    }
+}
+exports.ChatPanel = ChatPanel;
+
+
+/***/ },
+
+/***/ "./lib/builder/ConfigPreview.js"
+/*!**************************************!*\
+  !*** ./lib/builder/ConfigPreview.js ***!
+  \**************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ConfigPreview = void 0;
+const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
+const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
+class ConfigPreview {
+    constructor() {
+        this.configEdited = new signaling_1.Signal(this);
+        this._expanded = false;
+        this._editing = false;
+        this.element = document.createElement('div');
+        this.element.style.cssText =
+            `display:flex;flex-direction:column;width:0;overflow:hidden;` +
+                `border-left:1px solid ${styles_1.COLORS.bgSurface0};transition:width 0.2s ease;flex-shrink:0;`;
+        const header = document.createElement('div');
+        header.style.cssText =
+            `display:flex;align-items:center;gap:6px;padding:6px 10px;` +
+                `background:${styles_1.COLORS.bgMantle};border-bottom:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        this._toggleBtn = document.createElement('button');
+        this._toggleBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;padding:2px 8px;`;
+        this._toggleBtn.textContent = '◀ Config';
+        this._toggleBtn.addEventListener('click', () => this.toggle());
+        this._typeLabel = document.createElement('span');
+        this._typeLabel.style.cssText = `font-size:11px;color:${styles_1.COLORS.textMuted};flex:1;`;
+        this._typeLabel.textContent = '';
+        this._editBtn = document.createElement('button');
+        this._editBtn.textContent = 'Edit';
+        this._editBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;padding:2px 8px;`;
+        this._editBtn.addEventListener('click', () => this._startEdit());
+        header.append(this._toggleBtn, this._typeLabel, this._editBtn);
+        this._content = document.createElement('div');
+        this._content.style.cssText = `flex:1;overflow:auto;position:relative;`;
+        this._display = document.createElement('pre');
+        this._display.style.cssText =
+            `margin:0;padding:10px;font-size:12px;line-height:1.6;font-family:monospace;` +
+                `color:${styles_1.COLORS.textPrimary};white-space:pre-wrap;word-wrap:break-word;` +
+                `background:${styles_1.COLORS.bgMantle};`;
+        this._display.textContent = '# (empty)';
+        this._editor = document.createElement('textarea');
+        this._editor.style.cssText =
+            (0, styles_1.inputStyle)() +
+                `width:100%;height:100%;box-sizing:border-box;resize:none;font-family:monospace;` +
+                `font-size:12px;line-height:1.6;padding:10px;display:none;border:none;border-radius:0;` +
+                `position:absolute;inset:0;`;
+        this._editBar = document.createElement('div');
+        this._editBar.style.cssText =
+            `display:none;gap:6px;padding:6px 10px;` +
+                `background:${styles_1.COLORS.bgMantle};border-top:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        this._saveBtn = document.createElement('button');
+        this._saveBtn.textContent = 'Apply';
+        this._saveBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        this._saveBtn.addEventListener('click', () => this._applyEdit());
+        this._cancelBtn = document.createElement('button');
+        this._cancelBtn.textContent = 'Cancel';
+        this._cancelBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        this._cancelBtn.addEventListener('click', () => this._cancelEdit());
+        this._editBar.append(this._saveBtn, this._cancelBtn);
+        this._content.append(this._display, this._editor);
+        this.element.append(header, this._content, this._editBar);
+    }
+    toggle() {
+        this._expanded = !this._expanded;
+        this.element.style.width = this._expanded ? '350px' : '0';
+        this._toggleBtn.textContent = this._expanded ? 'Config ▶' : '◀ Config';
+    }
+    expand() {
+        if (!this._expanded)
+            this.toggle();
+    }
+    updateConfig(yamlStr, configType) {
+        this._display.textContent = yamlStr || '# (empty)';
+        if (configType) {
+            this._typeLabel.textContent = configType;
+        }
+        if (this._editing) {
+            this._cancelEdit();
+        }
+        if (yamlStr && !this._expanded) {
+            this.toggle();
+        }
+    }
+    _startEdit() {
+        this._editing = true;
+        this._editor.value = this._display.textContent || '';
+        this._editor.style.display = 'block';
+        this._display.style.display = 'none';
+        this._editBar.style.display = 'flex';
+        this._editBtn.style.display = 'none';
+        this._editor.focus();
+    }
+    _applyEdit() {
+        const yaml = this._editor.value;
+        this._editing = false;
+        this._editor.style.display = 'none';
+        this._display.style.display = 'block';
+        this._editBar.style.display = 'none';
+        this._editBtn.style.display = '';
+        this.configEdited.emit(yaml);
+    }
+    _cancelEdit() {
+        this._editing = false;
+        this._editor.style.display = 'none';
+        this._display.style.display = 'block';
+        this._editBar.style.display = 'none';
+        this._editBtn.style.display = '';
+    }
+}
+exports.ConfigPreview = ConfigPreview;
+
+
+/***/ },
+
+/***/ "./lib/builder/index.js"
+/*!******************************!*\
+  !*** ./lib/builder/index.js ***!
+  \******************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.builderPlugin = void 0;
+var plugin_1 = __webpack_require__(/*! ./plugin */ "./lib/builder/plugin.js");
+Object.defineProperty(exports, "builderPlugin", ({ enumerable: true, get: function () { return plugin_1.builderPlugin; } }));
+
+
+/***/ },
+
+/***/ "./lib/builder/plugin.js"
+/*!*******************************!*\
+  !*** ./lib/builder/plugin.js ***!
+  \*******************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.builderPlugin = void 0;
+const apputils_1 = __webpack_require__(/*! @jupyterlab/apputils */ "webpack/sharing/consume/default/@jupyterlab/apputils");
+const coreutils_1 = __webpack_require__(/*! @jupyterlab/coreutils */ "webpack/sharing/consume/default/@jupyterlab/coreutils");
+const filebrowser_1 = __webpack_require__(/*! @jupyterlab/filebrowser */ "webpack/sharing/consume/default/@jupyterlab/filebrowser");
+const launcher_1 = __webpack_require__(/*! @jupyterlab/launcher */ "webpack/sharing/consume/default/@jupyterlab/launcher");
+const notebook_1 = __webpack_require__(/*! @jupyterlab/notebook */ "webpack/sharing/consume/default/@jupyterlab/notebook");
+const ui_components_1 = __webpack_require__(/*! @jupyterlab/ui-components */ "webpack/sharing/consume/default/@jupyterlab/ui-components");
+const widgets_1 = __webpack_require__(/*! @lumino/widgets */ "webpack/sharing/consume/default/@lumino/widgets");
+const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
+const kernel_1 = __webpack_require__(/*! ../kernel */ "./lib/kernel.js");
+const python_1 = __webpack_require__(/*! ./python */ "./lib/builder/python.js");
+const ChatPanel_1 = __webpack_require__(/*! ./ChatPanel */ "./lib/builder/ChatPanel.js");
+const ConfigPreview_1 = __webpack_require__(/*! ./ConfigPreview */ "./lib/builder/ConfigPreview.js");
+let _builderCounter = 0;
+class BuilderWidget extends widgets_1.Widget {
+    constructor(tracker, directKernel) {
+        super();
+        this._dirty = false;
+        this._savedPath = '';
+        this._kernelBridge = new kernel_1.KernelBridge(directKernel ? null : tracker, directKernel);
+        this._ownedKernel = directKernel !== null && directKernel !== void 0 ? directKernel : null;
+        this.id = `jp-builder-${_builderCounter++}`;
+        this.title.label = 'Config Builder';
+        this.title.closable = true;
+        (0, styles_1.injectGlobalStyles)();
+        this._buildUI();
+    }
+    dispose() {
+        if (this._ownedKernel) {
+            this._ownedKernel.shutdown().catch(() => { });
+            this._ownedKernel = null;
+        }
+        super.dispose();
+    }
+    _buildUI() {
+        this.node.style.cssText =
+            `display:flex;flex-direction:column;width:100%;height:100%;` +
+                `background:${styles_1.COLORS.bgBase};color:${styles_1.COLORS.textPrimary};` +
+                `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);` +
+                `overflow:hidden;box-sizing:border-box;`;
+        const header = document.createElement('div');
+        header.style.cssText = (0, styles_1.barBottomStyle)();
+        this._titleEl = document.createElement('span');
+        this._titleEl.textContent = 'Config Builder';
+        this._titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
+        this._statusEl = document.createElement('span');
+        this._statusEl.style.cssText =
+            `flex:1;text-align:right;font-size:11px;color:${styles_1.COLORS.green};` +
+                `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+        this._statusEl.textContent = 'Loading…';
+        header.append(this._titleEl, this._statusEl);
+        const body = document.createElement('div');
+        body.style.cssText = `display:flex;flex:1;overflow:hidden;`;
+        this._chat = new ChatPanel_1.ChatPanel();
+        this._preview = new ConfigPreview_1.ConfigPreview();
+        this._chat.messageSent.connect((_, text) => void this._onSendMessage(text));
+        this._preview.configEdited.connect((_, yaml) => void this._onConfigEdited(yaml));
+        body.append(this._chat.element, this._preview.element);
+        const bottomBar = document.createElement('div');
+        bottomBar.style.cssText =
+            `display:flex;gap:8px;padding:6px 12px;` +
+                `background:${styles_1.COLORS.bgMantle};border-top:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        const previewToggle = document.createElement('button');
+        previewToggle.textContent = 'Toggle Config';
+        previewToggle.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        previewToggle.addEventListener('click', () => this._preview.toggle());
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Save Config';
+        saveBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        saveBtn.addEventListener('click', () => void this._onSaveConfig());
+        const loadBtn = document.createElement('button');
+        loadBtn.textContent = 'Load Existing';
+        loadBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        loadBtn.addEventListener('click', () => void this._onLoadExisting());
+        const spacer = document.createElement('span');
+        spacer.style.flex = '1';
+        const dismissBtn = document.createElement('button');
+        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        dismissBtn.addEventListener('click', () => this._onDismiss());
+        bottomBar.append(previewToggle, saveBtn, loadBtn, spacer, dismissBtn);
+        this.node.append(header, body, bottomBar);
+    }
+    onAfterAttach(_msg) {
+        super.onAfterAttach(_msg);
+        void this._init();
+    }
+    async _promptApiKey(envVar, provider) {
+        const value = window.prompt(`Enter your ${provider.toUpperCase()} API key (${envVar}):`);
+        if (!value)
+            return false;
+        try {
+            await this._kernelBridge.exec((0, python_1.setApiKey)(envVar, value.trim()));
+            return true;
+        }
+        catch (_a) {
+            return false;
+        }
+    }
+    async _init() {
+        var _a;
+        this._setStatus('Reading builder state…');
+        try {
+            const keyRaw = await this._kernelBridge.exec((0, python_1.checkApiKey)());
+            const keyState = JSON.parse((0, python_1.extractJson)(keyRaw));
+            if (!keyState.ok) {
+                const ok = await this._promptApiKey(keyState.env_var, keyState.provider);
+                if (!ok) {
+                    this._setStatus('API key required', true);
+                    this._chat.addMessage({
+                        role: 'system',
+                        content: `API key (${keyState.env_var}) is required. Click a message to retry.`,
+                    });
+                    return;
+                }
+            }
+            const raw = await this._kernelBridge.exec((0, python_1.readBuilderVars)());
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._dirty = !!state.dirty;
+            this._savedPath = state.saved_path || '';
+            if (state.config) {
+                this._preview.updateConfig(state.config, state.config_type);
+            }
+            const messages = JSON.parse(state.messages || '[]');
+            if (messages.length > 0) {
+                for (const m of messages) {
+                    this._chat.addMessage({ role: m.role, content: m.content });
+                }
+            }
+            this._chat.addMessage({
+                role: 'assistant',
+                content: state.welcome || 'Hello! What would you like to build?',
+            });
+            this._setStatus('Ready');
+        }
+        catch (e) {
+            this._setStatus(`❌ ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
+    }
+    async _ensureApiKey() {
+        try {
+            const keyRaw = await this._kernelBridge.exec((0, python_1.checkApiKey)());
+            const keyState = JSON.parse((0, python_1.extractJson)(keyRaw));
+            if (!keyState.ok) {
+                return await this._promptApiKey(keyState.env_var, keyState.provider);
+            }
+        }
+        catch ( /* proceed */_a) { /* proceed */ }
+        return true;
+    }
+    async _onSendMessage(text) {
+        var _a, _b;
+        this._chat.addMessage({ role: 'user', content: text });
+        this._chat.setLoading(true);
+        this._setStatus('Thinking…');
+        try {
+            if (!await this._ensureApiKey()) {
+                this._chat.addMessage({ role: 'system', content: 'API key required.' });
+                this._setStatus('API key required', true);
+                return;
+            }
+            const raw = await this._kernelBridge.exec((0, python_1.sendMessage)(text));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._dirty = !!state.dirty;
+            this._savedPath = state.saved_path || '';
+            if (state.config) {
+                this._preview.updateConfig(state.config, state.config_type);
+            }
+            this._chat.addMessage({ role: 'assistant', content: state.response });
+            this._setStatus('Ready');
+        }
+        catch (e) {
+            this._chat.addMessage({
+                role: 'system',
+                content: `Error: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`,
+            });
+            this._setStatus(`❌ ${String((_b = e.message) !== null && _b !== void 0 ? _b : e)}`, true);
+        }
+        finally {
+            this._chat.setLoading(false);
+        }
+    }
+    async _onConfigEdited(yaml) {
+        var _a;
+        this._setStatus('Applying edits…');
+        try {
+            const raw = await this._kernelBridge.exec((0, python_1.updateConfigFromYaml)(yaml));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            if (state.update_ok) {
+                this._dirty = !!state.dirty;
+                this._preview.updateConfig(state.config, state.config_type);
+                this._chat.addMessage({
+                    role: 'system',
+                    content: 'Config updated from manual edit.',
+                });
+                this._setStatus('Config updated');
+            }
+            else {
+                this._setStatus('❌ Invalid YAML', true);
+            }
+        }
+        catch (e) {
+            this._setStatus(`❌ ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
+    }
+    async _onSaveConfig() {
+        var _a;
+        try {
+            const defRaw = await this._kernelBridge.exec((0, python_1.getDefaultSavePath)());
+            const defPath = JSON.parse((0, python_1.extractJson)(defRaw)).path;
+            const chosen = window.prompt('Save config as:', this._savedPath || defPath);
+            if (!chosen)
+                return;
+            const savePath = chosen.trim();
+            try {
+                const existsRaw = await this._kernelBridge.exec((0, python_1.checkFileExists)(savePath));
+                const exists = JSON.parse((0, python_1.extractJson)(existsRaw)).exists;
+                if (exists) {
+                    const ok = window.confirm(`${savePath} already exists. Overwrite?`);
+                    if (!ok)
+                        return;
+                }
+            }
+            catch ( /* proceed */_b) { /* proceed */ }
+            this._setStatus('Saving…');
+            const raw = await this._kernelBridge.exec((0, python_1.saveConfig)(savePath));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._dirty = false;
+            this._savedPath = state.saved_to || savePath;
+            this._setStatus(`✓ Saved: ${this._savedPath}`);
+            this._chat.addMessage({
+                role: 'system',
+                content: `Config saved to \`${this._savedPath}\``,
+            });
+        }
+        catch (e) {
+            this._setStatus(`❌ Save failed: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
+    }
+    async _onLoadExisting() {
+        var _a, _b;
+        const path = window.prompt('Path to existing config file:');
+        if (!path)
+            return;
+        this._chat.addMessage({
+            role: 'user',
+            content: `Load and continue editing: ${path.trim()}`,
+        });
+        this._chat.setLoading(true);
+        this._setStatus('Loading…');
+        try {
+            const raw = await this._kernelBridge.exec((0, python_1.sendMessage)(`I want to load and edit the existing config at "${path.trim()}". ` +
+                `Please read it, set it as the current config, and summarize what it contains.`));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._dirty = !!state.dirty;
+            this._savedPath = state.saved_path || '';
+            if (state.config) {
+                this._preview.updateConfig(state.config, state.config_type);
+                this._preview.expand();
+            }
+            this._chat.addMessage({ role: 'assistant', content: state.response });
+            this._setStatus('Ready');
+        }
+        catch (e) {
+            this._chat.addMessage({
+                role: 'system',
+                content: `Error loading: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`,
+            });
+            this._setStatus(`❌ ${String((_b = e.message) !== null && _b !== void 0 ? _b : e)}`, true);
+        }
+        finally {
+            this._chat.setLoading(false);
+        }
+    }
+    _onDismiss() {
+        if (this._dirty) {
+            const ok = window.confirm('You have unsaved changes. Dismiss anyway?');
+            if (!ok)
+                return;
+        }
+        this.dispose();
+    }
+    _setStatus(msg, error = false) {
+        this._statusEl.textContent = msg;
+        this._statusEl.style.color = error ? styles_1.COLORS.red : styles_1.COLORS.green;
+    }
+}
+function escPyLocal(s) {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+async function startKernel(app) {
+    try {
+        return await app.serviceManager.kernels.startNew({ name: 'python3' });
+    }
+    catch (e) {
+        console.error('builder: failed to start kernel', e);
+        return null;
+    }
+}
+function getExistingKernel(tracker) {
+    var _a, _b, _c, _d;
+    return (_d = (_c = (_b = (_a = tracker.currentWidget) === null || _a === void 0 ? void 0 : _a.sessionContext) === null || _b === void 0 ? void 0 : _b.session) === null || _c === void 0 ? void 0 : _c.kernel) !== null && _d !== void 0 ? _d : null;
+}
+async function execInKernel(kernel, code) {
+    const future = kernel.requestExecute({ code });
+    let error = '';
+    future.onIOPub = (msg) => {
+        var _a;
+        if (((_a = msg.header) === null || _a === void 0 ? void 0 : _a.msg_type) === 'error') {
+            error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
+        }
+    };
+    await future.done;
+    return error;
+}
+const builderIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+  <polyline points="14 2 14 8 20 8"/>
+  <line x1="16" y1="13" x2="8" y2="13"/>
+  <line x1="16" y1="17" x2="8" y2="17"/>
+  <line x1="10" y1="9" x2="8" y2="9"/>
+</svg>`;
+const builderIcon = new ui_components_1.LabIcon({
+    name: 'jupyter-bioacoustic:builder-icon',
+    svgstr: builderIconSvg,
+});
+exports.builderPlugin = {
+    id: 'jupyter-bioacoustic:builder',
+    autoStart: true,
+    requires: [apputils_1.ICommandPalette, notebook_1.INotebookTracker],
+    optional: [launcher_1.ILauncher, filebrowser_1.IDefaultFileBrowser],
+    activate: (app, palette, tracker, launcher, _defaultBrowser) => {
+        window._bioacousticOpenBuilder = (divId) => {
+            const container = document.getElementById(divId);
+            if (!container)
+                return;
+            const widget = new BuilderWidget(tracker);
+            widget.node.style.cssText += `position:absolute;inset:0;`;
+            widgets_1.Widget.attach(widget, container);
+        };
+        app.commands.addCommand('bioacoustic:open-builder', {
+            label: 'Config Builder',
+            icon: builderIcon,
+            execute: async () => {
+                var _a;
+                const kernel = (_a = getExistingKernel(tracker)) !== null && _a !== void 0 ? _a : await startKernel(app);
+                if (!kernel) {
+                    window.alert('Failed to start a Python kernel.');
+                    return;
+                }
+                const ownsKernel = !getExistingKernel(tracker);
+                const serverRoot = coreutils_1.PageConfig.getOption('serverRoot');
+                const error = await execInKernel(kernel, [
+                    `import os as _os`,
+                    `_os.chdir(_os.path.expanduser('${escPyLocal(serverRoot)}'))`,
+                    `from jupyter_bioacoustic.builder import AnnotatorBuilder`,
+                    `_ab = AnnotatorBuilder()`,
+                    `_ab.setup()`,
+                ].join('\n'));
+                if (error) {
+                    if (ownsKernel)
+                        kernel.shutdown().catch(() => { });
+                    window.alert(`Config Builder error:\n${error}`);
+                    return;
+                }
+                const widget = new BuilderWidget(tracker, ownsKernel ? kernel : undefined);
+                app.shell.add(widget, 'main');
+                app.shell.activateById(widget.id);
+            }
+        });
+        palette.addItem({ command: 'bioacoustic:open-builder', category: 'Bioacoustic' });
+        if (launcher) {
+            launcher.add({
+                command: 'bioacoustic:open-builder',
+                category: 'Other',
+            });
+        }
+    }
+};
+
+
+/***/ },
+
+/***/ "./lib/builder/python.js"
+/*!*******************************!*\
+  !*** ./lib/builder/python.js ***!
+  \*******************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.setApiKey = exports.checkApiKey = exports.checkFileExists = exports.setConfigType = exports.getDefaultSavePath = exports.validateConfig = exports.saveConfig = exports.updateConfigFromYaml = exports.sendMessage = exports.readBuilderVars = exports.extractJson = void 0;
+const util_1 = __webpack_require__(/*! ../util */ "./lib/util.js");
+const DELIM = '___AB_JSON___';
+function extractJson(raw) {
+    const start = raw.indexOf(DELIM);
+    const end = raw.lastIndexOf(DELIM);
+    if (start >= 0 && end > start) {
+        return raw.substring(start + DELIM.length, end).trim();
+    }
+    return raw.trim();
+}
+exports.extractJson = extractJson;
+function wp(expr) {
+    return `print('${DELIM}'); print(${expr}); print('${DELIM}')`;
+}
+function readBuilderVars() {
+    return [
+        `import json as _j`,
+        wp(`_j.dumps({
+  'config': _AB_CONFIG,
+  'config_type': _AB_CONFIG_TYPE,
+  'messages': _AB_MESSAGES,
+  'saved_path': _AB_SAVED_PATH,
+  'dirty': _AB_DIRTY,
+  'welcome': _AB_WELCOME,
+  'mode': _AB_MODE,
+})`),
+    ].join('\n');
+}
+exports.readBuilderVars = readBuilderVars;
+function sendMessage(text) {
+    return [
+        `import json as _j`,
+        `_resp = _AB_INSTANCE._call_llm('${(0, util_1.escPy)(text)}')`,
+        `_state = _AB_INSTANCE._get_state()`,
+        `_state['response'] = _resp`,
+        wp(`_j.dumps(_state)`),
+    ].join('\n');
+}
+exports.sendMessage = sendMessage;
+function updateConfigFromYaml(yamlStr) {
+    return [
+        `import json as _j`,
+        `_ok = _AB_INSTANCE._update_config_from_yaml('''${yamlStr.replace(/'/g, "\\'")}''')`,
+        `_state = _AB_INSTANCE._get_state()`,
+        `_state['update_ok'] = _ok`,
+        wp(`_j.dumps(_state)`),
+    ].join('\n');
+}
+exports.updateConfigFromYaml = updateConfigFromYaml;
+function saveConfig(path) {
+    return [
+        `import json as _j`,
+        `_path = _AB_INSTANCE.save('${(0, util_1.escPy)(path)}')`,
+        `_state = _AB_INSTANCE._get_state()`,
+        `_state['saved_to'] = _path`,
+        wp(`_j.dumps(_state)`),
+    ].join('\n');
+}
+exports.saveConfig = saveConfig;
+function validateConfig() {
+    return [
+        `import json as _j`,
+        `_issues = _AB_INSTANCE.validate()`,
+        wp(`_j.dumps({'issues': _issues})`),
+    ].join('\n');
+}
+exports.validateConfig = validateConfig;
+function getDefaultSavePath() {
+    return [
+        `import os as _os, re as _re, json as _j`,
+        `_name = _AB_INSTANCE._config.get('project_name', 'config')`,
+        `_slug = _re.sub(r'[^a-z0-9]+', '_', str(_name).lower()).strip('_')`,
+        `_def = _os.path.join(_AB_INSTANCE._path, _slug + '.yaml')`,
+        wp(`_j.dumps({'path': _def})`),
+    ].join('\n');
+}
+exports.getDefaultSavePath = getDefaultSavePath;
+function setConfigType(configType) {
+    return [
+        `_AB_INSTANCE._config_type = '${(0, util_1.escPy)(configType)}'`,
+        `import json as _j`,
+        wp(`_j.dumps({'ok': True})`),
+    ].join('\n');
+}
+exports.setConfigType = setConfigType;
+function checkFileExists(path) {
+    return [
+        `import os, json`,
+        wp(`json.dumps({'exists': os.path.exists('${(0, util_1.escPy)(path)}')})`),
+    ].join('\n');
+}
+exports.checkFileExists = checkFileExists;
+function checkApiKey() {
+    return [
+        `import json as _j`,
+        wp(`_j.dumps(_AB_INSTANCE.check_api_key())`),
+    ].join('\n');
+}
+exports.checkApiKey = checkApiKey;
+function setApiKey(envVar, value) {
+    return [
+        `import json as _j`,
+        `_AB_INSTANCE.set_api_key('${(0, util_1.escPy)(envVar)}', '${(0, util_1.escPy)(value)}')`,
+        wp(`_j.dumps({'ok': True})`),
+    ].join('\n');
+}
+exports.setApiKey = setApiKey;
+
+
+/***/ },
+
 /***/ "./lib/index.js"
 /*!**********************!*\
   !*** ./lib/index.js ***!
@@ -10,7 +763,8 @@
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const plugin_1 = __webpack_require__(/*! ./plugin */ "./lib/plugin.js");
-exports["default"] = [plugin_1.bioacousticPlugin];
+const builder_1 = __webpack_require__(/*! ./builder */ "./lib/builder/index.js");
+exports["default"] = [plugin_1.bioacousticPlugin, builder_1.builderPlugin];
 
 
 /***/ },
@@ -5204,7 +5958,11 @@ function fmtTime(s) {
 exports.fmtTime = fmtTime;
 /** Escape a string for use inside a single-quoted Python string literal. */
 function escPy(s) {
-    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return s
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
 }
 exports.escPy = escPy;
 function parseAccuracyConfig(progressTracker) {
@@ -5256,4 +6014,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.f3535c8c428af4517fa0.js.map
+//# sourceMappingURL=lib_index_js.afe6a0626a592c4e2eb7.js.map
