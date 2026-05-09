@@ -1,6 +1,1703 @@
 "use strict";
 (self["webpackChunkjupyter_bioacoustic"] = self["webpackChunkjupyter_bioacoustic"] || []).push([["lib_index_js"],{
 
+/***/ "./lib/config_builder/ConfigPanel.js"
+/*!*******************************************!*\
+  !*** ./lib/config_builder/ConfigPanel.js ***!
+  \*******************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ConfigPanel = void 0;
+const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
+const python_1 = __webpack_require__(/*! ./python */ "./lib/config_builder/python.js");
+const YamlPanel_1 = __webpack_require__(/*! ./YamlPanel */ "./lib/config_builder/YamlPanel.js");
+const ProjectSection_1 = __webpack_require__(/*! ./sections/ProjectSection */ "./lib/config_builder/sections/ProjectSection.js");
+const DataSection_1 = __webpack_require__(/*! ./sections/DataSection */ "./lib/config_builder/sections/DataSection.js");
+const AudioSection_1 = __webpack_require__(/*! ./sections/AudioSection */ "./lib/config_builder/sections/AudioSection.js");
+const OutputSection_1 = __webpack_require__(/*! ./sections/OutputSection */ "./lib/config_builder/sections/OutputSection.js");
+const AppSection_1 = __webpack_require__(/*! ./sections/AppSection */ "./lib/config_builder/sections/AppSection.js");
+const FormSection_1 = __webpack_require__(/*! ./sections/FormSection */ "./lib/config_builder/sections/FormSection.js");
+class ConfigPanel {
+    constructor(kernel) {
+        this._yamls = { project_yaml: '', config_yaml: '', form_yaml: '' };
+        this._dirty = false;
+        this._savedPath = '';
+        this._kernel = kernel;
+        this.element = document.createElement('div');
+        this.element.style.cssText =
+            `display:flex;flex:1;overflow:hidden;`;
+        const left = document.createElement('div');
+        left.style.cssText =
+            `display:flex;flex-direction:column;flex:1;overflow-y:auto;min-width:0;`;
+        this._project = new ProjectSection_1.ProjectSection();
+        this._data = new DataSection_1.DataSection();
+        this._audio = new AudioSection_1.AudioSection();
+        this._output = new OutputSection_1.OutputSection();
+        this._app = new AppSection_1.AppSection();
+        this._form = new FormSection_1.FormSection();
+        this._sections = new Map([
+            ['project', this._project],
+            ['data', this._data],
+            ['audio', this._audio],
+            ['output', this._output],
+            ['app', this._app],
+            ['form', this._form],
+        ]);
+        for (const [name, section] of this._sections) {
+            section.focused.connect(() => this._onSectionFocused(name));
+            section.changed.connect(() => void this._onSectionChanged(name));
+            left.appendChild(section.element);
+        }
+        this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
+        this._data.columnsLoaded.connect((_, cols) => {
+            this._app.setColumnOptions(cols);
+            this._audio.setColumnOptions(cols);
+        });
+        this._yamlPanel = new YamlPanel_1.YamlPanel();
+        this._yamlPanel.configEdited.connect((_, { yaml, configType }) => {
+            void this._onYamlEdited(yaml, configType);
+        });
+        this.element.append(left, this._yamlPanel.element);
+        this._statusEl = document.createElement('span');
+        this._statusEl.style.cssText =
+            `font-size:11px;color:${styles_1.COLORS.green};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+    }
+    get statusEl() {
+        return this._statusEl;
+    }
+    _onSectionFocused(name) {
+        this._yamlPanel.showForSection(name, this._yamls);
+    }
+    async _onSectionChanged(sectionName) {
+        var _a;
+        const section = this._sections.get(sectionName);
+        if (!section)
+            return;
+        const data = section.getData();
+        this._setStatus('Updating…');
+        try {
+            const raw = await this._kernel.exec((0, python_1.updateSection)(sectionName, data));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._applyState(state);
+            this._setStatus('Ready');
+        }
+        catch (e) {
+            this._setStatus(`Error: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
+    }
+    async _onLoadColumns(pathOrDir) {
+        var _a;
+        this._setStatus('Loading columns…');
+        try {
+            const raw = await this._kernel.exec((0, python_1.readColumns)(pathOrDir));
+            const result = JSON.parse((0, python_1.extractJson)(raw));
+            const cols = result.columns;
+            this._data.setDetectedColumns(cols);
+            this._setStatus(`${cols.length} columns loaded`);
+        }
+        catch (e) {
+            this._setStatus(`Error: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
+    }
+    async _onYamlEdited(yaml, configType) {
+        var _a;
+        this._setStatus('Applying edits…');
+        try {
+            const raw = await this._kernel.exec((0, python_1.updateConfigFromYaml)(yaml, configType));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            if (state.update_ok) {
+                this._applyState(state);
+                this._setStatus('Config updated');
+            }
+            else {
+                this._setStatus('Invalid YAML', true);
+            }
+        }
+        catch (e) {
+            this._setStatus(`Error: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
+    }
+    async saveToFile() {
+        var _a;
+        try {
+            const defRaw = await this._kernel.exec((0, python_1.getDefaultSavePath)());
+            const defPath = JSON.parse((0, python_1.extractJson)(defRaw)).path;
+            const chosen = window.prompt('Save config as:', this._savedPath || defPath);
+            if (!chosen)
+                return;
+            const savePath = chosen.trim();
+            try {
+                const existsRaw = await this._kernel.exec((0, python_1.checkFileExists)(savePath));
+                const exists = JSON.parse((0, python_1.extractJson)(existsRaw)).exists;
+                if (exists) {
+                    const ok = window.confirm(`${savePath} already exists. Overwrite?`);
+                    if (!ok)
+                        return;
+                }
+            }
+            catch ( /* proceed */_b) { /* proceed */ }
+            this._setStatus('Saving…');
+            const configType = this._yamlPanel.configType;
+            const raw = await this._kernel.exec((0, python_1.saveConfig)(savePath, configType));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._dirty = false;
+            this._savedPath = state.saved_to || savePath;
+            this._setStatus(`Saved: ${this._savedPath}`);
+        }
+        catch (e) {
+            this._setStatus(`Save failed: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
+    }
+    _applyState(state) {
+        this._yamls = {
+            project_yaml: state.project_yaml || '',
+            config_yaml: state.config_yaml || '',
+            form_yaml: state.form_yaml || '',
+        };
+        this._dirty = !!state.dirty;
+        this._savedPath = state.saved_path || '';
+        this._yamlPanel.updateYaml(this._yamls);
+        if (state.project) {
+            this._project.setData(state.project);
+            if (state.project.data && typeof state.project.data === 'object') {
+                this._data.setData(state.project.data);
+            }
+            if (state.project.audio && typeof state.project.audio === 'object') {
+                this._audio.setData(state.project.audio);
+            }
+            if (state.project.output && typeof state.project.output === 'object') {
+                this._output.setData(state.project.output);
+            }
+            this._app.setData(state.project);
+        }
+        if (state.form_config && typeof state.form_config === 'object') {
+            this._form.setData(state.form_config);
+        }
+    }
+    get dirty() {
+        return this._dirty;
+    }
+    _setStatus(msg, error = false) {
+        this._statusEl.textContent = msg;
+        this._statusEl.style.color = error ? styles_1.COLORS.red : styles_1.COLORS.green;
+    }
+}
+exports.ConfigPanel = ConfigPanel;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/YamlPanel.js"
+/*!*****************************************!*\
+  !*** ./lib/config_builder/YamlPanel.js ***!
+  \*****************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.YamlPanel = void 0;
+const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
+const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
+class YamlPanel {
+    constructor() {
+        this.configEdited = new signaling_1.Signal(this);
+        this._expanded = true;
+        this._editing = false;
+        this._configType = 'project';
+        this._tabs = new Map();
+        this.element = document.createElement('div');
+        this.element.style.cssText =
+            `display:flex;flex-direction:column;width:350px;overflow:hidden;` +
+                `border-left:1px solid ${styles_1.COLORS.bgSurface0};transition:width 0.2s ease;flex-shrink:0;`;
+        const header = document.createElement('div');
+        header.style.cssText =
+            `display:flex;align-items:center;gap:6px;padding:6px 10px;` +
+                `background:${styles_1.COLORS.bgMantle};border-bottom:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        this._toggleBtn = document.createElement('button');
+        this._toggleBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;padding:2px 8px;`;
+        this._toggleBtn.textContent = 'YAML ▶';
+        this._toggleBtn.addEventListener('click', () => this.toggle());
+        this._typeLabel = document.createElement('span');
+        this._typeLabel.style.cssText = `font-size:11px;color:${styles_1.COLORS.textMuted};flex:1;`;
+        this._typeLabel.textContent = 'project';
+        this._editBtn = document.createElement('button');
+        this._editBtn.textContent = 'Edit';
+        this._editBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;padding:2px 8px;`;
+        this._editBtn.addEventListener('click', () => this._startEdit());
+        header.append(this._toggleBtn, this._typeLabel, this._editBtn);
+        this._tabBar = document.createElement('div');
+        this._tabBar.style.cssText =
+            `display:flex;gap:0;background:${styles_1.COLORS.bgMantle};border-bottom:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        for (const t of ['project', 'config', 'form_config']) {
+            const btn = document.createElement('button');
+            btn.textContent = t === 'form_config' ? 'form' : t;
+            btn.style.cssText =
+                `flex:1;padding:4px 8px;font-size:11px;border:none;cursor:pointer;` +
+                    `background:${t === 'project' ? styles_1.COLORS.bgSurface0 : 'transparent'};` +
+                    `color:${t === 'project' ? styles_1.COLORS.textPrimary : styles_1.COLORS.textMuted};`;
+            btn.addEventListener('click', () => this._switchTab(t));
+            this._tabs.set(t, btn);
+            this._tabBar.appendChild(btn);
+        }
+        this._content = document.createElement('div');
+        this._content.style.cssText = `flex:1;overflow:auto;position:relative;`;
+        this._display = document.createElement('pre');
+        this._display.style.cssText =
+            `margin:0;padding:10px;font-size:12px;line-height:1.6;font-family:monospace;` +
+                `color:${styles_1.COLORS.textPrimary};white-space:pre-wrap;word-wrap:break-word;` +
+                `background:${styles_1.COLORS.bgMantle};`;
+        this._display.textContent = '# (empty)';
+        this._editor = document.createElement('textarea');
+        this._editor.style.cssText =
+            (0, styles_1.inputStyle)() +
+                `width:100%;height:100%;box-sizing:border-box;resize:none;font-family:monospace;` +
+                `font-size:12px;line-height:1.6;padding:10px;display:none;border:none;border-radius:0;` +
+                `position:absolute;inset:0;`;
+        this._editBar = document.createElement('div');
+        this._editBar.style.cssText =
+            `display:none;gap:6px;padding:6px 10px;` +
+                `background:${styles_1.COLORS.bgMantle};border-top:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        this._saveBtn = document.createElement('button');
+        this._saveBtn.textContent = 'Apply';
+        this._saveBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        this._saveBtn.addEventListener('click', () => this._applyEdit());
+        this._cancelBtn = document.createElement('button');
+        this._cancelBtn.textContent = 'Cancel';
+        this._cancelBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        this._cancelBtn.addEventListener('click', () => this._cancelEdit());
+        this._editBar.append(this._saveBtn, this._cancelBtn);
+        this._content.append(this._display, this._editor);
+        this.element.append(header, this._tabBar, this._content, this._editBar);
+    }
+    toggle() {
+        this._expanded = !this._expanded;
+        this.element.style.width = this._expanded ? '350px' : '0';
+        this._toggleBtn.textContent = this._expanded ? 'YAML ▶' : '◀ YAML';
+    }
+    get configType() {
+        return this._configType;
+    }
+    _switchTab(tab) {
+        this._configType = tab;
+        this._typeLabel.textContent = tab;
+        for (const [t, btn] of this._tabs) {
+            btn.style.background = t === tab ? styles_1.COLORS.bgSurface0 : 'transparent';
+            btn.style.color = t === tab ? styles_1.COLORS.textPrimary : styles_1.COLORS.textMuted;
+        }
+        if (this._editing)
+            this._cancelEdit();
+    }
+    updateYaml(yamls) {
+        this._updateDisplay(yamls);
+    }
+    showForSection(section, yamls) {
+        if (section === 'form') {
+            this._switchTab('form_config');
+        }
+        else {
+            this._switchTab('project');
+        }
+        this._updateDisplay(yamls);
+    }
+    _updateDisplay(yamls) {
+        let yaml = '';
+        if (this._configType === 'project')
+            yaml = yamls.project_yaml;
+        else if (this._configType === 'config')
+            yaml = yamls.config_yaml;
+        else if (this._configType === 'form_config')
+            yaml = yamls.form_yaml;
+        this._display.textContent = yaml || '# (empty)';
+    }
+    _startEdit() {
+        this._editing = true;
+        this._editor.value = this._display.textContent || '';
+        this._editor.style.display = 'block';
+        this._display.style.display = 'none';
+        this._editBar.style.display = 'flex';
+        this._editBtn.style.display = 'none';
+        this._editor.focus();
+    }
+    _applyEdit() {
+        const yaml = this._editor.value;
+        this._editing = false;
+        this._editor.style.display = 'none';
+        this._display.style.display = 'block';
+        this._editBar.style.display = 'none';
+        this._editBtn.style.display = '';
+        this.configEdited.emit({ yaml, configType: this._configType });
+    }
+    _cancelEdit() {
+        this._editing = false;
+        this._editor.style.display = 'none';
+        this._display.style.display = 'block';
+        this._editBar.style.display = 'none';
+        this._editBtn.style.display = '';
+    }
+}
+exports.YamlPanel = YamlPanel;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/index.js"
+/*!*************************************!*\
+  !*** ./lib/config_builder/index.js ***!
+  \*************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.configBuilderPlugin = void 0;
+var plugin_1 = __webpack_require__(/*! ./plugin */ "./lib/config_builder/plugin.js");
+Object.defineProperty(exports, "configBuilderPlugin", ({ enumerable: true, get: function () { return plugin_1.configBuilderPlugin; } }));
+
+
+/***/ },
+
+/***/ "./lib/config_builder/plugin.js"
+/*!**************************************!*\
+  !*** ./lib/config_builder/plugin.js ***!
+  \**************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.configBuilderPlugin = void 0;
+const apputils_1 = __webpack_require__(/*! @jupyterlab/apputils */ "webpack/sharing/consume/default/@jupyterlab/apputils");
+const coreutils_1 = __webpack_require__(/*! @jupyterlab/coreutils */ "webpack/sharing/consume/default/@jupyterlab/coreutils");
+const launcher_1 = __webpack_require__(/*! @jupyterlab/launcher */ "webpack/sharing/consume/default/@jupyterlab/launcher");
+const notebook_1 = __webpack_require__(/*! @jupyterlab/notebook */ "webpack/sharing/consume/default/@jupyterlab/notebook");
+const ui_components_1 = __webpack_require__(/*! @jupyterlab/ui-components */ "webpack/sharing/consume/default/@jupyterlab/ui-components");
+const widgets_1 = __webpack_require__(/*! @lumino/widgets */ "webpack/sharing/consume/default/@lumino/widgets");
+const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
+const kernel_1 = __webpack_require__(/*! ../kernel */ "./lib/kernel.js");
+const ConfigPanel_1 = __webpack_require__(/*! ./ConfigPanel */ "./lib/config_builder/ConfigPanel.js");
+let _builderCounter = 0;
+class ConfigBuilderWidget extends widgets_1.Widget {
+    constructor(tracker, directKernel) {
+        super();
+        this._kernelBridge = new kernel_1.KernelBridge(directKernel ? null : tracker, directKernel);
+        this._ownedKernel = directKernel !== null && directKernel !== void 0 ? directKernel : null;
+        this.id = `jp-config-builder-${_builderCounter++}`;
+        this.title.label = 'Config Builder';
+        this.title.closable = true;
+        (0, styles_1.injectGlobalStyles)();
+        this._buildUI();
+    }
+    dispose() {
+        if (this._ownedKernel) {
+            this._ownedKernel.shutdown().catch(() => { });
+            this._ownedKernel = null;
+        }
+        super.dispose();
+    }
+    _buildUI() {
+        this.node.style.cssText =
+            `display:flex;flex-direction:column;width:100%;height:100%;` +
+                `background:${styles_1.COLORS.bgBase};color:${styles_1.COLORS.textPrimary};` +
+                `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);` +
+                `overflow:hidden;box-sizing:border-box;`;
+        const header = document.createElement('div');
+        header.style.cssText = (0, styles_1.barBottomStyle)();
+        this._titleEl = document.createElement('span');
+        this._titleEl.textContent = 'Config Builder';
+        this._titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
+        this._panel = new ConfigPanel_1.ConfigPanel(this._kernelBridge);
+        header.append(this._titleEl, this._panel.statusEl);
+        const bottomBar = document.createElement('div');
+        bottomBar.style.cssText =
+            `display:flex;gap:8px;padding:6px 12px;` +
+                `background:${styles_1.COLORS.bgMantle};border-top:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Save Config';
+        saveBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        saveBtn.addEventListener('click', () => void this._panel.saveToFile());
+        const spacer = document.createElement('span');
+        spacer.style.flex = '1';
+        const dismissBtn = document.createElement('button');
+        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:11px;`;
+        dismissBtn.addEventListener('click', () => this._onDismiss());
+        bottomBar.append(saveBtn, spacer, dismissBtn);
+        this.node.append(header, this._panel.element, bottomBar);
+    }
+    onAfterAttach(_msg) {
+        super.onAfterAttach(_msg);
+    }
+    _onDismiss() {
+        if (this._panel.dirty) {
+            const ok = window.confirm('You have unsaved changes. Dismiss anyway?');
+            if (!ok)
+                return;
+        }
+        this.dispose();
+    }
+}
+function escPyLocal(s) {
+    return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+async function startKernel(app) {
+    try {
+        return await app.serviceManager.kernels.startNew({ name: 'python3' });
+    }
+    catch (e) {
+        console.error('config-builder: failed to start kernel', e);
+        return null;
+    }
+}
+function getExistingKernel(tracker) {
+    var _a, _b, _c, _d;
+    return (_d = (_c = (_b = (_a = tracker.currentWidget) === null || _a === void 0 ? void 0 : _a.sessionContext) === null || _b === void 0 ? void 0 : _b.session) === null || _c === void 0 ? void 0 : _c.kernel) !== null && _d !== void 0 ? _d : null;
+}
+async function execInKernel(kernel, code) {
+    const future = kernel.requestExecute({ code });
+    let error = '';
+    future.onIOPub = (msg) => {
+        var _a;
+        if (((_a = msg.header) === null || _a === void 0 ? void 0 : _a.msg_type) === 'error') {
+            error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
+        }
+    };
+    await future.done;
+    return error;
+}
+const builderIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+  <polyline points="14 2 14 8 20 8"/>
+  <line x1="16" y1="13" x2="8" y2="13"/>
+  <line x1="16" y1="17" x2="8" y2="17"/>
+  <line x1="10" y1="9" x2="8" y2="9"/>
+</svg>`;
+const builderIcon = new ui_components_1.LabIcon({
+    name: 'jupyter-bioacoustic:config-builder-icon',
+    svgstr: builderIconSvg,
+});
+exports.configBuilderPlugin = {
+    id: 'jupyter-bioacoustic:config-builder',
+    autoStart: true,
+    requires: [apputils_1.ICommandPalette, notebook_1.INotebookTracker],
+    optional: [launcher_1.ILauncher],
+    activate: (app, palette, tracker, launcher) => {
+        window._bioacousticOpenConfigBuilder = (divId) => {
+            const container = document.getElementById(divId);
+            if (!container)
+                return;
+            const widget = new ConfigBuilderWidget(tracker);
+            widget.node.style.cssText += `position:absolute;inset:0;`;
+            widgets_1.Widget.attach(widget, container);
+        };
+        app.commands.addCommand('bioacoustic:open-config-builder', {
+            label: 'Bioacoustic Config Builder',
+            icon: builderIcon,
+            execute: async () => {
+                var _a;
+                const kernel = (_a = getExistingKernel(tracker)) !== null && _a !== void 0 ? _a : await startKernel(app);
+                if (!kernel) {
+                    window.alert('Failed to start a Python kernel.');
+                    return;
+                }
+                const ownsKernel = !getExistingKernel(tracker);
+                const serverRoot = coreutils_1.PageConfig.getOption('serverRoot');
+                const error = await execInKernel(kernel, [
+                    `import os as _os`,
+                    `_os.chdir(_os.path.expanduser('${escPyLocal(serverRoot)}'))`,
+                    `from jupyter_bioacoustic.config_builder import ConfigBuilder`,
+                    `_cb = ConfigBuilder()`,
+                    `_cb.setup()`,
+                ].join('\n'));
+                if (error) {
+                    if (ownsKernel)
+                        kernel.shutdown().catch(() => { });
+                    window.alert(`Config Builder error:\n${error}`);
+                    return;
+                }
+                const widget = new ConfigBuilderWidget(tracker, ownsKernel ? kernel : undefined);
+                app.shell.add(widget, 'main');
+                app.shell.activateById(widget.id);
+            }
+        });
+        palette.addItem({ command: 'bioacoustic:open-config-builder', category: 'Bioacoustic' });
+        if (launcher) {
+            launcher.add({
+                command: 'bioacoustic:open-config-builder',
+                category: 'Other',
+            });
+        }
+    }
+};
+
+
+/***/ },
+
+/***/ "./lib/config_builder/python.js"
+/*!**************************************!*\
+  !*** ./lib/config_builder/python.js ***!
+  \**************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.setSectionTarget = exports.checkFileExists = exports.readSampleData = exports.readColumns = exports.listFiles = exports.getDefaultSavePath = exports.saveConfig = exports.updateConfigFromYaml = exports.updateSection = exports.readState = exports.extractJson = void 0;
+const util_1 = __webpack_require__(/*! ../util */ "./lib/util.js");
+const DELIM = '___CB_JSON___';
+function extractJson(raw) {
+    const start = raw.indexOf(DELIM);
+    const end = raw.lastIndexOf(DELIM);
+    if (start >= 0 && end > start) {
+        return raw.substring(start + DELIM.length, end).trim();
+    }
+    return raw.trim();
+}
+exports.extractJson = extractJson;
+function wp(expr) {
+    return `print('${DELIM}'); print(${expr}); print('${DELIM}')`;
+}
+function readState() {
+    return [
+        `import json as _j`,
+        wp(`_CB_STATE`),
+    ].join('\n');
+}
+exports.readState = readState;
+function updateSection(section, data) {
+    const dataJson = JSON.stringify(data);
+    return [
+        `import json as _j`,
+        `_state = _CB_INSTANCE.update_section('${(0, util_1.escPy)(section)}', _j.loads('${(0, util_1.escPy)(dataJson)}'))`,
+        wp(`_j.dumps(_state)`),
+    ].join('\n');
+}
+exports.updateSection = updateSection;
+function updateConfigFromYaml(yamlStr, configType) {
+    return [
+        `import json as _j`,
+        `_ok = _CB_INSTANCE.update_config_from_yaml('''${yamlStr.replace(/'/g, "\\'")}''', '${(0, util_1.escPy)(configType)}')`,
+        `_state = _CB_INSTANCE._get_state()`,
+        `_state['update_ok'] = _ok`,
+        wp(`_j.dumps(_state)`),
+    ].join('\n');
+}
+exports.updateConfigFromYaml = updateConfigFromYaml;
+function saveConfig(path, configType) {
+    return [
+        `import json as _j`,
+        `_path = _CB_INSTANCE.save('${(0, util_1.escPy)(path)}', '${(0, util_1.escPy)(configType)}')`,
+        `_state = _CB_INSTANCE._get_state()`,
+        `_state['saved_to'] = _path`,
+        wp(`_j.dumps(_state)`),
+    ].join('\n');
+}
+exports.saveConfig = saveConfig;
+function getDefaultSavePath() {
+    return [
+        `import os as _os, re as _re, json as _j`,
+        `_name = _CB_INSTANCE._project.get('project_name', 'config')`,
+        `_slug = _re.sub(r'[^a-z0-9]+', '_', str(_name).lower()).strip('_')`,
+        `_def = _os.path.join(_CB_INSTANCE._path, _slug + '.yaml')`,
+        wp(`_j.dumps({'path': _def})`),
+    ].join('\n');
+}
+exports.getDefaultSavePath = getDefaultSavePath;
+function listFiles(directory, extensions) {
+    const extArg = extensions ? `[${extensions.map(e => `'${(0, util_1.escPy)(e)}'`).join(',')}]` : 'None';
+    return [
+        `import json as _j`,
+        wp(`_j.dumps({'files': _CB_INSTANCE.list_files('${(0, util_1.escPy)(directory)}', ${extArg})})`),
+    ].join('\n');
+}
+exports.listFiles = listFiles;
+function readColumns(filepath) {
+    return [
+        `import json as _j`,
+        wp(`_j.dumps({'columns': _CB_INSTANCE.read_columns('${(0, util_1.escPy)(filepath)}')})`),
+    ].join('\n');
+}
+exports.readColumns = readColumns;
+function readSampleData(filepath, nRows = 5) {
+    return [
+        `import json as _j`,
+        wp(`_j.dumps({'rows': _CB_INSTANCE.read_sample_data('${(0, util_1.escPy)(filepath)}', ${nRows})})`),
+    ].join('\n');
+}
+exports.readSampleData = readSampleData;
+function checkFileExists(path) {
+    return [
+        `import os, json`,
+        wp(`json.dumps({'exists': os.path.exists('${(0, util_1.escPy)(path)}')})`),
+    ].join('\n');
+}
+exports.checkFileExists = checkFileExists;
+function setSectionTarget(section, target) {
+    return [
+        `import json as _j`,
+        `_CB_INSTANCE.set_section_target('${(0, util_1.escPy)(section)}', '${(0, util_1.escPy)(target)}')`,
+        wp(`_j.dumps({'ok': True})`),
+    ].join('\n');
+}
+exports.setSectionTarget = setSectionTarget;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/sections/AppSection.js"
+/*!***************************************************!*\
+  !*** ./lib/config_builder/sections/AppSection.js ***!
+  \***************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AppSection = void 0;
+const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
+const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
+class AppSection extends CollapsibleSection_1.CollapsibleSection {
+    constructor() {
+        super('Application', 'app');
+        this._identColInput = this._makeInput('e.g. common_name', '200px');
+        this._identColInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('ident_column', this._identColInput));
+        this._displayColsInput = this._makeInput('col1, col2, ...', '250px');
+        this._displayColsInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('display_columns', this._displayColsInput));
+        this._dataColsInput = this._makeInput('col1, col2, ...', '250px');
+        this._dataColsInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('data_columns', this._dataColsInput));
+        this._colPickerArea = document.createElement('div');
+        this._colPickerArea.style.cssText =
+            `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;`;
+        this._body.appendChild(this._colPickerArea);
+        const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
+        this._duplicateCb = dupCb;
+        this._duplicateCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(dupRow);
+        this._bufferInput = this._makeInput('3', '80px');
+        this._bufferInput.type = 'number';
+        this._bufferInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('default_buffer', this._bufferInput));
+        const { row: capRow, input: capCb } = this._makeCheckbox('capture');
+        this._captureCb = capCb;
+        this._captureCb.checked = true;
+        this._captureCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(capRow);
+        this._captureDirInput = this._makeInput('captures/', '200px');
+        this._captureDirInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('capture_dir', this._captureDirInput));
+        this._widthInput = this._makeInput('100%', '100px');
+        this._widthInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('width', this._widthInput));
+        const heightRow = this._makeRow();
+        heightRow.appendChild(this._makeLabel('heights'));
+        this._clipTableHeightInput = this._makeInput('175', '60px');
+        this._clipTableHeightInput.type = 'number';
+        this._playerHeightInput = this._makeInput('260', '60px');
+        this._playerHeightInput.type = 'number';
+        this._infoCardHeightInput = this._makeInput('34', '60px');
+        this._infoCardHeightInput.type = 'number';
+        this._formPanelHeightInput = this._makeInput('140', '60px');
+        this._formPanelHeightInput.type = 'number';
+        for (const inp of [this._clipTableHeightInput, this._playerHeightInput,
+            this._infoCardHeightInput, this._formPanelHeightInput]) {
+            inp.addEventListener('input', () => this._emitChanged());
+        }
+        const hLabels = ['clip_table', 'player', 'info_card', 'form_panel'];
+        const hInputs = [this._clipTableHeightInput, this._playerHeightInput,
+            this._infoCardHeightInput, this._formPanelHeightInput];
+        for (let i = 0; i < hLabels.length; i++) {
+            const mini = document.createElement('span');
+            mini.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;`;
+            mini.textContent = hLabels[i];
+            heightRow.append(mini, hInputs[i]);
+        }
+        this._body.appendChild(heightRow);
+    }
+    setColumnOptions(cols) {
+        this._colPickerArea.innerHTML = '';
+        if (cols.length === 0) {
+            this._colPickerArea.style.display = 'none';
+            return;
+        }
+        this._colPickerArea.style.display = 'flex';
+        const label = document.createElement('span');
+        label.textContent = 'Available columns:';
+        label.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;width:100%;margin-bottom:2px;`;
+        this._colPickerArea.appendChild(label);
+        for (const col of cols) {
+            const chip = document.createElement('button');
+            chip.textContent = col;
+            chip.style.cssText =
+                `background:${styles_1.COLORS.bgSurface1};border:none;border-radius:12px;` +
+                    `color:${styles_1.COLORS.textPrimary};padding:2px 10px;font-size:11px;cursor:pointer;`;
+            chip.addEventListener('click', () => {
+                const current = this._dataColsInput.value;
+                const cols = current ? current.split(',').map(s => s.trim()).filter(Boolean) : [];
+                if (!cols.includes(col)) {
+                    cols.push(col);
+                    this._dataColsInput.value = cols.join(', ');
+                    this._emitChanged();
+                }
+            });
+            this._colPickerArea.appendChild(chip);
+        }
+    }
+    getData() {
+        const result = {};
+        if (this._identColInput.value)
+            result.ident_column = this._identColInput.value;
+        const dc = this._displayColsInput.value;
+        if (dc)
+            result.display_columns = dc.split(',').map(s => s.trim()).filter(Boolean);
+        const dataCols = this._dataColsInput.value;
+        if (dataCols)
+            result.data_columns = dataCols.split(',').map(s => s.trim()).filter(Boolean);
+        if (this._duplicateCb.checked)
+            result.duplicate_entries = true;
+        const buf = parseFloat(this._bufferInput.value);
+        if (!isNaN(buf) && buf !== 3)
+            result.default_buffer = buf;
+        if (!this._captureCb.checked)
+            result.capture = false;
+        if (this._captureDirInput.value)
+            result.capture_dir = this._captureDirInput.value;
+        const w = this._widthInput.value;
+        if (w && w !== '100%')
+            result.width = w;
+        const cth = parseInt(this._clipTableHeightInput.value);
+        if (!isNaN(cth) && cth !== 175)
+            result.clip_table_height = cth;
+        const ph = parseInt(this._playerHeightInput.value);
+        if (!isNaN(ph) && ph !== 260)
+            result.player_height = ph;
+        const ich = parseInt(this._infoCardHeightInput.value);
+        if (!isNaN(ich) && ich !== 34)
+            result.info_card_height = ich;
+        const fph = parseInt(this._formPanelHeightInput.value);
+        if (!isNaN(fph) && fph !== 140)
+            result.form_panel_height = fph;
+        return result;
+    }
+    setData(data) {
+        if (data.ident_column)
+            this._identColInput.value = data.ident_column;
+        if (data.display_columns)
+            this._displayColsInput.value = Array.isArray(data.display_columns) ? data.display_columns.join(', ') : '';
+        if (data.data_columns)
+            this._dataColsInput.value = Array.isArray(data.data_columns) ? data.data_columns.join(', ') : '';
+        if (data.duplicate_entries)
+            this._duplicateCb.checked = true;
+        if (data.default_buffer !== undefined)
+            this._bufferInput.value = String(data.default_buffer);
+        if (data.capture === false)
+            this._captureCb.checked = false;
+        if (data.capture_dir)
+            this._captureDirInput.value = data.capture_dir;
+        if (data.width)
+            this._widthInput.value = String(data.width);
+        if (data.clip_table_height)
+            this._clipTableHeightInput.value = String(data.clip_table_height);
+        if (data.player_height)
+            this._playerHeightInput.value = String(data.player_height);
+        if (data.info_card_height)
+            this._infoCardHeightInput.value = String(data.info_card_height);
+        if (data.form_panel_height)
+            this._formPanelHeightInput.value = String(data.form_panel_height);
+    }
+}
+exports.AppSection = AppSection;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/sections/AudioSection.js"
+/*!*****************************************************!*\
+  !*** ./lib/config_builder/sections/AudioSection.js ***!
+  \*****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AudioSection = void 0;
+const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
+class AudioSection extends CollapsibleSection_1.CollapsibleSection {
+    constructor() {
+        super('Audio', 'audio');
+        this._sourceType = this._makeSelect(['path', 'url', 'column'], 'path');
+        this._sourceType.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('source type', this._sourceType));
+        this._valueInput = this._makeInput('audio/recording.flac', '250px');
+        this._valueInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('path / url / col', this._valueInput));
+        this._prefixInput = this._makeInput('optional prefix', '200px');
+        this._prefixInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('prefix', this._prefixInput));
+        this._suffixInput = this._makeInput('optional suffix', '200px');
+        this._suffixInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('suffix', this._suffixInput));
+        this._fallbackInput = this._makeInput('fallback path', '200px');
+        this._fallbackInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('fallback', this._fallbackInput));
+    }
+    setColumnOptions(cols) {
+        if (this._sourceType.value === 'column' && cols.length > 0) {
+            this._valueInput.placeholder = cols.join(', ');
+        }
+    }
+    getData() {
+        const sourceKey = this._sourceType.value;
+        const result = {};
+        if (this._valueInput.value)
+            result[sourceKey] = this._valueInput.value;
+        if (this._prefixInput.value)
+            result.prefix = this._prefixInput.value;
+        if (this._suffixInput.value)
+            result.suffix = this._suffixInput.value;
+        if (this._fallbackInput.value)
+            result.fallback = this._fallbackInput.value;
+        return result;
+    }
+    setData(data) {
+        if (data.path) {
+            this._sourceType.value = 'path';
+            this._valueInput.value = data.path;
+        }
+        else if (data.url) {
+            this._sourceType.value = 'url';
+            this._valueInput.value = data.url;
+        }
+        else if (data.column) {
+            this._sourceType.value = 'column';
+            this._valueInput.value = data.column;
+        }
+        if (data.prefix)
+            this._prefixInput.value = data.prefix;
+        if (data.suffix)
+            this._suffixInput.value = data.suffix;
+        if (data.fallback)
+            this._fallbackInput.value = data.fallback;
+    }
+}
+exports.AudioSection = AudioSection;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/sections/CollapsibleSection.js"
+/*!***********************************************************!*\
+  !*** ./lib/config_builder/sections/CollapsibleSection.js ***!
+  \***********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.CollapsibleSection = void 0;
+const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
+const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
+class CollapsibleSection {
+    constructor(title, sectionName, open = false) {
+        this.focused = new signaling_1.Signal(this);
+        this.changed = new signaling_1.Signal(this);
+        this._sectionName = sectionName;
+        this.element = document.createElement('details');
+        if (open)
+            this.element.open = true;
+        this.element.style.cssText =
+            `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};`;
+        const summary = document.createElement('summary');
+        summary.textContent = title;
+        summary.style.cssText =
+            `padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;` +
+                `background:${styles_1.COLORS.bgMantle};color:${styles_1.COLORS.textPrimary};` +
+                `list-style:none;user-select:none;letter-spacing:0.5px;` +
+                `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};`;
+        summary.addEventListener('click', () => {
+            this.focused.emit(this._sectionName);
+        });
+        this._body = document.createElement('div');
+        this._body.style.cssText =
+            `padding:10px 12px;display:flex;flex-direction:column;gap:8px;` +
+                `background:${styles_1.COLORS.bgBase};`;
+        this.element.append(summary, this._body);
+    }
+    _makeRow() {
+        const row = document.createElement('div');
+        row.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;`;
+        return row;
+    }
+    _makeLabel(text) {
+        const lbl = document.createElement('label');
+        lbl.textContent = text;
+        lbl.style.cssText =
+            `color:${styles_1.COLORS.textSubtle};font-size:12px;min-width:100px;flex-shrink:0;`;
+        return lbl;
+    }
+    _makeInput(placeholder = '', width = '200px') {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.placeholder = placeholder;
+        inp.style.cssText =
+            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};` +
+                `border-radius:4px;color:${styles_1.COLORS.textPrimary};padding:4px 8px;` +
+                `font-size:12px;width:${width};box-sizing:border-box;`;
+        return inp;
+    }
+    _makeSelect(options, selected) {
+        const sel = document.createElement('select');
+        sel.style.cssText =
+            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};` +
+                `border-radius:4px;color:${styles_1.COLORS.textPrimary};padding:4px 6px;font-size:12px;`;
+        for (const opt of options) {
+            const o = document.createElement('option');
+            o.value = opt;
+            o.textContent = opt;
+            if (opt === selected)
+                o.selected = true;
+            sel.appendChild(o);
+        }
+        return sel;
+    }
+    _makeCheckbox(label, checked = false) {
+        const row = this._makeRow();
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = checked;
+        cb.style.cssText = `accent-color:${styles_1.COLORS.blue};`;
+        const lbl = document.createElement('label');
+        lbl.textContent = label;
+        lbl.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;cursor:pointer;`;
+        lbl.prepend(cb);
+        lbl.style.display = 'flex';
+        lbl.style.alignItems = 'center';
+        lbl.style.gap = '6px';
+        row.appendChild(lbl);
+        return { row, input: cb };
+    }
+    _makeButton(text, primary = false) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = primary
+            ? `background:${styles_1.COLORS.blue};border:none;border-radius:4px;color:${styles_1.COLORS.bgBase};padding:4px 12px;font-size:12px;cursor:pointer;font-weight:700;`
+            : `background:${styles_1.COLORS.bgSurface1};border:none;border-radius:4px;color:${styles_1.COLORS.textPrimary};padding:4px 10px;font-size:12px;cursor:pointer;`;
+        return btn;
+    }
+    _makeFieldRow(labelText, input) {
+        const row = this._makeRow();
+        row.appendChild(this._makeLabel(labelText));
+        row.appendChild(input);
+        return row;
+    }
+    _emitChanged() {
+        this.changed.emit(void 0);
+    }
+}
+exports.CollapsibleSection = CollapsibleSection;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/sections/DataSection.js"
+/*!****************************************************!*\
+  !*** ./lib/config_builder/sections/DataSection.js ***!
+  \****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DataSection = void 0;
+const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
+const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
+class DataSection extends CollapsibleSection_1.CollapsibleSection {
+    constructor() {
+        super('Data', 'data');
+        this.columnsLoaded = new signaling_1.Signal(this);
+        this.fileLoadRequested = new signaling_1.Signal(this);
+        this._detectedCols = [];
+        this._sourceType = this._makeSelect(['path', 'url', 'sql', 'api'], 'path');
+        this._sourceType.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('source type', this._sourceType));
+        const pathRow = this._makeRow();
+        pathRow.appendChild(this._makeLabel('path / url'));
+        this._pathInput = this._makeInput('data/detections.csv', '220px');
+        this._pathInput.addEventListener('input', () => this._emitChanged());
+        this._browseBtn = this._makeButton('Browse');
+        this._browseBtn.addEventListener('click', () => {
+            this.fileLoadRequested.emit(this._pathInput.value || 'data');
+        });
+        this._loadColsBtn = this._makeButton('Load Columns');
+        this._loadColsBtn.addEventListener('click', () => {
+            if (this._pathInput.value) {
+                this.fileLoadRequested.emit(this._pathInput.value);
+            }
+        });
+        pathRow.append(this._pathInput, this._browseBtn, this._loadColsBtn);
+        this._body.appendChild(pathRow);
+        this._columnsInput = this._makeInput('col1, col2, ...', '300px');
+        this._columnsInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('data_columns', this._columnsInput));
+        this._startTimeInput = this._makeInput('start_time', '150px');
+        this._startTimeInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('start_time col', this._startTimeInput));
+        this._endTimeInput = this._makeInput('end_time', '150px');
+        this._endTimeInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('end_time col', this._endTimeInput));
+        this._durationInput = this._makeInput('duration or number', '150px');
+        this._durationInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('duration', this._durationInput));
+    }
+    setDetectedColumns(cols) {
+        this._detectedCols = cols;
+        this.columnsLoaded.emit(cols);
+        if (!this._columnsInput.value && cols.length > 0) {
+            this._columnsInput.placeholder = cols.join(', ');
+        }
+    }
+    getDetectedColumns() {
+        return this._detectedCols;
+    }
+    getData() {
+        const sourceKey = this._sourceType.value;
+        const result = {};
+        result[sourceKey] = this._pathInput.value || undefined;
+        const cols = this._columnsInput.value
+            ? this._columnsInput.value.split(',').map(s => s.trim()).filter(Boolean)
+            : undefined;
+        if (cols && cols.length > 0)
+            result.columns = cols;
+        const st = this._startTimeInput.value.trim();
+        const et = this._endTimeInput.value.trim();
+        const dur = this._durationInput.value.trim();
+        if (st && st !== 'start_time')
+            result.data_start_time = st;
+        if (et && et !== 'end_time')
+            result.data_end_time = et;
+        if (dur) {
+            const num = parseFloat(dur);
+            result.data_duration = isNaN(num) ? dur : num;
+        }
+        return result;
+    }
+    setData(data) {
+        if (data.path) {
+            this._sourceType.value = 'path';
+            this._pathInput.value = data.path;
+        }
+        else if (data.url) {
+            this._sourceType.value = 'url';
+            this._pathInput.value = data.url;
+        }
+        else if (data.sql) {
+            this._sourceType.value = 'sql';
+            this._pathInput.value = data.sql;
+        }
+        else if (data.api) {
+            this._sourceType.value = 'api';
+            this._pathInput.value = data.api;
+        }
+        if (data.columns)
+            this._columnsInput.value = Array.isArray(data.columns) ? data.columns.join(', ') : '';
+        if (data.data_start_time)
+            this._startTimeInput.value = data.data_start_time;
+        if (data.data_end_time)
+            this._endTimeInput.value = data.data_end_time;
+        if (data.data_duration !== undefined)
+            this._durationInput.value = String(data.data_duration);
+    }
+}
+exports.DataSection = DataSection;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/sections/FormSection.js"
+/*!****************************************************!*\
+  !*** ./lib/config_builder/sections/FormSection.js ***!
+  \****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.FormSection = void 0;
+const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
+const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
+class FormSection extends CollapsibleSection_1.CollapsibleSection {
+    constructor() {
+        super('Form', 'form');
+        this._elements = [];
+        this._dynamicForms = {};
+        this._listEl = document.createElement('div');
+        this._listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
+        this._body.appendChild(this._listEl);
+        this._addBar = document.createElement('div');
+        this._addBar.style.cssText =
+            `display:flex;gap:4px;flex-wrap:wrap;padding:6px 0;border-top:1px solid ${styles_1.COLORS.bgSurface0};margin-top:4px;`;
+        const types = [
+            'title', 'select', 'textbox', 'checkbox', 'number',
+            'annotation', 'pass_value', 'fixed_value', 'submission_buttons',
+        ];
+        for (const t of types) {
+            const btn = this._makeButton(`+ ${t}`);
+            btn.style.fontSize = '11px';
+            btn.style.padding = '3px 8px';
+            btn.addEventListener('click', () => this._addElement(t));
+            this._addBar.appendChild(btn);
+        }
+        this._body.appendChild(this._addBar);
+        this._dynFormsEl = document.createElement('div');
+        this._dynFormsEl.style.cssText =
+            `display:flex;flex-direction:column;gap:6px;` +
+                `border-top:1px solid ${styles_1.COLORS.bgSurface0};padding-top:8px;margin-top:4px;`;
+        const dynLabel = document.createElement('div');
+        dynLabel.textContent = 'Dynamic Forms';
+        dynLabel.style.cssText =
+            `font-size:12px;font-weight:700;color:${styles_1.COLORS.textMuted};letter-spacing:0.5px;`;
+        const addDynBtn = this._makeButton('+ Section');
+        addDynBtn.style.fontSize = '11px';
+        addDynBtn.addEventListener('click', () => this._addDynamicSection());
+        const dynHeader = this._makeRow();
+        dynHeader.append(dynLabel, addDynBtn);
+        this._dynFormsEl.appendChild(dynHeader);
+        this._body.appendChild(this._dynFormsEl);
+    }
+    _addElement(type, config) {
+        const cfg = config || this._defaultConfig(type);
+        const card = this._buildElementCard(type, cfg);
+        const fe = { type, config: cfg, el: card };
+        this._elements.push(fe);
+        this._listEl.appendChild(card);
+        this._emitChanged();
+    }
+    _defaultConfig(type) {
+        switch (type) {
+            case 'title': return { value: 'REVIEW' };
+            case 'select': return { label: '', column: '', required: false, items: [] };
+            case 'textbox': return { label: '', column: '', multiline: false };
+            case 'checkbox': return { label: '', column: '' };
+            case 'number': return { label: '', column: '', min: 0, max: 1, step: 0.1 };
+            case 'annotation': return { tools: ['start_end_time_select'] };
+            case 'pass_value': return { source_column: '', column: '' };
+            case 'fixed_value': return { column: '', value: '' };
+            case 'submission_buttons': return { submit: { label: 'Submit' }, next: { label: 'Skip' } };
+            default: return {};
+        }
+    }
+    _buildElementCard(type, cfg) {
+        const card = document.createElement('div');
+        card.style.cssText =
+            `background:${styles_1.COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
+                `display:flex;flex-direction:column;gap:5px;`;
+        const header = this._makeRow();
+        const typeLabel = document.createElement('span');
+        typeLabel.textContent = type;
+        typeLabel.style.cssText =
+            `font-size:12px;font-weight:700;color:${styles_1.COLORS.blue};flex:1;`;
+        const moveUp = this._makeButton('▲');
+        moveUp.style.cssText += `font-size:10px;padding:2px 6px;`;
+        moveUp.addEventListener('click', () => this._moveElement(card, -1));
+        const moveDown = this._makeButton('▼');
+        moveDown.style.cssText += `font-size:10px;padding:2px 6px;`;
+        moveDown.addEventListener('click', () => this._moveElement(card, 1));
+        const removeBtn = this._makeButton('✕');
+        removeBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${styles_1.COLORS.red};`;
+        removeBtn.addEventListener('click', () => this._removeElement(card));
+        header.append(typeLabel, moveUp, moveDown, removeBtn);
+        card.appendChild(header);
+        this._buildElementFields(card, type, cfg);
+        return card;
+    }
+    _buildElementFields(card, type, cfg) {
+        switch (type) {
+            case 'title':
+                this._addField(card, cfg, 'value', 'title text', '200px');
+                this._addCheckboxField(card, cfg, 'progress_tracker', 'progress_tracker');
+                break;
+            case 'select':
+                this._addField(card, cfg, 'label', 'label', '150px');
+                this._addField(card, cfg, 'column', 'column', '150px');
+                this._addCheckboxField(card, cfg, 'required', 'required');
+                this._addSelectItemsBuilder(card, cfg);
+                break;
+            case 'textbox':
+                this._addField(card, cfg, 'label', 'label', '150px');
+                this._addField(card, cfg, 'column', 'column', '150px');
+                this._addCheckboxField(card, cfg, 'multiline', 'multiline');
+                break;
+            case 'checkbox':
+                this._addField(card, cfg, 'label', 'label', '150px');
+                this._addField(card, cfg, 'column', 'column', '150px');
+                this._addField(card, cfg, 'yes_value', 'yes_value', '100px');
+                this._addField(card, cfg, 'no_value', 'no_value', '100px');
+                break;
+            case 'number':
+                this._addField(card, cfg, 'label', 'label', '150px');
+                this._addField(card, cfg, 'column', 'column', '150px');
+                this._addNumField(card, cfg, 'min', 'min', '60px');
+                this._addNumField(card, cfg, 'max', 'max', '60px');
+                this._addNumField(card, cfg, 'step', 'step', '60px');
+                break;
+            case 'annotation': {
+                const toolsSel = this._makeSelect(['time_select', 'start_end_time_select', 'bounding_box', 'multibox'], Array.isArray(cfg.tools) ? cfg.tools[0] : 'start_end_time_select');
+                toolsSel.multiple = true;
+                toolsSel.style.height = '60px';
+                toolsSel.addEventListener('change', () => {
+                    cfg.tools = Array.from(toolsSel.selectedOptions).map(o => o.value);
+                    this._emitChanged();
+                });
+                card.appendChild(this._makeFieldRow('tools', toolsSel));
+                this._addField(card, cfg, 'start_time_col', 'start_time col', '120px');
+                this._addField(card, cfg, 'end_time_col', 'end_time col', '120px');
+                this._addField(card, cfg, 'min_freq_col', 'min_freq col', '120px');
+                this._addField(card, cfg, 'max_freq_col', 'max_freq col', '120px');
+                break;
+            }
+            case 'pass_value':
+                this._addField(card, cfg, 'source_column', 'source_column', '150px');
+                this._addField(card, cfg, 'column', 'column', '150px');
+                break;
+            case 'fixed_value':
+                this._addField(card, cfg, 'column', 'column', '150px');
+                this._addField(card, cfg, 'value', 'value', '150px');
+                break;
+            case 'submission_buttons': {
+                this._addCheckboxField(card, cfg, 'line', 'line divider');
+                this._addCheckboxField(card, cfg, 'previous', 'previous btn');
+                this._addField(card, cfg, 'next_label', 'next label', '100px');
+                this._addField(card, cfg, 'submit_label', 'submit label', '100px');
+                break;
+            }
+        }
+    }
+    _addField(card, cfg, key, label, width) {
+        const inp = this._makeInput(label, width);
+        if (cfg[key] !== undefined && cfg[key] !== null)
+            inp.value = String(cfg[key]);
+        inp.addEventListener('input', () => {
+            cfg[key] = inp.value;
+            this._emitChanged();
+        });
+        const row = this._makeFieldRow(label, inp);
+        card.appendChild(row);
+    }
+    _addNumField(card, cfg, key, label, width) {
+        const inp = this._makeInput('', width);
+        inp.type = 'number';
+        inp.step = 'any';
+        if (cfg[key] !== undefined)
+            inp.value = String(cfg[key]);
+        inp.addEventListener('input', () => {
+            const v = parseFloat(inp.value);
+            cfg[key] = isNaN(v) ? undefined : v;
+            this._emitChanged();
+        });
+        const row = this._makeFieldRow(label, inp);
+        card.appendChild(row);
+    }
+    _addCheckboxField(card, cfg, key, label) {
+        const { row, input } = this._makeCheckbox(label, !!cfg[key]);
+        input.addEventListener('change', () => {
+            cfg[key] = input.checked;
+            this._emitChanged();
+        });
+        card.appendChild(row);
+    }
+    _addSelectItemsBuilder(card, cfg) {
+        const itemsArea = document.createElement('div');
+        itemsArea.style.cssText =
+            `display:flex;flex-direction:column;gap:4px;padding:4px 0;` +
+                `border-top:1px solid ${styles_1.COLORS.bgSurface1};margin-top:4px;`;
+        const modeLabel = document.createElement('span');
+        modeLabel.textContent = 'Items source:';
+        modeLabel.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;`;
+        itemsArea.appendChild(modeLabel);
+        const modeSel = this._makeSelect(['inline', 'from file', 'range'], 'inline');
+        modeSel.addEventListener('change', () => this._rebuildItemsUI(itemsArea, modeSel.value, cfg));
+        itemsArea.appendChild(modeSel);
+        const itemsContent = document.createElement('div');
+        itemsContent.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
+        itemsArea.appendChild(itemsContent);
+        this._buildInlineItems(itemsContent, cfg);
+        modeSel.addEventListener('change', () => {
+            itemsContent.innerHTML = '';
+            if (modeSel.value === 'inline') {
+                this._buildInlineItems(itemsContent, cfg);
+            }
+            else if (modeSel.value === 'from file') {
+                this._buildFileItems(itemsContent, cfg);
+            }
+            else {
+                this._buildRangeItems(itemsContent, cfg);
+            }
+        });
+        card.appendChild(itemsArea);
+    }
+    _buildInlineItems(container, cfg) {
+        const textarea = document.createElement('textarea');
+        textarea.style.cssText =
+            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};` +
+                `border-radius:4px;color:${styles_1.COLORS.textPrimary};padding:4px 8px;` +
+                `font-size:11px;width:250px;height:60px;resize:vertical;font-family:monospace;`;
+        textarea.placeholder = 'yes\nno\nor: label::value per line';
+        if (Array.isArray(cfg.items)) {
+            textarea.value = cfg.items.map((it) => {
+                if (typeof it === 'string')
+                    return it;
+                if (it.label && it.value)
+                    return `${it.label}::${it.value}`;
+                return String(it.label || it.value || it);
+            }).join('\n');
+        }
+        textarea.addEventListener('input', () => {
+            const lines = textarea.value.split('\n').map(l => l.trim()).filter(Boolean);
+            cfg.items = lines.map(line => {
+                if (line.includes('::')) {
+                    const [label, value] = line.split('::', 2);
+                    return { label: label.trim(), value: value.trim() };
+                }
+                return line;
+            });
+            this._emitChanged();
+        });
+        container.appendChild(textarea);
+        const hint = document.createElement('span');
+        hint.textContent = 'One item per line. Use label::value for separate labels.';
+        hint.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;`;
+        container.appendChild(hint);
+    }
+    _buildFileItems(container, cfg) {
+        var _a, _b, _c, _d, _e;
+        const pathInp = this._makeInput('data/categories.csv', '200px');
+        if (cfg.items && typeof cfg.items === 'object' && !Array.isArray(cfg.items) && cfg.items.path) {
+            pathInp.value = cfg.items.path;
+        }
+        pathInp.addEventListener('input', () => {
+            if (!cfg.items || typeof cfg.items !== 'object' || Array.isArray(cfg.items))
+                cfg.items = {};
+            cfg.items.path = pathInp.value;
+            this._emitChanged();
+        });
+        container.appendChild(this._makeFieldRow('file path', pathInp));
+        const valInp = this._makeInput('column name', '150px');
+        if ((_a = cfg.items) === null || _a === void 0 ? void 0 : _a.value)
+            valInp.value = cfg.items.value;
+        valInp.addEventListener('input', () => {
+            if (!cfg.items || typeof cfg.items !== 'object')
+                cfg.items = {};
+            cfg.items.value = valInp.value;
+            this._emitChanged();
+        });
+        container.appendChild(this._makeFieldRow('value col', valInp));
+        const lblInp = this._makeInput('optional label col', '150px');
+        if ((_b = cfg.items) === null || _b === void 0 ? void 0 : _b.label)
+            lblInp.value = cfg.items.label;
+        lblInp.addEventListener('input', () => {
+            if (!cfg.items || typeof cfg.items !== 'object')
+                cfg.items = {};
+            cfg.items.label = lblInp.value || undefined;
+            this._emitChanged();
+        });
+        container.appendChild(this._makeFieldRow('label col', lblInp));
+        const { row: fbRow, input: fbCb } = this._makeCheckbox('filter_box', !!((_c = cfg.items) === null || _c === void 0 ? void 0 : _c.filter_box));
+        fbCb.addEventListener('change', () => {
+            if (!cfg.items || typeof cfg.items !== 'object')
+                cfg.items = {};
+            cfg.items.filter_box = fbCb.checked;
+            this._emitChanged();
+        });
+        container.appendChild(fbRow);
+        const { row: cvRow, input: cvCb } = this._makeCheckbox('custom_value', !!((_d = cfg.items) === null || _d === void 0 ? void 0 : _d.custom_value));
+        cvCb.addEventListener('change', () => {
+            if (!cfg.items || typeof cfg.items !== 'object')
+                cfg.items = {};
+            cfg.items.custom_value = cvCb.checked;
+            this._emitChanged();
+        });
+        container.appendChild(cvRow);
+        const { row: naRow, input: naCb } = this._makeCheckbox('not_available', !!((_e = cfg.items) === null || _e === void 0 ? void 0 : _e.not_available));
+        naCb.addEventListener('change', () => {
+            if (!cfg.items || typeof cfg.items !== 'object')
+                cfg.items = {};
+            cfg.items.not_available = naCb.checked;
+            this._emitChanged();
+        });
+        container.appendChild(naRow);
+    }
+    _buildRangeItems(container, cfg) {
+        var _a, _b, _c;
+        const minInp = this._makeInput('1', '60px');
+        minInp.type = 'number';
+        const maxInp = this._makeInput('10', '60px');
+        maxInp.type = 'number';
+        const stepInp = this._makeInput('1', '60px');
+        stepInp.type = 'number';
+        if (((_a = cfg.items) === null || _a === void 0 ? void 0 : _a.min) !== undefined)
+            minInp.value = String(cfg.items.min);
+        if (((_b = cfg.items) === null || _b === void 0 ? void 0 : _b.max) !== undefined)
+            maxInp.value = String(cfg.items.max);
+        if (((_c = cfg.items) === null || _c === void 0 ? void 0 : _c.step) !== undefined)
+            stepInp.value = String(cfg.items.step);
+        const update = () => {
+            cfg.items = {
+                min: parseInt(minInp.value) || 1,
+                max: parseInt(maxInp.value) || 10,
+                step: parseInt(stepInp.value) || 1,
+            };
+            this._emitChanged();
+        };
+        minInp.addEventListener('input', update);
+        maxInp.addEventListener('input', update);
+        stepInp.addEventListener('input', update);
+        const row = this._makeRow();
+        row.append(this._makeLabel('min'), minInp, this._makeLabel('max'), maxInp, this._makeLabel('step'), stepInp);
+        container.appendChild(row);
+    }
+    _rebuildItemsUI(_container, _mode, _cfg) {
+    }
+    _moveElement(card, direction) {
+        const idx = this._elements.findIndex(e => e.el === card);
+        if (idx < 0)
+            return;
+        const newIdx = idx + direction;
+        if (newIdx < 0 || newIdx >= this._elements.length)
+            return;
+        const [el] = this._elements.splice(idx, 1);
+        this._elements.splice(newIdx, 0, el);
+        this._listEl.innerHTML = '';
+        for (const e of this._elements)
+            this._listEl.appendChild(e.el);
+        this._emitChanged();
+    }
+    _removeElement(card) {
+        const idx = this._elements.findIndex(e => e.el === card);
+        if (idx < 0)
+            return;
+        this._elements.splice(idx, 1);
+        card.remove();
+        this._emitChanged();
+    }
+    _addDynamicSection() {
+        const name = window.prompt('Section name (referenced by select item form:):');
+        if (!name)
+            return;
+        this._dynamicForms[name] = [];
+        this._rebuildDynFormsUI();
+        this._emitChanged();
+    }
+    _rebuildDynFormsUI() {
+        while (this._dynFormsEl.children.length > 1) {
+            this._dynFormsEl.removeChild(this._dynFormsEl.lastChild);
+        }
+        for (const [name, elements] of Object.entries(this._dynamicForms)) {
+            const section = document.createElement('div');
+            section.style.cssText =
+                `background:${styles_1.COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
+                    `display:flex;flex-direction:column;gap:4px;`;
+            const hdr = this._makeRow();
+            const lbl = document.createElement('span');
+            lbl.textContent = name;
+            lbl.style.cssText = `font-size:12px;font-weight:700;color:${styles_1.COLORS.mauve};flex:1;`;
+            const rmBtn = this._makeButton('✕');
+            rmBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${styles_1.COLORS.red};`;
+            rmBtn.addEventListener('click', () => {
+                delete this._dynamicForms[name];
+                this._rebuildDynFormsUI();
+                this._emitChanged();
+            });
+            hdr.append(lbl, rmBtn);
+            section.appendChild(hdr);
+            const hint = document.createElement('span');
+            hint.textContent = `Elements for "${name}" section. Edit in YAML panel for now.`;
+            hint.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;`;
+            section.appendChild(hint);
+            this._dynFormsEl.appendChild(section);
+        }
+    }
+    getData() {
+        const result = {};
+        for (const elem of this._elements) {
+            const cfg = Object.assign({}, elem.config);
+            if (elem.type === 'annotation') {
+                const annot = {};
+                if (cfg.start_time_col)
+                    annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
+                if (cfg.end_time_col)
+                    annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
+                if (cfg.min_freq_col)
+                    annot.min_frequency = { column: cfg.min_freq_col };
+                if (cfg.max_freq_col)
+                    annot.max_frequency = { column: cfg.max_freq_col };
+                if (cfg.tools)
+                    annot.tools = cfg.tools;
+                result.annotation = annot;
+                continue;
+            }
+            if (elem.type === 'submission_buttons') {
+                const sb = {};
+                if (cfg.line)
+                    sb.line = true;
+                if (cfg.previous)
+                    sb.previous = true;
+                if (cfg.next_label)
+                    sb.next = { label: cfg.next_label };
+                if (cfg.submit_label)
+                    sb.submit = { label: cfg.submit_label };
+                result.submission_buttons = sb;
+                continue;
+            }
+            if (elem.type === 'title') {
+                if (cfg.progress_tracker) {
+                    result.title = { value: cfg.value || '', progress_tracker: true };
+                }
+                else {
+                    result.title = cfg.value || '';
+                }
+                continue;
+            }
+            const cleaned = {};
+            for (const [k, v] of Object.entries(cfg)) {
+                if (v !== undefined && v !== null && v !== '' && v !== false) {
+                    cleaned[k] = v;
+                }
+            }
+            result[elem.type] = cleaned;
+        }
+        if (Object.keys(this._dynamicForms).length > 0) {
+            result.dynamic_forms = this._dynamicForms;
+        }
+        return result;
+    }
+    setData(data) {
+        this._elements = [];
+        this._listEl.innerHTML = '';
+        this._dynamicForms = {};
+        if (data.dynamic_forms) {
+            this._dynamicForms = data.dynamic_forms;
+            this._rebuildDynFormsUI();
+        }
+        for (const [key, val] of Object.entries(data)) {
+            if (key === 'dynamic_forms')
+                continue;
+            const type = key;
+            if (['title', 'select', 'textbox', 'checkbox', 'number',
+                'annotation', 'pass_value', 'fixed_value', 'submission_buttons'].includes(type)) {
+                let cfg;
+                if (typeof val === 'string') {
+                    cfg = { value: val };
+                }
+                else {
+                    cfg = Object.assign({}, val);
+                }
+                this._addElement(type, cfg);
+            }
+        }
+    }
+}
+exports.FormSection = FormSection;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/sections/OutputSection.js"
+/*!******************************************************!*\
+  !*** ./lib/config_builder/sections/OutputSection.js ***!
+  \******************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.OutputSection = void 0;
+const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
+class OutputSection extends CollapsibleSection_1.CollapsibleSection {
+    constructor() {
+        super('Output', 'output');
+        this._pathInput = this._makeInput('outputs/reviews.csv', '250px');
+        this._pathInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('path', this._pathInput));
+        this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
+        this._uriInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('sync uri', this._uriInput));
+        const { row: syncRow, input: syncCb } = this._makeCheckbox('sync_button');
+        this._syncBtnCb = syncCb;
+        this._syncBtnCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(syncRow);
+        this._syncLabelInput = this._makeInput('Sync', '150px');
+        this._syncLabelInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('sync label', this._syncLabelInput));
+        const { row: recRow, input: recCb } = this._makeCheckbox('recursive');
+        this._recursiveCb = recCb;
+        this._recursiveCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(recRow);
+    }
+    getData() {
+        const result = {};
+        if (this._pathInput.value)
+            result.path = this._pathInput.value;
+        if (this._uriInput.value)
+            result.uri = this._uriInput.value;
+        if (this._syncBtnCb.checked) {
+            result.sync_button = this._syncLabelInput.value || true;
+        }
+        if (this._recursiveCb.checked)
+            result.recursive = true;
+        return result;
+    }
+    setData(data) {
+        if (data.path)
+            this._pathInput.value = data.path;
+        if (data.uri || data.url)
+            this._uriInput.value = data.uri || data.url;
+        if (data.sync_button) {
+            this._syncBtnCb.checked = true;
+            if (typeof data.sync_button === 'string')
+                this._syncLabelInput.value = data.sync_button;
+        }
+        if (data.recursive)
+            this._recursiveCb.checked = true;
+    }
+}
+exports.OutputSection = OutputSection;
+
+
+/***/ },
+
+/***/ "./lib/config_builder/sections/ProjectSection.js"
+/*!*******************************************************!*\
+  !*** ./lib/config_builder/sections/ProjectSection.js ***!
+  \*******************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ProjectSection = void 0;
+const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
+class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
+    constructor() {
+        super('Project', 'project', true);
+        this._nameInput = this._makeInput('e.g. Bird Review', '250px');
+        this._nameInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('project_name', this._nameInput));
+        const { row, input } = this._makeCheckbox('project_save_btn');
+        this._saveBtnCb = input;
+        this._saveBtnCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(row);
+    }
+    getData() {
+        return {
+            project_name: this._nameInput.value || undefined,
+            project_save_btn: this._saveBtnCb.checked || undefined,
+        };
+    }
+    setData(data) {
+        if (data.project_name !== undefined)
+            this._nameInput.value = data.project_name;
+        if (data.project_save_btn !== undefined)
+            this._saveBtnCb.checked = !!data.project_save_btn;
+    }
+}
+exports.ProjectSection = ProjectSection;
+
+
+/***/ },
+
 /***/ "./lib/index.js"
 /*!**********************!*\
   !*** ./lib/index.js ***!
@@ -10,7 +1707,8 @@
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const plugin_1 = __webpack_require__(/*! ./plugin */ "./lib/plugin.js");
-exports["default"] = [plugin_1.bioacousticPlugin];
+const config_builder_1 = __webpack_require__(/*! ./config_builder */ "./lib/config_builder/index.js");
+exports["default"] = [plugin_1.bioacousticPlugin, config_builder_1.configBuilderPlugin];
 
 
 /***/ },
@@ -5256,4 +6954,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.f3535c8c428af4517fa0.js.map
+//# sourceMappingURL=lib_index_js.d1400205352e7876c406.js.map
