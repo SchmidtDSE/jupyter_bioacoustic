@@ -1,0 +1,204 @@
+import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
+import { ICommandPalette } from '@jupyterlab/apputils';
+import { PageConfig } from '@jupyterlab/coreutils';
+import { ILauncher } from '@jupyterlab/launcher';
+import { INotebookTracker } from '@jupyterlab/notebook';
+import { LabIcon } from '@jupyterlab/ui-components';
+import { Message } from '@lumino/messaging';
+import { Widget } from '@lumino/widgets';
+
+import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles';
+import { KernelBridge } from '../kernel';
+import { escPy } from '../util';
+import { ConfigPanel } from './ConfigPanel';
+
+let _builderCounter = 0;
+
+class ConfigBuilderWidget extends Widget {
+  private _kernelBridge: KernelBridge;
+  private _ownedKernel: any;
+  private _panel!: ConfigPanel;
+  private _titleEl!: HTMLSpanElement;
+
+  constructor(tracker: INotebookTracker, directKernel?: any) {
+    super();
+    this._kernelBridge = new KernelBridge(
+      directKernel ? null : tracker,
+      directKernel,
+    );
+    this._ownedKernel = directKernel ?? null;
+    this.id = `jp-config-builder-${_builderCounter++}`;
+    this.title.label = 'Config Builder';
+    this.title.closable = true;
+    injectGlobalStyles();
+    this._buildUI();
+  }
+
+  dispose(): void {
+    if (this._ownedKernel) {
+      this._ownedKernel.shutdown().catch(() => {});
+      this._ownedKernel = null;
+    }
+    super.dispose();
+  }
+
+  private _buildUI(): void {
+    this.node.style.cssText =
+      `display:flex;flex-direction:column;width:100%;height:100%;` +
+      `background:${COLORS.bgBase};color:${COLORS.textPrimary};` +
+      `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);` +
+      `overflow:hidden;box-sizing:border-box;`;
+
+    const header = document.createElement('div');
+    header.style.cssText = barBottomStyle();
+
+    this._titleEl = document.createElement('span');
+    this._titleEl.textContent = 'Config Builder';
+    this._titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
+
+    this._panel = new ConfigPanel(this._kernelBridge);
+
+    header.append(this._titleEl, this._panel.statusEl);
+
+    const bottomBar = document.createElement('div');
+    bottomBar.style.cssText =
+      `display:flex;gap:8px;padding:6px 12px;` +
+      `background:${COLORS.bgMantle};border-top:1px solid ${COLORS.bgSurface0};flex-shrink:0;`;
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save Config';
+    saveBtn.style.cssText = btnStyle() + `font-size:11px;`;
+    saveBtn.addEventListener('click', () => void this._panel.saveToFile());
+
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+
+    const dismissBtn = document.createElement('button');
+    dismissBtn.textContent = 'Dismiss';
+    dismissBtn.style.cssText = btnStyle() + `font-size:11px;`;
+    dismissBtn.addEventListener('click', () => this._onDismiss());
+
+    bottomBar.append(saveBtn, spacer, dismissBtn);
+
+    this.node.append(header, this._panel.element, bottomBar);
+  }
+
+  protected onAfterAttach(_msg: Message): void {
+    super.onAfterAttach(_msg);
+  }
+
+  private _onDismiss(): void {
+    if (this._panel.dirty) {
+      const ok = window.confirm('You have unsaved changes. Dismiss anyway?');
+      if (!ok) return;
+    }
+    this.dispose();
+  }
+}
+
+function escPyLocal(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function startKernel(app: JupyterFrontEnd): Promise<any | null> {
+  try {
+    return await app.serviceManager.kernels.startNew({ name: 'python3' });
+  } catch (e) {
+    console.error('config-builder: failed to start kernel', e);
+    return null;
+  }
+}
+
+function getExistingKernel(tracker: INotebookTracker): any | null {
+  return tracker.currentWidget?.sessionContext?.session?.kernel ?? null;
+}
+
+async function execInKernel(kernel: any, code: string): Promise<string> {
+  const future = kernel.requestExecute({ code });
+  let error = '';
+  future.onIOPub = (msg: any) => {
+    if (msg.header?.msg_type === 'error') {
+      error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
+    }
+  };
+  await future.done;
+  return error;
+}
+
+const builderIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+  <polyline points="14 2 14 8 20 8"/>
+  <line x1="16" y1="13" x2="8" y2="13"/>
+  <line x1="16" y1="17" x2="8" y2="17"/>
+  <line x1="10" y1="9" x2="8" y2="9"/>
+</svg>`;
+
+const builderIcon = new LabIcon({
+  name: 'jupyter-bioacoustic:config-builder-icon',
+  svgstr: builderIconSvg,
+});
+
+export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
+  id: 'jupyter-bioacoustic:config-builder',
+  autoStart: true,
+  requires: [ICommandPalette, INotebookTracker],
+  optional: [ILauncher],
+  activate: (
+    app: JupyterFrontEnd,
+    palette: ICommandPalette,
+    tracker: INotebookTracker,
+    launcher: ILauncher | null,
+  ) => {
+    (window as any)._bioacousticOpenConfigBuilder = (divId: string) => {
+      const container = document.getElementById(divId);
+      if (!container) return;
+      const widget = new ConfigBuilderWidget(tracker);
+      widget.node.style.cssText += `position:absolute;inset:0;`;
+      Widget.attach(widget, container);
+    };
+
+    app.commands.addCommand('bioacoustic:open-config-builder', {
+      label: 'Bioacoustic Config Builder',
+      icon: builderIcon,
+      execute: async () => {
+        const kernel = getExistingKernel(tracker) ?? await startKernel(app);
+        if (!kernel) {
+          window.alert('Failed to start a Python kernel.');
+          return;
+        }
+        const ownsKernel = !getExistingKernel(tracker);
+
+        const serverRoot = PageConfig.getOption('serverRoot');
+        const error = await execInKernel(kernel, [
+          `import os as _os`,
+          `_os.chdir(_os.path.expanduser('${escPyLocal(serverRoot)}'))`,
+          `from jupyter_bioacoustic.config_builder import ConfigBuilder`,
+          `_cb = ConfigBuilder()`,
+          `_cb.setup()`,
+        ].join('\n'));
+
+        if (error) {
+          if (ownsKernel) kernel.shutdown().catch(() => {});
+          window.alert(`Config Builder error:\n${error}`);
+          return;
+        }
+
+        const widget = new ConfigBuilderWidget(
+          tracker,
+          ownsKernel ? kernel : undefined,
+        );
+        app.shell.add(widget, 'main');
+        app.shell.activateById(widget.id);
+      }
+    });
+
+    palette.addItem({ command: 'bioacoustic:open-config-builder', category: 'Bioacoustic' });
+
+    if (launcher) {
+      launcher.add({
+        command: 'bioacoustic:open-config-builder',
+        category: 'Other',
+      });
+    }
+  }
+};
