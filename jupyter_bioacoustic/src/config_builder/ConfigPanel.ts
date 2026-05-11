@@ -11,6 +11,7 @@ import {
   checkFileExists,
   validateConfig,
   loadConfig,
+  setSectionTarget,
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
@@ -81,6 +82,12 @@ export class ConfigPanel {
     }
 
     this._form.changed.connect(() => this._updateFormPreview());
+
+    for (const sec of [this._data, this._audio, this._output]) {
+      sec.targetChanged.connect((_, { section, target }) => {
+        void this._onTargetChanged(section, target);
+      });
+    }
     left.appendChild(this._formPreview.element);
 
     this._project.browseRequested.connect((_, { field, current }) => {
@@ -91,6 +98,9 @@ export class ConfigPanel {
       });
     });
 
+    this._project.projectEnabledChanged.connect((_, enabled) => {
+      void this._onProjectEnabledChanged(enabled);
+    });
     this._project.loadConfigRequested.connect((_, path) => void this._onLoadConfig(path));
     this._project.loadBrowseRequested.connect(() => {
       this._openBrowser('.', ['.yaml', '.yml', '.json'], (p) => {
@@ -351,20 +361,34 @@ export class ConfigPanel {
 
       if (state.project) {
         this._project.setData(state.project);
-        if (state.project.data && typeof state.project.data === 'object') {
-          this._data.setData(state.project.data);
+        const targets = state.section_targets || {};
+        const dataSource = targets.data === 'config' ? (state.config || {}) : state.project;
+        const audioSource = targets.audio === 'config' ? (state.config || {}) : state.project;
+        const outputSource = targets.output === 'config' ? (state.config || {}) : state.project;
+
+        if (dataSource.data && typeof dataSource.data === 'object') {
+          this._data.setData(dataSource.data);
         }
-        if (state.project.audio && typeof state.project.audio === 'object') {
-          this._audio.setData(state.project.audio);
+        if (audioSource.audio && typeof audioSource.audio === 'object') {
+          this._audio.setData(audioSource.audio);
         }
-        if (state.project.output && typeof state.project.output === 'object') {
-          this._output.setData(state.project.output);
+        if (outputSource.output && typeof outputSource.output === 'object') {
+          this._output.setData(outputSource.output);
         }
-        this._app.setData(state.project);
+        const appSource = targets.app === 'config' ? { ...state.project, ...(state.config || {}) } : state.project;
+        this._app.setData(appSource);
       }
       if (state.form_config && typeof state.form_config === 'object') {
         this._form.setData(state.form_config);
       }
+
+      if (state.section_targets) {
+        const targets = state.section_targets as Record<string, string>;
+        if (targets.data) this._data.setTarget(targets.data);
+        if (targets.audio) this._audio.setTarget(targets.audio);
+        if (targets.output) this._output.setTarget(targets.output);
+      }
+
       this._updateFormPreview();
     } finally {
       this._suppressChanges = false;
@@ -414,6 +438,41 @@ export class ConfigPanel {
       }
     } catch (e: any) {
       this._setStatus(`Validate error: ${String(e.message ?? e)}`, true);
+    }
+  }
+
+  private async _onProjectEnabledChanged(enabled: boolean): Promise<void> {
+    const newTarget = enabled ? 'project' : 'config';
+    for (const sec of [this._data, this._audio, this._output]) {
+      sec.setTarget(newTarget);
+    }
+    await this._readyPromise;
+    if (!this._ready) return;
+    for (const name of ['data', 'audio', 'output', 'app']) {
+      try {
+        const raw = await this._kernel.exec(setSectionTarget(name, newTarget));
+        const state = JSON.parse(extractJson(raw));
+        this._yamls = {
+          project_yaml: state.project_yaml || '',
+          config_yaml: state.config_yaml || '',
+          form_yaml: state.form_yaml || '',
+        };
+        this._yamlPanel.updateYaml(this._yamls);
+      } catch { /* ignore */ }
+    }
+  }
+
+  private async _onTargetChanged(section: string, target: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    this._setStatus('Updating target…');
+    try {
+      const raw = await this._kernel.exec(setSectionTarget(section, target));
+      const state = JSON.parse(extractJson(raw));
+      this._applyStatePartial(state, section);
+      this._setStatus('Ready');
+    } catch (e: any) {
+      this._setStatus(`Error: ${String(e.message ?? e)}`, true);
     }
   }
 
