@@ -33,15 +33,15 @@ export class AppSection extends CollapsibleSection {
 
     this._displayChipsArea = this._makeChipsArea();
     this._displayPickerArea = this._makePickerArea();
-    this._body.appendChild(this._makeSectionLabel('display_columns'));
-    this._body.appendChild(this._displayChipsArea);
-    this._body.appendChild(this._displayPickerArea);
+    const displayWrap = this._makeColumnGroupWrapper();
+    displayWrap.append(this._makeSectionLabel('display_columns'), this._displayChipsArea, this._displayPickerArea);
+    this._body.appendChild(displayWrap);
 
     this._dataChipsArea = this._makeChipsArea();
     this._dataPickerArea = this._makePickerArea();
-    this._body.appendChild(this._makeSectionLabel('data_columns'));
-    this._body.appendChild(this._dataChipsArea);
-    this._body.appendChild(this._dataPickerArea);
+    const dataWrap = this._makeColumnGroupWrapper();
+    dataWrap.append(this._makeSectionLabel('data_columns'), this._dataChipsArea, this._dataPickerArea);
+    this._body.appendChild(dataWrap);
 
     const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
     this._duplicateCb = dupCb;
@@ -118,9 +118,17 @@ export class AppSection extends CollapsibleSection {
     return area;
   }
 
+  private _makeColumnGroupWrapper(): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.style.cssText =
+      `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
+      `background:${COLORS.bgSurface0};border-radius:6px;`;
+    return wrap;
+  }
+
   private _makeSectionLabel(text: string): HTMLDivElement {
     const row = document.createElement('div');
-    row.style.cssText = `display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;`;
+    row.style.cssText = `display:flex;align-items:center;gap:6px;cursor:pointer;`;
     const lbl = document.createElement('span');
     lbl.textContent = text;
     lbl.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
