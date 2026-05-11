@@ -1,8 +1,9 @@
+import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 
 type ElementType = 'title' | 'select' | 'textbox' | 'checkbox' | 'number' |
-  'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons';
+  'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' | 'dynamic_form';
 
 interface FormElement {
   type: ElementType;
@@ -11,6 +12,9 @@ interface FormElement {
 }
 
 export class FormSection extends CollapsibleSection {
+  readonly browseRequested = new Signal<this, { callback: (path: string) => void }>(this);
+  readonly columnsRequested = new Signal<this, { path: string; callback: (cols: string[]) => void }>(this);
+
   private _elements: FormElement[] = [];
   private _dynamicForms: Record<string, any[]> = {};
   private _listEl: HTMLDivElement;
@@ -20,17 +24,21 @@ export class FormSection extends CollapsibleSection {
   constructor() {
     super('Form', 'form');
 
-    this._listEl = document.createElement('div');
-    this._listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
-    this._body.appendChild(this._listEl);
+    const hint = document.createElement('div');
+    hint.textContent = 'Click on the buttons below to add items to the form.';
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;font-style:italic;margin-bottom:4px;`;
+    this._body.appendChild(hint);
 
     this._addBar = document.createElement('div');
     this._addBar.style.cssText =
-      `display:flex;gap:4px;flex-wrap:wrap;padding:6px 0;border-top:1px solid ${COLORS.bgSurface0};margin-top:4px;`;
+      `display:flex;gap:4px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
+
+    this._listEl = document.createElement('div');
+    this._listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
 
     const types: ElementType[] = [
       'title', 'select', 'textbox', 'checkbox', 'number',
-      'annotation', 'pass_value', 'fixed_value', 'submission_buttons',
+      'annotation', 'pass_value', 'fixed_value', 'submission_buttons', 'dynamic_form',
     ];
     for (const t of types) {
       const btn = this._makeButton(`+ ${t}`);
@@ -40,6 +48,7 @@ export class FormSection extends CollapsibleSection {
       this._addBar.appendChild(btn);
     }
     this._body.appendChild(this._addBar);
+    this._body.appendChild(this._listEl);
 
     this._dynFormsEl = document.createElement('div');
     this._dynFormsEl.style.cssText =
@@ -81,6 +90,7 @@ export class FormSection extends CollapsibleSection {
       case 'pass_value': return { source_column: '', column: '' };
       case 'fixed_value': return { column: '', value: '' };
       case 'submission_buttons': return { submit: { label: 'Submit' }, next: { label: 'Skip' } };
+      case 'dynamic_form': return { name: '', elements: [] };
       default: return {};
     }
   }
@@ -180,6 +190,14 @@ export class FormSection extends CollapsibleSection {
         this._addField(card, cfg, 'submit_label', 'submit label', '100px');
         break;
       }
+      case 'dynamic_form': {
+        this._addField(card, cfg, 'name', 'form name', '150px');
+        const dfHint = document.createElement('span');
+        dfHint.textContent = 'Referenced via form:<name> in select items. Elements defined in YAML.';
+        dfHint.style.cssText = `color:${COLORS.textSubtle};font-size:10px;`;
+        card.appendChild(dfHint);
+        break;
+      }
     }
   }
 
@@ -228,7 +246,7 @@ export class FormSection extends CollapsibleSection {
     modeLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
     itemsArea.appendChild(modeLabel);
 
-    const modeSel = this._makeSelect(['inline', 'from file', 'range'], 'inline');
+    const modeSel = this._makeSelect(['inline', 'from file', 'range', 'form'], 'inline');
     modeSel.addEventListener('change', () => this._rebuildItemsUI(itemsArea, modeSel.value, cfg));
     itemsArea.appendChild(modeSel);
 
@@ -244,6 +262,8 @@ export class FormSection extends CollapsibleSection {
         this._buildInlineItems(itemsContent, cfg);
       } else if (modeSel.value === 'from file') {
         this._buildFileItems(itemsContent, cfg);
+      } else if (modeSel.value === 'form') {
+        this._buildFormItems(itemsContent, cfg);
       } else {
         this._buildRangeItems(itemsContent, cfg);
       }
@@ -258,7 +278,7 @@ export class FormSection extends CollapsibleSection {
       `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
       `border-radius:4px;color:${COLORS.textPrimary};padding:4px 8px;` +
       `font-size:11px;width:250px;height:60px;resize:vertical;font-family:monospace;`;
-    textarea.placeholder = 'yes\nno\nor: label::value per line';
+    textarea.placeholder = 'yes, no, maybe\nor one per line\nor: label::value';
 
     if (Array.isArray(cfg.items)) {
       textarea.value = cfg.items.map((it: any) => {
@@ -269,53 +289,100 @@ export class FormSection extends CollapsibleSection {
     }
 
     textarea.addEventListener('input', () => {
-      const lines = textarea.value.split('\n').map(l => l.trim()).filter(Boolean);
-      cfg.items = lines.map(line => {
-        if (line.includes('::')) {
-          const [label, value] = line.split('::', 2);
+      const raw = textarea.value;
+      const tokens = raw.includes('\n')
+        ? raw.split('\n')
+        : raw.split(',');
+      cfg.items = tokens.map(t => t.trim()).filter(Boolean).map(token => {
+        if (token.includes('::')) {
+          const [label, value] = token.split('::', 2);
           return { label: label.trim(), value: value.trim() };
         }
-        return line;
+        return token;
       });
       this._emitChanged();
     });
     container.appendChild(textarea);
 
     const hint = document.createElement('span');
-    hint.textContent = 'One item per line. Use label::value for separate labels.';
+    hint.textContent = 'Comma-separated or one per line. Use label::value for separate labels.';
     hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
     container.appendChild(hint);
   }
 
   private _buildFileItems(container: HTMLDivElement, cfg: Record<string, any>): void {
-    const pathInp = this._makeInput('data/categories.csv', '200px');
+    const pathRow = this._makeRow();
+    pathRow.appendChild(this._makeLabel('file path'));
+    const pathInp = this._makeInput('data/categories.csv', '160px');
     if (cfg.items && typeof cfg.items === 'object' && !Array.isArray(cfg.items) && cfg.items.path) {
       pathInp.value = cfg.items.path;
     }
+
+    const valSel = this._makeSelect([], '');
+    valSel.style.width = '150px';
+    valSel.addEventListener('change', () => {
+      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
+      cfg.items.value = valSel.value;
+      this._emitChanged();
+    });
+
+    const lblSel = this._makeSelect(['(none)'], '');
+    lblSel.style.width = '150px';
+    lblSel.addEventListener('change', () => {
+      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
+      cfg.items.label = lblSel.value || undefined;
+      this._emitChanged();
+    });
+
+    const populateSelects = (cols: string[]) => {
+      valSel.innerHTML = '';
+      lblSel.innerHTML = '';
+      const noneOpt = document.createElement('option');
+      noneOpt.value = ''; noneOpt.textContent = '(none)';
+      lblSel.appendChild(noneOpt);
+      for (const col of cols) {
+        const o1 = document.createElement('option');
+        o1.value = col; o1.textContent = col;
+        valSel.appendChild(o1);
+        const o2 = document.createElement('option');
+        o2.value = col; o2.textContent = col;
+        lblSel.appendChild(o2);
+      }
+      if (cfg.items?.value && cols.includes(cfg.items.value)) valSel.value = cfg.items.value;
+      if (cfg.items?.label && cols.includes(cfg.items.label)) lblSel.value = cfg.items.label;
+    };
+
+    const loadCols = (path: string) => {
+      if (path && /\.(csv|parquet|json|jsonl|tsv)$/i.test(path)) {
+        this.columnsRequested.emit({ path, callback: populateSelects });
+      }
+    };
+
     pathInp.addEventListener('input', () => {
       if (!cfg.items || typeof cfg.items !== 'object' || Array.isArray(cfg.items)) cfg.items = {};
       cfg.items.path = pathInp.value;
       this._emitChanged();
+      loadCols(pathInp.value);
     });
-    container.appendChild(this._makeFieldRow('file path', pathInp));
+    const browseBtn = this._makeButton('Browse');
+    browseBtn.addEventListener('click', () => {
+      this.browseRequested.emit({
+        callback: (path: string) => {
+          pathInp.value = path;
+          if (!cfg.items || typeof cfg.items !== 'object' || Array.isArray(cfg.items)) cfg.items = {};
+          cfg.items.path = path;
+          this._emitChanged();
+          loadCols(path);
+        }
+      });
+    });
+    pathRow.append(pathInp, browseBtn);
+    container.appendChild(pathRow);
 
-    const valInp = this._makeInput('column name', '150px');
-    if (cfg.items?.value) valInp.value = cfg.items.value;
-    valInp.addEventListener('input', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.value = valInp.value;
-      this._emitChanged();
-    });
-    container.appendChild(this._makeFieldRow('value col', valInp));
+    container.appendChild(this._makeFieldRow('value col', valSel));
+    container.appendChild(this._makeFieldRow('label col', lblSel));
 
-    const lblInp = this._makeInput('optional label col', '150px');
-    if (cfg.items?.label) lblInp.value = cfg.items.label;
-    lblInp.addEventListener('input', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.label = lblInp.value || undefined;
-      this._emitChanged();
-    });
-    container.appendChild(this._makeFieldRow('label col', lblInp));
+    if (pathInp.value) loadCols(pathInp.value);
 
     const { row: fbRow, input: fbCb } = this._makeCheckbox('filter_box', !!cfg.items?.filter_box);
     fbCb.addEventListener('change', () => {
@@ -399,12 +466,25 @@ export class FormSection extends CollapsibleSection {
     this._emitChanged();
   }
 
+  private _buildFormItems(container: HTMLDivElement, cfg: Record<string, any>): void {
+    const nameInp = this._makeInput('form name', '150px');
+    if (cfg.items && typeof cfg.items === 'string' && cfg.items.startsWith('form:')) {
+      nameInp.value = cfg.items.slice(5);
+    }
+    nameInp.addEventListener('input', () => {
+      cfg.items = nameInp.value ? `form:${nameInp.value}` : '';
+      this._emitChanged();
+    });
+    container.appendChild(this._makeFieldRow('form name', nameInp));
+
+    const hint = document.createElement('span');
+    hint.textContent = 'References a dynamic_form element by name. Add a dynamic_form element to define its contents.';
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:10px;`;
+    container.appendChild(hint);
+  }
+
   private _addDynamicSection(): void {
-    const name = window.prompt('Section name (referenced by select item form:):');
-    if (!name) return;
-    this._dynamicForms[name] = [];
-    this._rebuildDynFormsUI();
-    this._emitChanged();
+    this._addElement('dynamic_form');
   }
 
   private _rebuildDynFormsUI(): void {
@@ -479,6 +559,15 @@ export class FormSection extends CollapsibleSection {
         continue;
       }
 
+      if (elem.type === 'dynamic_form') {
+        if (cfg.name) {
+          if (!this._dynamicForms[cfg.name]) {
+            this._dynamicForms[cfg.name] = cfg.elements || [];
+          }
+        }
+        continue;
+      }
+
       const cleaned: Record<string, any> = {};
       for (const [k, v] of Object.entries(cfg)) {
         if (v !== undefined && v !== null && v !== '' && v !== false) {
@@ -503,6 +592,9 @@ export class FormSection extends CollapsibleSection {
     if (data.dynamic_forms) {
       this._dynamicForms = data.dynamic_forms;
       this._rebuildDynFormsUI();
+      for (const [name, elements] of Object.entries(this._dynamicForms)) {
+        this._addElement('dynamic_form', { name, elements });
+      }
     }
 
     for (const [key, val] of Object.entries(data)) {
