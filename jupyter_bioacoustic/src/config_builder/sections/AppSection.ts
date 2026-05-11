@@ -1,6 +1,7 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
+import { SecretsEditor } from './SecretsEditor';
 
 export class AppSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, string>(this);
@@ -20,6 +21,7 @@ export class AppSection extends CollapsibleSection {
   private _availableCols: string[] = [];
   private _displayChipsArea: HTMLDivElement;
   private _displayPickerArea: HTMLDivElement;
+  private _secrets: SecretsEditor;
 
   constructor() {
     super('Application', 'app');
@@ -93,6 +95,10 @@ export class AppSection extends CollapsibleSection {
       heightRow.append(mini, hInputs[i]);
     }
     this._body.appendChild(heightRow);
+
+    this._secrets = new SecretsEditor(false);
+    this._secrets.changed.connect(() => this._emitChanged());
+    this._body.appendChild(this._secrets.element);
   }
 
   private _makeChipsArea(): HTMLDivElement {
@@ -247,6 +253,9 @@ export class AppSection extends CollapsibleSection {
     const fph = parseInt(this._formPanelHeightInput.value);
     if (!isNaN(fph) && fph !== 140) result.form_panel_height = fph;
 
+    const secrets = this._secrets.getData();
+    if (secrets !== undefined) result.secrets = secrets;
+
     return result;
   }
 
@@ -266,5 +275,6 @@ export class AppSection extends CollapsibleSection {
     if (data.player_height) this._playerHeightInput.value = String(data.player_height);
     if (data.info_card_height) this._infoCardHeightInput.value = String(data.info_card_height);
     if (data.form_panel_height) this._formPanelHeightInput.value = String(data.form_panel_height);
+    if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 }

@@ -1,6 +1,7 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
+import { SecretsEditor } from './SecretsEditor';
 
 export class DataSection extends CollapsibleSection {
   readonly columnsLoaded = new Signal<this, string[]>(this);
@@ -18,7 +19,7 @@ export class DataSection extends CollapsibleSection {
   private _selectedCols: string[] = [];
   private _colPickerArea: HTMLDivElement;
   private _selectedChipsArea: HTMLDivElement;
-  private _secretInput: HTMLInputElement;
+  private _secrets: SecretsEditor;
   private _debounceTimer: any = null;
 
   constructor() {
@@ -83,10 +84,9 @@ export class DataSection extends CollapsibleSection {
     this._durationInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('duration', this._durationInput));
 
-    this._secretInput = this._makeInput('API key or token', '220px');
-    this._secretInput.type = 'password';
-    this._secretInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('secret', this._secretInput));
+    this._secrets = new SecretsEditor(true);
+    this._secrets.changed.connect(() => this._emitChanged());
+    this._body.appendChild(this._secrets.element);
   }
 
   private _scheduleAutoLoad(): void {
@@ -228,7 +228,8 @@ export class DataSection extends CollapsibleSection {
       result.duration = isNaN(num) ? dur : num;
     }
 
-    if (this._secretInput.value) result.secret = this._secretInput.value;
+    const secrets = this._secrets.getData();
+    if (secrets !== undefined) result.secrets = secrets;
 
     return result;
   }
@@ -246,6 +247,6 @@ export class DataSection extends CollapsibleSection {
     if (data.start_time) this._startTimeSelect.value = data.start_time;
     if (data.end_time) this._endTimeSelect.value = data.end_time;
     if (data.duration !== undefined) this._durationInput.value = String(data.duration);
-    if (data.secret) this._secretInput.value = data.secret;
+    if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 }
