@@ -1,10 +1,13 @@
+import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 
 export class AppSection extends CollapsibleSection {
-  private _identColInput: HTMLInputElement;
-  private _displayColsInput: HTMLInputElement;
-  private _dataColsInput: HTMLInputElement;
+  readonly browseRequested = new Signal<this, string>(this);
+
+  private _identColSelect: HTMLSelectElement;
+  private _displayCols: string[] = [];
+  private _dataCols: string[] = [];
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
   private _captureCb: HTMLInputElement;
@@ -15,27 +18,30 @@ export class AppSection extends CollapsibleSection {
   private _infoCardHeightInput: HTMLInputElement;
   private _formPanelHeightInput: HTMLInputElement;
 
-  private _colPickerArea: HTMLDivElement;
+  private _availableCols: string[] = [];
+  private _displayChipsArea: HTMLDivElement;
+  private _displayPickerArea: HTMLDivElement;
+  private _dataChipsArea: HTMLDivElement;
+  private _dataPickerArea: HTMLDivElement;
 
   constructor() {
     super('Application', 'app');
 
-    this._identColInput = this._makeInput('e.g. common_name', '200px');
-    this._identColInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('ident_column', this._identColInput));
+    this._identColSelect = this._makeSelect(['(none)'], '(none)');
+    this._identColSelect.addEventListener('change', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('ident_column', this._identColSelect));
 
-    this._displayColsInput = this._makeInput('col1, col2, ...', '250px');
-    this._displayColsInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('display_columns', this._displayColsInput));
+    this._displayChipsArea = this._makeChipsArea();
+    this._displayPickerArea = this._makePickerArea();
+    this._body.appendChild(this._makeSectionLabel('display_columns'));
+    this._body.appendChild(this._displayChipsArea);
+    this._body.appendChild(this._displayPickerArea);
 
-    this._dataColsInput = this._makeInput('col1, col2, ...', '250px');
-    this._dataColsInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('data_columns', this._dataColsInput));
-
-    this._colPickerArea = document.createElement('div');
-    this._colPickerArea.style.cssText =
-      `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;`;
-    this._body.appendChild(this._colPickerArea);
+    this._dataChipsArea = this._makeChipsArea();
+    this._dataPickerArea = this._makePickerArea();
+    this._body.appendChild(this._makeSectionLabel('data_columns'));
+    this._body.appendChild(this._dataChipsArea);
+    this._body.appendChild(this._dataPickerArea);
 
     const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
     this._duplicateCb = dupCb;
@@ -53,9 +59,16 @@ export class AppSection extends CollapsibleSection {
     this._captureCb.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(capRow);
 
-    this._captureDirInput = this._makeInput('captures/', '200px');
+    const capDirRow = this._makeRow();
+    capDirRow.appendChild(this._makeLabel('capture_dir'));
+    this._captureDirInput = this._makeInput('captures/', '160px');
     this._captureDirInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('capture_dir', this._captureDirInput));
+    const capDirBrowse = this._makeButton('Browse');
+    capDirBrowse.addEventListener('click', () => {
+      this.browseRequested.emit(this._captureDirInput.value || '.');
+    });
+    capDirRow.append(this._captureDirInput, capDirBrowse);
+    this._body.appendChild(capDirRow);
 
     this._widthInput = this._makeInput('100%', '100px');
     this._widthInput.addEventListener('input', () => this._emitChanged());
@@ -91,47 +104,130 @@ export class AppSection extends CollapsibleSection {
     this._body.appendChild(heightRow);
   }
 
+  private _makeChipsArea(): HTMLDivElement {
+    const area = document.createElement('div');
+    area.style.cssText = `display:flex;flex-wrap:wrap;gap:4px;min-height:22px;padding:2px 0;`;
+    return area;
+  }
+
+  private _makePickerArea(): HTMLDivElement {
+    const area = document.createElement('div');
+    area.style.cssText =
+      `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;` +
+      `border-top:1px solid ${COLORS.bgSurface0};margin-top:2px;`;
+    return area;
+  }
+
+  private _makeSectionLabel(text: string): HTMLDivElement {
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;`;
+    const lbl = document.createElement('span');
+    lbl.textContent = text;
+    lbl.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
+    row.append(lbl);
+    row.addEventListener('click', () => this.fieldFocused.emit(text));
+    return row;
+  }
+
+  setCaptureDir(path: string): void {
+    this._captureDirInput.value = path;
+    this._emitChanged();
+  }
+
   setColumnOptions(cols: string[]): void {
-    this._colPickerArea.innerHTML = '';
-    if (cols.length === 0) {
-      this._colPickerArea.style.display = 'none';
+    this._availableCols = cols;
+    this._rebuildIdentSelect();
+    this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
+    this._rebuildPicker(this._dataPickerArea, this._dataCols, 'data');
+  }
+
+  private _rebuildIdentSelect(): void {
+    const current = this._identColSelect.value;
+    this._identColSelect.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = ''; none.textContent = '(none)';
+    this._identColSelect.appendChild(none);
+    for (const col of this._availableCols) {
+      const o = document.createElement('option');
+      o.value = col; o.textContent = col;
+      this._identColSelect.appendChild(o);
+    }
+    if (this._availableCols.includes(current)) this._identColSelect.value = current;
+  }
+
+  private _rebuildPicker(area: HTMLDivElement, selected: string[], which: 'display' | 'data'): void {
+    area.innerHTML = '';
+    if (this._availableCols.length === 0) {
+      area.style.display = 'none';
       return;
     }
-    this._colPickerArea.style.display = 'flex';
+    area.style.display = 'flex';
+    const hint = document.createElement('span');
+    hint.textContent = 'Click to add:';
+    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;width:100%;`;
+    area.appendChild(hint);
 
-    const label = document.createElement('span');
-    label.textContent = 'Available columns:';
-    label.style.cssText = `color:${COLORS.textMuted};font-size:11px;width:100%;margin-bottom:2px;`;
-    this._colPickerArea.appendChild(label);
-
-    for (const col of cols) {
+    for (const col of this._availableCols) {
+      if (selected.includes(col)) continue;
       const chip = document.createElement('button');
-      chip.textContent = col;
+      chip.textContent = `+ ${col}`;
       chip.style.cssText =
-        `background:${COLORS.bgSurface1};border:none;border-radius:12px;` +
-        `color:${COLORS.textPrimary};padding:2px 10px;font-size:11px;cursor:pointer;`;
+        `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:12px;` +
+        `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
       chip.addEventListener('click', () => {
-        const current = this._dataColsInput.value;
-        const cols = current ? current.split(',').map(s => s.trim()).filter(Boolean) : [];
-        if (!cols.includes(col)) {
-          cols.push(col);
-          this._dataColsInput.value = cols.join(', ');
-          this._emitChanged();
-        }
+        selected.push(col);
+        this._rebuildChips(which === 'display' ? this._displayChipsArea : this._dataChipsArea, selected, which);
+        this._rebuildPicker(area, selected, which);
+        this._emitChanged();
       });
-      this._colPickerArea.appendChild(chip);
+      area.appendChild(chip);
+    }
+  }
+
+  private _rebuildChips(area: HTMLDivElement, selected: string[], which: 'display' | 'data'): void {
+    area.innerHTML = '';
+    if (selected.length === 0) {
+      const hint = document.createElement('span');
+      hint.textContent = '(none)';
+      hint.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-style:italic;`;
+      area.appendChild(hint);
+      return;
+    }
+    for (const col of selected) {
+      const chip = document.createElement('span');
+      chip.style.cssText =
+        `display:inline-flex;align-items:center;gap:4px;` +
+        `background:${COLORS.bgSurface1};border-radius:12px;` +
+        `color:${COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;`;
+
+      const name = document.createElement('span');
+      name.textContent = col;
+
+      const rm = document.createElement('button');
+      rm.textContent = '✕';
+      rm.style.cssText =
+        `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
+        `font-size:12px;padding:0 2px;line-height:1;`;
+      rm.addEventListener('click', () => {
+        const idx = selected.indexOf(col);
+        if (idx >= 0) selected.splice(idx, 1);
+        this._rebuildChips(area, selected, which);
+        this._rebuildPicker(which === 'display' ? this._displayPickerArea : this._dataPickerArea, selected, which);
+        this._emitChanged();
+      });
+
+      chip.append(name, rm);
+      area.appendChild(chip);
     }
   }
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
-    if (this._identColInput.value) result.ident_column = this._identColInput.value;
+    const ident = this._identColSelect.value;
+    if (ident) result.ident_column = ident;
 
-    const dc = this._displayColsInput.value;
-    if (dc) result.display_columns = dc.split(',').map(s => s.trim()).filter(Boolean);
-
-    const dataCols = this._dataColsInput.value;
-    if (dataCols) result.data_columns = dataCols.split(',').map(s => s.trim()).filter(Boolean);
+    if (this._displayCols.length > 0) result.display_columns = [...this._displayCols];
+    if (this._dataCols.length > 0) result.data_columns = [...this._dataCols];
 
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
@@ -157,9 +253,17 @@ export class AppSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
-    if (data.ident_column) this._identColInput.value = data.ident_column;
-    if (data.display_columns) this._displayColsInput.value = Array.isArray(data.display_columns) ? data.display_columns.join(', ') : '';
-    if (data.data_columns) this._dataColsInput.value = Array.isArray(data.data_columns) ? data.data_columns.join(', ') : '';
+    if (data.ident_column) this._identColSelect.value = data.ident_column;
+    if (data.display_columns && Array.isArray(data.display_columns)) {
+      this._displayCols = [...data.display_columns];
+      this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
+      this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
+    }
+    if (data.data_columns && Array.isArray(data.data_columns)) {
+      this._dataCols = [...data.data_columns];
+      this._rebuildChips(this._dataChipsArea, this._dataCols, 'data');
+      this._rebuildPicker(this._dataPickerArea, this._dataCols, 'data');
+    }
     if (data.duplicate_entries) this._duplicateCb.checked = true;
     if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
     if (data.capture === false) this._captureCb.checked = false;
