@@ -112,7 +112,8 @@ export function setSectionTarget(section: string, target: string): string {
   return [
     `import json as _j`,
     `_CB_INSTANCE.set_section_target('${escPy(section)}', '${escPy(target)}')`,
-    wp(`_j.dumps({'ok': True})`),
+    `_state = _CB_INSTANCE._get_state()`,
+    wp(`_j.dumps(_state)`),
   ].join('\n');
 }
 
