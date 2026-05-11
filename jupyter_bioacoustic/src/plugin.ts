@@ -550,13 +550,13 @@ function showLauncherDialog(
   const title = document.createElement('div');
   title.textContent = 'Bioacoustic Annotator';
   title.style.cssText =
-    `font-size:16px;font-weight:700;color:${COLORS.textPrimary};text-align:center;`;
+    `font-size:20px;font-weight:700;color:${COLORS.textPrimary};text-align:center;`;
   dialog.appendChild(title);
 
   const subtitle = document.createElement('div');
   subtitle.textContent = 'Choose an option to get started';
   subtitle.style.cssText =
-    `font-size:12px;color:${COLORS.textMuted};text-align:center;margin-top:-8px;`;
+    `font-size:14px;color:${COLORS.textMuted};text-align:center;margin-top:-8px;`;
   dialog.appendChild(subtitle);
 
   const tileRow = document.createElement('div');
@@ -573,17 +573,17 @@ function showLauncherDialog(
 
     const icon = document.createElement('div');
     icon.innerHTML = iconSvg;
-    icon.style.cssText = `width:32px;height:32px;color:${COLORS.blue};`;
-    icon.querySelector('svg')?.setAttribute('width', '32');
-    icon.querySelector('svg')?.setAttribute('height', '32');
+    icon.style.cssText = `width:40px;height:40px;color:${COLORS.blue};`;
+    icon.querySelector('svg')?.setAttribute('width', '40');
+    icon.querySelector('svg')?.setAttribute('height', '40');
 
     const lbl = document.createElement('div');
     lbl.textContent = label;
-    lbl.style.cssText = `font-size:13px;font-weight:600;color:${COLORS.textPrimary};`;
+    lbl.style.cssText = `font-size:15px;font-weight:600;color:${COLORS.textPrimary};`;
 
     const d = document.createElement('div');
     d.textContent = desc;
-    d.style.cssText = `font-size:10px;color:${COLORS.textMuted};text-align:center;line-height:1.3;`;
+    d.style.cssText = `font-size:12px;color:${COLORS.textMuted};text-align:center;line-height:1.4;`;
 
     tile.append(icon, lbl, d);
     tile.addEventListener('click', () => {
