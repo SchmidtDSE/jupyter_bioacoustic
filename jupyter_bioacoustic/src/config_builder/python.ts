@@ -6,13 +6,32 @@ export function extractJson(raw: string): string {
   const start = raw.indexOf(DELIM);
   const end = raw.lastIndexOf(DELIM);
   if (start >= 0 && end > start) {
-    return raw.substring(start + DELIM.length, end).trim();
+    const content = raw.substring(start + DELIM.length, end).trim();
+    if (content) return content;
   }
-  return raw.trim();
+  throw new Error('No valid JSON in kernel output');
 }
 
 function wp(expr: string): string {
   return `print('${DELIM}'); print(${expr}); print('${DELIM}')`;
+}
+
+export function ensureSetup(cwd?: string): string {
+  const lines = [`import json as _j`];
+  if (cwd) {
+    lines.push(`import os as _os`);
+    lines.push(`_os.chdir(_os.path.expanduser('${escPy(cwd)}'))`);
+  }
+  lines.push(
+    `try:`,
+    `    _CB_INSTANCE`,
+    `except NameError:`,
+    `    from jupyter_bioacoustic.config_builder import ConfigBuilder as _CB_cls`,
+    `    _cb = _CB_cls()`,
+    `    _cb.setup()`,
+  );
+  lines.push(wp(`_j.dumps({'ready': True})`));
+  return lines.join('\n');
 }
 
 export function readState(): string {
@@ -32,32 +51,31 @@ export function updateSection(section: string, data: Record<string, any>): strin
 }
 
 export function updateConfigFromYaml(yamlStr: string, configType: string): string {
+  const yamlJson = JSON.stringify(yamlStr);
   return [
     `import json as _j`,
-    `_ok = _CB_INSTANCE.update_config_from_yaml('''${yamlStr.replace(/'/g, "\\'")}''', '${escPy(configType)}')`,
+    `_ok = _CB_INSTANCE.update_config_from_yaml(_j.loads(${JSON.stringify(yamlJson)}), '${escPy(configType)}')`,
     `_state = _CB_INSTANCE._get_state()`,
     `_state['update_ok'] = _ok`,
     wp(`_j.dumps(_state)`),
   ].join('\n');
 }
 
-export function saveConfig(path: string, configType: string): string {
+export function saveAll(): string {
   return [
     `import json as _j`,
-    `_path = _CB_INSTANCE.save('${escPy(path)}', '${escPy(configType)}')`,
+    `_paths = _CB_INSTANCE.save_all()`,
     `_state = _CB_INSTANCE._get_state()`,
-    `_state['saved_to'] = _path`,
+    `_state['saved_paths'] = _paths`,
     wp(`_j.dumps(_state)`),
   ].join('\n');
 }
 
-export function getDefaultSavePath(): string {
+export function saveSingleFile(configType: string): string {
   return [
-    `import os as _os, re as _re, json as _j`,
-    `_name = _CB_INSTANCE._project.get('project_name', 'config')`,
-    `_slug = _re.sub(r'[^a-z0-9]+', '_', str(_name).lower()).strip('_')`,
-    `_def = _os.path.join(_CB_INSTANCE._path, _slug + '.yaml')`,
-    wp(`_j.dumps({'path': _def})`),
+    `import json as _j`,
+    `_path = _CB_INSTANCE.save_single('${escPy(configType)}')`,
+    wp(`_j.dumps({'saved_to': _path})`),
   ].join('\n');
 }
 
