@@ -666,12 +666,10 @@ class ConfigBuilder:
         for f in sorted(unreferenced_forms):
             warnings.append(f'Dynamic form "{f}" is defined but never referenced')
 
-        if not fc.get('submission_buttons'):
-            warnings.append('No submission_buttons configured (defaults will be used)')
-
         has_form = bool(fc.get('form'))
         has_legacy = any(k in fc for k in ('select', 'textbox', 'checkbox', 'number'))
-        if not has_form and not has_legacy:
+        has_annotation = 'annotation' in fc
+        if not has_form and not has_legacy and not has_annotation:
             warnings.append('No form input elements configured')
 
         return {
