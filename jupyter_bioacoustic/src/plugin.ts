@@ -506,12 +506,24 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
       }
     });
 
+    app.commands.addCommand('bioacoustic:launcher-dialog', {
+      label: 'Bioacoustic Annotator',
+      icon: bioacousticIcon,
+      execute: () => {
+        showLauncherDialog(
+          () => app.commands.execute('bioacoustic:open-project'),
+          () => app.commands.execute('bioacoustic:open-config-builder'),
+        );
+      }
+    });
+
     palette.addItem({ command: 'bioacoustic:open', category: 'Bioacoustic' });
     palette.addItem({ command: 'bioacoustic:open-project', category: 'Bioacoustic' });
+    palette.addItem({ command: 'bioacoustic:launcher-dialog', category: 'Bioacoustic' });
 
     if (launcher) {
       launcher.add({
-        command: 'bioacoustic:open-project',
+        command: 'bioacoustic:launcher-dialog',
         category: 'Other',
       });
     }
@@ -519,5 +531,97 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
     console.log('jupyter-bioacoustic activated');
   }
 };
+
+function showLauncherDialog(
+  onAnnotator: () => void,
+  onConfigBuilder: () => void,
+): void {
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    `position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;` +
+    `background:rgba(0,0,0,0.55);`;
+
+  const dialog = document.createElement('div');
+  dialog.style.cssText =
+    `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};border-radius:12px;` +
+    `padding:24px 28px;display:flex;flex-direction:column;gap:16px;min-width:340px;` +
+    `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);`;
+
+  const title = document.createElement('div');
+  title.textContent = 'Bioacoustic Annotator';
+  title.style.cssText =
+    `font-size:16px;font-weight:700;color:${COLORS.textPrimary};text-align:center;`;
+  dialog.appendChild(title);
+
+  const subtitle = document.createElement('div');
+  subtitle.textContent = 'Choose an option to get started';
+  subtitle.style.cssText =
+    `font-size:12px;color:${COLORS.textMuted};text-align:center;margin-top:-8px;`;
+  dialog.appendChild(subtitle);
+
+  const tileRow = document.createElement('div');
+  tileRow.style.cssText = `display:flex;gap:12px;justify-content:center;`;
+
+  const makeTile = (label: string, desc: string, iconSvg: string, onClick: () => void) => {
+    const tile = document.createElement('button');
+    tile.style.cssText =
+      `background:${COLORS.bgMantle};border:1px solid ${COLORS.bgSurface1};border-radius:8px;` +
+      `padding:16px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;` +
+      `cursor:pointer;flex:1;min-width:130px;transition:border-color 0.15s;`;
+    tile.addEventListener('mouseenter', () => { tile.style.borderColor = COLORS.blue; });
+    tile.addEventListener('mouseleave', () => { tile.style.borderColor = COLORS.bgSurface1; });
+
+    const icon = document.createElement('div');
+    icon.innerHTML = iconSvg;
+    icon.style.cssText = `width:32px;height:32px;color:${COLORS.blue};`;
+    icon.querySelector('svg')?.setAttribute('width', '32');
+    icon.querySelector('svg')?.setAttribute('height', '32');
+
+    const lbl = document.createElement('div');
+    lbl.textContent = label;
+    lbl.style.cssText = `font-size:13px;font-weight:600;color:${COLORS.textPrimary};`;
+
+    const d = document.createElement('div');
+    d.textContent = desc;
+    d.style.cssText = `font-size:10px;color:${COLORS.textMuted};text-align:center;line-height:1.3;`;
+
+    tile.append(icon, lbl, d);
+    tile.addEventListener('click', () => {
+      overlay.remove();
+      onClick();
+    });
+    return tile;
+  };
+
+  tileRow.appendChild(makeTile(
+    'Annotator',
+    'Open a project file to review and annotate clips',
+    bioacousticIconSvg,
+    onAnnotator,
+  ));
+
+  const builderSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/>
+    <line x1="16" y1="17" x2="8" y2="17"/>
+    <line x1="10" y1="9" x2="8" y2="9"/>
+  </svg>`;
+
+  tileRow.appendChild(makeTile(
+    'Config Builder',
+    'Create or edit configuration files with a GUI',
+    builderSvg,
+    onConfigBuilder,
+  ));
+
+  dialog.appendChild(tileRow);
+
+  overlay.appendChild(dialog);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
 
 export default bioacousticPlugin;
