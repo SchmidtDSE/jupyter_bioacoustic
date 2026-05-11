@@ -4,6 +4,8 @@ import { CollapsibleSection } from './CollapsibleSection';
 
 export class ProjectSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, { field: string; current: string }>(this);
+  readonly loadConfigRequested = new Signal<this, string>(this);
+  readonly loadBrowseRequested = new Signal<this, void>(this);
 
   private _nameInput: HTMLInputElement;
   private _saveBtnCb: HTMLInputElement;
@@ -19,9 +21,38 @@ export class ProjectSection extends CollapsibleSection {
   private _projectBrowseBtn: HTMLButtonElement;
   private _configBrowseBtn: HTMLButtonElement;
   private _formBrowseBtn: HTMLButtonElement;
+  private _loadPathInput: HTMLInputElement;
 
   constructor() {
-    super('Project', 'project', true);
+    super('Project & File Paths', 'project', true);
+
+    const loadLabel = document.createElement('div');
+    loadLabel.textContent = 'Load existing config';
+    loadLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
+    this._body.appendChild(loadLabel);
+
+    const loadRow = document.createElement('div');
+    loadRow.style.cssText = `display:flex;align-items:center;gap:6px;margin-bottom:6px;`;
+    this._loadPathInput = this._makeInput('config/projects/my_project.yaml', '220px');
+    const loadBrowse = this._makeButton('Browse');
+    loadBrowse.addEventListener('click', () => this.loadBrowseRequested.emit());
+    const loadBtn = this._makeButton('Load', true);
+    loadBtn.addEventListener('click', () => {
+      const p = this._loadPathInput.value.trim();
+      if (p) this.loadConfigRequested.emit(p);
+    });
+    this._loadPathInput.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        const p = this._loadPathInput.value.trim();
+        if (p) this.loadConfigRequested.emit(p);
+      }
+    });
+    loadRow.append(this._loadPathInput, loadBrowse, loadBtn);
+    this._body.appendChild(loadRow);
+
+    const loadSep = document.createElement('div');
+    loadSep.style.cssText = `height:1px;background:${COLORS.bgSurface1};margin:6px 0;`;
+    this._body.appendChild(loadSep);
 
     this._nameInput = this._makeInput('e.g. Bird Review', '250px');
     this._nameInput.addEventListener('input', () => {
@@ -147,6 +178,30 @@ export class ProjectSection extends CollapsibleSection {
   setFormPath(path: string): void {
     this._formPathInput.value = path;
     this._emitChanged();
+  }
+
+  setLoadPath(path: string): void {
+    this._loadPathInput.value = path;
+  }
+
+  setCheckedStates(project: boolean, config: boolean, form: boolean): void {
+    this._projectCb.checked = project;
+    this._projectPathInput.disabled = !project;
+    this._projectBrowseBtn.disabled = !project;
+    this._projectPathInput.style.opacity = project ? '1' : '0.4';
+    this._projectBrowseBtn.style.opacity = project ? '1' : '0.4';
+
+    this._configCb.checked = config;
+    this._configPathInput.disabled = !config;
+    this._configBrowseBtn.disabled = !config;
+    this._configPathInput.style.opacity = config ? '1' : '0.4';
+    this._configBrowseBtn.style.opacity = config ? '1' : '0.4';
+
+    this._formCb.checked = form;
+    this._formPathInput.disabled = !form;
+    this._formBrowseBtn.disabled = !form;
+    this._formPathInput.style.opacity = form ? '1' : '0.4';
+    this._formBrowseBtn.style.opacity = form ? '1' : '0.4';
   }
 
   getData(): Record<string, any> {
