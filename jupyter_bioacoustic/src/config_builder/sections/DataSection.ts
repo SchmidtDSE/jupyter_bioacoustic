@@ -18,6 +18,9 @@ export class DataSection extends CollapsibleSection {
   private _selectedCols: string[] = [];
   private _colPickerArea: HTMLDivElement;
   private _selectedChipsArea: HTMLDivElement;
+  private _dataColsCols: string[] = [];
+  private _dataColsChipsArea: HTMLDivElement;
+  private _dataColsPickerArea: HTMLDivElement;
   private _debounceTimer: any = null;
 
   constructor() {
@@ -81,6 +84,31 @@ export class DataSection extends CollapsibleSection {
     this._durationInput = this._makeInput('duration or number', '150px');
     this._durationInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('duration', this._durationInput));
+
+    const dcLabel = document.createElement('div');
+    dcLabel.style.cssText = `display:flex;align-items:center;gap:6px;cursor:pointer;`;
+    const dcLabelText = document.createElement('span');
+    dcLabelText.textContent = 'data_columns';
+    dcLabelText.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
+    dcLabel.append(dcLabelText);
+    dcLabel.addEventListener('click', () => this.fieldFocused.emit('data_columns'));
+
+    this._dataColsChipsArea = document.createElement('div');
+    this._dataColsChipsArea.style.cssText =
+      `display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:2px 0;`;
+
+    this._dataColsPickerArea = document.createElement('div');
+    this._dataColsPickerArea.style.cssText =
+      `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;` +
+      `border-top:1px solid ${COLORS.bgSurface0};margin-top:2px;`;
+
+    const dcWrap = document.createElement('div');
+    dcWrap.style.cssText =
+      `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
+      `background:${COLORS.bgSurface0};border-radius:6px;`;
+    dcWrap.append(dcLabel, this._dataColsChipsArea, this._dataColsPickerArea);
+    this._body.appendChild(dcWrap);
+    this._rebuildDataColsChips();
   }
 
   private _scheduleAutoLoad(): void {
@@ -98,6 +126,7 @@ export class DataSection extends CollapsibleSection {
     this.columnsLoaded.emit(cols);
     this._rebuildColPicker();
     this._rebuildTimeSelects();
+    this._rebuildDataColsPicker();
   }
 
   getDetectedColumns(): string[] {
@@ -222,6 +251,8 @@ export class DataSection extends CollapsibleSection {
       result.duration = isNaN(num) ? dur : num;
     }
 
+    if (this._dataColsCols.length > 0) result.data_columns = [...this._dataColsCols];
+
     return result;
   }
 
@@ -238,5 +269,72 @@ export class DataSection extends CollapsibleSection {
     if (data.start_time) this._startTimeSelect.value = data.start_time;
     if (data.end_time) this._endTimeSelect.value = data.end_time;
     if (data.duration !== undefined) this._durationInput.value = String(data.duration);
+    if (data.data_columns && Array.isArray(data.data_columns)) {
+      this._dataColsCols = [...data.data_columns];
+      this._rebuildDataColsChips();
+      this._rebuildDataColsPicker();
+    }
+  }
+
+  private _rebuildDataColsPicker(): void {
+    this._dataColsPickerArea.innerHTML = '';
+    if (this._detectedCols.length === 0) {
+      this._dataColsPickerArea.style.display = 'none';
+      return;
+    }
+    this._dataColsPickerArea.style.display = 'flex';
+    const hint = document.createElement('span');
+    hint.textContent = 'Click to add:';
+    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;width:100%;`;
+    this._dataColsPickerArea.appendChild(hint);
+
+    for (const col of this._detectedCols) {
+      if (this._dataColsCols.includes(col)) continue;
+      const chip = document.createElement('button');
+      chip.textContent = `+ ${col}`;
+      chip.style.cssText =
+        `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:12px;` +
+        `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
+      chip.addEventListener('click', () => {
+        this._dataColsCols.push(col);
+        this._rebuildDataColsPicker();
+        this._rebuildDataColsChips();
+        this._emitChanged();
+      });
+      this._dataColsPickerArea.appendChild(chip);
+    }
+  }
+
+  private _rebuildDataColsChips(): void {
+    this._dataColsChipsArea.innerHTML = '';
+    if (this._dataColsCols.length === 0) {
+      const hint = document.createElement('span');
+      hint.textContent = 'all columns (none selected)';
+      hint.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-style:italic;`;
+      this._dataColsChipsArea.appendChild(hint);
+      return;
+    }
+    for (const col of this._dataColsCols) {
+      const chip = document.createElement('span');
+      chip.style.cssText =
+        `display:inline-flex;align-items:center;gap:4px;` +
+        `background:${COLORS.bgSurface1};border-radius:12px;` +
+        `color:${COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;`;
+      const name = document.createElement('span');
+      name.textContent = col;
+      const rm = document.createElement('button');
+      rm.textContent = '\u2715';
+      rm.style.cssText =
+        `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
+        `font-size:12px;padding:0 2px;line-height:1;`;
+      rm.addEventListener('click', () => {
+        this._dataColsCols = this._dataColsCols.filter(c => c !== col);
+        this._rebuildDataColsPicker();
+        this._rebuildDataColsChips();
+        this._emitChanged();
+      });
+      chip.append(name, rm);
+      this._dataColsChipsArea.appendChild(chip);
+    }
   }
 }
