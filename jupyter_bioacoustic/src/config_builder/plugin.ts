@@ -67,6 +67,11 @@ class ConfigBuilderWidget extends Widget {
       `display:flex;gap:8px;padding:6px 12px;` +
       `background:${COLORS.bgMantle};border-top:1px solid ${COLORS.bgSurface0};flex-shrink:0;`;
 
+    const validateBtn = document.createElement('button');
+    validateBtn.textContent = 'Validate';
+    validateBtn.style.cssText = btnStyle() + `font-size:11px;`;
+    validateBtn.addEventListener('click', () => void this._panel.validate());
+
     const saveBtn = document.createElement('button');
     saveBtn.textContent = 'Save Configuration Files';
     saveBtn.style.cssText = btnStyle() + `font-size:11px;`;
@@ -80,7 +85,7 @@ class ConfigBuilderWidget extends Widget {
     dismissBtn.style.cssText = btnStyle() + `font-size:11px;`;
     dismissBtn.addEventListener('click', () => this._onDismiss());
 
-    bottomBar.append(saveBtn, spacer, dismissBtn);
+    bottomBar.append(validateBtn, saveBtn, spacer, dismissBtn);
 
     this.node.append(header, this._panel.element, bottomBar);
   }
