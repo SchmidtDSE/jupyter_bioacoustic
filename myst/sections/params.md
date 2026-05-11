@@ -103,45 +103,64 @@ This requires **ffmpeg** (via `pydub`). Without ffmpeg, it falls back to downloa
 
 ## Forms
 
-The `form_config` parameter drives the entire form layout. It can be a Python dict, a YAML file path, or embedded in the main config file.
+The `form_config` parameter drives the entire form layout. It can be a Python dict, a YAML file path, or embedded in the main config file. Input elements are placed inside a `form:` list, while structural elements remain at the top level.
 
 ### Elements
+
+**Top-level elements**
 
 | Element | Description | Key fields |
 |---|---|---|
 | `title` | Section header. String or `{value, progress_tracker}` | `value`, `progress_tracker` |
-| `select` | Dropdown. Items from inline list, file, or range. Supports `form:` for conditional sections, `filter_box`, `custom_value`, `not_available` | `label`, `column`, `required`, `items`, `width` |
-| `textbox` | Text input. `multiline: true` for textarea | `label`, `column`, `default`, `multiline` |
-| `checkbox` | Boolean. Custom `yes_value`/`no_value` | `label`, `column`, `default` |
-| `number` | Numeric input | `label`, `column`, `min`, `max`, `step` |
-| `annotation` | Spectrogram interaction tools | `start_time`, `end_time`, `min_frequency`, `max_frequency`, `tools`, `form` |
 | `pass_value` | Copies a column from input to output | `source_column`, `column` |
 | `fixed_value` | Constant value in every output row | `column`, `value` |
-| `progress_tracker` | Session and total counts | (standalone or in `title`) |
+| `annotation` | Spectrogram interaction tools | `start_time`, `end_time`, `min_frequency`, `max_frequency`, `tools`, `form` |
 | `submission_buttons` | Submit, Skip, Prev buttons | `submit`, `next`, `previous` |
+| `dynamic_forms` | List of conditional form sections | `- name: [elements]` |
+
+**Input elements** (inside `form:` list)
+
+| Element | Description | Key fields |
+|---|---|---|
+| `select` | Dropdown. Items from inline list, file, or range. Supports `form:` for conditional sections, `filter_box`, `custom_value`, `not_available` | `label`, `column`, `required`, `items`, `width` |
+| `textbox` | Text input. `multiline: true` for textarea | `label`, `column`, `default`, `multiline` |
+| `checkbox` | Boolean. `checked_value`/`unchecked_value` for custom values. `checked_form`/`unchecked_form` for conditional sections | `label`, `column`, `checked_value`, `unchecked_value`, `checked_form`, `unchecked_form` |
+| `number` | Numeric input | `label`, `column`, `min`, `max`, `step` |
+| `break` | Visual break | (no fields) |
+| `line` | Horizontal line | (no fields) |
+| `text` | Static text | `value` |
 
 ### Conditional sections (`dynamic_forms`)
 
-Any select item can include `form: section_name` to show/hide a named form section:
+Select items and checkboxes can trigger conditional form sections. `dynamic_forms` is a list of named form sections:
 
 ```yaml
-select:
-  label: Is Valid
-  column: is_valid
-  items:
-    - label: 'yes'
-      value: 'yes'
-    - label: 'no'
-      value: 'no'
-      form: correction
-dynamic_forms:
-  correction:
+form:
     - select:
-        label: corrected species
-        column: corrected_name
-        items:
-          path: categories.csv
-          value: common_name
+          label: Is Valid
+          column: is_valid
+          items:
+              - label: 'yes'
+                value: 'yes'
+              - label: 'no'
+                value: 'no'
+                form: correction
+    - checkbox:
+          label: needs review
+          column: needs_review
+          checked_form: review_form
+dynamic_forms:
+    - correction:
+          - select:
+                label: corrected species
+                column: corrected_name
+                items:
+                    path: categories.csv
+                    value: common_name
+    - review_form:
+          - textbox:
+                label: reason
+                column: review_reason
 ```
 
 ### Annotation tools
