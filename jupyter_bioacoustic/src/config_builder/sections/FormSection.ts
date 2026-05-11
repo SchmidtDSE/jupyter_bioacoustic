@@ -3,7 +3,8 @@ import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 
 type ElementType = 'title' | 'select' | 'textbox' | 'checkbox' | 'number' |
-  'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' | 'dynamic_form';
+  'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' |
+  'break' | 'line' | 'text';
 
 interface FormElement {
   type: ElementType;
@@ -11,15 +12,22 @@ interface FormElement {
   el: HTMLDivElement;
 }
 
+interface DynForm {
+  name: string;
+  elements: FormElement[];
+  el: HTMLDivElement;
+  listEl: HTMLDivElement;
+}
+
 export class FormSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, { callback: (path: string) => void }>(this);
   readonly columnsRequested = new Signal<this, { path: string; callback: (cols: string[]) => void }>(this);
 
   private _elements: FormElement[] = [];
-  private _dynamicForms: Record<string, any[]> = {};
+  private _dynForms: DynForm[] = [];
   private _listEl: HTMLDivElement;
   private _addBar: HTMLDivElement;
-  private _dynFormsEl: HTMLDivElement;
+  private _dynFormsContainer: HTMLDivElement;
 
   constructor() {
     super('Form', 'form');
@@ -29,53 +37,64 @@ export class FormSection extends CollapsibleSection {
     hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;font-style:italic;margin-bottom:4px;`;
     this._body.appendChild(hint);
 
-    this._addBar = document.createElement('div');
-    this._addBar.style.cssText =
-      `display:flex;gap:4px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
+    this._addBar = this._makeAddBar();
+    this._body.appendChild(this._addBar);
 
     this._listEl = document.createElement('div');
     this._listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
-
-    const types: ElementType[] = [
-      'title', 'select', 'textbox', 'checkbox', 'number',
-      'annotation', 'pass_value', 'fixed_value', 'submission_buttons', 'dynamic_form',
-    ];
-    for (const t of types) {
-      const btn = this._makeButton(`+ ${t}`);
-      btn.style.fontSize = '11px';
-      btn.style.padding = '3px 8px';
-      btn.addEventListener('click', () => this._addElement(t));
-      this._addBar.appendChild(btn);
-    }
-    this._body.appendChild(this._addBar);
     this._body.appendChild(this._listEl);
 
-    this._dynFormsEl = document.createElement('div');
-    this._dynFormsEl.style.cssText =
+    this._dynFormsContainer = document.createElement('div');
+    this._dynFormsContainer.style.cssText =
       `display:flex;flex-direction:column;gap:6px;` +
       `border-top:1px solid ${COLORS.bgSurface0};padding-top:8px;margin-top:4px;`;
 
+    const dynHeader = this._makeRow();
     const dynLabel = document.createElement('div');
     dynLabel.textContent = 'Dynamic Forms';
     dynLabel.style.cssText =
       `font-size:12px;font-weight:700;color:${COLORS.textMuted};letter-spacing:0.5px;`;
-
-    const addDynBtn = this._makeButton('+ Section');
+    const addDynBtn = this._makeButton('+ Dynamic Form');
     addDynBtn.style.fontSize = '11px';
-    addDynBtn.addEventListener('click', () => this._addDynamicSection());
-
-    const dynHeader = this._makeRow();
+    addDynBtn.addEventListener('click', () => this._promptAddDynForm());
     dynHeader.append(dynLabel, addDynBtn);
-    this._dynFormsEl.appendChild(dynHeader);
-    this._body.appendChild(this._dynFormsEl);
+    this._dynFormsContainer.appendChild(dynHeader);
+    this._body.appendChild(this._dynFormsContainer);
   }
 
-  private _addElement(type: ElementType, config?: Record<string, any>): void {
+  private _makeAddBar(onAdd?: (type: ElementType) => void): HTMLDivElement {
+    const bar = document.createElement('div');
+    bar.style.cssText =
+      `display:flex;gap:4px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
+    const inputTypes: ElementType[] = [
+      'select', 'textbox', 'checkbox', 'number',
+      'annotation', 'pass_value', 'fixed_value',
+      'title', 'submission_buttons',
+      'break', 'line', 'text',
+    ];
+    for (const t of inputTypes) {
+      const btn = this._makeButton(`+ ${t}`);
+      btn.style.fontSize = '11px';
+      btn.style.padding = '3px 8px';
+      btn.addEventListener('click', () => {
+        if (onAdd) {
+          onAdd(t);
+        } else {
+          this._addElement(t);
+        }
+      });
+      bar.appendChild(btn);
+    }
+    return bar;
+  }
+
+  private _addElement(type: ElementType, config?: Record<string, any>, target?: { elements: FormElement[]; listEl: HTMLDivElement }): void {
     const cfg = config || this._defaultConfig(type);
-    const card = this._buildElementCard(type, cfg);
+    const tgt = target || { elements: this._elements, listEl: this._listEl };
+    const card = this._buildElementCard(type, cfg, tgt);
     const fe: FormElement = { type, config: cfg, el: card };
-    this._elements.push(fe);
-    this._listEl.appendChild(card);
+    tgt.elements.push(fe);
+    tgt.listEl.appendChild(card);
     this._emitChanged();
   }
 
@@ -90,12 +109,14 @@ export class FormSection extends CollapsibleSection {
       case 'pass_value': return { source_column: '', column: '' };
       case 'fixed_value': return { column: '', value: '' };
       case 'submission_buttons': return { submit: { label: 'Submit' }, next: { label: 'Skip' } };
-      case 'dynamic_form': return { name: '', elements: [] };
+      case 'break': return {};
+      case 'line': return {};
+      case 'text': return { value: '' };
       default: return {};
     }
   }
 
-  private _buildElementCard(type: ElementType, cfg: Record<string, any>): HTMLDivElement {
+  private _buildElementCard(type: ElementType, cfg: Record<string, any>, target: { elements: FormElement[]; listEl: HTMLDivElement }): HTMLDivElement {
     const card = document.createElement('div');
     card.style.cssText =
       `background:${COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
@@ -109,15 +130,15 @@ export class FormSection extends CollapsibleSection {
 
     const moveUp = this._makeButton('▲');
     moveUp.style.cssText += `font-size:10px;padding:2px 6px;`;
-    moveUp.addEventListener('click', () => this._moveElement(card, -1));
+    moveUp.addEventListener('click', () => this._moveElement(card, -1, target));
 
     const moveDown = this._makeButton('▼');
     moveDown.style.cssText += `font-size:10px;padding:2px 6px;`;
-    moveDown.addEventListener('click', () => this._moveElement(card, 1));
+    moveDown.addEventListener('click', () => this._moveElement(card, 1, target));
 
     const removeBtn = this._makeButton('✕');
     removeBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
-    removeBtn.addEventListener('click', () => this._removeElement(card));
+    removeBtn.addEventListener('click', () => this._removeElement(card, target));
 
     header.append(typeLabel, moveUp, moveDown, removeBtn);
     card.appendChild(header);
@@ -146,8 +167,10 @@ export class FormSection extends CollapsibleSection {
       case 'checkbox':
         this._addField(card, cfg, 'label', 'label', '150px');
         this._addField(card, cfg, 'column', 'column', '150px');
-        this._addField(card, cfg, 'yes_value', 'yes_value', '100px');
-        this._addField(card, cfg, 'no_value', 'no_value', '100px');
+        this._addField(card, cfg, 'checked_value', 'checked_value', '100px');
+        this._addField(card, cfg, 'unchecked_value', 'unchecked_value', '100px');
+        this._addField(card, cfg, 'checked_form', 'checked_form', '150px');
+        this._addField(card, cfg, 'unchecked_form', 'unchecked_form', '150px');
         break;
       case 'number':
         this._addField(card, cfg, 'label', 'label', '150px');
@@ -168,11 +191,11 @@ export class FormSection extends CollapsibleSection {
           this._emitChanged();
         });
         card.appendChild(this._makeFieldRow('tools', toolsSel));
-
         this._addField(card, cfg, 'start_time_col', 'start_time col', '120px');
         this._addField(card, cfg, 'end_time_col', 'end_time col', '120px');
         this._addField(card, cfg, 'min_freq_col', 'min_freq col', '120px');
         this._addField(card, cfg, 'max_freq_col', 'max_freq col', '120px');
+        this._addField(card, cfg, 'form', 'form (dynamic)', '150px');
         break;
       }
       case 'pass_value':
@@ -190,14 +213,12 @@ export class FormSection extends CollapsibleSection {
         this._addField(card, cfg, 'submit_label', 'submit label', '100px');
         break;
       }
-      case 'dynamic_form': {
-        this._addField(card, cfg, 'name', 'form name', '150px');
-        const dfHint = document.createElement('span');
-        dfHint.textContent = 'Referenced via form:<name> in select items. Elements defined in YAML.';
-        dfHint.style.cssText = `color:${COLORS.textSubtle};font-size:10px;`;
-        card.appendChild(dfHint);
+      case 'text':
+        this._addField(card, cfg, 'value', 'text', '250px');
         break;
-      }
+      case 'break':
+      case 'line':
+        break;
     }
   }
 
@@ -208,8 +229,7 @@ export class FormSection extends CollapsibleSection {
       cfg[key] = inp.value;
       this._emitChanged();
     });
-    const row = this._makeFieldRow(label, inp);
-    card.appendChild(row);
+    card.appendChild(this._makeFieldRow(label, inp));
   }
 
   private _addNumField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string, width: string): void {
@@ -222,8 +242,7 @@ export class FormSection extends CollapsibleSection {
       cfg[key] = isNaN(v) ? undefined : v;
       this._emitChanged();
     });
-    const row = this._makeFieldRow(label, inp);
-    card.appendChild(row);
+    card.appendChild(this._makeFieldRow(label, inp));
   }
 
   private _addCheckboxField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string): void {
@@ -246,68 +265,186 @@ export class FormSection extends CollapsibleSection {
     modeLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
     itemsArea.appendChild(modeLabel);
 
-    const modeSel = this._makeSelect(['inline', 'from file', 'range', 'form'], 'inline');
-    modeSel.addEventListener('change', () => this._rebuildItemsUI(itemsArea, modeSel.value, cfg));
+    const modeSel = this._makeSelect(['add items', 'from file', 'paste values', 'range'], 'add items');
     itemsArea.appendChild(modeSel);
 
     const itemsContent = document.createElement('div');
     itemsContent.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
     itemsArea.appendChild(itemsContent);
 
-    this._buildInlineItems(itemsContent, cfg);
+    const detectMode = (): string => {
+      const items = cfg.items;
+      if (items && typeof items === 'object' && !Array.isArray(items)) {
+        if ('path' in items) return 'from file';
+        if ('max' in items) return 'range';
+      }
+      return 'add items';
+    };
+    const mode = detectMode();
+    modeSel.value = mode;
 
-    modeSel.addEventListener('change', () => {
+    const buildForMode = (m: string) => {
       itemsContent.innerHTML = '';
-      if (modeSel.value === 'inline') {
-        this._buildInlineItems(itemsContent, cfg);
-      } else if (modeSel.value === 'from file') {
+      if (m === 'add items') {
+        this._buildAddItems(itemsContent, cfg);
+      } else if (m === 'from file') {
         this._buildFileItems(itemsContent, cfg);
-      } else if (modeSel.value === 'form') {
-        this._buildFormItems(itemsContent, cfg);
+      } else if (m === 'paste values') {
+        this._buildPasteValues(itemsContent, cfg);
       } else {
         this._buildRangeItems(itemsContent, cfg);
       }
-    });
+    };
+    buildForMode(mode);
 
+    modeSel.addEventListener('change', () => buildForMode(modeSel.value));
     card.appendChild(itemsArea);
   }
 
-  private _buildInlineItems(container: HTMLDivElement, cfg: Record<string, any>): void {
+  private _buildAddItems(container: HTMLDivElement, cfg: Record<string, any>): void {
+    if (!Array.isArray(cfg.items)) cfg.items = [];
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = `display:flex;flex-direction:column;gap:2px;max-height:150px;overflow-y:auto;`;
+
+    const renderList = () => {
+      listEl.innerHTML = '';
+      if (!Array.isArray(cfg.items) || cfg.items.length === 0) {
+        const empty = document.createElement('span');
+        empty.textContent = '(no items)';
+        empty.style.cssText = `color:${COLORS.textMuted};font-size:10px;font-style:italic;`;
+        listEl.appendChild(empty);
+        return;
+      }
+      for (let i = 0; i < cfg.items.length; i++) {
+        const it = cfg.items[i];
+        const row = document.createElement('div');
+        row.style.cssText = `display:flex;align-items:center;gap:4px;font-size:11px;`;
+
+        const txt = document.createElement('span');
+        txt.style.cssText = `flex:1;color:${COLORS.textPrimary};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+        if (typeof it === 'string') {
+          txt.textContent = it;
+        } else if (it && typeof it === 'object') {
+          const parts = [];
+          if (it.label) parts.push(it.label);
+          if (it.value && it.value !== it.label) parts.push(`= ${it.value}`);
+          if (it.form) parts.push(`→ ${it.form}`);
+          txt.textContent = parts.join(' ');
+        }
+
+        const rm = this._makeButton('✕');
+        rm.style.cssText += `font-size:9px;padding:1px 4px;color:${COLORS.red};`;
+        rm.addEventListener('click', () => {
+          cfg.items.splice(i, 1);
+          renderList();
+          this._emitChanged();
+        });
+
+        row.append(txt, rm);
+        listEl.appendChild(row);
+      }
+    };
+    renderList();
+    container.appendChild(listEl);
+
+    const addRow = document.createElement('div');
+    addRow.style.cssText = `display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px;`;
+
+    const labelInp = this._makeInput('label', '90px');
+    const valueInp = this._makeInput('value', '90px');
+    const formInp = this._makeInput('form (opt)', '90px');
+
+    const addBtn = this._makeButton('+ Add');
+    addBtn.style.fontSize = '11px';
+    addBtn.addEventListener('click', () => {
+      const label = labelInp.value.trim();
+      const value = valueInp.value.trim();
+      const form = formInp.value.trim();
+      if (!label && !value) return;
+      if (!Array.isArray(cfg.items)) cfg.items = [];
+      const item: Record<string, any> = {};
+      if (label) item.label = label;
+      if (value) item.value = value;
+      else if (label) item.value = label;
+      if (form) item.form = form;
+      if (!item.label && item.value && !form) {
+        cfg.items.push(item.value);
+      } else {
+        if (!item.label) item.label = item.value;
+        cfg.items.push(item);
+      }
+      labelInp.value = '';
+      valueInp.value = '';
+      formInp.value = '';
+      renderList();
+      this._emitChanged();
+    });
+
+    addRow.append(labelInp, valueInp, formInp, addBtn);
+    container.appendChild(addRow);
+
+    const hint = document.createElement('span');
+    hint.textContent = 'Add items one at a time. Use form field to reference a dynamic form.';
+    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
+    container.appendChild(hint);
+  }
+
+  private _buildPasteValues(container: HTMLDivElement, cfg: Record<string, any>): void {
+    const sepRow = document.createElement('div');
+    sepRow.style.cssText = `display:flex;align-items:center;gap:6px;`;
+
+    const lineDelimCb = document.createElement('input');
+    lineDelimCb.type = 'checkbox';
+    lineDelimCb.style.cssText = `accent-color:${COLORS.blue};`;
+
+    const lineLabel = document.createElement('label');
+    lineLabel.style.cssText = `display:flex;align-items:center;gap:4px;color:${COLORS.textSubtle};font-size:11px;cursor:pointer;`;
+    lineLabel.textContent = 'line delimited';
+    lineLabel.prepend(lineDelimCb);
+
+    const sepLabel = document.createElement('span');
+    sepLabel.textContent = 'separator:';
+    sepLabel.style.cssText = `color:${COLORS.textSubtle};font-size:11px;`;
+
+    const sepInp = this._makeInput(',', '40px');
+    sepInp.style.fontSize = '11px';
+
+    sepRow.append(sepLabel, sepInp, lineLabel);
+    container.appendChild(sepRow);
+
     const textarea = document.createElement('textarea');
     textarea.style.cssText =
       `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
       `border-radius:4px;color:${COLORS.textPrimary};padding:4px 8px;` +
       `font-size:11px;width:250px;height:60px;resize:vertical;font-family:monospace;`;
-    textarea.placeholder = 'yes, no, maybe\nor one per line\nor: label::value';
+    textarea.placeholder = 'yes, no, maybe';
 
     if (Array.isArray(cfg.items)) {
       textarea.value = cfg.items.map((it: any) => {
         if (typeof it === 'string') return it;
-        if (it.label && it.value) return `${it.label}::${it.value}`;
-        return String(it.label || it.value || it);
-      }).join('\n');
+        if (it && it.label) return it.label;
+        return String(it);
+      }).join(', ');
     }
 
-    textarea.addEventListener('input', () => {
+    const parse = () => {
       const raw = textarea.value;
-      const tokens = raw.includes('\n')
-        ? raw.split('\n')
-        : raw.split(',');
-      cfg.items = tokens.map(t => t.trim()).filter(Boolean).map(token => {
-        if (token.includes('::')) {
-          const [label, value] = token.split('::', 2);
-          return { label: label.trim(), value: value.trim() };
-        }
-        return token;
-      });
+      const sep = lineDelimCb.checked ? '\n' : (sepInp.value || ',');
+      const tokens = raw.split(sep);
+      cfg.items = tokens.map(t => t.trim()).filter(Boolean);
       this._emitChanged();
-    });
-    container.appendChild(textarea);
+    };
 
-    const hint = document.createElement('span');
-    hint.textContent = 'Comma-separated or one per line. Use label::value for separate labels.';
-    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
-    container.appendChild(hint);
+    textarea.addEventListener('input', parse);
+    sepInp.addEventListener('input', parse);
+    lineDelimCb.addEventListener('change', () => {
+      sepInp.disabled = lineDelimCb.checked;
+      sepInp.style.opacity = lineDelimCb.checked ? '0.4' : '1';
+      parse();
+    });
+
+    container.appendChild(textarea);
   }
 
   private _buildFileItems(container: HTMLDivElement, cfg: Record<string, any>): void {
@@ -443,100 +580,131 @@ export class FormSection extends CollapsibleSection {
     container.appendChild(row);
   }
 
-  private _rebuildItemsUI(_container: HTMLDivElement, _mode: string, _cfg: Record<string, any>): void {
+  private _promptAddDynForm(): void {
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+      `position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;` +
+      `background:rgba(0,0,0,0.5);`;
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText =
+      `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};border-radius:8px;` +
+      `padding:16px;display:flex;flex-direction:column;gap:10px;min-width:260px;`;
+
+    const title = document.createElement('div');
+    title.textContent = 'New Dynamic Form';
+    title.style.cssText = `font-size:13px;font-weight:700;color:${COLORS.textPrimary};`;
+
+    const inp = this._makeInput('form name', '200px');
+    inp.style.fontSize = '13px';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = `display:flex;gap:8px;justify-content:flex-end;`;
+
+    const cancelBtn = this._makeButton('Cancel');
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    const createBtn = this._makeButton('Create', true);
+    createBtn.addEventListener('click', () => {
+      const name = inp.value.trim();
+      if (!name) return;
+      if (this._dynForms.some(df => df.name === name)) return;
+      this._createDynForm(name);
+      overlay.remove();
+      this._emitChanged();
+    });
+
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createBtn.click();
+      if (e.key === 'Escape') overlay.remove();
+    });
+
+    btnRow.append(cancelBtn, createBtn);
+    dialog.append(title, inp, btnRow);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    inp.focus();
   }
 
-  private _moveElement(card: HTMLDivElement, direction: number): void {
-    const idx = this._elements.findIndex(e => e.el === card);
+  private _createDynForm(name: string, elements?: FormElement[]): void {
+    const container = document.createElement('div');
+    container.style.cssText =
+      `background:${COLORS.bgMantle};border:1px solid ${COLORS.bgSurface1};border-radius:6px;` +
+      `padding:8px 10px;display:flex;flex-direction:column;gap:6px;`;
+
+    const header = this._makeRow();
+    const lbl = document.createElement('span');
+    lbl.textContent = name;
+    lbl.style.cssText = `font-size:12px;font-weight:700;color:${COLORS.mauve};flex:1;`;
+
+    const rmBtn = this._makeButton('✕');
+    rmBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
+    rmBtn.addEventListener('click', () => {
+      const idx = this._dynForms.findIndex(df => df.name === name);
+      if (idx >= 0) this._dynForms.splice(idx, 1);
+      container.remove();
+      this._emitChanged();
+    });
+
+    header.append(lbl, rmBtn);
+    container.appendChild(header);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
+    container.appendChild(listEl);
+
+    const df: DynForm = { name, elements: elements || [], el: container, listEl };
+
+    for (const fe of df.elements) {
+      const card = this._buildElementCard(fe.type, fe.config, df);
+      fe.el = card;
+      listEl.appendChild(card);
+    }
+
+    const addBar = this._makeAddBar((type) => this._addElement(type, undefined, df));
+    addBar.style.borderBottom = 'none';
+    addBar.style.paddingBottom = '0';
+    container.appendChild(addBar);
+
+    this._dynForms.push(df);
+    this._dynFormsContainer.appendChild(container);
+  }
+
+  private _moveElement(card: HTMLDivElement, direction: number, target: { elements: FormElement[]; listEl: HTMLDivElement }): void {
+    const idx = target.elements.findIndex(e => e.el === card);
     if (idx < 0) return;
     const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= this._elements.length) return;
-    const [el] = this._elements.splice(idx, 1);
-    this._elements.splice(newIdx, 0, el);
-    this._listEl.innerHTML = '';
-    for (const e of this._elements) this._listEl.appendChild(e.el);
+    if (newIdx < 0 || newIdx >= target.elements.length) return;
+    const [el] = target.elements.splice(idx, 1);
+    target.elements.splice(newIdx, 0, el);
+    target.listEl.innerHTML = '';
+    for (const e of target.elements) target.listEl.appendChild(e.el);
     this._emitChanged();
   }
 
-  private _removeElement(card: HTMLDivElement): void {
-    const idx = this._elements.findIndex(e => e.el === card);
+  private _removeElement(card: HTMLDivElement, target: { elements: FormElement[]; listEl: HTMLDivElement }): void {
+    const idx = target.elements.findIndex(e => e.el === card);
     if (idx < 0) return;
-    this._elements.splice(idx, 1);
+    target.elements.splice(idx, 1);
     card.remove();
     this._emitChanged();
   }
 
-  private _buildFormItems(container: HTMLDivElement, cfg: Record<string, any>): void {
-    const nameInp = this._makeInput('form name', '150px');
-    if (cfg.items && typeof cfg.items === 'string' && cfg.items.startsWith('form:')) {
-      nameInp.value = cfg.items.slice(5);
-    }
-    nameInp.addEventListener('input', () => {
-      cfg.items = nameInp.value ? `form:${nameInp.value}` : '';
-      this._emitChanged();
-    });
-    container.appendChild(this._makeFieldRow('form name', nameInp));
-
-    const hint = document.createElement('span');
-    hint.textContent = 'References a dynamic_form element by name. Add a dynamic_form element to define its contents.';
-    hint.style.cssText = `color:${COLORS.textSubtle};font-size:10px;`;
-    container.appendChild(hint);
-  }
-
-  private _addDynamicSection(): void {
-    this._addElement('dynamic_form');
-  }
-
-  private _rebuildDynFormsUI(): void {
-    while (this._dynFormsEl.children.length > 1) {
-      this._dynFormsEl.removeChild(this._dynFormsEl.lastChild!);
-    }
-
-    for (const [name, elements] of Object.entries(this._dynamicForms)) {
-      const section = document.createElement('div');
-      section.style.cssText =
-        `background:${COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
-        `display:flex;flex-direction:column;gap:4px;`;
-
-      const hdr = this._makeRow();
-      const lbl = document.createElement('span');
-      lbl.textContent = name;
-      lbl.style.cssText = `font-size:12px;font-weight:700;color:${COLORS.mauve};flex:1;`;
-
-      const rmBtn = this._makeButton('✕');
-      rmBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
-      rmBtn.addEventListener('click', () => {
-        delete this._dynamicForms[name];
-        this._rebuildDynFormsUI();
-        this._emitChanged();
-      });
-
-      hdr.append(lbl, rmBtn);
-      section.appendChild(hdr);
-
-      const hint = document.createElement('span');
-      hint.textContent = `Elements for "${name}" section. Edit in YAML panel for now.`;
-      hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
-      section.appendChild(hint);
-
-      this._dynFormsEl.appendChild(section);
-    }
-  }
-
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
+    const formList: any[] = [];
+    const topLevel: Record<string, any> = {};
 
     for (const elem of this._elements) {
       const cfg = { ...elem.config };
 
-      if (elem.type === 'annotation') {
-        const annot: Record<string, any> = {};
-        if (cfg.start_time_col) annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
-        if (cfg.end_time_col) annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
-        if (cfg.min_freq_col) annot.min_frequency = { column: cfg.min_freq_col };
-        if (cfg.max_freq_col) annot.max_frequency = { column: cfg.max_freq_col };
-        if (cfg.tools) annot.tools = cfg.tools;
-        result.annotation = annot;
+      if (elem.type === 'title') {
+        if (cfg.progress_tracker) {
+          topLevel.title = { value: cfg.value || '', progress_tracker: true };
+        } else {
+          topLevel.title = cfg.value || '';
+        }
         continue;
       }
 
@@ -546,25 +714,35 @@ export class FormSection extends CollapsibleSection {
         if (cfg.previous) sb.previous = true;
         if (cfg.next_label) sb.next = { label: cfg.next_label };
         if (cfg.submit_label) sb.submit = { label: cfg.submit_label };
-        result.submission_buttons = sb;
+        topLevel.submission_buttons = sb;
         continue;
       }
 
-      if (elem.type === 'title') {
-        if (cfg.progress_tracker) {
-          result.title = { value: cfg.value || '', progress_tracker: true };
-        } else {
-          result.title = cfg.value || '';
-        }
+      if (elem.type === 'pass_value') {
+        topLevel.pass_value = { source_column: cfg.source_column || '', column: cfg.column || '' };
         continue;
       }
 
-      if (elem.type === 'dynamic_form') {
-        if (cfg.name) {
-          if (!this._dynamicForms[cfg.name]) {
-            this._dynamicForms[cfg.name] = cfg.elements || [];
-          }
-        }
+      if (elem.type === 'fixed_value') {
+        topLevel.fixed_value = { column: cfg.column || '', value: cfg.value || '' };
+        continue;
+      }
+
+      if (elem.type === 'annotation') {
+        const annot: Record<string, any> = {};
+        if (cfg.start_time_col) annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
+        if (cfg.end_time_col) annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
+        if (cfg.min_freq_col) annot.min_frequency = { column: cfg.min_freq_col };
+        if (cfg.max_freq_col) annot.max_frequency = { column: cfg.max_freq_col };
+        if (cfg.tools) annot.tools = cfg.tools;
+        if (cfg.form) annot.form = cfg.form;
+        topLevel.annotation = annot;
+        continue;
+      }
+
+      if (elem.type === 'break' || elem.type === 'line' || elem.type === 'text') {
+        const val = elem.type === 'text' ? (cfg.value || '') : true;
+        formList.push({ [elem.type]: val });
         continue;
       }
 
@@ -574,11 +752,29 @@ export class FormSection extends CollapsibleSection {
           cleaned[k] = v;
         }
       }
-      result[elem.type] = cleaned;
+      formList.push({ [elem.type]: cleaned });
     }
 
-    if (Object.keys(this._dynamicForms).length > 0) {
-      result.dynamic_forms = this._dynamicForms;
+    Object.assign(result, topLevel);
+    if (formList.length > 0) result.form = formList;
+
+    if (this._dynForms.length > 0) {
+      const dynList: any[] = [];
+      for (const df of this._dynForms) {
+        const elems: any[] = [];
+        for (const fe of df.elements) {
+          const cfg = { ...fe.config };
+          const cleaned: Record<string, any> = {};
+          for (const [k, v] of Object.entries(cfg)) {
+            if (v !== undefined && v !== null && v !== '' && v !== false) {
+              cleaned[k] = v;
+            }
+          }
+          elems.push({ [fe.type]: cleaned });
+        }
+        dynList.push({ [df.name]: elems });
+      }
+      result.dynamic_forms = dynList;
     }
 
     return result;
@@ -587,28 +783,96 @@ export class FormSection extends CollapsibleSection {
   setData(data: Record<string, any>): void {
     this._elements = [];
     this._listEl.innerHTML = '';
-    this._dynamicForms = {};
+    this._dynForms = [];
+    while (this._dynFormsContainer.children.length > 1) {
+      this._dynFormsContainer.removeChild(this._dynFormsContainer.lastChild!);
+    }
 
-    if (data.dynamic_forms) {
-      this._dynamicForms = data.dynamic_forms;
-      this._rebuildDynFormsUI();
-      for (const [name, elements] of Object.entries(this._dynamicForms)) {
-        this._addElement('dynamic_form', { name, elements });
+    if (data.title !== undefined) {
+      const titleCfg = typeof data.title === 'string'
+        ? { value: data.title }
+        : { value: data.title?.value || '', progress_tracker: !!data.title?.progress_tracker };
+      this._addElement('title', titleCfg);
+    }
+
+    if (data.pass_value) {
+      this._addElement('pass_value', { ...data.pass_value });
+    }
+
+    if (data.fixed_value) {
+      this._addElement('fixed_value', { ...data.fixed_value });
+    }
+
+    if (data.annotation) {
+      const a = data.annotation;
+      const cfg: Record<string, any> = {};
+      if (a.start_time) cfg.start_time_col = a.start_time?.column || a.start_time;
+      if (a.end_time) cfg.end_time_col = a.end_time?.column || a.end_time;
+      if (a.min_frequency) cfg.min_freq_col = a.min_frequency?.column || a.min_frequency;
+      if (a.max_frequency) cfg.max_freq_col = a.max_frequency?.column || a.max_frequency;
+      if (a.tools) cfg.tools = a.tools;
+      if (a.form) cfg.form = a.form;
+      this._addElement('annotation', cfg);
+    }
+
+    if (Array.isArray(data.form)) {
+      for (const item of data.form) {
+        if (!item || typeof item !== 'object') continue;
+        const [type] = Object.keys(item);
+        const cfg = typeof item[type] === 'object' && item[type] !== null ? { ...item[type] } : { value: item[type] };
+        this._addElement(type as ElementType, cfg);
+      }
+    } else {
+      for (const key of ['select', 'textbox', 'checkbox', 'number']) {
+        if (data[key]) {
+          const cfg = typeof data[key] === 'object' ? { ...data[key] } : { value: data[key] };
+          this._addElement(key as ElementType, cfg);
+        }
       }
     }
 
-    for (const [key, val] of Object.entries(data)) {
-      if (key === 'dynamic_forms') continue;
-      const type = key as ElementType;
-      if (['title', 'select', 'textbox', 'checkbox', 'number',
-        'annotation', 'pass_value', 'fixed_value', 'submission_buttons'].includes(type)) {
-        let cfg: Record<string, any>;
-        if (typeof val === 'string') {
-          cfg = { value: val };
-        } else {
-          cfg = { ...val };
+    if (data.submission_buttons) {
+      const sb = data.submission_buttons;
+      const cfg: Record<string, any> = {};
+      if (sb.line) cfg.line = true;
+      if (sb.previous) cfg.previous = true;
+      if (sb.next?.label) cfg.next_label = sb.next.label;
+      if (sb.submit?.label) cfg.submit_label = sb.submit.label;
+      this._addElement('submission_buttons', cfg);
+    }
+
+    const dynForms = data.dynamic_forms;
+    if (Array.isArray(dynForms)) {
+      for (const item of dynForms) {
+        if (item && typeof item === 'object') {
+          for (const [name, elems] of Object.entries(item)) {
+            const feList: FormElement[] = [];
+            if (Array.isArray(elems)) {
+              for (const el of elems) {
+                if (el && typeof el === 'object') {
+                  const [type] = Object.keys(el);
+                  const cfg = typeof el[type] === 'object' && el[type] !== null ? { ...el[type] } : { value: el[type] };
+                  feList.push({ type: type as ElementType, config: cfg, el: document.createElement('div') });
+                }
+              }
+            }
+            this._createDynForm(name, feList);
+          }
         }
-        this._addElement(type, cfg);
+      }
+    } else if (dynForms && typeof dynForms === 'object') {
+      for (const [name, elems] of Object.entries(dynForms)) {
+        const feList: FormElement[] = [];
+        if (Array.isArray(elems)) {
+          for (const el of elems) {
+            if (el && typeof el === 'object') {
+              const [type] = Object.keys(el);
+              const cfg = typeof el[type] === 'object' && el[type] !== null ? { ...el[type] } : { value: el[type] };
+              feList.push({ type: type as ElementType, config: cfg, el: document.createElement('div') });
+            }
+          }
+        }
+        this._createDynForm(name, feList);
       }
     }
   }
