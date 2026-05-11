@@ -115,3 +115,10 @@ export function setSectionTarget(section: string, target: string): string {
     wp(`_j.dumps({'ok': True})`),
   ].join('\n');
 }
+
+export function validateConfig(): string {
+  return [
+    `import json as _j`,
+    wp(`_j.dumps(_CB_INSTANCE.validate())`),
+  ].join('\n');
+}
