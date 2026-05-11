@@ -231,7 +231,8 @@ export class AppSection extends CollapsibleSection {
     const buf = parseFloat(this._bufferInput.value);
     if (!isNaN(buf) && buf !== 3) result.default_buffer = buf;
 
-    if (!this._captureCb.checked) result.capture = false;
+    if (this._captureCb.checked) result.capture = true;
+    else result.capture = false;
     if (this._captureDirInput.value) result.capture_dir = this._captureDirInput.value;
 
     const w = this._widthInput.value;
