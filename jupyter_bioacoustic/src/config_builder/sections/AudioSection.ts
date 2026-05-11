@@ -15,7 +15,7 @@ export class AudioSection extends CollapsibleSection {
   private _availableCols: string[] = [];
 
   constructor() {
-    super('Audio', 'audio');
+    super('Audio', 'audio', false, true);
 
     this._sourceType = this._makeSelect(['path', 'url', 'column'], 'path');
     this._sourceType.addEventListener('change', () => {
