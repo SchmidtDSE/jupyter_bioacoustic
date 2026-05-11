@@ -66,13 +66,16 @@ class ConfigBuilder:
 
         elif section == 'data':
             data_dict = {}
+            data_columns = data.pop('data_columns', None)
             for k, v in data.items():
                 if v is not None and v != '' and v != []:
                     data_dict[k] = v
-            if target == 'project':
-                self._project['data'] = data_dict
-            else:
-                self._config['data'] = data_dict
+            dest = self._project if target == 'project' else self._config
+            dest['data'] = data_dict
+            if data_columns:
+                dest['data_columns'] = data_columns
+            elif 'data_columns' in dest:
+                del dest['data_columns']
 
         elif section == 'audio':
             audio_dict = {}
@@ -96,7 +99,7 @@ class ConfigBuilder:
 
         elif section == 'app':
             app_keys = (
-                'ident_column', 'display_columns', 'data_columns',
+                'ident_column', 'display_columns',
                 'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
                 'spectrogram_resolution', 'visualizations', 'partial_download',
                 'width', 'clip_table_height', 'player_height',
@@ -128,10 +131,13 @@ class ConfigBuilder:
             new_dict = self._project if target == 'project' else self._config
             if section in old_dict:
                 new_dict[section] = old_dict.pop(section)
+            if section == 'data':
+                if 'data_columns' in old_dict:
+                    new_dict['data_columns'] = old_dict.pop('data_columns')
 
         if section == 'app' and old_target != target:
             app_keys = (
-                'ident_column', 'display_columns', 'data_columns',
+                'ident_column', 'display_columns',
                 'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
                 'spectrogram_resolution', 'visualizations', 'partial_download',
                 'width', 'clip_table_height', 'player_height',
@@ -146,12 +152,7 @@ class ConfigBuilder:
     def save(self, path=None, config_type='project'):
         return self.save_all()
 
-    def save_all(self):
-        try:
-            import yaml
-        except ImportError:
-            raise ImportError("pyyaml is required: pip install pyyaml")
-
+    def _build_file_contents(self):
         name = self._project.get('project_name', 'config')
         slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
 
@@ -165,22 +166,66 @@ class ConfigBuilder:
 
         skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
                      'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
+        section_keys = ('data', 'audio', 'output')
+        data_extra_keys = ('data_columns',)
+        app_keys = (
+            'ident_column', 'display_columns',
+            'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
+            'spectrogram_resolution', 'visualizations', 'partial_download',
+            'width', 'clip_table_height', 'player_height',
+            'info_card_height', 'form_panel_height',
+        )
 
         form_cfg = dict(self._form_config) if self._form_config else {}
 
-        config_cfg = {}
+        proj_data = {}
+        conf_data = {}
+
         for k, v in self._project.items():
             if k in skip_keys:
                 continue
-            config_cfg[k] = v
-        if self._config:
-            config_cfg.update(self._config)
+            if k in section_keys:
+                if self._section_targets.get(k, 'project') == 'project':
+                    proj_data[k] = v
+                else:
+                    conf_data[k] = v
+            elif k in data_extra_keys:
+                if self._section_targets.get('data', 'project') == 'project':
+                    proj_data[k] = v
+                else:
+                    conf_data[k] = v
+            elif k in app_keys:
+                if self._section_targets.get('app', 'project') == 'project':
+                    proj_data[k] = v
+                else:
+                    conf_data[k] = v
+            else:
+                proj_data[k] = v
+
+        for k, v in self._config.items():
+            if k in section_keys:
+                if self._section_targets.get(k, 'project') == 'config':
+                    conf_data[k] = v
+                else:
+                    proj_data[k] = v
+            elif k in data_extra_keys:
+                if self._section_targets.get('data', 'project') == 'config':
+                    conf_data[k] = v
+                else:
+                    proj_data[k] = v
+            elif k in app_keys:
+                if self._section_targets.get('app', 'project') == 'config':
+                    conf_data[k] = v
+                else:
+                    proj_data[k] = v
+            else:
+                conf_data[k] = v
 
         if form_enabled and config_enabled:
-            config_cfg['form_config'] = f_path
-        elif not form_enabled and config_enabled:
+            conf_data['form_config'] = f_path
+        elif not form_enabled:
             if form_cfg:
-                config_cfg['form_config'] = form_cfg
+                conf_data['form_config'] = form_cfg
 
         project_cfg = {}
         for k in ('project_name', 'project_save_btn'):
@@ -189,8 +234,47 @@ class ConfigBuilder:
 
         if config_enabled and project_enabled:
             project_cfg['config'] = c_path
+            project_cfg.update(proj_data)
+            config_cfg = dict(conf_data)
         elif not config_enabled and project_enabled:
-            project_cfg.update(config_cfg)
+            project_cfg.update(proj_data)
+            project_cfg.update(conf_data)
+            config_cfg = {}
+        elif config_enabled and not project_enabled:
+            config_cfg = {}
+            config_cfg.update(proj_data)
+            config_cfg.update(conf_data)
+        else:
+            config_cfg = {}
+
+        return {
+            'project_cfg': project_cfg,
+            'config_cfg': config_cfg,
+            'form_cfg': form_cfg,
+            'project_enabled': project_enabled,
+            'config_enabled': config_enabled,
+            'form_enabled': form_enabled,
+            'p_path': p_path,
+            'c_path': c_path,
+            'f_path': f_path,
+        }
+
+    def save_all(self):
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError("pyyaml is required: pip install pyyaml")
+
+        fc = self._build_file_contents()
+        project_cfg = fc['project_cfg']
+        config_cfg = fc['config_cfg']
+        form_cfg = fc['form_cfg']
+        project_enabled = fc['project_enabled']
+        config_enabled = fc['config_enabled']
+        form_enabled = fc['form_enabled']
+        p_path = fc['p_path']
+        c_path = fc['c_path']
+        f_path = fc['f_path']
 
         saved = {}
 
@@ -228,35 +312,16 @@ class ConfigBuilder:
         except ImportError:
             raise ImportError("pyyaml is required: pip install pyyaml")
 
-        name = self._project.get('project_name', 'config')
-        slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
-
-        skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
-                     'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
-
+        fc = self._build_file_contents()
         if config_type == 'project':
-            path = self._project.get('project_path') or f'config/projects/{slug}.yaml'
-            content = {}
-            for k in ('project_name', 'project_save_btn'):
-                if k in self._project:
-                    content[k] = self._project[k]
-            c_path = self._project.get('config_path') or f'config/application/{slug}.yaml'
-            content['config'] = c_path
+            path = fc['p_path']
+            content = fc['project_cfg']
         elif config_type == 'config':
-            path = self._project.get('config_path') or f'config/application/{slug}.yaml'
-            content = {}
-            for k, v in self._project.items():
-                if k in skip_keys:
-                    continue
-                content[k] = v
-            if self._config:
-                content.update(self._config)
-            f_path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
-            if self._form_config:
-                content['form_config'] = f_path
+            path = fc['c_path']
+            content = fc['config_cfg']
         elif config_type == 'form_config':
-            path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
-            content = dict(self._form_config) if self._form_config else {}
+            path = fc['f_path']
+            content = fc['form_cfg']
         else:
             return ''
 
@@ -322,44 +387,13 @@ class ConfigBuilder:
         return []
 
     def _get_state(self):
-        name = self._project.get('project_name', 'config')
-        slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
-
-        project_enabled = self._project.get('project_enabled', True)
-        config_enabled = self._project.get('config_enabled', True)
-        form_enabled = self._project.get('form_enabled', True)
-
-        c_path = self._project.get('config_path') or f'config/application/{slug}.yaml'
-        f_path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
-
-        skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
-                     'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
-
-        form_content = dict(self._form_config) if self._form_config else {}
-
-        config_content = {}
-        for k, v in self._project.items():
-            if k in skip_keys:
-                continue
-            config_content[k] = v
-        if self._config:
-            config_content.update(self._config)
-
-        if form_enabled and config_enabled:
-            config_content['form_config'] = f_path
-        elif not form_enabled and config_enabled:
-            if form_content:
-                config_content['form_config'] = form_content
-
-        project_content = {}
-        for k in ('project_name', 'project_save_btn'):
-            if k in self._project:
-                project_content[k] = self._project[k]
-
-        if config_enabled and project_enabled:
-            project_content['config'] = c_path
-        elif not config_enabled and project_enabled:
-            project_content.update(config_content)
+        fc = self._build_file_contents()
+        project_content = fc['project_cfg']
+        config_content = fc['config_cfg']
+        form_content = fc['form_cfg']
+        project_enabled = fc['project_enabled']
+        config_enabled = fc['config_enabled']
+        form_enabled = fc['form_enabled']
 
         try:
             import yaml
