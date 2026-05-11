@@ -7,7 +7,6 @@ export class AppSection extends CollapsibleSection {
 
   private _identColSelect: HTMLSelectElement;
   private _displayCols: string[] = [];
-  private _dataCols: string[] = [];
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
   private _captureCb: HTMLInputElement;
@@ -21,8 +20,6 @@ export class AppSection extends CollapsibleSection {
   private _availableCols: string[] = [];
   private _displayChipsArea: HTMLDivElement;
   private _displayPickerArea: HTMLDivElement;
-  private _dataChipsArea: HTMLDivElement;
-  private _dataPickerArea: HTMLDivElement;
 
   constructor() {
     super('Application', 'app');
@@ -36,12 +33,6 @@ export class AppSection extends CollapsibleSection {
     const displayWrap = this._makeColumnGroupWrapper();
     displayWrap.append(this._makeSectionLabel('display_columns'), this._displayChipsArea, this._displayPickerArea);
     this._body.appendChild(displayWrap);
-
-    this._dataChipsArea = this._makeChipsArea();
-    this._dataPickerArea = this._makePickerArea();
-    const dataWrap = this._makeColumnGroupWrapper();
-    dataWrap.append(this._makeSectionLabel('data_columns'), this._dataChipsArea, this._dataPickerArea);
-    this._body.appendChild(dataWrap);
 
     const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
     this._duplicateCb = dupCb;
@@ -146,7 +137,6 @@ export class AppSection extends CollapsibleSection {
     this._availableCols = cols;
     this._rebuildIdentSelect();
     this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
-    this._rebuildPicker(this._dataPickerArea, this._dataCols, 'data');
   }
 
   private _rebuildIdentSelect(): void {
@@ -163,7 +153,7 @@ export class AppSection extends CollapsibleSection {
     if (this._availableCols.includes(current)) this._identColSelect.value = current;
   }
 
-  private _rebuildPicker(area: HTMLDivElement, selected: string[], which: 'display' | 'data'): void {
+  private _rebuildPicker(area: HTMLDivElement, selected: string[], which: string): void {
     area.innerHTML = '';
     if (this._availableCols.length === 0) {
       area.style.display = 'none';
@@ -184,7 +174,7 @@ export class AppSection extends CollapsibleSection {
         `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
       chip.addEventListener('click', () => {
         selected.push(col);
-        this._rebuildChips(which === 'display' ? this._displayChipsArea : this._dataChipsArea, selected, which);
+        this._rebuildChips(this._displayChipsArea, selected, which);
         this._rebuildPicker(area, selected, which);
         this._emitChanged();
       });
@@ -192,7 +182,7 @@ export class AppSection extends CollapsibleSection {
     }
   }
 
-  private _rebuildChips(area: HTMLDivElement, selected: string[], which: 'display' | 'data'): void {
+  private _rebuildChips(area: HTMLDivElement, selected: string[], which: string): void {
     area.innerHTML = '';
     if (selected.length === 0) {
       const hint = document.createElement('span');
@@ -220,7 +210,7 @@ export class AppSection extends CollapsibleSection {
         const idx = selected.indexOf(col);
         if (idx >= 0) selected.splice(idx, 1);
         this._rebuildChips(area, selected, which);
-        this._rebuildPicker(which === 'display' ? this._displayPickerArea : this._dataPickerArea, selected, which);
+        this._rebuildPicker(this._displayPickerArea, selected, which);
         this._emitChanged();
       });
 
@@ -235,7 +225,6 @@ export class AppSection extends CollapsibleSection {
     if (ident) result.ident_column = ident;
 
     if (this._displayCols.length > 0) result.display_columns = [...this._displayCols];
-    if (this._dataCols.length > 0) result.data_columns = [...this._dataCols];
 
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
@@ -266,11 +255,6 @@ export class AppSection extends CollapsibleSection {
       this._displayCols = [...data.display_columns];
       this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
       this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
-    }
-    if (data.data_columns && Array.isArray(data.data_columns)) {
-      this._dataCols = [...data.data_columns];
-      this._rebuildChips(this._dataChipsArea, this._dataCols, 'data');
-      this._rebuildPicker(this._dataPickerArea, this._dataCols, 'data');
     }
     if (data.duplicate_entries) this._duplicateCb.checked = true;
     if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
