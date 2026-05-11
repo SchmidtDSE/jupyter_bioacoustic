@@ -1,0 +1,65 @@
+export interface SectionDocs {
+  _intro: string;
+  [field: string]: string;
+}
+
+export const DOCS: Record<string, SectionDocs> = {
+  project: {
+    _intro: `Project settings control the widget identity and persistence.\nSet a name to label the session and optionally enable a save button so users can persist their progress.`,
+    project_name: `(optional) Widget header title displayed at the top of the annotator.\nIf not set, it is auto-derived from the project filename.`,
+    project_save_btn: `(optional) Show a save-project button in the header.\nSet to true for a default "Save Project" label, or provide a custom string.`,
+  },
+  data: {
+    _intro: `Data is where you define your clip source — a table of detections or segments to review. Each row represents one clip. The table must have at minimum a start_time column (or you must map one). Supported formats: CSV, Parquet, JSON, JSONL.`,
+    source_type: `(required) How to load data:\n• path: local file (CSV, Parquet, JSON)\n• url: remote file URL\n• sql: DuckDB SQL query\n• api: REST endpoint`,
+    path: `(required) Path to the data file relative to the working directory.\nExample: data/detections.csv`,
+    data_columns: `(optional) Subset of columns to load from the file.\nIf empty, all columns are included. Use this to limit what's shown in the clip table and reduce memory for large files.`,
+    start_time_col: `(optional) Column name containing the segment start time in seconds.\nDefault: "start_time". Remap if your file uses a different name.`,
+    end_time_col: `(optional) Column name containing the segment end time in seconds.\nDefault: "end_time". Remap if your file uses a different name.`,
+    duration: `(optional) Column name or fixed number (seconds) to compute end_time from start_time.\nUse this if your data has duration instead of end_time.\nExample: "duration" (column) or 5.0 (fixed seconds).`,
+  },
+  audio: {
+    _intro: `Audio defines where to find the sound files for each clip.\nYou can point to a single file, a URL, or a per-row column that holds the path for each detection.`,
+    source_type: `(required) Audio source mode:\n• path: single audio file for all clips\n• url: remote audio file URL\n• column: per-row column from the data table`,
+    value: `(required) The file path, URL, or column name depending on source type.\nFor "column" mode, select which data column holds the audio paths.`,
+    prefix: `(optional) Prepended to the audio path with "/" separator.\nUseful for base directories or URL roots.\nExample: "audio/" turns "recording.flac" into "audio/recording.flac"`,
+    suffix: `(optional) Appended to the audio path.\nUseful for adding file extensions when paths are stored without them.`,
+    fallback: `(optional) Fallback audio file used when column mode yields an empty value.`,
+  },
+  output: {
+    _intro: `Output controls where annotation results are saved.\nResults are written as a table (CSV/Parquet) with one row per submission. Optionally sync to remote storage.`,
+    path: `(optional) Output file path for saved annotations.\nAuto-generated from project name if form is configured.\nExample: outputs/reviews.csv`,
+    sync_uri: `(optional) Remote URI to sync the output file after writes.\nExample: s3://my-bucket/annotations/reviews.csv`,
+    sync_button: `(optional) Show a sync button in the widget.\nSet to true for default "Sync" label, or provide a custom string.`,
+    sync_label: `(optional) Text label shown next to the sync button.`,
+    recursive: `(optional) Write output after every submission instead of waiting for session end. Default: false.`,
+  },
+  app: {
+    _intro: `Application settings control the widget layout, visible columns, and interaction features like capture and buffering.`,
+    ident_column: `(optional) Column shown prominently in the info card (no label prefix) and used for naming captured audio files.\nExample: "common_name" or "species_id"`,
+    display_columns: `(optional) Extra columns shown in the info card below the ident.\nThese provide context about the current clip.`,
+    data_columns: `(optional) Columns visible in the clip table.\nControls which columns appear as sortable table headers.`,
+    duplicate_entries: `(optional) Allow multiple submissions per row. Default: false.\nEnable for tasks where the same clip needs multiple annotations.`,
+    default_buffer: `(optional) Buffer time in seconds added before/after the audio segment.\nDefault: 3. Increase for more context around short clips.`,
+    capture: `(optional) Capture button lets users save audio clips.\nSet to false to hide, true for default label, or a string for custom label.`,
+    capture_dir: `(optional) Directory where captured audio clips are saved.\nDefault: "captures/"`,
+    width: `(optional) Inline widget width. Default: "100%".\nCan be pixels ("800px") or percentage.`,
+    clip_table_height: `(optional) Clip table height in pixels. Default: 175.`,
+    player_height: `(optional) Player/spectrogram height in pixels. Default: 260.\nAlso determines the spectrogram resolution.`,
+    info_card_height: `(optional) Info card height in pixels. Default: 34.`,
+    form_panel_height: `(optional) Form panel height in pixels. Default: 140.`,
+  },
+  form: {
+    _intro: `Form defines the annotation interface — the controls users interact with to label each clip. Elements are rendered in order. Each element writes its value to a specified output column.\n\nElement types: title, select, textbox, checkbox, number, annotation, pass_value, fixed_value, submission_buttons.`,
+    title: `Display title at the top of the form. Set "value" for the text.\nEnable "progress_tracker" to show completion percentage.`,
+    select: `Dropdown selector. Requires "label", "column", and "items".\nItems can be inline (list of strings or label::value pairs), from a file (path + value column + optional label column), or a numeric range (min, max, step).`,
+    textbox: `Free text input. Set "multiline: true" for a textarea.\nRequires "label" and "column".`,
+    checkbox: `Boolean toggle. Optionally set "yes_value" and "no_value" for custom output values (default: true/false).`,
+    number: `Numeric input with min/max/step constraints.\nRequires "label", "column", "min", "max", "step".`,
+    annotation: `Spectrogram interaction tools for time/frequency selection.\nTools: time_select, start_end_time_select, bounding_box, multibox.\nMap outputs to columns via start_time_col, end_time_col, etc.`,
+    pass_value: `Copies a value from the data row into the output.\nSet "source_column" (input) and "column" (output).`,
+    fixed_value: `Writes a constant value to the output for every submission.\nSet "column" and "value".`,
+    submission_buttons: `Submit/skip navigation buttons. Options:\n• line: show a divider above buttons\n• previous: show a back button\n• next: {label: "Skip"} for the skip button\n• submit: {label: "Verify"} for the submit button`,
+    dynamic_forms: `Conditional form sections triggered by select item values.\nWhen a select item has "form: section_name", selecting it reveals the named dynamic form section below.`,
+  },
+};
