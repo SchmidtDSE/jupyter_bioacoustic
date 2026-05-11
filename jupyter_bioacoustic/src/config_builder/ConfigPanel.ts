@@ -10,6 +10,7 @@ import {
   saveSingleFile,
   checkFileExists,
   validateConfig,
+  loadConfig,
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
@@ -87,6 +88,14 @@ export class ConfigPanel {
         if (field === 'project') this._project.setProjectPath(p);
         else if (field === 'config') this._project.setConfigPath(p);
         else if (field === 'form') this._project.setFormPath(p);
+      });
+    });
+
+    this._project.loadConfigRequested.connect((_, path) => void this._onLoadConfig(path));
+    this._project.loadBrowseRequested.connect(() => {
+      this._openBrowser('.', ['.yaml', '.yml', '.json'], (p) => {
+        this._project.setLoadPath(p);
+        void this._onLoadConfig(p);
       });
     });
 
@@ -364,6 +373,23 @@ export class ConfigPanel {
 
   get dirty(): boolean {
     return this._dirty;
+  }
+
+  private async _onLoadConfig(path: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    this._setStatus(`Loading ${path}…`);
+    try {
+      const raw = await this._kernel.exec(loadConfig(path));
+      const state = JSON.parse(extractJson(raw));
+      this._applyState(state);
+      const detected = state.detected_type || 'config';
+      const paths = state.loaded_paths || {};
+      const loaded = Object.values(paths).filter(Boolean);
+      this._setStatus(`Loaded as ${detected}: ${loaded.join(', ')}`);
+    } catch (e: any) {
+      this._setStatus(`Load failed: ${String(e.message ?? e)}`, true);
+    }
   }
 
   async validate(): Promise<void> {
