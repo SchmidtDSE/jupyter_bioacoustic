@@ -215,13 +215,14 @@ export class FormPanel {
     }
     this.element.style.display = 'flex';
 
-    // Known top-level keys (not named form sections)
-    const RESERVED_KEYS = new Set([
+    await this._registerDynamicForms(cfg.dynamic_forms);
+
+    const TOPLEVEL_KEYS = new Set([
       'title', 'progress_tracker', 'pass_value', 'fixed_value',
-      'submission_buttons', '_fixed_kwargs', 'dynamic_forms',
+      'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
+      'annotation',
     ]);
 
-    // First pass: build inline elements and submission buttons
     for (const key of Object.keys(cfg)) {
       if (key === 'title') {
         this._appendTitleEntry(cfg.title, this._dynFormEl);
@@ -232,6 +233,12 @@ export class FormPanel {
         this._registerPassValue(cfg.pass_value);
       } else if (key === 'fixed_value') {
         this._registerFixedValue(cfg.fixed_value);
+      } else if (key === 'annotation') {
+        await this._buildAnnotationElement(cfg.annotation, this._dynFormEl);
+      } else if (key === 'form') {
+        if (Array.isArray(cfg.form)) {
+          await this._buildFormSection(cfg.form, this._dynFormEl);
+        }
       } else if (key === 'submission_buttons') {
         await this._buildSubmissionButtons(cfg.submission_buttons);
       } else if (key === '_fixed_kwargs') {
@@ -239,49 +246,22 @@ export class FormPanel {
           if (item.fixed_value) this._registerFixedValue(item.fixed_value);
         }
       } else if (key === 'dynamic_forms') {
-        // Explicit named form sections container
-        const forms = cfg.dynamic_forms;
-        if (forms && typeof forms === 'object') {
-          for (const formName of Object.keys(forms)) {
-            let formElements = forms[formName];
-            // Accept both array of elements and a single element dict
-            if (!Array.isArray(formElements)) {
-              if (formElements && typeof formElements === 'object') {
-                // Wrap single element: {select: {...}} → [{select: {...}}]
-                formElements = Object.keys(formElements).map(k => ({ [k]: formElements[k] }));
-              } else {
-                continue;
-              }
-            }
-            const sectionDiv = document.createElement('div');
-            sectionDiv.dataset.formSection = formName;
-            sectionDiv.style.cssText = formRowStyle(true); // hidden by default
-            await this._buildFormSection(formElements, sectionDiv);
-            this._dynFormEl.appendChild(sectionDiv);
-            this._namedSections.set(formName, sectionDiv);
-          }
-        }
-      } else if (!RESERVED_KEYS.has(key)) {
-        // Any other top-level key is a named form section or inline element
+        // already handled above
+      } else if (!TOPLEVEL_KEYS.has(key)) {
         const sectionData = cfg[key];
         if (Array.isArray(sectionData)) {
-          // Array of form elements → named section (hidden until a select references it)
           const sectionDiv = document.createElement('div');
           sectionDiv.dataset.formSection = key;
-          sectionDiv.style.cssText = formRowStyle(true); // hidden by default
+          sectionDiv.style.cssText = formRowStyle(true);
           await this._buildFormSection(sectionData, sectionDiv);
           this._dynFormEl.appendChild(sectionDiv);
           this._namedSections.set(key, sectionDiv);
-        } else if (key === 'annotation') {
-          await this._buildAnnotationElement(sectionData, this._dynFormEl);
-        } else {
-          // Single element (e.g. a top-level select, textbox, etc.)
+        } else if (key === 'select' || key === 'textbox' || key === 'checkbox' || key === 'number') {
           await this._buildInputElement(key, sectionData, this._dynFormEl);
         }
       }
     }
 
-    // Default submission buttons if none were configured
     if (!cfg.submission_buttons) {
       await this._buildSubmissionButtons({ submit: true });
     }
@@ -491,6 +471,40 @@ export class FormPanel {
   }
 
   // ─── Private: form building ────────────────────────────────
+
+  private async _registerDynamicForms(dynForms: any): Promise<void> {
+    if (!dynForms) return;
+    const entries: Array<[string, any]> = [];
+    if (Array.isArray(dynForms)) {
+      for (const item of dynForms) {
+        if (item && typeof item === 'object') {
+          for (const name of Object.keys(item)) {
+            entries.push([name, item[name]]);
+          }
+        }
+      }
+    } else if (typeof dynForms === 'object') {
+      for (const name of Object.keys(dynForms)) {
+        entries.push([name, dynForms[name]]);
+      }
+    }
+    for (const [formName, rawElements] of entries) {
+      let formElements = rawElements;
+      if (!Array.isArray(formElements)) {
+        if (formElements && typeof formElements === 'object') {
+          formElements = Object.keys(formElements).map(k => ({ [k]: formElements[k] }));
+        } else {
+          continue;
+        }
+      }
+      const sectionDiv = document.createElement('div');
+      sectionDiv.dataset.formSection = formName;
+      sectionDiv.style.cssText = formRowStyle(true);
+      await this._buildFormSection(formElements, sectionDiv);
+      this._dynFormEl.appendChild(sectionDiv);
+      this._namedSections.set(formName, sectionDiv);
+    }
+  }
 
   private async _buildFormSection(elements: any[], container: HTMLElement): Promise<void> {
     for (const item of elements) {
@@ -725,14 +739,29 @@ export class FormPanel {
       inputEl = sel;
 
     } else if (type === 'checkbox') {
+      const checkedVal = cfg.checked_value ?? cfg.yes_value ?? true;
+      const uncheckedVal = cfg.unchecked_value ?? cfg.no_value ?? false;
+      const checkedForm = cfg.checked_form as string | undefined;
+      const uncheckedForm = cfg.unchecked_form as string | undefined;
+      const allCbForms = new Set<string>();
+      if (checkedForm) allCbForms.add(checkedForm);
+      if (uncheckedForm) allCbForms.add(uncheckedForm);
       const inp = document.createElement('input');
       inp.type = 'checkbox';
       inp.checked = Boolean(cfg.default);
-      inp.addEventListener('change', () => {
-        this._formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+      const updateCbForms = () => {
+        this._formValues[col] = inp.checked ? checkedVal : uncheckedVal;
+        if (allCbForms.size > 0) {
+          const activeForm = inp.checked ? checkedForm : uncheckedForm;
+          for (const sn of allCbForms) {
+            const el = this._namedSections.get(sn);
+            if (el) el.style.display = sn === activeForm ? 'flex' : 'none';
+          }
+        }
         this._validateForm();
-      });
-      this._formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+      };
+      inp.addEventListener('change', updateCbForms);
+      this._formValues[col] = inp.checked ? checkedVal : uncheckedVal;
       inputEl = inp;
 
     } else if (type === 'number') {
@@ -1233,14 +1262,16 @@ export class FormPanel {
       } else if (type === 'checkbox') {
         const cfg = config ?? {};
         const col = cfg.column ?? cfg.label ?? type;
+        const checkedVal = cfg.checked_value ?? cfg.yes_value ?? true;
+        const uncheckedVal = cfg.unchecked_value ?? cfg.no_value ?? false;
         const inp = document.createElement('input');
         inp.type = 'checkbox';
         inp.checked = Boolean(entry.formValues[col] ?? cfg.default);
         inp.addEventListener('change', () => {
-          entry.formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+          entry.formValues[col] = inp.checked ? checkedVal : uncheckedVal;
           this._validateForm();
         });
-        entry.formValues[col] = inp.checked ? (cfg.yes_value ?? true) : (cfg.no_value ?? false);
+        entry.formValues[col] = inp.checked ? checkedVal : uncheckedVal;
         const lbl = document.createElement('label');
         lbl.style.cssText = labelStyle() + `font-size:11px;`;
         lbl.textContent = cfg.label ?? col;
