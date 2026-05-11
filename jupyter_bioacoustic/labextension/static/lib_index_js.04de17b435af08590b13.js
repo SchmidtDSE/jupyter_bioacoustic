@@ -41,7 +41,7 @@ class ConfigPanel {
         this._output = new OutputSection_1.OutputSection();
         this._app = new AppSection_1.AppSection();
         this._form = new FormSection_1.FormSection();
-        this._formPreview = new FormPreview_1.FormPreview();
+        this._formPreview = new FormPreview_1.FormPreview(kernel);
         this._sections = new Map([
             ['project', this._project],
             ['data', this._data],
@@ -1882,9 +1882,11 @@ exports.DataSection = DataSection;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.FormPreview = void 0;
 const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
+const FormPanel_1 = __webpack_require__(/*! ../../sections/FormPanel */ "./lib/sections/FormPanel.js");
 class FormPreview {
-    constructor() {
-        this._empty = true;
+    constructor(kernel) {
+        this._formPanel = null;
+        this._kernel = kernel;
         this.element = document.createElement('details');
         this.element.style.cssText =
             `border-top:2px solid ${styles_1.COLORS.mauve};margin-top:4px;`;
@@ -1903,18 +1905,29 @@ class FormPreview {
     }
     update(formData) {
         const hasElements = Object.keys(formData).length > 0;
-        this._empty = !hasElements;
         this._body.innerHTML = '';
+        this._formPanel = null;
         if (!hasElements) {
             this._renderEmpty();
             return;
         }
         this.element.style.opacity = '1';
-        for (const [key, val] of Object.entries(formData)) {
-            if (key === 'dynamic_forms')
-                continue;
-            this._renderElement(key, val);
-        }
+        this._formPanel = new FormPanel_1.FormPanel(this._kernel);
+        this._formPanel.setContext({
+            formConfig: formData,
+            rows: [],
+            identCol: '',
+            duplicateEntries: true,
+            outputPath: '',
+        });
+        const el = this._formPanel.element;
+        el.style.display = 'flex';
+        el.style.minHeight = '0';
+        el.style.padding = '0';
+        el.style.borderTop = 'none';
+        el.style.background = 'transparent';
+        this._body.appendChild(el);
+        void this._formPanel.build();
     }
     _renderEmpty() {
         this.element.style.opacity = '0.5';
@@ -1922,190 +1935,6 @@ class FormPreview {
         msg.textContent = 'No form elements configured.';
         msg.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:12px;font-style:italic;padding:8px 0;`;
         this._body.appendChild(msg);
-    }
-    _renderElement(type, cfg) {
-        switch (type) {
-            case 'title':
-                this._renderTitle(cfg);
-                break;
-            case 'select':
-                this._renderSelect(cfg);
-                break;
-            case 'textbox':
-                this._renderTextbox(cfg);
-                break;
-            case 'checkbox':
-                this._renderCheckbox(cfg);
-                break;
-            case 'number':
-                this._renderNumber(cfg);
-                break;
-            case 'annotation':
-                this._renderAnnotation(cfg);
-                break;
-            case 'pass_value':
-            case 'fixed_value':
-                this._renderHidden(type, cfg);
-                break;
-            case 'submission_buttons':
-                this._renderButtons(cfg);
-                break;
-        }
-    }
-    _renderTitle(cfg) {
-        const text = typeof cfg === 'string' ? cfg : (cfg === null || cfg === void 0 ? void 0 : cfg.value) || 'TITLE';
-        const el = document.createElement('div');
-        el.textContent = text;
-        el.style.cssText =
-            `font-size:14px;font-weight:700;color:${styles_1.COLORS.textPrimary};` +
-                `letter-spacing:0.5px;padding:4px 0;border-bottom:1px solid ${styles_1.COLORS.bgSurface1};`;
-        this._body.appendChild(el);
-    }
-    _renderSelect(cfg) {
-        const wrapper = this._fieldWrapper(cfg.label || 'Select');
-        const sel = document.createElement('select');
-        sel.disabled = true;
-        sel.style.cssText = this._inputCss() + `width:180px;`;
-        const items = cfg.items;
-        if (Array.isArray(items)) {
-            for (const it of items.slice(0, 10)) {
-                const o = document.createElement('option');
-                o.textContent = typeof it === 'string' ? it : it.label || it.value || '';
-                sel.appendChild(o);
-            }
-            if (items.length > 10) {
-                const o = document.createElement('option');
-                o.textContent = `… +${items.length - 10} more`;
-                sel.appendChild(o);
-            }
-        }
-        else if (items && typeof items === 'object' && items.path) {
-            const o = document.createElement('option');
-            o.textContent = `[from: ${items.path}]`;
-            sel.appendChild(o);
-        }
-        else if (typeof items === 'string' && items.startsWith('form:')) {
-            const o = document.createElement('option');
-            o.textContent = `[dynamic: ${items.slice(5)}]`;
-            sel.appendChild(o);
-        }
-        if (sel.options.length === 0) {
-            const o = document.createElement('option');
-            o.textContent = '(no items)';
-            sel.appendChild(o);
-        }
-        wrapper.appendChild(sel);
-        if (cfg.required) {
-            const req = document.createElement('span');
-            req.textContent = '*';
-            req.style.cssText = `color:${styles_1.COLORS.red};font-weight:700;margin-left:4px;`;
-            wrapper.appendChild(req);
-        }
-        this._body.appendChild(wrapper);
-    }
-    _renderTextbox(cfg) {
-        const wrapper = this._fieldWrapper(cfg.label || 'Text');
-        if (cfg.multiline) {
-            const ta = document.createElement('textarea');
-            ta.disabled = true;
-            ta.rows = 2;
-            ta.style.cssText = this._inputCss() + `width:200px;resize:none;`;
-            wrapper.appendChild(ta);
-        }
-        else {
-            const inp = document.createElement('input');
-            inp.disabled = true;
-            inp.type = 'text';
-            inp.style.cssText = this._inputCss() + `width:200px;`;
-            wrapper.appendChild(inp);
-        }
-        this._body.appendChild(wrapper);
-    }
-    _renderCheckbox(cfg) {
-        const wrapper = this._fieldWrapper(cfg.label || 'Checkbox');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.disabled = true;
-        cb.style.cssText = `accent-color:${styles_1.COLORS.blue};`;
-        wrapper.appendChild(cb);
-        this._body.appendChild(wrapper);
-    }
-    _renderNumber(cfg) {
-        var _a, _b, _c, _d, _e;
-        const wrapper = this._fieldWrapper(cfg.label || 'Number');
-        const inp = document.createElement('input');
-        inp.disabled = true;
-        inp.type = 'number';
-        inp.min = String((_a = cfg.min) !== null && _a !== void 0 ? _a : 0);
-        inp.max = String((_b = cfg.max) !== null && _b !== void 0 ? _b : 1);
-        inp.step = String((_c = cfg.step) !== null && _c !== void 0 ? _c : 0.1);
-        inp.style.cssText = this._inputCss() + `width:80px;`;
-        const range = document.createElement('span');
-        range.textContent = `(${(_d = cfg.min) !== null && _d !== void 0 ? _d : 0} – ${(_e = cfg.max) !== null && _e !== void 0 ? _e : 1})`;
-        range.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;margin-left:6px;`;
-        wrapper.append(inp, range);
-        this._body.appendChild(wrapper);
-    }
-    _renderAnnotation(cfg) {
-        const el = document.createElement('div');
-        el.style.cssText =
-            `padding:6px 10px;border:1px dashed ${styles_1.COLORS.bgSurface2};border-radius:4px;` +
-                `color:${styles_1.COLORS.textSubtle};font-size:11px;`;
-        const tools = cfg.tools ? cfg.tools.join(', ') : 'start_end_time_select';
-        el.textContent = `[Annotation: ${tools}]`;
-        this._body.appendChild(el);
-    }
-    _renderHidden(type, cfg) {
-        const el = document.createElement('div');
-        el.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;font-style:italic;`;
-        if (type === 'pass_value') {
-            el.textContent = `(hidden: ${cfg.source_column || '?'} → ${cfg.column || '?'})`;
-        }
-        else {
-            el.textContent = `(fixed: ${cfg.column || '?'} = ${cfg.value || '?'})`;
-        }
-        this._body.appendChild(el);
-    }
-    _renderButtons(cfg) {
-        if (cfg.line) {
-            const hr = document.createElement('hr');
-            hr.style.cssText = `border:none;border-top:1px solid ${styles_1.COLORS.bgSurface1};margin:4px 0;`;
-            this._body.appendChild(hr);
-        }
-        const row = document.createElement('div');
-        row.style.cssText = `display:flex;gap:8px;justify-content:flex-end;`;
-        if (cfg.previous) {
-            row.appendChild(this._previewBtn('Previous', false));
-        }
-        if (cfg.next) {
-            const label = typeof cfg.next === 'object' ? cfg.next.label : 'Skip';
-            row.appendChild(this._previewBtn(label || 'Skip', false));
-        }
-        const submitLabel = typeof cfg.submit === 'object' ? cfg.submit.label : 'Submit';
-        row.appendChild(this._previewBtn(submitLabel || 'Submit', true));
-        this._body.appendChild(row);
-    }
-    _previewBtn(text, primary) {
-        const btn = document.createElement('button');
-        btn.textContent = text;
-        btn.disabled = true;
-        btn.style.cssText = primary
-            ? `background:${styles_1.COLORS.blue};border:none;border-radius:4px;color:${styles_1.COLORS.bgBase};padding:5px 14px;font-size:12px;font-weight:700;opacity:0.8;`
-            : `background:${styles_1.COLORS.bgSurface1};border:none;border-radius:4px;color:${styles_1.COLORS.textPrimary};padding:5px 12px;font-size:12px;opacity:0.8;`;
-        return btn;
-    }
-    _fieldWrapper(label) {
-        const w = document.createElement('div');
-        w.style.cssText = `display:flex;align-items:center;gap:10px;`;
-        const lbl = document.createElement('span');
-        lbl.textContent = label;
-        lbl.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;min-width:100px;flex-shrink:0;`;
-        w.appendChild(lbl);
-        return w;
-    }
-    _inputCss() {
-        return `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};` +
-            `border-radius:4px;color:${styles_1.COLORS.textPrimary};padding:4px 8px;font-size:12px;`;
     }
 }
 exports.FormPreview = FormPreview;
@@ -8190,4 +8019,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.dbb3d6b1dbe6285ec589.js.map
+//# sourceMappingURL=lib_index_js.04de17b435af08590b13.js.map
