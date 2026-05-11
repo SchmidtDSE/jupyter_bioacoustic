@@ -57,6 +57,11 @@ class ConfigPanel {
             left.appendChild(section.element);
         }
         this._form.changed.connect(() => this._updateFormPreview());
+        for (const sec of [this._data, this._audio, this._output]) {
+            sec.targetChanged.connect((_, { section, target }) => {
+                void this._onTargetChanged(section, target);
+            });
+        }
         left.appendChild(this._formPreview.element);
         this._project.browseRequested.connect((_, { field, current }) => {
             this._openBrowser(current, ['.yaml', '.yml'], (p) => {
@@ -66,6 +71,16 @@ class ConfigPanel {
                     this._project.setConfigPath(p);
                 else if (field === 'form')
                     this._project.setFormPath(p);
+            });
+        });
+        this._project.projectEnabledChanged.connect((_, enabled) => {
+            void this._onProjectEnabledChanged(enabled);
+        });
+        this._project.loadConfigRequested.connect((_, path) => void this._onLoadConfig(path));
+        this._project.loadBrowseRequested.connect(() => {
+            this._openBrowser('.', ['.yaml', '.yml', '.json'], (p) => {
+                this._project.setLoadPath(p);
+                void this._onLoadConfig(p);
             });
         });
         this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
@@ -302,19 +317,36 @@ class ConfigPanel {
             this._yamlPanel.updateYaml(this._yamls);
             if (state.project) {
                 this._project.setData(state.project);
-                if (state.project.data && typeof state.project.data === 'object') {
-                    this._data.setData(state.project.data);
+                const targets = state.section_targets || {};
+                const dataSource = targets.data === 'config' ? (state.config || {}) : state.project;
+                const audioSource = targets.audio === 'config' ? (state.config || {}) : state.project;
+                const outputSource = targets.output === 'config' ? (state.config || {}) : state.project;
+                if (dataSource.data && typeof dataSource.data === 'object') {
+                    const dataWithCols = Object.assign({}, dataSource.data);
+                    if (dataSource.data_columns)
+                        dataWithCols.data_columns = dataSource.data_columns;
+                    this._data.setData(dataWithCols);
                 }
-                if (state.project.audio && typeof state.project.audio === 'object') {
-                    this._audio.setData(state.project.audio);
+                if (audioSource.audio && typeof audioSource.audio === 'object') {
+                    this._audio.setData(audioSource.audio);
                 }
-                if (state.project.output && typeof state.project.output === 'object') {
-                    this._output.setData(state.project.output);
+                if (outputSource.output && typeof outputSource.output === 'object') {
+                    this._output.setData(outputSource.output);
                 }
-                this._app.setData(state.project);
+                const appSource = targets.app === 'config' ? Object.assign(Object.assign({}, state.project), (state.config || {})) : state.project;
+                this._app.setData(appSource);
             }
             if (state.form_config && typeof state.form_config === 'object') {
                 this._form.setData(state.form_config);
+            }
+            if (state.section_targets) {
+                const targets = state.section_targets;
+                if (targets.data)
+                    this._data.setTarget(targets.data);
+                if (targets.audio)
+                    this._audio.setTarget(targets.audio);
+                if (targets.output)
+                    this._output.setTarget(targets.output);
             }
             this._updateFormPreview();
         }
@@ -324,6 +356,25 @@ class ConfigPanel {
     }
     get dirty() {
         return this._dirty;
+    }
+    async _onLoadConfig(path) {
+        var _a;
+        await this._readyPromise;
+        if (!this._ready)
+            return;
+        this._setStatus(`Loading ${path}…`);
+        try {
+            const raw = await this._kernel.exec((0, python_1.loadConfig)(path));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._applyState(state);
+            const detected = state.detected_type || 'config';
+            const paths = state.loaded_paths || {};
+            const loaded = Object.values(paths).filter(Boolean);
+            this._setStatus(`Loaded as ${detected}: ${loaded.join(', ')}`);
+        }
+        catch (e) {
+            this._setStatus(`Load failed: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+        }
     }
     async validate() {
         var _a, _b, _c;
@@ -354,6 +405,44 @@ class ConfigPanel {
         }
         catch (e) {
             this._setStatus(`Validate error: ${String((_c = e.message) !== null && _c !== void 0 ? _c : e)}`, true);
+        }
+    }
+    async _onProjectEnabledChanged(enabled) {
+        const newTarget = enabled ? 'project' : 'config';
+        for (const sec of [this._data, this._audio, this._output]) {
+            sec.setTarget(newTarget);
+        }
+        await this._readyPromise;
+        if (!this._ready)
+            return;
+        for (const name of ['data', 'audio', 'output', 'app']) {
+            try {
+                const raw = await this._kernel.exec((0, python_1.setSectionTarget)(name, newTarget));
+                const state = JSON.parse((0, python_1.extractJson)(raw));
+                this._yamls = {
+                    project_yaml: state.project_yaml || '',
+                    config_yaml: state.config_yaml || '',
+                    form_yaml: state.form_yaml || '',
+                };
+                this._yamlPanel.updateYaml(this._yamls);
+            }
+            catch ( /* ignore */_a) { /* ignore */ }
+        }
+    }
+    async _onTargetChanged(section, target) {
+        var _a;
+        await this._readyPromise;
+        if (!this._ready)
+            return;
+        this._setStatus('Updating target…');
+        try {
+            const raw = await this._kernel.exec((0, python_1.setSectionTarget)(section, target));
+            const state = JSON.parse((0, python_1.extractJson)(raw));
+            this._applyStatePartial(state, section);
+            this._setStatus('Ready');
+        }
+        catch (e) {
+            this._setStatus(`Error: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
         }
     }
     _updateFormPreview() {
@@ -886,7 +975,6 @@ exports.configBuilderPlugin = void 0;
 const apputils_1 = __webpack_require__(/*! @jupyterlab/apputils */ "webpack/sharing/consume/default/@jupyterlab/apputils");
 const coreutils_1 = __webpack_require__(/*! @jupyterlab/coreutils */ "webpack/sharing/consume/default/@jupyterlab/coreutils");
 const filebrowser_1 = __webpack_require__(/*! @jupyterlab/filebrowser */ "webpack/sharing/consume/default/@jupyterlab/filebrowser");
-const launcher_1 = __webpack_require__(/*! @jupyterlab/launcher */ "webpack/sharing/consume/default/@jupyterlab/launcher");
 const notebook_1 = __webpack_require__(/*! @jupyterlab/notebook */ "webpack/sharing/consume/default/@jupyterlab/notebook");
 const ui_components_1 = __webpack_require__(/*! @jupyterlab/ui-components */ "webpack/sharing/consume/default/@jupyterlab/ui-components");
 const widgets_1 = __webpack_require__(/*! @lumino/widgets */ "webpack/sharing/consume/default/@lumino/widgets");
@@ -1001,8 +1089,8 @@ exports.configBuilderPlugin = {
     id: 'jupyter-bioacoustic:config-builder',
     autoStart: true,
     requires: [apputils_1.ICommandPalette, notebook_1.INotebookTracker],
-    optional: [launcher_1.ILauncher, filebrowser_1.IDefaultFileBrowser],
-    activate: (app, palette, tracker, launcher, fileBrowser) => {
+    optional: [filebrowser_1.IDefaultFileBrowser],
+    activate: (app, palette, tracker, fileBrowser) => {
         window._bioacousticOpenConfigBuilder = (divId) => {
             const container = document.getElementById(divId);
             if (!container)
@@ -1046,12 +1134,6 @@ exports.configBuilderPlugin = {
             }
         });
         palette.addItem({ command: 'bioacoustic:open-config-builder', category: 'Bioacoustic' });
-        if (launcher) {
-            launcher.add({
-                command: 'bioacoustic:open-config-builder',
-                category: 'Other',
-            });
-        }
     }
 };
 
@@ -1066,7 +1148,7 @@ exports.configBuilderPlugin = {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.validateConfig = exports.setSectionTarget = exports.checkFileExists = exports.readSampleData = exports.readColumns = exports.listFiles = exports.saveSingleFile = exports.saveAll = exports.updateConfigFromYaml = exports.updateSection = exports.readState = exports.ensureSetup = exports.extractJson = void 0;
+exports.loadConfig = exports.validateConfig = exports.setSectionTarget = exports.checkFileExists = exports.readSampleData = exports.readColumns = exports.listFiles = exports.saveSingleFile = exports.saveAll = exports.updateConfigFromYaml = exports.updateSection = exports.readState = exports.ensureSetup = exports.extractJson = void 0;
 const util_1 = __webpack_require__(/*! ../util */ "./lib/util.js");
 const DELIM = '___CB_JSON___';
 function extractJson(raw) {
@@ -1172,7 +1254,8 @@ function setSectionTarget(section, target) {
     return [
         `import json as _j`,
         `_CB_INSTANCE.set_section_target('${(0, util_1.escPy)(section)}', '${(0, util_1.escPy)(target)}')`,
-        wp(`_j.dumps({'ok': True})`),
+        `_state = _CB_INSTANCE._get_state()`,
+        wp(`_j.dumps(_state)`),
     ].join('\n');
 }
 exports.setSectionTarget = setSectionTarget;
@@ -1183,6 +1266,14 @@ function validateConfig() {
     ].join('\n');
 }
 exports.validateConfig = validateConfig;
+function loadConfig(path) {
+    return [
+        `import json as _j`,
+        `_state = _CB_INSTANCE.load_config('${(0, util_1.escPy)(path)}')`,
+        wp(`_j.dumps(_state)`),
+    ].join('\n');
+}
+exports.loadConfig = loadConfig;
 
 
 /***/ },
@@ -1204,7 +1295,6 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         super('Application', 'app');
         this.browseRequested = new signaling_1.Signal(this);
         this._displayCols = [];
-        this._dataCols = [];
         this._availableCols = [];
         this._identColSelect = this._makeSelect(['(none)'], '(none)');
         this._identColSelect.addEventListener('change', () => this._emitChanged());
@@ -1214,11 +1304,6 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         const displayWrap = this._makeColumnGroupWrapper();
         displayWrap.append(this._makeSectionLabel('display_columns'), this._displayChipsArea, this._displayPickerArea);
         this._body.appendChild(displayWrap);
-        this._dataChipsArea = this._makeChipsArea();
-        this._dataPickerArea = this._makePickerArea();
-        const dataWrap = this._makeColumnGroupWrapper();
-        dataWrap.append(this._makeSectionLabel('data_columns'), this._dataChipsArea, this._dataPickerArea);
-        this._body.appendChild(dataWrap);
         const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
         this._duplicateCb = dupCb;
         this._duplicateCb.addEventListener('change', () => this._emitChanged());
@@ -1307,7 +1392,6 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         this._availableCols = cols;
         this._rebuildIdentSelect();
         this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
-        this._rebuildPicker(this._dataPickerArea, this._dataCols, 'data');
     }
     _rebuildIdentSelect() {
         const current = this._identColSelect.value;
@@ -1334,7 +1418,7 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         area.style.display = 'flex';
         const hint = document.createElement('span');
         hint.textContent = 'Click to add:';
-        hint.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;width:100%;`;
+        hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:11px;width:100%;`;
         area.appendChild(hint);
         for (const col of this._availableCols) {
             if (selected.includes(col))
@@ -1346,7 +1430,7 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
                     `color:${styles_1.COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
             chip.addEventListener('click', () => {
                 selected.push(col);
-                this._rebuildChips(which === 'display' ? this._displayChipsArea : this._dataChipsArea, selected, which);
+                this._rebuildChips(this._displayChipsArea, selected, which);
                 this._rebuildPicker(area, selected, which);
                 this._emitChanged();
             });
@@ -1358,7 +1442,7 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         if (selected.length === 0) {
             const hint = document.createElement('span');
             hint.textContent = '(none)';
-            hint.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;font-style:italic;`;
+            hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-style:italic;`;
             area.appendChild(hint);
             return;
         }
@@ -1380,7 +1464,7 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
                 if (idx >= 0)
                     selected.splice(idx, 1);
                 this._rebuildChips(area, selected, which);
-                this._rebuildPicker(which === 'display' ? this._displayPickerArea : this._dataPickerArea, selected, which);
+                this._rebuildPicker(this._displayPickerArea, selected, which);
                 this._emitChanged();
             });
             chip.append(name, rm);
@@ -1394,14 +1478,14 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
             result.ident_column = ident;
         if (this._displayCols.length > 0)
             result.display_columns = [...this._displayCols];
-        if (this._dataCols.length > 0)
-            result.data_columns = [...this._dataCols];
         if (this._duplicateCb.checked)
             result.duplicate_entries = true;
         const buf = parseFloat(this._bufferInput.value);
         if (!isNaN(buf) && buf !== 3)
             result.default_buffer = buf;
-        if (!this._captureCb.checked)
+        if (this._captureCb.checked)
+            result.capture = true;
+        else
             result.capture = false;
         if (this._captureDirInput.value)
             result.capture_dir = this._captureDirInput.value;
@@ -1429,11 +1513,6 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
             this._displayCols = [...data.display_columns];
             this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
             this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
-        }
-        if (data.data_columns && Array.isArray(data.data_columns)) {
-            this._dataCols = [...data.data_columns];
-            this._rebuildChips(this._dataChipsArea, this._dataCols, 'data');
-            this._rebuildPicker(this._dataPickerArea, this._dataCols, 'data');
         }
         if (data.duplicate_entries)
             this._duplicateCb.checked = true;
@@ -1473,7 +1552,7 @@ const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharin
 const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
 class AudioSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
-        super('Audio', 'audio');
+        super('Audio', 'audio', false, true);
         this.browseRequested = new signaling_1.Signal(this);
         this._availableCols = [];
         this._sourceType = this._makeSelect(['path', 'url', 'column'], 'path');
@@ -1579,31 +1658,70 @@ exports.CollapsibleSection = void 0;
 const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
 const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
 class CollapsibleSection {
-    constructor(title, sectionName, open = false) {
+    constructor(title, sectionName, open = false, showTargetToggle = false) {
         this.focused = new signaling_1.Signal(this);
         this.fieldFocused = new signaling_1.Signal(this);
         this.changed = new signaling_1.Signal(this);
+        this.targetChanged = new signaling_1.Signal(this);
+        this._targetToggle = null;
         this._sectionName = sectionName;
+        this._hasTargetToggle = showTargetToggle;
         this.element = document.createElement('details');
         if (open)
             this.element.open = true;
         this.element.style.cssText =
             `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};`;
         const summary = document.createElement('summary');
-        summary.textContent = title;
         summary.style.cssText =
             `padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;` +
                 `background:${styles_1.COLORS.bgMantle};color:${styles_1.COLORS.textPrimary};` +
                 `list-style:none;user-select:none;letter-spacing:0.5px;` +
-                `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};`;
+                `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};` +
+                `display:flex;align-items:center;justify-content:space-between;`;
         summary.addEventListener('click', () => {
             this.focused.emit(this._sectionName);
         });
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = title;
+        summary.appendChild(titleSpan);
+        if (showTargetToggle) {
+            const toggleWrap = document.createElement('span');
+            toggleWrap.style.cssText = `display:flex;align-items:center;gap:4px;`;
+            toggleWrap.addEventListener('click', (e) => e.stopPropagation());
+            const lbl = document.createElement('span');
+            lbl.textContent = 'target:';
+            lbl.style.cssText = `font-size:11px;font-weight:400;color:${styles_1.COLORS.textSubtle};`;
+            this._targetToggle = document.createElement('select');
+            this._targetToggle.style.cssText =
+                `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};` +
+                    `border-radius:3px;color:${styles_1.COLORS.textPrimary};padding:1px 4px;font-size:10px;cursor:pointer;`;
+            const optP = document.createElement('option');
+            optP.value = 'project';
+            optP.textContent = 'project';
+            const optC = document.createElement('option');
+            optC.value = 'config';
+            optC.textContent = 'config';
+            this._targetToggle.append(optP, optC);
+            this._targetToggle.addEventListener('change', () => {
+                this.targetChanged.emit({ section: this._sectionName, target: this._targetToggle.value });
+            });
+            toggleWrap.append(lbl, this._targetToggle);
+            summary.appendChild(toggleWrap);
+        }
         this._body = document.createElement('div');
         this._body.style.cssText =
             `padding:10px 12px;display:flex;flex-direction:column;gap:8px;` +
                 `background:${styles_1.COLORS.bgBase};`;
         this.element.append(summary, this._body);
+    }
+    getTarget() {
+        var _a;
+        return ((_a = this._targetToggle) === null || _a === void 0 ? void 0 : _a.value) || 'project';
+    }
+    setTarget(target) {
+        if (this._targetToggle && (target === 'project' || target === 'config')) {
+            this._targetToggle.value = target;
+        }
     }
     _makeRow() {
         const row = document.createElement('div');
@@ -1698,12 +1816,13 @@ const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
 const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
 class DataSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
-        super('Data', 'data');
+        super('Data', 'data', false, true);
         this.columnsLoaded = new signaling_1.Signal(this);
         this.fileLoadRequested = new signaling_1.Signal(this);
         this.browseRequested = new signaling_1.Signal(this);
         this._detectedCols = [];
         this._selectedCols = [];
+        this._dataColsCols = [];
         this._debounceTimer = null;
         this._sourceType = this._makeSelect(['path', 'url', 'sql', 'api'], 'path');
         this._sourceType.addEventListener('change', () => this._emitChanged());
@@ -1754,6 +1873,27 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         this._durationInput = this._makeInput('duration or number', '150px');
         this._durationInput.addEventListener('input', () => this._emitChanged());
         this._body.appendChild(this._makeFieldRow('duration', this._durationInput));
+        const dcLabel = document.createElement('div');
+        dcLabel.style.cssText = `display:flex;align-items:center;gap:6px;cursor:pointer;`;
+        const dcLabelText = document.createElement('span');
+        dcLabelText.textContent = 'data_columns';
+        dcLabelText.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-weight:600;`;
+        dcLabel.append(dcLabelText);
+        dcLabel.addEventListener('click', () => this.fieldFocused.emit('data_columns'));
+        this._dataColsChipsArea = document.createElement('div');
+        this._dataColsChipsArea.style.cssText =
+            `display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:2px 0;`;
+        this._dataColsPickerArea = document.createElement('div');
+        this._dataColsPickerArea.style.cssText =
+            `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;` +
+                `border-top:1px solid ${styles_1.COLORS.bgSurface0};margin-top:2px;`;
+        const dcWrap = document.createElement('div');
+        dcWrap.style.cssText =
+            `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
+                `background:${styles_1.COLORS.bgSurface0};border-radius:6px;`;
+        dcWrap.append(dcLabel, this._dataColsChipsArea, this._dataColsPickerArea);
+        this._body.appendChild(dcWrap);
+        this._rebuildDataColsChips();
     }
     _scheduleAutoLoad() {
         if (this._debounceTimer)
@@ -1770,6 +1910,7 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         this.columnsLoaded.emit(cols);
         this._rebuildColPicker();
         this._rebuildTimeSelects();
+        this._rebuildDataColsPicker();
     }
     getDetectedColumns() {
         return this._detectedCols;
@@ -1790,7 +1931,7 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         this._colPickerArea.style.display = 'flex';
         const hint = document.createElement('span');
         hint.textContent = 'Click to add:';
-        hint.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;width:100%;`;
+        hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:11px;width:100%;`;
         this._colPickerArea.appendChild(hint);
         for (const col of this._detectedCols) {
             if (this._selectedCols.includes(col))
@@ -1814,7 +1955,7 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         if (this._selectedCols.length === 0) {
             const hint = document.createElement('span');
             hint.textContent = 'all columns (none selected)';
-            hint.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;font-style:italic;`;
+            hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-style:italic;`;
             this._selectedChipsArea.appendChild(hint);
             return;
         }
@@ -1886,6 +2027,8 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
             const num = parseFloat(dur);
             result.duration = isNaN(num) ? dur : num;
         }
+        if (this._dataColsCols.length > 0)
+            result.data_columns = [...this._dataColsCols];
         return result;
     }
     setData(data) {
@@ -1916,6 +2059,71 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
             this._endTimeSelect.value = data.end_time;
         if (data.duration !== undefined)
             this._durationInput.value = String(data.duration);
+        if (data.data_columns && Array.isArray(data.data_columns)) {
+            this._dataColsCols = [...data.data_columns];
+            this._rebuildDataColsChips();
+            this._rebuildDataColsPicker();
+        }
+    }
+    _rebuildDataColsPicker() {
+        this._dataColsPickerArea.innerHTML = '';
+        if (this._detectedCols.length === 0) {
+            this._dataColsPickerArea.style.display = 'none';
+            return;
+        }
+        this._dataColsPickerArea.style.display = 'flex';
+        const hint = document.createElement('span');
+        hint.textContent = 'Click to add:';
+        hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:11px;width:100%;`;
+        this._dataColsPickerArea.appendChild(hint);
+        for (const col of this._detectedCols) {
+            if (this._dataColsCols.includes(col))
+                continue;
+            const chip = document.createElement('button');
+            chip.textContent = `+ ${col}`;
+            chip.style.cssText =
+                `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:12px;` +
+                    `color:${styles_1.COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
+            chip.addEventListener('click', () => {
+                this._dataColsCols.push(col);
+                this._rebuildDataColsPicker();
+                this._rebuildDataColsChips();
+                this._emitChanged();
+            });
+            this._dataColsPickerArea.appendChild(chip);
+        }
+    }
+    _rebuildDataColsChips() {
+        this._dataColsChipsArea.innerHTML = '';
+        if (this._dataColsCols.length === 0) {
+            const hint = document.createElement('span');
+            hint.textContent = 'all columns (none selected)';
+            hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-style:italic;`;
+            this._dataColsChipsArea.appendChild(hint);
+            return;
+        }
+        for (const col of this._dataColsCols) {
+            const chip = document.createElement('span');
+            chip.style.cssText =
+                `display:inline-flex;align-items:center;gap:4px;` +
+                    `background:${styles_1.COLORS.bgSurface1};border-radius:12px;` +
+                    `color:${styles_1.COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;`;
+            const name = document.createElement('span');
+            name.textContent = col;
+            const rm = document.createElement('button');
+            rm.textContent = '\u2715';
+            rm.style.cssText =
+                `background:none;border:none;color:${styles_1.COLORS.textMuted};cursor:pointer;` +
+                    `font-size:12px;padding:0 2px;line-height:1;`;
+            rm.addEventListener('click', () => {
+                this._dataColsCols = this._dataColsCols.filter(c => c !== col);
+                this._rebuildDataColsPicker();
+                this._rebuildDataColsChips();
+                this._emitChanged();
+            });
+            chip.append(name, rm);
+            this._dataColsChipsArea.appendChild(chip);
+        }
     }
 }
 exports.DataSection = DataSection;
@@ -1984,7 +2192,7 @@ class FormPreview {
         this.element.style.opacity = '0.5';
         const msg = document.createElement('div');
         msg.textContent = 'No form elements configured.';
-        msg.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:12px;font-style:italic;padding:8px 0;`;
+        msg.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-style:italic;padding:8px 0;`;
         this._body.appendChild(msg);
     }
 }
@@ -2014,7 +2222,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
         this._dynForms = [];
         const hint = document.createElement('div');
         hint.textContent = 'Click on the buttons below to add items to the form.';
-        hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:11px;font-style:italic;margin-bottom:4px;`;
+        hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-style:italic;margin-bottom:4px;`;
         this._body.appendChild(hint);
         this._addBar = this._makeAddBar();
         this._body.appendChild(this._addBar);
@@ -2270,7 +2478,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
             if (!Array.isArray(cfg.items) || cfg.items.length === 0) {
                 const empty = document.createElement('span');
                 empty.textContent = '(no items)';
-                empty.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;font-style:italic;`;
+                empty.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:11px;font-style:italic;`;
                 listEl.appendChild(empty);
                 return;
             }
@@ -2348,7 +2556,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
         container.appendChild(addRow);
         const hint = document.createElement('span');
         hint.textContent = 'Add items one at a time. Use form field to reference a dynamic form.';
-        hint.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;`;
+        hint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:11px;`;
         container.appendChild(hint);
     }
     _buildPasteValues(container, cfg) {
@@ -2843,7 +3051,7 @@ const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharin
 const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
 class OutputSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
-        super('Output', 'output');
+        super('Output', 'output', false, true);
         this.browseRequested = new signaling_1.Signal(this);
         const pathRow = this._makeRow();
         pathRow.appendChild(this._makeLabel('path'));
@@ -2920,8 +3128,38 @@ const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
 const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
 class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
-        super('Project', 'project', true);
+        super('Project & File Paths', 'project', true);
         this.browseRequested = new signaling_1.Signal(this);
+        this.loadConfigRequested = new signaling_1.Signal(this);
+        this.loadBrowseRequested = new signaling_1.Signal(this);
+        this.projectEnabledChanged = new signaling_1.Signal(this);
+        const loadLabel = document.createElement('div');
+        loadLabel.textContent = 'Load existing config';
+        loadLabel.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
+        this._body.appendChild(loadLabel);
+        const loadRow = document.createElement('div');
+        loadRow.style.cssText = `display:flex;align-items:center;gap:6px;margin-bottom:6px;`;
+        this._loadPathInput = this._makeInput('config/projects/my_project.yaml', '220px');
+        const loadBrowse = this._makeButton('Browse');
+        loadBrowse.addEventListener('click', () => this.loadBrowseRequested.emit());
+        const loadBtn = this._makeButton('Load', true);
+        loadBtn.addEventListener('click', () => {
+            const p = this._loadPathInput.value.trim();
+            if (p)
+                this.loadConfigRequested.emit(p);
+        });
+        this._loadPathInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const p = this._loadPathInput.value.trim();
+                if (p)
+                    this.loadConfigRequested.emit(p);
+            }
+        });
+        loadRow.append(this._loadPathInput, loadBrowse, loadBtn);
+        this._body.appendChild(loadRow);
+        const loadSep = document.createElement('div');
+        loadSep.style.cssText = `height:1px;background:${styles_1.COLORS.bgSurface1};margin:6px 0;`;
+        this._body.appendChild(loadSep);
         this._nameInput = this._makeInput('e.g. Bird Review', '250px');
         this._nameInput.addEventListener('input', () => {
             this._updateDefaultPaths();
@@ -2944,12 +3182,15 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
             'Check which files to create. With all 3, project references config and config references form. ' +
                 'Uncheck config to inline everything into project. Uncheck form to embed form_config as a dict in config. ' +
                 'Only need one file? Uncheck the others and everything gets inlined.';
-        pathHint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:10px;line-height:1.4;margin-bottom:4px;`;
+        pathHint.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:11px;line-height:1.4;margin-bottom:4px;`;
         this._body.appendChild(pathHint);
         const pRow = this._makeFileRow('project');
         this._projectCb = pRow.cb;
         this._projectPathInput = pRow.input;
         this._projectBrowseBtn = pRow.btn;
+        this._projectCb.addEventListener('change', () => {
+            this.projectEnabledChanged.emit(this._projectCb.checked);
+        });
         this._body.appendChild(pRow.row);
         const cRow = this._makeFileRow('config');
         this._configCb = cRow.cb;
@@ -3024,6 +3265,26 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
     setFormPath(path) {
         this._formPathInput.value = path;
         this._emitChanged();
+    }
+    setLoadPath(path) {
+        this._loadPathInput.value = path;
+    }
+    setCheckedStates(project, config, form) {
+        this._projectCb.checked = project;
+        this._projectPathInput.disabled = !project;
+        this._projectBrowseBtn.disabled = !project;
+        this._projectPathInput.style.opacity = project ? '1' : '0.4';
+        this._projectBrowseBtn.style.opacity = project ? '1' : '0.4';
+        this._configCb.checked = config;
+        this._configPathInput.disabled = !config;
+        this._configBrowseBtn.disabled = !config;
+        this._configPathInput.style.opacity = config ? '1' : '0.4';
+        this._configBrowseBtn.style.opacity = config ? '1' : '0.4';
+        this._formCb.checked = form;
+        this._formPathInput.disabled = !form;
+        this._formBrowseBtn.disabled = !form;
+        this._formPathInput.style.opacity = form ? '1' : '0.4';
+        this._formBrowseBtn.style.opacity = form ? '1' : '0.4';
     }
     getData() {
         return {
@@ -3552,17 +3813,91 @@ exports.bioacousticPlugin = {
                 app.shell.activateById(widget.id);
             }
         });
+        app.commands.addCommand('bioacoustic:launcher-dialog', {
+            label: 'Bioacoustic Annotator',
+            icon: bioacousticIcon,
+            execute: () => {
+                showLauncherDialog(() => app.commands.execute('bioacoustic:open-project'), () => app.commands.execute('bioacoustic:open-config-builder'));
+            }
+        });
         palette.addItem({ command: 'bioacoustic:open', category: 'Bioacoustic' });
         palette.addItem({ command: 'bioacoustic:open-project', category: 'Bioacoustic' });
+        palette.addItem({ command: 'bioacoustic:launcher-dialog', category: 'Bioacoustic' });
         if (launcher) {
             launcher.add({
-                command: 'bioacoustic:open-project',
+                command: 'bioacoustic:launcher-dialog',
                 category: 'Other',
             });
         }
         console.log('jupyter-bioacoustic activated');
     }
 };
+function showLauncherDialog(onAnnotator, onConfigBuilder) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+        `position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;` +
+            `background:rgba(0,0,0,0.55);`;
+    const dialog = document.createElement('div');
+    dialog.style.cssText =
+        `background:${styles_1.COLORS.bgBase};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:12px;` +
+            `padding:24px 28px;display:flex;flex-direction:column;gap:16px;min-width:340px;` +
+            `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);`;
+    const title = document.createElement('div');
+    title.textContent = 'Bioacoustic Annotator';
+    title.style.cssText =
+        `font-size:20px;font-weight:700;color:${styles_1.COLORS.textPrimary};text-align:center;`;
+    dialog.appendChild(title);
+    const subtitle = document.createElement('div');
+    subtitle.textContent = 'Choose an option to get started';
+    subtitle.style.cssText =
+        `font-size:14px;color:${styles_1.COLORS.textMuted};text-align:center;margin-top:-8px;`;
+    dialog.appendChild(subtitle);
+    const tileRow = document.createElement('div');
+    tileRow.style.cssText = `display:flex;gap:12px;justify-content:center;`;
+    const makeTile = (label, desc, iconSvg, onClick) => {
+        var _a, _b;
+        const tile = document.createElement('button');
+        tile.style.cssText =
+            `background:${styles_1.COLORS.bgMantle};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:8px;` +
+                `padding:16px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;` +
+                `cursor:pointer;flex:1;min-width:130px;transition:border-color 0.15s;`;
+        tile.addEventListener('mouseenter', () => { tile.style.borderColor = styles_1.COLORS.blue; });
+        tile.addEventListener('mouseleave', () => { tile.style.borderColor = styles_1.COLORS.bgSurface1; });
+        const icon = document.createElement('div');
+        icon.innerHTML = iconSvg;
+        icon.style.cssText = `width:40px;height:40px;color:${styles_1.COLORS.blue};`;
+        (_a = icon.querySelector('svg')) === null || _a === void 0 ? void 0 : _a.setAttribute('width', '40');
+        (_b = icon.querySelector('svg')) === null || _b === void 0 ? void 0 : _b.setAttribute('height', '40');
+        const lbl = document.createElement('div');
+        lbl.textContent = label;
+        lbl.style.cssText = `font-size:15px;font-weight:600;color:${styles_1.COLORS.textPrimary};`;
+        const d = document.createElement('div');
+        d.textContent = desc;
+        d.style.cssText = `font-size:12px;color:${styles_1.COLORS.textMuted};text-align:center;line-height:1.4;`;
+        tile.append(icon, lbl, d);
+        tile.addEventListener('click', () => {
+            overlay.remove();
+            onClick();
+        });
+        return tile;
+    };
+    tileRow.appendChild(makeTile('Annotator', 'Open a project file to review and annotate clips', bioacousticIconSvg, onAnnotator));
+    const builderSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/>
+    <line x1="16" y1="17" x2="8" y2="17"/>
+    <line x1="10" y1="9" x2="8" y2="9"/>
+  </svg>`;
+    tileRow.appendChild(makeTile('Config Builder', 'Create or edit configuration files with a GUI', builderSvg, onConfigBuilder));
+    dialog.appendChild(tileRow);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay)
+            overlay.remove();
+    });
+    document.body.appendChild(overlay);
+}
 exports["default"] = exports.bioacousticPlugin;
 
 
@@ -8365,4 +8700,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.e3cd51d527d63798013a.js.map
+//# sourceMappingURL=lib_index_js.b0433c6fea9314b68468.js.map
