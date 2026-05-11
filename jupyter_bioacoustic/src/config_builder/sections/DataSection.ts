@@ -42,25 +42,28 @@ export class DataSection extends CollapsibleSection {
     this._body.appendChild(pathRow);
 
     const colLabel = document.createElement('div');
-    colLabel.style.cssText = `display:flex;align-items:center;gap:6px;margin-top:4px;`;
+    colLabel.style.cssText = `display:flex;align-items:center;gap:6px;cursor:pointer;`;
     const colLabelText = document.createElement('span');
-    colLabelText.textContent = 'data_columns';
+    colLabelText.textContent = 'columns';
     colLabelText.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
     colLabel.append(colLabelText);
-    this._body.appendChild(colLabel);
+    colLabel.addEventListener('click', () => this.fieldFocused.emit('columns'));
 
     this._selectedChipsArea = document.createElement('div');
     this._selectedChipsArea.style.cssText =
-      `display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:6px 8px;` +
-      `background:${COLORS.bgSurface0};border-radius:4px;`;
-    this._body.appendChild(this._selectedChipsArea);
+      `display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:2px 0;`;
 
     this._colPickerArea = document.createElement('div');
     this._colPickerArea.style.cssText =
-      `display:none;flex-wrap:wrap;gap:4px;padding:6px 8px;` +
-      `background:${COLORS.bgMantle};border-radius:4px;margin-top:2px;` +
-      `border:1px dashed ${COLORS.bgSurface1};`;
-    this._body.appendChild(this._colPickerArea);
+      `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;` +
+      `border-top:1px solid ${COLORS.bgSurface0};margin-top:2px;`;
+
+    const colWrap = document.createElement('div');
+    colWrap.style.cssText =
+      `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
+      `background:${COLORS.bgSurface0};border-radius:6px;`;
+    colWrap.append(colLabel, this._selectedChipsArea, this._colPickerArea);
+    this._body.appendChild(colWrap);
 
     const colSeparator = document.createElement('div');
     colSeparator.style.cssText =
