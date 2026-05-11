@@ -1,5 +1,6 @@
 import { Signal } from '@lumino/signaling';
 import { CollapsibleSection } from './CollapsibleSection';
+import { SecretsEditor } from './SecretsEditor';
 
 export class AudioSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, string>(this);
@@ -12,7 +13,7 @@ export class AudioSection extends CollapsibleSection {
   private _prefixInput: HTMLInputElement;
   private _suffixInput: HTMLInputElement;
   private _fallbackInput: HTMLInputElement;
-  private _secretInput: HTMLInputElement;
+  private _secrets: SecretsEditor;
   private _availableCols: string[] = [];
 
   constructor() {
@@ -51,10 +52,9 @@ export class AudioSection extends CollapsibleSection {
     this._fallbackInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('fallback', this._fallbackInput));
 
-    this._secretInput = this._makeInput('API key or token', '200px');
-    this._secretInput.type = 'password';
-    this._secretInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('secret', this._secretInput));
+    this._secrets = new SecretsEditor(true);
+    this._secrets.changed.connect(() => this._emitChanged());
+    this._body.appendChild(this._secrets.element);
   }
 
   setPath(path: string): void {
@@ -88,7 +88,8 @@ export class AudioSection extends CollapsibleSection {
     if (this._prefixInput.value) result.prefix = this._prefixInput.value;
     if (this._suffixInput.value) result.suffix = this._suffixInput.value;
     if (this._fallbackInput.value) result.fallback = this._fallbackInput.value;
-    if (this._secretInput.value) result.secret = this._secretInput.value;
+    const secrets = this._secrets.getData();
+    if (secrets !== undefined) result.secrets = secrets;
     return result;
   }
 
@@ -99,7 +100,7 @@ export class AudioSection extends CollapsibleSection {
     if (data.prefix) this._prefixInput.value = data.prefix;
     if (data.suffix) this._suffixInput.value = data.suffix;
     if (data.fallback) this._fallbackInput.value = data.fallback;
-    if (data.secret) this._secretInput.value = data.secret;
+    if (data.secrets !== undefined) this._secrets.setData(data.secrets);
     this._updateValueUI();
   }
 }

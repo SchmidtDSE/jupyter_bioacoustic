@@ -98,7 +98,7 @@ class ConfigBuilder:
                 'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
                 'spectrogram_resolution', 'visualizations', 'partial_download',
                 'width', 'clip_table_height', 'player_height',
-                'info_card_height', 'form_panel_height',
+                'info_card_height', 'form_panel_height', 'secrets',
             )
             dest = self._project if target == 'project' else self._config
             for k in app_keys:
@@ -132,7 +132,7 @@ class ConfigBuilder:
                 'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
                 'spectrogram_resolution', 'visualizations', 'partial_download',
                 'width', 'clip_table_height', 'player_height',
-                'info_card_height', 'form_panel_height',
+                'info_card_height', 'form_panel_height', 'secrets',
             )
             old_dict = self._project if old_target == 'project' else self._config
             new_dict = self._project if target == 'project' else self._config
@@ -163,7 +163,7 @@ class ConfigBuilder:
             'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
             'spectrogram_resolution', 'visualizations', 'partial_download',
             'width', 'clip_table_height', 'player_height',
-            'info_card_height', 'form_panel_height',
+            'info_card_height', 'form_panel_height', 'secrets',
         )
 
         form_cfg = dict(self._form_config) if self._form_config else {}
