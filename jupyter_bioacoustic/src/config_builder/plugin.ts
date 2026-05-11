@@ -1,6 +1,7 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { ICommandPalette } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
+import { IDefaultFileBrowser } from '@jupyterlab/filebrowser';
 import { ILauncher } from '@jupyterlab/launcher';
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { LabIcon } from '@jupyterlab/ui-components';
@@ -20,11 +21,12 @@ class ConfigBuilderWidget extends Widget {
   private _panel!: ConfigPanel;
   private _titleEl!: HTMLSpanElement;
 
-  constructor(tracker: INotebookTracker, directKernel?: any) {
+  constructor(tracker: INotebookTracker, directKernel?: any, cwd?: string) {
     super();
     this._kernelBridge = new KernelBridge(
       directKernel ? null : tracker,
       directKernel,
+      cwd,
     );
     this._ownedKernel = directKernel ?? null;
     this.id = `jp-config-builder-${_builderCounter++}`;
@@ -66,7 +68,7 @@ class ConfigBuilderWidget extends Widget {
       `background:${COLORS.bgMantle};border-top:1px solid ${COLORS.bgSurface0};flex-shrink:0;`;
 
     const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save Config';
+    saveBtn.textContent = 'Save Configuration Files';
     saveBtn.style.cssText = btnStyle() + `font-size:11px;`;
     saveBtn.addEventListener('click', () => void this._panel.saveToFile());
 
@@ -142,12 +144,13 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-bioacoustic:config-builder',
   autoStart: true,
   requires: [ICommandPalette, INotebookTracker],
-  optional: [ILauncher],
+  optional: [ILauncher, IDefaultFileBrowser],
   activate: (
     app: JupyterFrontEnd,
     palette: ICommandPalette,
     tracker: INotebookTracker,
     launcher: ILauncher | null,
+    fileBrowser: IDefaultFileBrowser | null,
   ) => {
     (window as any)._bioacousticOpenConfigBuilder = (divId: string) => {
       const container = document.getElementById(divId);
@@ -168,10 +171,14 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
         }
         const ownsKernel = !getExistingKernel(tracker);
 
+        const browserPath = fileBrowser?.model.path || '';
         const serverRoot = PageConfig.getOption('serverRoot');
+        const cwd = browserPath
+          ? `${serverRoot}/${browserPath}`
+          : serverRoot;
         const error = await execInKernel(kernel, [
           `import os as _os`,
-          `_os.chdir(_os.path.expanduser('${escPyLocal(serverRoot)}'))`,
+          `_os.chdir(_os.path.expanduser('${escPyLocal(cwd)}'))`,
           `from jupyter_bioacoustic.config_builder import ConfigBuilder`,
           `_cb = ConfigBuilder()`,
           `_cb.setup()`,
@@ -186,6 +193,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
         const widget = new ConfigBuilderWidget(
           tracker,
           ownsKernel ? kernel : undefined,
+          cwd,
         );
         app.shell.add(widget, 'main');
         app.shell.activateById(widget.id);
