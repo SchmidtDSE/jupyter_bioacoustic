@@ -4,6 +4,7 @@ import { COLORS } from '../../styles';
 export abstract class CollapsibleSection {
   readonly element: HTMLDetailsElement;
   readonly focused = new Signal<this, string>(this);
+  readonly fieldFocused = new Signal<this, string>(this);
   readonly changed = new Signal<this, void>(this);
 
   protected _body: HTMLDivElement;
@@ -90,6 +91,7 @@ export abstract class CollapsibleSection {
     lbl.style.alignItems = 'center';
     lbl.style.gap = '6px';
     row.appendChild(lbl);
+    row.addEventListener('click', () => this.fieldFocused.emit(label));
     return { row, input: cb };
   }
 
@@ -102,10 +104,13 @@ export abstract class CollapsibleSection {
     return btn;
   }
 
+
   protected _makeFieldRow(labelText: string, input: HTMLElement): HTMLDivElement {
     const row = this._makeRow();
     row.appendChild(this._makeLabel(labelText));
     row.appendChild(input);
+    row.addEventListener('focusin', () => this.fieldFocused.emit(labelText));
+    row.addEventListener('click', () => this.fieldFocused.emit(labelText));
     return row;
   }
 
