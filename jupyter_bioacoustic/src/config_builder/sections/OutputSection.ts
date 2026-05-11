@@ -1,7 +1,11 @@
+import { Signal } from '@lumino/signaling';
 import { CollapsibleSection } from './CollapsibleSection';
 
 export class OutputSection extends CollapsibleSection {
+  readonly browseRequested = new Signal<this, string>(this);
+
   private _pathInput: HTMLInputElement;
+  private _browseBtn: HTMLButtonElement;
   private _uriInput: HTMLInputElement;
   private _syncBtnCb: HTMLInputElement;
   private _syncLabelInput: HTMLInputElement;
@@ -10,9 +14,16 @@ export class OutputSection extends CollapsibleSection {
   constructor() {
     super('Output', 'output');
 
-    this._pathInput = this._makeInput('outputs/reviews.csv', '250px');
+    const pathRow = this._makeRow();
+    pathRow.appendChild(this._makeLabel('path'));
+    this._pathInput = this._makeInput('outputs/reviews.csv', '200px');
     this._pathInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('path', this._pathInput));
+    this._browseBtn = this._makeButton('Browse');
+    this._browseBtn.addEventListener('click', () => {
+      this.browseRequested.emit(this._pathInput.value || '.');
+    });
+    pathRow.append(this._pathInput, this._browseBtn);
+    this._body.appendChild(pathRow);
 
     this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
     this._uriInput.addEventListener('input', () => this._emitChanged());
@@ -31,6 +42,11 @@ export class OutputSection extends CollapsibleSection {
     this._recursiveCb = recCb;
     this._recursiveCb.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(recRow);
+  }
+
+  setPath(path: string): void {
+    this._pathInput.value = path;
+    this._emitChanged();
   }
 
   getData(): Record<string, any> {
