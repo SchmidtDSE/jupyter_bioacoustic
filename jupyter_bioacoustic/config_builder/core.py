@@ -399,6 +399,97 @@ class ConfigBuilder:
         self._dirty = True
         return True
 
+    def validate(self):
+        errors = []
+        warnings = []
+        fc = self._form_config or {}
+
+        defined_forms = set()
+        dyn = fc.get('dynamic_forms')
+        if isinstance(dyn, list):
+            for item in dyn:
+                if isinstance(item, dict):
+                    defined_forms.update(item.keys())
+        elif isinstance(dyn, dict):
+            defined_forms.update(dyn.keys())
+
+        referenced_forms = set()
+
+        def _scan_items(items):
+            if isinstance(items, list):
+                for it in items:
+                    if isinstance(it, dict) and 'form' in it:
+                        referenced_forms.add(it['form'])
+
+        def _scan_elements(elements):
+            if not isinstance(elements, list):
+                return
+            for el in elements:
+                if not isinstance(el, dict):
+                    continue
+                for etype, ecfg in el.items():
+                    if not isinstance(ecfg, dict):
+                        continue
+                    if etype == 'select' and 'items' in ecfg:
+                        _scan_items(ecfg['items'])
+                    if etype == 'checkbox':
+                        for fkey in ('checked_form', 'unchecked_form'):
+                            if ecfg.get(fkey):
+                                referenced_forms.add(ecfg[fkey])
+
+        form_list = fc.get('form')
+        if isinstance(form_list, list):
+            _scan_elements(form_list)
+
+        for top_key in ('select', 'checkbox'):
+            if top_key in fc and isinstance(fc[top_key], dict):
+                cfg = fc[top_key]
+                if top_key == 'select' and 'items' in cfg:
+                    _scan_items(cfg['items'])
+                for fkey in ('checked_form', 'unchecked_form'):
+                    if cfg.get(fkey):
+                        referenced_forms.add(cfg[fkey])
+
+        if isinstance(dyn, list):
+            for item in dyn:
+                if isinstance(item, dict):
+                    for _, elems in item.items():
+                        _scan_elements(elems if isinstance(elems, list) else [])
+        elif isinstance(dyn, dict):
+            for _, elems in dyn.items():
+                _scan_elements(elems if isinstance(elems, list) else [])
+
+        missing_forms = referenced_forms - defined_forms
+        unreferenced_forms = defined_forms - referenced_forms
+
+        if 'annotation' in fc and isinstance(fc['annotation'], dict):
+            annot_form = fc['annotation'].get('form')
+            if annot_form:
+                referenced_forms.add(annot_form)
+                if annot_form in unreferenced_forms:
+                    unreferenced_forms.discard(annot_form)
+                if annot_form not in defined_forms:
+                    missing_forms.add(annot_form)
+
+        for f in sorted(missing_forms):
+            errors.append(f'Referenced dynamic form "{f}" is not defined')
+        for f in sorted(unreferenced_forms):
+            warnings.append(f'Dynamic form "{f}" is defined but never referenced')
+
+        if not fc.get('submission_buttons'):
+            warnings.append('No submission_buttons configured (defaults will be used)')
+
+        has_form = bool(fc.get('form'))
+        has_legacy = any(k in fc for k in ('select', 'textbox', 'checkbox', 'number'))
+        if not has_form and not has_legacy:
+            warnings.append('No form input elements configured')
+
+        return {
+            'valid': len(errors) == 0,
+            'errors': errors,
+            'warnings': warnings,
+        }
+
     def setup(self):
         ip = get_ipython()
         if ip is None:
