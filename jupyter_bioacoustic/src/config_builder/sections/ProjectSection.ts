@@ -6,6 +6,7 @@ export class ProjectSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, { field: string; current: string }>(this);
   readonly loadConfigRequested = new Signal<this, string>(this);
   readonly loadBrowseRequested = new Signal<this, void>(this);
+  readonly projectEnabledChanged = new Signal<this, boolean>(this);
 
   private _nameInput: HTMLInputElement;
   private _saveBtnCb: HTMLInputElement;
@@ -87,6 +88,9 @@ export class ProjectSection extends CollapsibleSection {
     this._projectCb = pRow.cb;
     this._projectPathInput = pRow.input;
     this._projectBrowseBtn = pRow.btn;
+    this._projectCb.addEventListener('change', () => {
+      this.projectEnabledChanged.emit(this._projectCb.checked);
+    });
     this._body.appendChild(pRow.row);
 
     const cRow = this._makeFileRow('config');
