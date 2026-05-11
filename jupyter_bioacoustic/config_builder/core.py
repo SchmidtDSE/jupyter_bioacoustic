@@ -118,8 +118,30 @@ class ConfigBuilder:
         return self._get_state()
 
     def set_section_target(self, section, target):
-        if section in self._section_targets and target in ('project', 'config', 'form_config'):
-            self._section_targets[section] = target
+        if section not in self._section_targets or target not in ('project', 'config', 'form_config'):
+            return
+        old_target = self._section_targets[section]
+        self._section_targets[section] = target
+
+        if section in ('data', 'audio', 'output') and old_target != target:
+            old_dict = self._project if old_target == 'project' else self._config
+            new_dict = self._project if target == 'project' else self._config
+            if section in old_dict:
+                new_dict[section] = old_dict.pop(section)
+
+        if section == 'app' and old_target != target:
+            app_keys = (
+                'ident_column', 'display_columns', 'data_columns',
+                'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
+                'spectrogram_resolution', 'visualizations', 'partial_download',
+                'width', 'clip_table_height', 'player_height',
+                'info_card_height', 'form_panel_height',
+            )
+            old_dict = self._project if old_target == 'project' else self._config
+            new_dict = self._project if target == 'project' else self._config
+            for k in app_keys:
+                if k in old_dict:
+                    new_dict[k] = old_dict.pop(k)
 
     def save(self, path=None, config_type='project'):
         return self.save_all()
@@ -439,6 +461,9 @@ class ConfigBuilder:
             self._project['project_enabled'] = True
             loaded_paths['project'] = path
 
+            for s in ('data', 'audio', 'output', 'app'):
+                self._section_targets[s] = 'project'
+
             config_ref = data.get('config')
             if isinstance(config_ref, str):
                 config_path = config_ref if os.path.isabs(config_ref) else os.path.join(base_dir, config_ref)
@@ -498,12 +523,15 @@ class ConfigBuilder:
             self._project['project_enabled'] = False
             loaded_paths['config'] = path
 
+            for s in ('data', 'audio', 'output', 'app'):
+                self._section_targets[s] = 'config'
+
             skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
                          'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
             form_ref = data.pop('form_config', None)
             for k, v in data.items():
                 if k not in skip_keys:
-                    self._project[k] = v
+                    self._config[k] = v
 
             if isinstance(form_ref, str):
                 form_path = form_ref if os.path.isabs(form_ref) else os.path.join(base_dir, form_ref)
