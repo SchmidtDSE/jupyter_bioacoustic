@@ -122,3 +122,11 @@ export function validateConfig(): string {
     wp(`_j.dumps(_CB_INSTANCE.validate())`),
   ].join('\n');
 }
+
+export function loadConfig(path: string): string {
+  return [
+    `import json as _j`,
+    `_state = _CB_INSTANCE.load_config('${escPy(path)}')`,
+    wp(`_j.dumps(_state)`),
+  ].join('\n');
+}
