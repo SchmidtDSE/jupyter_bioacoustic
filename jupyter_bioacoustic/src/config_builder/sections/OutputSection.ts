@@ -10,6 +10,7 @@ export class OutputSection extends CollapsibleSection {
   private _syncBtnCb: HTMLInputElement;
   private _syncLabelInput: HTMLInputElement;
   private _recursiveCb: HTMLInputElement;
+  private _secretInput: HTMLInputElement;
 
   constructor() {
     super('Output', 'output', false, true);
@@ -42,6 +43,11 @@ export class OutputSection extends CollapsibleSection {
     this._recursiveCb = recCb;
     this._recursiveCb.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(recRow);
+
+    this._secretInput = this._makeInput('API key or token', '200px');
+    this._secretInput.type = 'password';
+    this._secretInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('secret', this._secretInput));
   }
 
   setPath(path: string): void {
@@ -57,6 +63,7 @@ export class OutputSection extends CollapsibleSection {
       result.sync_button = this._syncLabelInput.value || true;
     }
     if (this._recursiveCb.checked) result.recursive = true;
+    if (this._secretInput.value) result.secret = this._secretInput.value;
     return result;
   }
 
@@ -68,5 +75,6 @@ export class OutputSection extends CollapsibleSection {
       if (typeof data.sync_button === 'string') this._syncLabelInput.value = data.sync_button;
     }
     if (data.recursive) this._recursiveCb.checked = true;
+    if (data.secret) this._secretInput.value = data.secret;
   }
 }
