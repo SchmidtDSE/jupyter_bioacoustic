@@ -151,7 +151,7 @@ export class DataSection extends CollapsibleSection {
 
     const hint = document.createElement('span');
     hint.textContent = 'Click to add:';
-    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;width:100%;`;
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:100%;`;
     this._colPickerArea.appendChild(hint);
 
     for (const col of this._detectedCols) {
@@ -176,7 +176,7 @@ export class DataSection extends CollapsibleSection {
     if (this._selectedCols.length === 0) {
       const hint = document.createElement('span');
       hint.textContent = 'all columns (none selected)';
-      hint.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-style:italic;`;
+      hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;`;
       this._selectedChipsArea.appendChild(hint);
       return;
     }
@@ -285,7 +285,7 @@ export class DataSection extends CollapsibleSection {
     this._dataColsPickerArea.style.display = 'flex';
     const hint = document.createElement('span');
     hint.textContent = 'Click to add:';
-    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;width:100%;`;
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:100%;`;
     this._dataColsPickerArea.appendChild(hint);
 
     for (const col of this._detectedCols) {
@@ -310,7 +310,7 @@ export class DataSection extends CollapsibleSection {
     if (this._dataColsCols.length === 0) {
       const hint = document.createElement('span');
       hint.textContent = 'all columns (none selected)';
-      hint.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-style:italic;`;
+      hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;`;
       this._dataColsChipsArea.appendChild(hint);
       return;
     }

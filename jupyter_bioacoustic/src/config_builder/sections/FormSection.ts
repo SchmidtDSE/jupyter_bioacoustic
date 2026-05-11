@@ -34,7 +34,7 @@ export class FormSection extends CollapsibleSection {
 
     const hint = document.createElement('div');
     hint.textContent = 'Click on the buttons below to add items to the form.';
-    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;font-style:italic;margin-bottom:4px;`;
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;margin-bottom:4px;`;
     this._body.appendChild(hint);
 
     this._addBar = this._makeAddBar();
@@ -312,7 +312,7 @@ export class FormSection extends CollapsibleSection {
       if (!Array.isArray(cfg.items) || cfg.items.length === 0) {
         const empty = document.createElement('span');
         empty.textContent = '(no items)';
-        empty.style.cssText = `color:${COLORS.textMuted};font-size:10px;font-style:italic;`;
+        empty.style.cssText = `color:${COLORS.textSubtle};font-size:11px;font-style:italic;`;
         listEl.appendChild(empty);
         return;
       }
@@ -386,7 +386,7 @@ export class FormSection extends CollapsibleSection {
 
     const hint = document.createElement('span');
     hint.textContent = 'Add items one at a time. Use form field to reference a dynamic form.';
-    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;`;
     container.appendChild(hint);
   }
 

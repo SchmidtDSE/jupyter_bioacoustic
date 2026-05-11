@@ -29,7 +29,7 @@ export class ProjectSection extends CollapsibleSection {
 
     const loadLabel = document.createElement('div');
     loadLabel.textContent = 'Load existing config';
-    loadLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
+    loadLabel.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
     this._body.appendChild(loadLabel);
 
     const loadRow = document.createElement('div');
@@ -81,7 +81,7 @@ export class ProjectSection extends CollapsibleSection {
       'Check which files to create. With all 3, project references config and config references form. ' +
       'Uncheck config to inline everything into project. Uncheck form to embed form_config as a dict in config. ' +
       'Only need one file? Uncheck the others and everything gets inlined.';
-    pathHint.style.cssText = `color:${COLORS.textSubtle};font-size:10px;line-height:1.4;margin-bottom:4px;`;
+    pathHint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;line-height:1.4;margin-bottom:4px;`;
     this._body.appendChild(pathHint);
 
     const pRow = this._makeFileRow('project');

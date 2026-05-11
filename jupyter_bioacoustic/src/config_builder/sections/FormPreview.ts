@@ -68,7 +68,7 @@ export class FormPreview {
     this.element.style.opacity = '0.5';
     const msg = document.createElement('div');
     msg.textContent = 'No form elements configured.';
-    msg.style.cssText = `color:${COLORS.textMuted};font-size:12px;font-style:italic;padding:8px 0;`;
+    msg.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;padding:8px 0;`;
     this._body.appendChild(msg);
   }
 }

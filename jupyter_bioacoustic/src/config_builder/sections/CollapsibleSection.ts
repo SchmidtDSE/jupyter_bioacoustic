@@ -44,7 +44,7 @@ export abstract class CollapsibleSection {
 
       const lbl = document.createElement('span');
       lbl.textContent = 'target:';
-      lbl.style.cssText = `font-size:10px;font-weight:400;color:${COLORS.textMuted};`;
+      lbl.style.cssText = `font-size:11px;font-weight:400;color:${COLORS.textSubtle};`;
 
       this._targetToggle = document.createElement('select');
       this._targetToggle.style.cssText =
