@@ -367,9 +367,7 @@ export class ConfigPanel {
         const outputSource = targets.output === 'config' ? (state.config || {}) : state.project;
 
         if (dataSource.data && typeof dataSource.data === 'object') {
-          const dataWithCols = { ...dataSource.data };
-          if (dataSource.data_columns) dataWithCols.data_columns = dataSource.data_columns;
-          this._data.setData(dataWithCols);
+          this._data.setData(dataSource.data);
         }
         if (audioSource.audio && typeof audioSource.audio === 'object') {
           this._audio.setData(audioSource.audio);

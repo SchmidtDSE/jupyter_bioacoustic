@@ -66,16 +66,11 @@ class ConfigBuilder:
 
         elif section == 'data':
             data_dict = {}
-            data_columns = data.pop('data_columns', None)
             for k, v in data.items():
                 if v is not None and v != '' and v != []:
                     data_dict[k] = v
             dest = self._project if target == 'project' else self._config
             dest['data'] = data_dict
-            if data_columns:
-                dest['data_columns'] = data_columns
-            elif 'data_columns' in dest:
-                del dest['data_columns']
 
         elif section == 'audio':
             audio_dict = {}
@@ -131,10 +126,6 @@ class ConfigBuilder:
             new_dict = self._project if target == 'project' else self._config
             if section in old_dict:
                 new_dict[section] = old_dict.pop(section)
-            if section == 'data':
-                if 'data_columns' in old_dict:
-                    new_dict['data_columns'] = old_dict.pop('data_columns')
-
         if section == 'app' and old_target != target:
             app_keys = (
                 'ident_column', 'display_columns',
@@ -167,7 +158,6 @@ class ConfigBuilder:
         skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
                      'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
         section_keys = ('data', 'audio', 'output')
-        data_extra_keys = ('data_columns',)
         app_keys = (
             'ident_column', 'display_columns',
             'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
@@ -189,11 +179,6 @@ class ConfigBuilder:
                     proj_data[k] = v
                 else:
                     conf_data[k] = v
-            elif k in data_extra_keys:
-                if self._section_targets.get('data', 'project') == 'project':
-                    proj_data[k] = v
-                else:
-                    conf_data[k] = v
             elif k in app_keys:
                 if self._section_targets.get('app', 'project') == 'project':
                     proj_data[k] = v
@@ -205,11 +190,6 @@ class ConfigBuilder:
         for k, v in self._config.items():
             if k in section_keys:
                 if self._section_targets.get(k, 'project') == 'config':
-                    conf_data[k] = v
-                else:
-                    proj_data[k] = v
-            elif k in data_extra_keys:
-                if self._section_targets.get('data', 'project') == 'config':
                     conf_data[k] = v
                 else:
                     proj_data[k] = v
