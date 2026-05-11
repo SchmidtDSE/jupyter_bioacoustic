@@ -162,7 +162,7 @@ export class AppSection extends CollapsibleSection {
     area.style.display = 'flex';
     const hint = document.createElement('span');
     hint.textContent = 'Click to add:';
-    hint.style.cssText = `color:${COLORS.textMuted};font-size:10px;width:100%;`;
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:100%;`;
     area.appendChild(hint);
 
     for (const col of this._availableCols) {
@@ -187,7 +187,7 @@ export class AppSection extends CollapsibleSection {
     if (selected.length === 0) {
       const hint = document.createElement('span');
       hint.textContent = '(none)';
-      hint.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-style:italic;`;
+      hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;`;
       area.appendChild(hint);
       return;
     }
