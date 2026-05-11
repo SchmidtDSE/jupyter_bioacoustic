@@ -60,7 +60,7 @@ export class ConfigPanel {
     this._output = new OutputSection();
     this._app = new AppSection();
     this._form = new FormSection();
-    this._formPreview = new FormPreview();
+    this._formPreview = new FormPreview(kernel);
 
     this._sections = new Map<string, CollapsibleSection>([
       ['project', this._project],
