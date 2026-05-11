@@ -7,10 +7,12 @@ import { INotebookTracker } from '@jupyterlab/notebook';
 export class KernelBridge {
   private _tracker: INotebookTracker | null;
   private _directKernel: any;
+  readonly cwd: string | undefined;
 
-  constructor(tracker: INotebookTracker | null, directKernel?: any) {
+  constructor(tracker: INotebookTracker | null, directKernel?: any, cwd?: string) {
     this._tracker = tracker;
     this._directKernel = directKernel ?? null;
+    this.cwd = cwd;
   }
 
   private _kernel(): any {
