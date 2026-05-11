@@ -59,7 +59,8 @@ class ConfigBuilder:
         target = self._section_targets.get(section, 'project')
 
         if section == 'project':
-            for k in ('project_name', 'project_save_btn'):
+            for k in ('project_name', 'project_save_btn', 'project_path', 'config_path',
+                      'form_path', 'project_enabled', 'config_enabled', 'form_enabled'):
                 if k in data:
                     self._project[k] = data[k]
 
@@ -69,12 +70,7 @@ class ConfigBuilder:
                 if v is not None and v != '' and v != []:
                     data_dict[k] = v
             if target == 'project':
-                self._project['data'] = data_dict if len(data_dict) > 1 or 'path' not in data_dict else data_dict.get('path', '')
-                for k in ('data_columns', 'data_start_time', 'data_end_time', 'data_duration'):
-                    if k in data:
-                        self._project[k] = data[k]
-                    elif k in self._project:
-                        del self._project[k]
+                self._project['data'] = data_dict
             else:
                 self._config['data'] = data_dict
 
@@ -84,7 +80,7 @@ class ConfigBuilder:
                 if v is not None and v != '' and v != []:
                     audio_dict[k] = v
             if target == 'project':
-                self._project['audio'] = audio_dict if len(audio_dict) > 1 or 'path' not in audio_dict else audio_dict.get('path', '')
+                self._project['audio'] = audio_dict
             else:
                 self._config['audio'] = audio_dict
 
@@ -94,7 +90,7 @@ class ConfigBuilder:
                 if v is not None and v != '' and v != []:
                     output_dict[k] = v
             if target == 'project':
-                self._project['output'] = output_dict if len(output_dict) > 1 or 'path' not in output_dict else output_dict.get('path', '')
+                self._project['output'] = output_dict
             else:
                 self._config['output'] = output_dict
 
@@ -126,29 +122,127 @@ class ConfigBuilder:
             self._section_targets[section] = target
 
     def save(self, path=None, config_type='project'):
+        return self.save_all()
+
+    def save_all(self):
         try:
             import yaml
         except ImportError:
             raise ImportError("pyyaml is required: pip install pyyaml")
 
-        if path is None:
-            path = self._saved_path
-        if path is None:
-            name = self._project.get('project_name', 'config')
-            slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
-            path = os.path.join(self._path, f'{slug}.yaml')
+        name = self._project.get('project_name', 'config')
+        slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
 
-        if not path.endswith(('.yaml', '.yml', '.json')):
-            path += '.yaml'
+        project_enabled = self._project.get('project_enabled', True)
+        config_enabled = self._project.get('config_enabled', True)
+        form_enabled = self._project.get('form_enabled', True)
 
-        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        p_path = self._project.get('project_path') or f'config/projects/{slug}.yaml'
+        c_path = self._project.get('config_path') or f'config/application/{slug}.yaml'
+        f_path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
 
-        cfg = self.get_config(config_type)
-        with open(path, 'w') as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+        skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+                     'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
 
-        self._saved_path = path
+        form_cfg = dict(self._form_config) if self._form_config else {}
+
+        config_cfg = {}
+        for k, v in self._project.items():
+            if k in skip_keys:
+                continue
+            config_cfg[k] = v
+        if self._config:
+            config_cfg.update(self._config)
+
+        if form_enabled and config_enabled:
+            config_cfg['form_config'] = f_path
+        elif not form_enabled and config_enabled:
+            if form_cfg:
+                config_cfg['form_config'] = form_cfg
+
+        project_cfg = {}
+        for k in ('project_name', 'project_save_btn'):
+            if k in self._project:
+                project_cfg[k] = self._project[k]
+
+        if config_enabled and project_enabled:
+            project_cfg['config'] = c_path
+        elif not config_enabled and project_enabled:
+            project_cfg.update(config_cfg)
+
+        saved = {}
+
+        if project_enabled:
+            if not p_path.endswith(('.yaml', '.yml')):
+                p_path += '.yaml'
+            os.makedirs(os.path.dirname(p_path) or '.', exist_ok=True)
+            with open(p_path, 'w') as f:
+                yaml.dump(project_cfg, f, default_flow_style=False, sort_keys=False)
+            saved['project'] = p_path
+
+        if config_enabled:
+            if not c_path.endswith(('.yaml', '.yml')):
+                c_path += '.yaml'
+            os.makedirs(os.path.dirname(c_path) or '.', exist_ok=True)
+            with open(c_path, 'w') as f:
+                yaml.dump(config_cfg, f, default_flow_style=False, sort_keys=False)
+            saved['config'] = c_path
+
+        if form_enabled:
+            if not f_path.endswith(('.yaml', '.yml')):
+                f_path += '.yaml'
+            os.makedirs(os.path.dirname(f_path) or '.', exist_ok=True)
+            with open(f_path, 'w') as f:
+                yaml.dump(form_cfg, f, default_flow_style=False, sort_keys=False)
+            saved['form'] = f_path
+
+        self._saved_path = saved.get('project') or saved.get('config') or saved.get('form', '')
         self._dirty = False
+        return saved
+
+    def save_single(self, config_type='project'):
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError("pyyaml is required: pip install pyyaml")
+
+        name = self._project.get('project_name', 'config')
+        slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
+
+        skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+                     'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
+
+        if config_type == 'project':
+            path = self._project.get('project_path') or f'config/projects/{slug}.yaml'
+            content = {}
+            for k in ('project_name', 'project_save_btn'):
+                if k in self._project:
+                    content[k] = self._project[k]
+            c_path = self._project.get('config_path') or f'config/application/{slug}.yaml'
+            content['config'] = c_path
+        elif config_type == 'config':
+            path = self._project.get('config_path') or f'config/application/{slug}.yaml'
+            content = {}
+            for k, v in self._project.items():
+                if k in skip_keys:
+                    continue
+                content[k] = v
+            if self._config:
+                content.update(self._config)
+            f_path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
+            if self._form_config:
+                content['form_config'] = f_path
+        elif config_type == 'form_config':
+            path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
+            content = dict(self._form_config) if self._form_config else {}
+        else:
+            return ''
+
+        if not path.endswith(('.yaml', '.yml')):
+            path += '.yaml'
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        with open(path, 'w') as f:
+            yaml.dump(content, f, default_flow_style=False, sort_keys=False)
         return path
 
     def list_files(self, directory, extensions=None):
@@ -156,11 +250,20 @@ class ConfigBuilder:
             entries = os.listdir(directory)
         except (OSError, FileNotFoundError):
             return []
-        if extensions:
-            exts = tuple(extensions)
-            entries = [e for e in entries if e.lower().endswith(exts)]
-        entries.sort()
-        return entries
+        results = []
+        for e in sorted(entries):
+            if e.startswith('.'):
+                continue
+            full = os.path.join(directory, e)
+            is_dir = os.path.isdir(full)
+            if is_dir:
+                results.append({'name': e, 'is_dir': True})
+            elif extensions:
+                if e.lower().endswith(tuple(extensions)):
+                    results.append({'name': e, 'is_dir': False})
+            else:
+                results.append({'name': e, 'is_dir': False})
+        return results
 
     def read_columns(self, filepath):
         ext = os.path.splitext(filepath)[1].lower()
@@ -197,24 +300,60 @@ class ConfigBuilder:
         return []
 
     def _get_state(self):
+        name = self._project.get('project_name', 'config')
+        slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
+
+        project_enabled = self._project.get('project_enabled', True)
+        config_enabled = self._project.get('config_enabled', True)
+        form_enabled = self._project.get('form_enabled', True)
+
+        c_path = self._project.get('config_path') or f'config/application/{slug}.yaml'
+        f_path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
+
+        skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+                     'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
+
+        form_content = dict(self._form_config) if self._form_config else {}
+
+        config_content = {}
+        for k, v in self._project.items():
+            if k in skip_keys:
+                continue
+            config_content[k] = v
+        if self._config:
+            config_content.update(self._config)
+
+        if form_enabled and config_enabled:
+            config_content['form_config'] = f_path
+        elif not form_enabled and config_enabled:
+            if form_content:
+                config_content['form_config'] = form_content
+
+        project_content = {}
+        for k in ('project_name', 'project_save_btn'):
+            if k in self._project:
+                project_content[k] = self._project[k]
+
+        if config_enabled and project_enabled:
+            project_content['config'] = c_path
+        elif not config_enabled and project_enabled:
+            project_content.update(config_content)
+
         try:
             import yaml
             project_yaml = yaml.dump(
-                self.get_config('project'),
-                default_flow_style=False, sort_keys=False
-            ) if self._project or self._form_config else ''
+                project_content, default_flow_style=False, sort_keys=False
+            ) if project_content and project_enabled else ''
             config_yaml = yaml.dump(
-                self.get_config('config'),
-                default_flow_style=False, sort_keys=False
-            ) if self._config else ''
+                config_content, default_flow_style=False, sort_keys=False
+            ) if config_content and config_enabled else ''
             form_yaml = yaml.dump(
-                self._form_config,
-                default_flow_style=False, sort_keys=False
-            ) if self._form_config else ''
+                form_content, default_flow_style=False, sort_keys=False
+            ) if form_content and form_enabled else ''
         except ImportError:
-            project_yaml = json.dumps(self.get_config('project'), indent=2)
-            config_yaml = json.dumps(self.get_config('config'), indent=2)
-            form_yaml = json.dumps(self._form_config, indent=2)
+            project_yaml = json.dumps(project_content, indent=2) if project_enabled else ''
+            config_yaml = json.dumps(config_content, indent=2) if config_enabled else ''
+            form_yaml = json.dumps(form_content, indent=2) if form_enabled else ''
 
         return {
             'project': self._project,
@@ -236,12 +375,24 @@ class ConfigBuilder:
             return False
 
         if config_type == 'project':
-            fc = parsed.pop('form_config', None)
-            self._project = parsed
-            if fc is not None:
-                self._form_config = fc
+            for k in ('project_name', 'project_save_btn'):
+                if k in parsed:
+                    self._project[k] = parsed[k]
+                elif k in self._project:
+                    del self._project[k]
+            if 'config' in parsed and isinstance(parsed['config'], str):
+                self._project['config_path'] = parsed['config']
         elif config_type == 'config':
-            self._config = parsed
+            form_ref = parsed.pop('form_config', None)
+            skip = ('project_name', 'project_save_btn', 'project_path', 'config_path', 'form_path')
+            for k in list(self._project.keys()):
+                if k not in skip:
+                    del self._project[k]
+            for k, v in parsed.items():
+                if k not in skip:
+                    self._project[k] = v
+            if form_ref and isinstance(form_ref, str):
+                self._project['form_path'] = form_ref
         elif config_type == 'form_config':
             self._form_config = parsed
 
