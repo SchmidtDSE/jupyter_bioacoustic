@@ -20,6 +20,9 @@ export class FileBrowser {
   private _pathBar: HTMLDivElement;
   private _listEl: HTMLDivElement;
   private _statusEl: HTMLSpanElement;
+  private _filenameInput: HTMLInputElement;
+  private _confirmBtn: HTMLButtonElement;
+  private _footerRow: HTMLDivElement;
 
   constructor(kernel: KernelBridge, startDir: string, extensions: string[], dirOnly = false) {
     this._kernel = kernel;
@@ -59,12 +62,39 @@ export class FileBrowser {
     this._listEl.style.cssText =
       `flex:1;overflow-y:auto;display:flex;flex-direction:column;`;
 
+    this._footerRow = document.createElement('div');
+    this._footerRow.style.cssText =
+      `display:${dirOnly ? 'none' : 'flex'};align-items:center;gap:6px;padding:6px 12px;` +
+      `background:${COLORS.bgMantle};border-top:1px solid ${COLORS.bgSurface0};flex-shrink:0;`;
+
+    const fnLabel = document.createElement('span');
+    fnLabel.textContent = 'Filename:';
+    fnLabel.style.cssText = `color:${COLORS.textSubtle};font-size:11px;flex-shrink:0;`;
+
+    this._filenameInput = document.createElement('input');
+    this._filenameInput.type = 'text';
+    this._filenameInput.placeholder = 'new_file.yaml';
+    this._filenameInput.style.cssText =
+      `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+      `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
+      `font-size:11px;flex:1;box-sizing:border-box;`;
+    this._filenameInput.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') this._confirmFilename();
+    });
+
+    this._confirmBtn = document.createElement('button');
+    this._confirmBtn.textContent = 'Select';
+    this._confirmBtn.style.cssText = btnStyle(true) + `font-size:11px;padding:3px 10px;`;
+    this._confirmBtn.addEventListener('click', () => this._confirmFilename());
+
+    this._footerRow.append(fnLabel, this._filenameInput, this._confirmBtn);
+
     this._statusEl = document.createElement('span');
     this._statusEl.style.cssText =
-      `padding:6px 12px;font-size:11px;color:${COLORS.textMuted};flex-shrink:0;` +
-      `background:${COLORS.bgMantle};border-top:1px solid ${COLORS.bgSurface0};`;
+      `padding:4px 12px;font-size:11px;color:${COLORS.textMuted};flex-shrink:0;` +
+      `background:${COLORS.bgMantle};`;
 
-    this.element.append(header, this._pathBar, this._listEl, this._statusEl);
+    this.element.append(header, this._pathBar, this._listEl, this._footerRow, this._statusEl);
     void this._loadDir(this._cwd);
   }
 
@@ -135,6 +165,13 @@ export class FileBrowser {
 
       this._listEl.appendChild(row);
     }
+  }
+
+  private _confirmFilename(): void {
+    const name = this._filenameInput.value.trim();
+    if (!name) return;
+    const filePath = this._cwd === '.' ? name : `${this._cwd}/${name}`;
+    this.fileSelected.emit(filePath);
   }
 
   private _makeEntryRow(icon: string, name: string, isDir: boolean): HTMLDivElement {

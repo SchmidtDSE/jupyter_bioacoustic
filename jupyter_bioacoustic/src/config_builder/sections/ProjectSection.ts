@@ -72,7 +72,7 @@ export class ProjectSection extends CollapsibleSection {
     this._body.appendChild(sep);
 
     const pathLabel = document.createElement('div');
-    pathLabel.textContent = 'Output files';
+    pathLabel.textContent = 'Configuration File Paths';
     pathLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
     this._body.appendChild(pathLabel);
 
