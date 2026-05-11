@@ -399,6 +399,134 @@ class ConfigBuilder:
         self._dirty = True
         return True
 
+    def load_config(self, path):
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError("pyyaml is required: pip install pyyaml")
+
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+
+        base_dir = os.path.dirname(path) or '.'
+        detected = 'config'
+        loaded_paths = {'loaded': path}
+
+        has_form_key = 'form' in data and 'form_config' not in data
+        has_config_key = 'config' in data and isinstance(data.get('config'), str)
+        has_data = 'data' in data
+        has_audio = 'audio' in data
+        fully_specified = has_data and has_audio and ('form_config' in data or has_form_key)
+
+        if has_form_key and not has_data and not has_audio and not has_config_key:
+            detected = 'form'
+        elif has_config_key or fully_specified:
+            detected = 'project'
+        else:
+            detected = 'config'
+
+        if detected == 'form':
+            self._form_config = data
+            loaded_paths['form'] = path
+
+        elif detected == 'project':
+            skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+                         'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
+            for k in ('project_name', 'project_save_btn'):
+                if k in data:
+                    self._project[k] = data[k]
+            self._project['project_path'] = path
+            self._project['project_enabled'] = True
+            loaded_paths['project'] = path
+
+            config_ref = data.get('config')
+            if isinstance(config_ref, str):
+                config_path = config_ref if os.path.isabs(config_ref) else os.path.join(base_dir, config_ref)
+                if os.path.exists(config_path):
+                    with open(config_path) as f:
+                        config_data = yaml.safe_load(f) or {}
+                    self._project['config_path'] = config_ref
+                    self._project['config_enabled'] = True
+                    loaded_paths['config'] = config_ref
+
+                    form_ref = config_data.pop('form_config', None)
+                    for k, v in config_data.items():
+                        if k not in skip_keys:
+                            self._project[k] = v
+
+                    if isinstance(form_ref, str):
+                        form_path = form_ref if os.path.isabs(form_ref) else os.path.join(base_dir, form_ref)
+                        if os.path.exists(form_path):
+                            with open(form_path) as f:
+                                self._form_config = yaml.safe_load(f) or {}
+                            self._project['form_path'] = form_ref
+                            self._project['form_enabled'] = True
+                            loaded_paths['form'] = form_ref
+                        else:
+                            self._project['form_enabled'] = False
+                    elif isinstance(form_ref, dict):
+                        self._form_config = form_ref
+                        self._project['form_enabled'] = False
+                    else:
+                        self._project['form_enabled'] = False
+                else:
+                    self._project['config_enabled'] = False
+                    self._project['form_enabled'] = False
+            else:
+                self._project['config_enabled'] = False
+                form_ref = data.get('form_config')
+                for k, v in data.items():
+                    if k not in skip_keys and k != 'config':
+                        self._project[k] = v
+                if isinstance(form_ref, str):
+                    form_path = form_ref if os.path.isabs(form_ref) else os.path.join(base_dir, form_ref)
+                    if os.path.exists(form_path):
+                        with open(form_path) as f:
+                            self._form_config = yaml.safe_load(f) or {}
+                        self._project['form_path'] = form_ref
+                        self._project['form_enabled'] = True
+                        loaded_paths['form'] = form_ref
+                    else:
+                        self._project['form_enabled'] = False
+                elif isinstance(form_ref, dict):
+                    self._form_config = form_ref
+                    self._project['form_enabled'] = False
+
+        elif detected == 'config':
+            self._project['config_path'] = path
+            self._project['config_enabled'] = True
+            self._project['project_enabled'] = False
+            loaded_paths['config'] = path
+
+            skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+                         'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
+            form_ref = data.pop('form_config', None)
+            for k, v in data.items():
+                if k not in skip_keys:
+                    self._project[k] = v
+
+            if isinstance(form_ref, str):
+                form_path = form_ref if os.path.isabs(form_ref) else os.path.join(base_dir, form_ref)
+                if os.path.exists(form_path):
+                    with open(form_path) as f:
+                        self._form_config = yaml.safe_load(f) or {}
+                    self._project['form_path'] = form_ref
+                    self._project['form_enabled'] = True
+                    loaded_paths['form'] = form_ref
+                else:
+                    self._project['form_enabled'] = False
+            elif isinstance(form_ref, dict):
+                self._form_config = form_ref
+                self._project['form_enabled'] = False
+            else:
+                self._project['form_enabled'] = False
+
+        self._dirty = False
+        state = self._get_state()
+        state['detected_type'] = detected
+        state['loaded_paths'] = loaded_paths
+        return state
+
     def validate(self):
         errors = []
         warnings = []
