@@ -31,15 +31,15 @@ form_config:
             - multibox
         form: box_form
     dynamic_forms:
-        box_form:
-            - select:
-                  label: species
-                  column: common_name
-                  required: true
-                  items:
-                      path: data/categories-small.csv
-                      value: common_name
-                      filter_box: true
+        - box_form:
+              - select:
+                    label: species
+                    column: common_name
+                    required: true
+                    items:
+                        path: data/categories-small.csv
+                        value: common_name
+                        filter_box: true
     submission_buttons:
         line: true
         next:
