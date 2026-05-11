@@ -9,6 +9,7 @@ import {
   saveAll,
   saveSingleFile,
   checkFileExists,
+  validateConfig,
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
@@ -363,6 +364,31 @@ export class ConfigPanel {
 
   get dirty(): boolean {
     return this._dirty;
+  }
+
+  async validate(): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    this._setStatus('Validating…');
+    try {
+      const raw = await this._kernel.exec(validateConfig());
+      const result = JSON.parse(extractJson(raw));
+      const msgs: string[] = [];
+      if (result.errors?.length) msgs.push('Errors:\n• ' + result.errors.join('\n• '));
+      if (result.warnings?.length) msgs.push('Warnings:\n• ' + result.warnings.join('\n• '));
+      if (result.valid && msgs.length === 0) {
+        this._setStatus('Validation passed');
+        window.alert('Validation passed – no issues found.');
+      } else if (result.valid) {
+        this._setStatus('Validation passed with warnings');
+        window.alert('Validation passed with warnings:\n\n' + msgs.join('\n\n'));
+      } else {
+        this._setStatus('Validation failed', true);
+        window.alert('Validation failed:\n\n' + msgs.join('\n\n'));
+      }
+    } catch (e: any) {
+      this._setStatus(`Validate error: ${String(e.message ?? e)}`, true);
+    }
   }
 
   private _updateFormPreview(): void {
