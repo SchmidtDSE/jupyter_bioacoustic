@@ -2,14 +2,15 @@ import { COLORS, btnStyle } from '../styles';
 import { KernelBridge } from '../kernel';
 import {
   extractJson,
+  ensureSetup,
   updateSection,
   readColumns,
   updateConfigFromYaml,
-  saveConfig,
-  getDefaultSavePath,
+  saveAll,
+  saveSingleFile,
   checkFileExists,
-  listFiles,
 } from './python';
+import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
 import { ProjectSection } from './sections/ProjectSection';
 import { DataSection } from './sections/DataSection';
@@ -18,6 +19,7 @@ import { OutputSection } from './sections/OutputSection';
 import { AppSection } from './sections/AppSection';
 import { FormSection } from './sections/FormSection';
 import { CollapsibleSection } from './sections/CollapsibleSection';
+import { FormPreview } from './sections/FormPreview';
 
 export class ConfigPanel {
   readonly element: HTMLDivElement;
@@ -29,6 +31,9 @@ export class ConfigPanel {
   private _yamls = { project_yaml: '', config_yaml: '', form_yaml: '' };
   private _dirty = false;
   private _savedPath = '';
+  private _suppressChanges = false;
+  private _ready = false;
+  private _readyPromise: Promise<void>;
 
   private _project: ProjectSection;
   private _data: DataSection;
@@ -36,13 +41,14 @@ export class ConfigPanel {
   private _output: OutputSection;
   private _app: AppSection;
   private _form: FormSection;
+  private _formPreview: FormPreview;
 
   constructor(kernel: KernelBridge) {
     this._kernel = kernel;
 
     this.element = document.createElement('div');
     this.element.style.cssText =
-      `display:flex;flex:1;overflow:hidden;`;
+      `display:flex;flex:1;overflow:hidden;position:relative;`;
 
     const left = document.createElement('div');
     left.style.cssText =
@@ -54,6 +60,7 @@ export class ConfigPanel {
     this._output = new OutputSection();
     this._app = new AppSection();
     this._form = new FormSection();
+    this._formPreview = new FormPreview();
 
     this._sections = new Map<string, CollapsibleSection>([
       ['project', this._project],
@@ -66,19 +73,57 @@ export class ConfigPanel {
 
     for (const [name, section] of this._sections) {
       section.focused.connect(() => this._onSectionFocused(name));
+      section.fieldFocused.connect((_, field) => this._yamlPanel.scrollToField(field));
       section.changed.connect(() => void this._onSectionChanged(name));
       left.appendChild(section.element);
     }
 
+    this._form.changed.connect(() => this._updateFormPreview());
+    left.appendChild(this._formPreview.element);
+
+    this._project.browseRequested.connect((_, { field, current }) => {
+      this._openBrowser(current, ['.yaml', '.yml'], (p) => {
+        if (field === 'project') this._project.setProjectPath(p);
+        else if (field === 'config') this._project.setConfigPath(p);
+        else if (field === 'form') this._project.setFormPath(p);
+      });
+    });
+
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
+    this._data.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv', '.jsonl'], (p) => this._data.setPath(p));
+    });
     this._data.columnsLoaded.connect((_, cols) => {
       this._app.setColumnOptions(cols);
       this._audio.setColumnOptions(cols);
     });
 
+    this._audio.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, ['.flac', '.wav', '.mp3', '.ogg', '.m4a', '.aac'], (p) => this._audio.setPath(p));
+    });
+
+    this._output.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._output.setPath(p));
+    });
+
+    this._app.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, [], (p) => this._app.setCaptureDir(p), true);
+    });
+
+    this._form.browseRequested.connect((_, { callback }) => {
+      this._openBrowser('.', ['.csv', '.parquet', '.json', '.tsv', '.txt'], callback);
+    });
+
+    this._form.columnsRequested.connect((_, { path, callback }) => {
+      void this._loadColumnsForCallback(path, callback);
+    });
+
     this._yamlPanel = new YamlPanel();
     this._yamlPanel.configEdited.connect((_, { yaml, configType }) => {
       void this._onYamlEdited(yaml, configType);
+    });
+    this._yamlPanel.saveSingleRequested.connect((_, configType) => {
+      void this._saveSingleFile(configType);
     });
 
     this.element.append(left, this._yamlPanel.element);
@@ -86,6 +131,19 @@ export class ConfigPanel {
     this._statusEl = document.createElement('span');
     this._statusEl.style.cssText =
       `font-size:11px;color:${COLORS.green};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+
+    this._readyPromise = this._ensureReady();
+  }
+
+  private async _ensureReady(): Promise<void> {
+    this._setStatus('Initializing…');
+    try {
+      await this._kernel.exec(ensureSetup(this._kernel.cwd));
+      this._ready = true;
+      this._setStatus('Ready');
+    } catch (e: any) {
+      this._setStatus(`Init failed: ${String(e.message ?? e)}`, true);
+    }
   }
 
   get statusEl(): HTMLSpanElement {
@@ -97,6 +155,9 @@ export class ConfigPanel {
   }
 
   private async _onSectionChanged(sectionName: string): Promise<void> {
+    if (this._suppressChanges) return;
+    await this._readyPromise;
+    if (!this._ready) return;
     const section = this._sections.get(sectionName);
     if (!section) return;
 
@@ -106,14 +167,82 @@ export class ConfigPanel {
     try {
       const raw = await this._kernel.exec(updateSection(sectionName, data));
       const state = JSON.parse(extractJson(raw));
-      this._applyState(state);
+      this._applyStatePartial(state, sectionName);
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
     }
   }
 
+  private _openBrowser(
+    dir: string,
+    extensions: string[],
+    onSelect: (path: string) => void,
+    dirOnly = false,
+  ): void {
+    if (this.element.querySelector('.jp-cb-filebrowser')) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'jp-cb-filebrowser';
+    overlay.style.cssText =
+      `position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;` +
+      `background:rgba(0,0,0,0.5);padding:24px;`;
+
+    const browserWrap = document.createElement('div');
+    browserWrap.style.cssText =
+      `position:relative;width:100%;max-width:500px;height:400px;`;
+
+    const browser = new FileBrowser(
+      this._kernel,
+      dir || '.',
+      extensions,
+      dirOnly,
+    );
+
+    browser.fileSelected.connect((_, path) => {
+      onSelect(path);
+      this._setStatus(`Selected: ${path}`);
+      overlay.remove();
+    });
+
+    browser.dismissed.connect(() => {
+      overlay.remove();
+    });
+
+    browserWrap.appendChild(browser.element);
+    overlay.appendChild(browserWrap);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+    this.element.appendChild(overlay);
+  }
+
+  private async _saveSingleFile(configType: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    this._setStatus(`Saving ${configType} file…`);
+    try {
+      const raw = await this._kernel.exec(saveSingleFile(configType));
+      const result = JSON.parse(extractJson(raw));
+      this._setStatus(`Saved: ${result.saved_to}`);
+    } catch (e: any) {
+      this._setStatus(`Save failed: ${String(e.message ?? e)}`, true);
+    }
+  }
+
+  private async _loadColumnsForCallback(path: string, callback: (cols: string[]) => void): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    try {
+      const raw = await this._kernel.exec(readColumns(path));
+      const result = JSON.parse(extractJson(raw));
+      callback(result.columns as string[]);
+    } catch { /* ignore */ }
+  }
+
   private async _onLoadColumns(pathOrDir: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
     this._setStatus('Loading columns…');
     try {
       const raw = await this._kernel.exec(readColumns(pathOrDir));
@@ -127,6 +256,8 @@ export class ConfigPanel {
   }
 
   private async _onYamlEdited(yaml: string, configType: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
     this._setStatus('Applying edits…');
     try {
       const raw = await this._kernel.exec(updateConfigFromYaml(yaml, configType));
@@ -143,36 +274,49 @@ export class ConfigPanel {
   }
 
   async saveToFile(): Promise<void> {
-    try {
-      const defRaw = await this._kernel.exec(getDefaultSavePath());
-      const defPath = JSON.parse(extractJson(defRaw)).path as string;
+    await this._readyPromise;
+    if (!this._ready) return;
 
-      const chosen = window.prompt('Save config as:', this._savedPath || defPath);
-      if (!chosen) return;
-      const savePath = chosen.trim();
+    const projectData = this._project.getData();
+    const enabled = [
+      projectData.project_enabled && projectData.project_path,
+      projectData.config_enabled && projectData.config_path,
+      projectData.form_enabled && projectData.form_path,
+    ].filter(Boolean);
 
+    if (enabled.length === 0) {
+      this._setStatus('Enable at least one output file in Project section', true);
+      return;
+    }
+
+    const checkPath = (projectData.project_enabled && projectData.project_path) ||
+      (projectData.config_enabled && projectData.config_path) || '';
+    if (checkPath) {
       try {
-        const existsRaw = await this._kernel.exec(checkFileExists(savePath));
+        const existsRaw = await this._kernel.exec(checkFileExists(checkPath));
         const exists = JSON.parse(extractJson(existsRaw)).exists as boolean;
         if (exists) {
-          const ok = window.confirm(`${savePath} already exists. Overwrite?`);
+          const ok = window.confirm(`Files already exist. Overwrite?`);
           if (!ok) return;
         }
       } catch { /* proceed */ }
+    }
 
-      this._setStatus('Saving…');
-      const configType = this._yamlPanel.configType;
-      const raw = await this._kernel.exec(saveConfig(savePath, configType));
+    this._setStatus(`Saving ${enabled.length} file(s)…`);
+    try {
+      const raw = await this._kernel.exec(saveAll());
       const state = JSON.parse(extractJson(raw));
       this._dirty = false;
-      this._savedPath = state.saved_to || savePath;
-      this._setStatus(`Saved: ${this._savedPath}`);
+      const paths = state.saved_paths || {};
+      const savedList = Object.values(paths).join(', ');
+      this._savedPath = paths.project || paths.config || paths.form || '';
+      this._setStatus(`Saved: ${savedList}`);
     } catch (e: any) {
       this._setStatus(`Save failed: ${String(e.message ?? e)}`, true);
     }
   }
 
-  private _applyState(state: any): void {
+  private _applyStatePartial(state: any, skipSection: string): void {
     this._yamls = {
       project_yaml: state.project_yaml || '',
       config_yaml: state.config_yaml || '',
@@ -181,27 +325,48 @@ export class ConfigPanel {
     this._dirty = !!state.dirty;
     this._savedPath = state.saved_path || '';
     this._yamlPanel.updateYaml(this._yamls);
+  }
 
-    if (state.project) {
-      this._project.setData(state.project);
-      if (state.project.data && typeof state.project.data === 'object') {
-        this._data.setData(state.project.data);
+  private _applyState(state: any): void {
+    this._suppressChanges = true;
+    try {
+      this._yamls = {
+        project_yaml: state.project_yaml || '',
+        config_yaml: state.config_yaml || '',
+        form_yaml: state.form_yaml || '',
+      };
+      this._dirty = !!state.dirty;
+      this._savedPath = state.saved_path || '';
+      this._yamlPanel.updateYaml(this._yamls);
+
+      if (state.project) {
+        this._project.setData(state.project);
+        if (state.project.data && typeof state.project.data === 'object') {
+          this._data.setData(state.project.data);
+        }
+        if (state.project.audio && typeof state.project.audio === 'object') {
+          this._audio.setData(state.project.audio);
+        }
+        if (state.project.output && typeof state.project.output === 'object') {
+          this._output.setData(state.project.output);
+        }
+        this._app.setData(state.project);
       }
-      if (state.project.audio && typeof state.project.audio === 'object') {
-        this._audio.setData(state.project.audio);
+      if (state.form_config && typeof state.form_config === 'object') {
+        this._form.setData(state.form_config);
       }
-      if (state.project.output && typeof state.project.output === 'object') {
-        this._output.setData(state.project.output);
-      }
-      this._app.setData(state.project);
-    }
-    if (state.form_config && typeof state.form_config === 'object') {
-      this._form.setData(state.form_config);
+      this._updateFormPreview();
+    } finally {
+      this._suppressChanges = false;
     }
   }
 
   get dirty(): boolean {
     return this._dirty;
+  }
+
+  private _updateFormPreview(): void {
+    this._formPreview.update(this._form.getData());
   }
 
   private _setStatus(msg: string, error = false): void {
