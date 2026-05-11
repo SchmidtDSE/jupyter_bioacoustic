@@ -14,7 +14,7 @@ export function fmtTime(s: number): string {
 
 /** Escape a string for use inside a single-quoted Python string literal. */
 export function escPy(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 
 export interface AccuracyConfig {
