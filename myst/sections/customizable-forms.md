@@ -4,13 +4,14 @@
 Forms are easily configured through YAML. Here is a simple form that adds a species dropdown, where the species names are pulled from a column in a CSV file.
 
 ```yaml
-select:
-    label: 'species'
-    column: 'common_name'
-    required: true
-    items:
-        path: 'data/categories-small.csv'
-        value: 'common_name'
+form:
+    - select:
+          label: 'species'
+          column: 'common_name'
+          required: true
+          items:
+              path: 'data/categories-small.csv'
+              value: 'common_name'
 ```
 
 ![](../../assets/form_panel/annotate-species.png)
@@ -19,25 +20,23 @@ select:
 
 ## Form Structure
 
-Forms are assembled from a small set of composable elements, all configured through YAML. See the full [Configurable Forms](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms) reference for details.
+Forms are assembled from a small set of composable elements, all configured through YAML. Input elements are placed inside a `form:` list, while structural elements remain at the top level.
 
-**Input elements**
+**Input elements** (inside `form:` list)
 
 - [`select`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#select-items) — dropdown menu with inline, file-sourced, or range-based items
 - [`textbox`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#textbox) — single-line or multiline text input
-- [`checkbox`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#checkbox) — boolean toggle with custom true/false values
+- [`checkbox`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#checkbox) — boolean toggle with custom checked/unchecked values and optional conditional forms
 - [`number`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#number) — numeric input with optional min, max, and step
 - [`annotation`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Annotation-Tools) — interactive spectrogram tools (time markers, bounding boxes, multibox)
 
-**Data elements**
-
-- [`pass_value`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#pass_value) — copy a column from the input row to the output
-- [`fixed_value`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#fixed_value) — write a constant value to every output row
-
-**Display elements**
+**Top-level elements**
 
 - [`title`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#title-and-progress-tracker) — section header with optional progress tracker
+- [`pass_value`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#pass_value) — copy a column from the input row to the output
+- [`fixed_value`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#fixed_value) — write a constant value to every output row
 - [`submission_buttons`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#submission-buttons) — configure submit, skip, and previous buttons
+- [`dynamic_forms`](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#dynamic-forms) — conditional form sections triggered by select items or checkbox state
 
 ---
 
@@ -48,20 +47,21 @@ Forms are assembled from a small set of composable elements, all configured thro
 A select dropdown sourced from a CSV file, a required checkbox, and a free-text notes field.
 
 ```yaml
-select:
-    label: species
-    column: common_name
-    required: true
-    items:
-        path: data/categories-small.csv
-        value: common_name
-        filter_box: true
-checkbox:
-    label: high quality
-    column: high_quality
-textbox:
-    label: notes
-    column: notes
+form:
+    - select:
+          label: species
+          column: common_name
+          required: true
+          items:
+              path: data/categories-small.csv
+              value: common_name
+              filter_box: true
+    - checkbox:
+          label: high quality
+          column: high_quality
+    - textbox:
+          label: notes
+          column: notes
 ```
 
 ### Confidence Rating
@@ -72,17 +72,18 @@ A simple review form with an inline dropdown and a numeric confidence score.
 title:
     value: RATE CLIP
     progress_tracker: true
-select:
-    label: quality
-    column: quality
-    required: true
-    items: [good, fair, poor]
-number:
-    label: confidence
-    column: confidence
-    min: 0
-    max: 1
-    step: 0.1
+form:
+    - select:
+          label: quality
+          column: quality
+          required: true
+          items: [good, fair, poor]
+    - number:
+          label: confidence
+          column: confidence
+          min: 0
+          max: 1
+          step: 0.1
 ```
 
 ### Time Annotation
@@ -90,13 +91,6 @@ number:
 Collect start and end times by drawing directly on the spectrogram, pre-filled from the source data.
 
 ```yaml
-select:
-    label: species
-    column: common_name
-    required: true
-    items:
-        path: data/categories-small.csv
-        value: common_name
 annotation:
     start_time:
         label: start
@@ -107,6 +101,14 @@ annotation:
         column: end_time
         source_value: end_time
     tools: start_end_time_select
+form:
+    - select:
+          label: species
+          column: common_name
+          required: true
+          items:
+              path: data/categories-small.csv
+              value: common_name
 submission_buttons:
     next:
         label: Skip
@@ -119,52 +121,66 @@ submission_buttons:
 Dynamic forms show different fields depending on the answers to previous responses. Consider the following config:
 
 ```yaml
-select:
-    label: Is Valid
-    column: is_valid
-    required: true
-    items:
-        - label: 'yes'
-          value: 'yes'
-          form: confirmed_form
-        - label: 'no'
-          value: 'no'
-          form: rejected_form
+form:
+    - select:
+          label: Is Valid
+          column: is_valid
+          required: true
+          items:
+              - label: 'yes'
+                value: 'yes'
+                form: confirmed_form
+              - label: 'no'
+                value: 'no'
+                form: rejected_form
 dynamic_forms:
-    confirmed_form:
-        - select:
-              label: confidence
-              column: reviewer_confidence
-              items: [low, medium, high]
-        - textbox:
-              label: notes
-              column: notes
-    rejected_form:
-        - select:
-              label: corrected species
-              column: corrected_common_name
-              required: true
-              items:
-                  path: data/categories-small.csv
-                  value: common_name
-                  filter_box: true
-                  custom_value: true
-                  not_available:
-                      label: Unknown Species
-                      value: unknown
-        - select:
-              label: rejection reason
-              column: rejection_reason
-              required: true
-              items:
-                  - noise
-                  - wrong species
-                  - overlapping signals
-                  - too faint
-                  - other
+    - confirmed_form:
+          - select:
+                label: confidence
+                column: reviewer_confidence
+                items: [low, medium, high]
+          - textbox:
+                label: notes
+                column: notes
+    - rejected_form:
+          - select:
+                label: corrected species
+                column: corrected_common_name
+                required: true
+                items:
+                    path: data/categories-small.csv
+                    value: common_name
+                    filter_box: true
+                    custom_value: true
+                    not_available:
+                        label: Unknown Species
+                        value: unknown
+          - select:
+                label: rejection reason
+                column: rejection_reason
+                required: true
+                items:
+                    - noise
+                    - wrong species
+                    - overlapping signals
+                    - too faint
+                    - other
 ```
 
-A validity dropdown that shows a correction form when "no" is selected and asks for confidence and notes when "yes" is selected.
+A validity dropdown that shows a correction form when "no" is selected and asks for confidence and notes when "yes" is selected. Checkboxes can also trigger dynamic forms using `checked_form` and `unchecked_form`:
+
+```yaml
+form:
+    - checkbox:
+          label: flag for expert review
+          column: flagged
+          checked_form: review_reason_form
+dynamic_forms:
+    - review_reason_form:
+          - textbox:
+                label: reason
+                column: review_reason
+```
 
 ![](../../assets/form_panel/review-yes.png)
 
