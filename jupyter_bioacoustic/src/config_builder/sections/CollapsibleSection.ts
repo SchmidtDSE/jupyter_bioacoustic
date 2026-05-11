@@ -6,12 +6,16 @@ export abstract class CollapsibleSection {
   readonly focused = new Signal<this, string>(this);
   readonly fieldFocused = new Signal<this, string>(this);
   readonly changed = new Signal<this, void>(this);
+  readonly targetChanged = new Signal<this, { section: string; target: string }>(this);
 
   protected _body: HTMLDivElement;
   protected _sectionName: string;
+  private _targetToggle: HTMLSelectElement | null = null;
+  private _hasTargetToggle: boolean;
 
-  constructor(title: string, sectionName: string, open = false) {
+  constructor(title: string, sectionName: string, open = false, showTargetToggle = false) {
     this._sectionName = sectionName;
+    this._hasTargetToggle = showTargetToggle;
 
     this.element = document.createElement('details');
     if (open) this.element.open = true;
@@ -19,15 +23,45 @@ export abstract class CollapsibleSection {
       `border-bottom:1px solid ${COLORS.bgSurface0};`;
 
     const summary = document.createElement('summary');
-    summary.textContent = title;
     summary.style.cssText =
       `padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;` +
       `background:${COLORS.bgMantle};color:${COLORS.textPrimary};` +
       `list-style:none;user-select:none;letter-spacing:0.5px;` +
-      `border-bottom:1px solid ${COLORS.bgSurface0};`;
+      `border-bottom:1px solid ${COLORS.bgSurface0};` +
+      `display:flex;align-items:center;justify-content:space-between;`;
     summary.addEventListener('click', () => {
       this.focused.emit(this._sectionName);
     });
+
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = title;
+    summary.appendChild(titleSpan);
+
+    if (showTargetToggle) {
+      const toggleWrap = document.createElement('span');
+      toggleWrap.style.cssText = `display:flex;align-items:center;gap:4px;`;
+      toggleWrap.addEventListener('click', (e) => e.stopPropagation());
+
+      const lbl = document.createElement('span');
+      lbl.textContent = 'target:';
+      lbl.style.cssText = `font-size:10px;font-weight:400;color:${COLORS.textMuted};`;
+
+      this._targetToggle = document.createElement('select');
+      this._targetToggle.style.cssText =
+        `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+        `border-radius:3px;color:${COLORS.textPrimary};padding:1px 4px;font-size:10px;cursor:pointer;`;
+      const optP = document.createElement('option');
+      optP.value = 'project'; optP.textContent = 'project';
+      const optC = document.createElement('option');
+      optC.value = 'config'; optC.textContent = 'config';
+      this._targetToggle.append(optP, optC);
+      this._targetToggle.addEventListener('change', () => {
+        this.targetChanged.emit({ section: this._sectionName, target: this._targetToggle!.value });
+      });
+
+      toggleWrap.append(lbl, this._targetToggle);
+      summary.appendChild(toggleWrap);
+    }
 
     this._body = document.createElement('div');
     this._body.style.cssText =
@@ -35,6 +69,16 @@ export abstract class CollapsibleSection {
       `background:${COLORS.bgBase};`;
 
     this.element.append(summary, this._body);
+  }
+
+  getTarget(): string {
+    return this._targetToggle?.value || 'project';
+  }
+
+  setTarget(target: string): void {
+    if (this._targetToggle && (target === 'project' || target === 'config')) {
+      this._targetToggle.value = target;
+    }
   }
 
   protected _makeRow(): HTMLDivElement {
