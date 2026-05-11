@@ -42,7 +42,7 @@
     "extension": true,
     "outputDir": "labextension",
     "_build": {
-      "load": "static/remoteEntry.e2604716c6062e726b79.js",
+      "load": "static/remoteEntry.3493e00b9cfef8d19379.js",
       "extension": "./extension"
     }
   }
