@@ -146,6 +146,11 @@ export function injectGlobalStyles(): void {
       opacity: 0.7 !important;
       font-style: italic;
     }
+    [id^="jp-config-builder"] input::placeholder,
+    [id^="jp-config-builder"] textarea::placeholder {
+      color: ${COLORS.textSubtle} !important;
+      opacity: 0.6 !important;
+    }
   `;
   document.head.appendChild(styleEl);
 }
