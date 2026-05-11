@@ -2,7 +2,6 @@ import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application'
 import { ICommandPalette } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
 import { IDefaultFileBrowser } from '@jupyterlab/filebrowser';
-import { ILauncher } from '@jupyterlab/launcher';
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { LabIcon } from '@jupyterlab/ui-components';
 import { Message } from '@lumino/messaging';
@@ -149,12 +148,11 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
   id: 'jupyter-bioacoustic:config-builder',
   autoStart: true,
   requires: [ICommandPalette, INotebookTracker],
-  optional: [ILauncher, IDefaultFileBrowser],
+  optional: [IDefaultFileBrowser],
   activate: (
     app: JupyterFrontEnd,
     palette: ICommandPalette,
     tracker: INotebookTracker,
-    launcher: ILauncher | null,
     fileBrowser: IDefaultFileBrowser | null,
   ) => {
     (window as any)._bioacousticOpenConfigBuilder = (divId: string) => {
@@ -206,12 +204,5 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
     });
 
     palette.addItem({ command: 'bioacoustic:open-config-builder', category: 'Bioacoustic' });
-
-    if (launcher) {
-      launcher.add({
-        command: 'bioacoustic:open-config-builder',
-        category: 'Other',
-      });
-    }
   }
 };
