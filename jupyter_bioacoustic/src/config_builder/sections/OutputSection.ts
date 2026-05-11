@@ -12,7 +12,7 @@ export class OutputSection extends CollapsibleSection {
   private _recursiveCb: HTMLInputElement;
 
   constructor() {
-    super('Output', 'output');
+    super('Output', 'output', false, true);
 
     const pathRow = this._makeRow();
     pathRow.appendChild(this._makeLabel('path'));
