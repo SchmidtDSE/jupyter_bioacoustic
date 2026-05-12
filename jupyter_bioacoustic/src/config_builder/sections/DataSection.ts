@@ -27,9 +27,11 @@ export class DataSection extends CollapsibleSection {
 
     this._sourceType = this._makeSelect(['path', 'url', 'sql', 'api'], 'path');
     this._sourceType.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('source type', this._sourceType));
+    this._body.appendChild(this._makeFieldRow('source_type', this._sourceType));
 
     const pathRow = this._makeRow();
+    pathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
+    pathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
     pathRow.appendChild(this._makeLabel('path / url'));
     this._pathInput = this._makeInput('data/detections.csv', '220px');
     this._pathInput.addEventListener('input', () => {
@@ -49,7 +51,7 @@ export class DataSection extends CollapsibleSection {
     colLabelText.textContent = 'columns';
     colLabelText.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
     colLabel.append(colLabelText);
-    colLabel.addEventListener('click', () => this.fieldFocused.emit('columns'));
+    colLabel.addEventListener('click', () => this.fieldFocused.emit('data_columns'));
 
     this._selectedChipsArea = document.createElement('div');
     this._selectedChipsArea.style.cssText =
@@ -74,11 +76,11 @@ export class DataSection extends CollapsibleSection {
 
     this._startTimeSelect = this._makeSelect(['start_time'], 'start_time');
     this._startTimeSelect.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('start_time col', this._startTimeSelect));
+    this._body.appendChild(this._makeFieldRow('start_time_col', this._startTimeSelect));
 
     this._endTimeSelect = this._makeSelect(['end_time'], 'end_time');
     this._endTimeSelect.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('end_time col', this._endTimeSelect));
+    this._body.appendChild(this._makeFieldRow('end_time_col', this._endTimeSelect));
 
     this._durationInput = this._makeInput('duration or number', '150px');
     this._durationInput.addEventListener('input', () => this._emitChanged());

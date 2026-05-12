@@ -17,6 +17,8 @@ export class OutputSection extends CollapsibleSection {
     super('Output', 'output', false, true);
 
     const pathRow = this._makeRow();
+    pathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
+    pathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
     pathRow.appendChild(this._makeLabel('path'));
     this._pathInput = this._makeInput('outputs/reviews.csv', '200px');
     this._pathInput.addEventListener('input', () => this._emitChanged());
@@ -29,7 +31,7 @@ export class OutputSection extends CollapsibleSection {
 
     this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
     this._uriInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('sync uri', this._uriInput));
+    this._body.appendChild(this._makeFieldRow('sync_uri', this._uriInput));
 
     const { row: syncRow, input: syncCb } = this._makeCheckbox('sync_button');
     this._syncBtnCb = syncCb;
@@ -38,7 +40,7 @@ export class OutputSection extends CollapsibleSection {
 
     this._syncLabelInput = this._makeInput('Sync', '150px');
     this._syncLabelInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('sync label', this._syncLabelInput));
+    this._body.appendChild(this._makeFieldRow('sync_label', this._syncLabelInput));
 
     const { row: recRow, input: recCb } = this._makeCheckbox('recursive');
     this._recursiveCb = recCb;

@@ -94,11 +94,15 @@ export class ConfigPanel {
     left.appendChild(this._summary.element);
 
     this._project.browseRequested.connect((_, { field, current }) => {
-      this._openBrowser(current, ['.yaml', '.yml'], (p) => {
-        if (field === 'project') this._project.setProjectPath(p);
-        else if (field === 'config') this._project.setConfigPath(p);
-        else if (field === 'form') this._project.setFormPath(p);
-      });
+      if (field === 'description_path') {
+        this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
+      } else {
+        this._openBrowser(current, ['.yaml', '.yml'], (p) => {
+          if (field === 'project') this._project.setProjectPath(p);
+          else if (field === 'config') this._project.setConfigPath(p);
+          else if (field === 'form') this._project.setFormPath(p);
+        });
+      }
     });
 
     this._project.projectEnabledChanged.connect((_, enabled) => {

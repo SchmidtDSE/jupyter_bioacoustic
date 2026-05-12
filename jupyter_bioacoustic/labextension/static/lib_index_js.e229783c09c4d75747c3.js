@@ -67,14 +67,19 @@ class ConfigPanel {
         this._form.setTarget('form');
         left.appendChild(this._summary.element);
         this._project.browseRequested.connect((_, { field, current }) => {
-            this._openBrowser(current, ['.yaml', '.yml'], (p) => {
-                if (field === 'project')
-                    this._project.setProjectPath(p);
-                else if (field === 'config')
-                    this._project.setConfigPath(p);
-                else if (field === 'form')
-                    this._project.setFormPath(p);
-            });
+            if (field === 'description_path') {
+                this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
+            }
+            else {
+                this._openBrowser(current, ['.yaml', '.yml'], (p) => {
+                    if (field === 'project')
+                        this._project.setProjectPath(p);
+                    else if (field === 'config')
+                        this._project.setConfigPath(p);
+                    else if (field === 'form')
+                        this._project.setFormPath(p);
+                });
+            }
         });
         this._project.projectEnabledChanged.connect((_, enabled) => {
             void this._onProjectEnabledChanged(enabled);
@@ -691,6 +696,7 @@ class YamlPanel {
         this._currentSection = 'project';
         this._yamls = { project_yaml: '', config_yaml: '', form_yaml: '' };
         this._yamlTabs = new Map();
+        this._activeField = null;
         this.element = document.createElement('div');
         this.element.style.cssText =
             `display:flex;flex-direction:column;width:350px;overflow:hidden;` +
@@ -858,20 +864,30 @@ class YamlPanel {
         this._renderDocs(section);
     }
     scrollToField(fieldKey) {
+        if (this._activeField) {
+            this._activeField.style.borderLeftColor = styles_1.COLORS.bgSurface1;
+        }
         const el = this._docsContent.querySelector(`[data-field="${fieldKey}"]`);
         if (el) {
+            el.style.borderLeftColor = styles_1.COLORS.sapphire;
+            this._activeField = el;
             el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        else {
+            this._activeField = null;
         }
     }
     _renderDocs(section) {
+        this._activeField = null;
         this._docsContent.innerHTML = '';
         const docs = docs_1.DOCS[section];
         if (!docs) {
             this._docsContent.textContent = `No documentation for "${section}".`;
             return;
         }
+        const sectionTitles = { project: 'Setup' };
         const title = document.createElement('h3');
-        title.textContent = section;
+        title.textContent = sectionTitles[section] || section;
         title.style.cssText =
             `margin:0 0 8px 0;font-size:14px;font-weight:700;color:${styles_1.COLORS.blue};` +
                 `text-transform:capitalize;`;
@@ -886,11 +902,27 @@ class YamlPanel {
         for (const [key, text] of Object.entries(docs)) {
             if (key === '_intro')
                 continue;
+            if (key.startsWith('_sub:')) {
+                const hr = document.createElement('hr');
+                hr.style.cssText = `border:none;border-top:1px solid ${styles_1.COLORS.bgSurface1};margin:12px 0 8px;`;
+                this._docsContent.appendChild(hr);
+                const subTitle = document.createElement('h4');
+                subTitle.textContent = key.slice(5);
+                subTitle.style.cssText =
+                    `margin:0 0 4px 0;font-size:12px;font-weight:700;color:${styles_1.COLORS.textPrimary};`;
+                this._docsContent.appendChild(subTitle);
+                const subIntro = document.createElement('p');
+                subIntro.textContent = text;
+                subIntro.style.cssText =
+                    `margin:0 0 10px 0;color:${styles_1.COLORS.textSubtle};font-size:11px;line-height:1.5;`;
+                this._docsContent.appendChild(subIntro);
+                continue;
+            }
             const fieldEl = document.createElement('div');
             fieldEl.setAttribute('data-field', key);
             fieldEl.style.cssText =
                 `margin-bottom:10px;padding:8px;background:${styles_1.COLORS.bgSurface0};border-radius:4px;` +
-                    `border-left:3px solid ${styles_1.COLORS.bgSurface1};`;
+                    `border-left:3px solid ${styles_1.COLORS.bgSurface1};transition:border-color 0.15s ease;`;
             const nameEl = document.createElement('div');
             nameEl.textContent = key;
             nameEl.style.cssText =
@@ -955,9 +987,18 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DOCS = void 0;
 exports.DOCS = {
     project: {
-        _intro: `Project settings control the widget identity and persistence.\nSet a name to label the session and optionally enable a save button so users can persist their progress.`,
+        _intro: `Setup controls the project identity, file paths, and an optional description panel shown at the top of the annotator.`,
         project_name: `(optional) Widget header title displayed at the top of the annotator.\nIf not set, it is auto-derived from the project filename.`,
-        project_save_btn: `(optional) Show a save-project button in the header.\nSet to true for a default "Save Project" label, or provide a custom string.`,
+        '_sub:Configuration File Paths': `Configure where config files are saved. Enable or disable each file with the checkbox. With all three enabled, the project file references the config file, which references the form file. Uncheck a file to inline its contents into the parent. If you only need a single file, uncheck the others and everything is combined.`,
+        'project file': `Project-specific configuration — data sources, audio paths, output locations, and anything unique to this particular review task. References the config file for shared app settings.`,
+        'config file': `Application setup shared across multiple projects — layout options, column visibility, capture settings, heights, and general widget behavior. Referenced by the project file; references the form file.`,
+        'form file': `Form definition only — the annotation interface controls (selects, textboxes, checkboxes, etc.) and dynamic forms. Kept separate so the same form can be reused across different project/config combinations.`,
+        '_sub:Description Panel': `Add an optional collapsible section at the top of the annotator for project descriptions, reviewer instructions, or other guidance. Accepts inline markdown or a path to a markdown file.`,
+        title: `(optional) Title shown in the collapsible description bar.\nDefault: "Description".`,
+        text: `(optional) Markdown-formatted text displayed in the description panel.\nSupports headings, lists, bold, italic, code blocks, links, and horizontal rules.`,
+        path: `(optional) Path to a markdown file whose contents populate the description panel.\nOverridden by text if both are set.`,
+        open: `(optional) Whether the description panel starts expanded.\nDefault: true.`,
+        height: `(optional) Max height in pixels for the description body.\nLeave empty for auto height. Set to constrain long descriptions with scroll.`,
     },
     data: {
         _intro: `Data is where you define your clip source — a table of detections or segments to review. Each row represents one clip. The table must have at minimum a start_time column (or you must map one). Supported formats: CSV, Parquet, JSON, JSONL.`,
@@ -967,6 +1008,7 @@ exports.DOCS = {
         start_time_col: `(optional) Column name containing the segment start time in seconds.\nDefault: "start_time". Remap if your file uses a different name.`,
         end_time_col: `(optional) Column name containing the segment end time in seconds.\nDefault: "end_time". Remap if your file uses a different name.`,
         duration: `(optional) Column name or fixed number (seconds) to compute end_time from start_time.\nUse this if your data has duration instead of end_time.\nExample: "duration" (column) or 5.0 (fixed seconds).`,
+        secrets: `(optional) Key-value pairs for credentials needed to access data.\nExample: API tokens, database passwords. Stored in the session only, never written to config files.`,
     },
     audio: {
         _intro: `Audio defines where to find the sound files for each clip.\nYou can point to a single file, a URL, or a per-row column that holds the path for each detection.`,
@@ -975,6 +1017,7 @@ exports.DOCS = {
         prefix: `(optional) Prepended to the audio path with "/" separator.\nUseful for base directories or URL roots.\nExample: "audio/" turns "recording.flac" into "audio/recording.flac"`,
         suffix: `(optional) Appended to the audio path.\nUseful for adding file extensions when paths are stored without them.`,
         fallback: `(optional) Fallback audio file used when column mode yields an empty value.`,
+        secrets: `(optional) Key-value pairs for credentials needed to access audio.\nExample: storage tokens or signed URL secrets.`,
     },
     output: {
         _intro: `Output controls where annotation results are saved.\nResults are written as a table (CSV/Parquet) with one row per submission. Optionally sync to remote storage.`,
@@ -983,6 +1026,7 @@ exports.DOCS = {
         sync_button: `(optional) Show a sync button in the widget.\nSet to true for default "Sync" label, or provide a custom string.`,
         sync_label: `(optional) Text label shown next to the sync button.`,
         recursive: `(optional) Write output after every submission instead of waiting for session end. Default: false.`,
+        secrets: `(optional) Key-value pairs for credentials needed for output sync.\nExample: S3 access keys for remote sync.`,
     },
     app: {
         _intro: `Application settings control the widget layout, visible columns, and interaction features like capture and buffering.`,
@@ -998,6 +1042,8 @@ exports.DOCS = {
         player_height: `(optional) Player/spectrogram height in pixels. Default: 260.\nAlso determines the spectrogram resolution.`,
         info_card_height: `(optional) Info card height in pixels. Default: 34.`,
         form_panel_height: `(optional) Form panel height in pixels. Default: 140.`,
+        project_save_btn: `(optional) Show a save-project button in the header.\nSet to true for a default "Save Project" label, or provide a custom string.`,
+        secrets: `(optional) Global key-value pairs for credentials available to all sections.\nSection-level secrets override global ones with the same key.`,
     },
     form: {
         _intro: `Form defines the annotation interface — the controls users interact with to label each clip. Elements are rendered in order. Each element writes its value to a specified output column.\n\nElement types: title, select, textbox, checkbox, number, annotation, pass_value, fixed_value, submission_buttons.`,
@@ -1010,6 +1056,9 @@ exports.DOCS = {
         pass_value: `Copies a value from the data row into the output.\nSet "source_column" (input) and "column" (output).`,
         fixed_value: `Writes a constant value to the output for every submission.\nSet "column" and "value".`,
         submission_buttons: `Submit/skip navigation buttons. Options:\n• line: show a divider above buttons\n• previous: show a back button\n• next: {label: "Skip"} for the skip button\n• submit: {label: "Verify"} for the submit button`,
+        break: `Visual spacer that adds vertical space between form elements.`,
+        line: `Horizontal rule divider between form elements.`,
+        text: `Static text displayed in the form. Set "value" for the text content.`,
         dynamic_forms: `Conditional form sections triggered by select item values.\nWhen a select item has "form: section_name", selecting it reveals the named dynamic form section below.`,
     },
 };
@@ -1366,39 +1415,6 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         this.browseRequested = new signaling_1.Signal(this);
         this._displayCols = [];
         this._availableCols = [];
-        this._descTitleInput = this._makeInput('', '200px');
-        this._descTitleInput.placeholder = 'e.g. Instructions';
-        this._descTitleInput.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('description_title', this._descTitleInput));
-        this._descTextArea = document.createElement('textarea');
-        this._descTextArea.style.cssText =
-            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:4px;` +
-                `color:${styles_1.COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
-                `box-sizing:border-box;resize:vertical;font-family:monospace;`;
-        this._descTextArea.placeholder = 'Markdown text (or use description_path for a file)';
-        this._descTextArea.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('description_text', this._descTextArea));
-        this._descPathInput = this._makeInput('', '200px');
-        this._descPathInput.placeholder = 'docs/instructions.md';
-        this._descPathInput.addEventListener('input', () => this._emitChanged());
-        const descPathRow = this._makeRow();
-        descPathRow.appendChild(this._makeLabel('description_path'));
-        const descPathBrowse = this._makeButton('Browse');
-        descPathBrowse.addEventListener('click', () => {
-            this.browseRequested.emit(this._descPathInput.value || '.');
-        });
-        descPathRow.append(this._descPathInput, descPathBrowse);
-        this._body.appendChild(descPathRow);
-        const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('description_open');
-        this._descOpenCb = descOpenCb;
-        this._descOpenCb.checked = true;
-        this._descOpenCb.addEventListener('change', () => this._emitChanged());
-        this._body.appendChild(descOpenRow);
-        this._descHeightInput = this._makeInput('', '60px');
-        this._descHeightInput.type = 'number';
-        this._descHeightInput.placeholder = 'auto';
-        this._descHeightInput.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('description_height', this._descHeightInput));
         this._identColSelect = this._makeSelect(['(none)'], '(none)');
         this._identColSelect.addEventListener('change', () => this._emitChanged());
         this._body.appendChild(this._makeFieldRow('ident_column', this._identColSelect));
@@ -1425,6 +1441,8 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         this._captureCb.addEventListener('change', () => this._emitChanged());
         this._body.appendChild(capRow);
         const capDirRow = this._makeRow();
+        capDirRow.addEventListener('focusin', () => this.fieldFocused.emit('capture_dir'));
+        capDirRow.addEventListener('click', () => this.fieldFocused.emit('capture_dir'));
         capDirRow.appendChild(this._makeLabel('capture_dir'));
         this._captureDirInput = this._makeInput('captures/', '160px');
         this._captureDirInput.addEventListener('input', () => this._emitChanged());
@@ -1438,6 +1456,8 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         this._widthInput.addEventListener('input', () => this._emitChanged());
         this._body.appendChild(this._makeFieldRow('width', this._widthInput));
         const heightRow = this._makeRow();
+        heightRow.addEventListener('focusin', () => this.fieldFocused.emit('clip_table_height'));
+        heightRow.addEventListener('click', () => this.fieldFocused.emit('clip_table_height'));
         heightRow.appendChild(this._makeLabel('heights'));
         this._clipTableHeightInput = this._makeInput('175', '60px');
         this._clipTableHeightInput.type = 'number';
@@ -1635,25 +1655,6 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         const fph = parseInt(this._formPanelHeightInput.value);
         if (!isNaN(fph) && fph !== 140)
             result.form_panel_height = fph;
-        const dh = parseInt(this._descHeightInput.value);
-        if (!isNaN(dh) && dh > 0)
-            result.description_height = dh;
-        const descTitle = this._descTitleInput.value.trim();
-        const descText = this._descTextArea.value;
-        const descPath = this._descPathInput.value.trim();
-        const descOpen = this._descOpenCb.checked;
-        if (descTitle || descText || descPath) {
-            const desc = {};
-            if (descTitle)
-                desc.title = descTitle;
-            if (descText)
-                desc.text = descText;
-            if (descPath)
-                desc.path = descPath;
-            if (!descOpen)
-                desc.open = false;
-            result.description = desc;
-        }
         const secrets = this._secrets.getData();
         if (secrets !== undefined)
             result.secrets = secrets;
@@ -1687,27 +1688,6 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
             this._infoCardHeightInput.value = String(data.info_card_height);
         if (data.form_panel_height)
             this._formPanelHeightInput.value = String(data.form_panel_height);
-        if (data.description_height)
-            this._descHeightInput.value = String(data.description_height);
-        if (data.description) {
-            const d = typeof data.description === 'object' ? data.description : {};
-            if (d.title)
-                this._descTitleInput.value = d.title;
-            if (d.text)
-                this._descTextArea.value = d.text;
-            if (d.path)
-                this._descPathInput.value = d.path;
-            if (d.open === false)
-                this._descOpenCb.checked = false;
-        }
-        if (data.description_title)
-            this._descTitleInput.value = data.description_title;
-        if (data.description_text)
-            this._descTextArea.value = data.description_text;
-        if (data.description_path)
-            this._descPathInput.value = data.description_path;
-        if (data.description_open === false)
-            this._descOpenCb.checked = false;
         if (data.secrets !== undefined)
             this._secrets.setData(data.secrets);
     }
@@ -1739,8 +1719,10 @@ class AudioSection extends CollapsibleSection_1.CollapsibleSection {
             this._updateValueUI();
             this._emitChanged();
         });
-        this._body.appendChild(this._makeFieldRow('source type', this._sourceType));
+        this._body.appendChild(this._makeFieldRow('source_type', this._sourceType));
         this._pathRow = this._makeRow();
+        this._pathRow.addEventListener('focusin', () => this.fieldFocused.emit('value'));
+        this._pathRow.addEventListener('click', () => this.fieldFocused.emit('value'));
         this._pathRow.appendChild(this._makeLabel('value'));
         this._valueInput = this._makeInput('audio/recording.flac', '200px');
         this._valueInput.addEventListener('input', () => this._emitChanged());
@@ -1930,6 +1912,7 @@ class CollapsibleSection {
         this._body.style.cssText =
             `padding:10px 12px;display:flex;flex-direction:column;gap:8px;` +
                 `background:${styles_1.COLORS.bgBase};`;
+        this._summary = summary;
         this.element.append(summary, this._body);
     }
     get isPinned() {
@@ -1940,8 +1923,13 @@ class CollapsibleSection {
         this._pinned = false;
         this._updateChevron();
     }
+    unpin() {
+        this._pinned = false;
+        this._updateChevron();
+    }
     _updateChevron() {
         this._chevron.textContent = this.element.open ? '\u25be' : '\u25b8';
+        this._summary.style.background = (this._pinned && this.element.open) ? styles_1.COLORS.bgSurface0 : styles_1.COLORS.bgMantle;
     }
     getTarget() {
         var _a;
@@ -2542,8 +2530,10 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         this._debounceTimer = null;
         this._sourceType = this._makeSelect(['path', 'url', 'sql', 'api'], 'path');
         this._sourceType.addEventListener('change', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('source type', this._sourceType));
+        this._body.appendChild(this._makeFieldRow('source_type', this._sourceType));
         const pathRow = this._makeRow();
+        pathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
+        pathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
         pathRow.appendChild(this._makeLabel('path / url'));
         this._pathInput = this._makeInput('data/detections.csv', '220px');
         this._pathInput.addEventListener('input', () => {
@@ -2562,7 +2552,7 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         colLabelText.textContent = 'columns';
         colLabelText.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-weight:600;`;
         colLabel.append(colLabelText);
-        colLabel.addEventListener('click', () => this.fieldFocused.emit('columns'));
+        colLabel.addEventListener('click', () => this.fieldFocused.emit('data_columns'));
         this._selectedChipsArea = document.createElement('div');
         this._selectedChipsArea.style.cssText =
             `display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:2px 0;`;
@@ -2582,10 +2572,10 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         this._body.appendChild(colSeparator);
         this._startTimeSelect = this._makeSelect(['start_time'], 'start_time');
         this._startTimeSelect.addEventListener('change', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('start_time col', this._startTimeSelect));
+        this._body.appendChild(this._makeFieldRow('start_time_col', this._startTimeSelect));
         this._endTimeSelect = this._makeSelect(['end_time'], 'end_time');
         this._endTimeSelect.addEventListener('change', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('end_time col', this._endTimeSelect));
+        this._body.appendChild(this._makeFieldRow('end_time_col', this._endTimeSelect));
         this._durationInput = this._makeInput('duration or number', '150px');
         this._durationInput.addEventListener('input', () => this._emitChanged());
         this._body.appendChild(this._makeFieldRow('duration', this._durationInput));
@@ -2844,6 +2834,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
             btn.style.fontSize = '11px';
             btn.style.padding = '3px 8px';
             btn.addEventListener('click', () => {
+                this.fieldFocused.emit(t);
                 if (onAdd) {
                     onAdd(t);
                 }
@@ -2851,6 +2842,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
                     this._addElement(t);
                 }
             });
+            btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
             bar.appendChild(btn);
         }
         return bar;
@@ -2886,6 +2878,8 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
         card.style.cssText =
             `background:${styles_1.COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
                 `display:flex;flex-direction:column;gap:5px;`;
+        card.addEventListener('focusin', () => this.fieldFocused.emit(type));
+        card.addEventListener('click', () => this.fieldFocused.emit(type));
         const header = this._makeRow();
         const typeLabel = document.createElement('span');
         typeLabel.textContent = type;
@@ -3641,6 +3635,8 @@ class OutputSection extends CollapsibleSection_1.CollapsibleSection {
         super('Output', 'output', false, true);
         this.browseRequested = new signaling_1.Signal(this);
         const pathRow = this._makeRow();
+        pathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
+        pathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
         pathRow.appendChild(this._makeLabel('path'));
         this._pathInput = this._makeInput('outputs/reviews.csv', '200px');
         this._pathInput.addEventListener('input', () => this._emitChanged());
@@ -3652,14 +3648,14 @@ class OutputSection extends CollapsibleSection_1.CollapsibleSection {
         this._body.appendChild(pathRow);
         this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
         this._uriInput.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('sync uri', this._uriInput));
+        this._body.appendChild(this._makeFieldRow('sync_uri', this._uriInput));
         const { row: syncRow, input: syncCb } = this._makeCheckbox('sync_button');
         this._syncBtnCb = syncCb;
         this._syncBtnCb.addEventListener('change', () => this._emitChanged());
         this._body.appendChild(syncRow);
         this._syncLabelInput = this._makeInput('Sync', '150px');
         this._syncLabelInput.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('sync label', this._syncLabelInput));
+        this._body.appendChild(this._makeFieldRow('sync_label', this._syncLabelInput));
         const { row: recRow, input: recCb } = this._makeCheckbox('recursive');
         this._recursiveCb = recCb;
         this._recursiveCb.addEventListener('change', () => this._emitChanged());
@@ -3723,7 +3719,7 @@ const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
 const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
 class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
-        super('Project & File Paths', 'project', true);
+        super('Setup', 'project', true);
         this.browseRequested = new signaling_1.Signal(this);
         this.loadConfigRequested = new signaling_1.Signal(this);
         this.loadBrowseRequested = new signaling_1.Signal(this);
@@ -3797,6 +3793,48 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
         this._formBrowseBtn = fRow.btn;
         this._formCb.addEventListener('change', () => this._emitFileStates());
         this._body.appendChild(fRow.row);
+        const descSep = document.createElement('div');
+        descSep.style.cssText = `height:1px;background:${styles_1.COLORS.bgSurface1};margin:6px 0;`;
+        this._body.appendChild(descSep);
+        const descLabel = document.createElement('div');
+        descLabel.textContent = 'Description Panel';
+        descLabel.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
+        this._body.appendChild(descLabel);
+        this._descTitleInput = this._makeInput('', '200px');
+        this._descTitleInput.placeholder = 'e.g. Instructions';
+        this._descTitleInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('title', this._descTitleInput));
+        this._descTextArea = document.createElement('textarea');
+        this._descTextArea.style.cssText =
+            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:4px;` +
+                `color:${styles_1.COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
+                `box-sizing:border-box;resize:vertical;font-family:monospace;`;
+        this._descTextArea.placeholder = 'Markdown text (or use description_path for a file)';
+        this._descTextArea.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('text', this._descTextArea));
+        this._descPathInput = this._makeInput('', '200px');
+        this._descPathInput.placeholder = 'docs/instructions.md';
+        this._descPathInput.addEventListener('input', () => this._emitChanged());
+        const descPathRow = this._makeRow();
+        descPathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
+        descPathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
+        descPathRow.appendChild(this._makeLabel('path'));
+        const descPathBrowse = this._makeButton('Browse');
+        descPathBrowse.addEventListener('click', () => {
+            this.browseRequested.emit({ field: 'description_path', current: this._descPathInput.value || '.' });
+        });
+        descPathRow.append(this._descPathInput, descPathBrowse);
+        this._body.appendChild(descPathRow);
+        const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('open');
+        this._descOpenCb = descOpenCb;
+        this._descOpenCb.checked = true;
+        this._descOpenCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(descOpenRow);
+        this._descHeightInput = this._makeInput('', '60px');
+        this._descHeightInput.type = 'number';
+        this._descHeightInput.placeholder = 'auto';
+        this._descHeightInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('height', this._descHeightInput));
     }
     _emitFileStates() {
         this.fileStatesChanged.emit({
@@ -3889,7 +3927,7 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
         this._formBrowseBtn.style.opacity = form ? '1' : '0.4';
     }
     getData() {
-        return {
+        const result = {
             project_name: this._nameInput.value || undefined,
             project_enabled: this._projectCb.checked,
             config_enabled: this._configCb.checked,
@@ -3898,6 +3936,30 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
             config_path: this._configCb.checked ? (this._configPathInput.value || undefined) : undefined,
             form_path: this._formCb.checked ? (this._formPathInput.value || undefined) : undefined,
         };
+        const dh = parseInt(this._descHeightInput.value);
+        if (!isNaN(dh) && dh > 0)
+            result.description_height = dh;
+        const descTitle = this._descTitleInput.value.trim();
+        const descText = this._descTextArea.value;
+        const descPath = this._descPathInput.value.trim();
+        const descOpen = this._descOpenCb.checked;
+        if (descTitle || descText || descPath) {
+            const desc = {};
+            if (descTitle)
+                desc.title = descTitle;
+            if (descText)
+                desc.text = descText;
+            if (descPath)
+                desc.path = descPath;
+            if (!descOpen)
+                desc.open = false;
+            result.description = desc;
+        }
+        return result;
+    }
+    setDescriptionPath(path) {
+        this._descPathInput.value = path;
+        this._emitChanged();
     }
     setData(data) {
         if (data.project_name !== undefined)
@@ -3908,6 +3970,27 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
             this._configPathInput.value = data.config_path;
         if (data.form_path)
             this._formPathInput.value = data.form_path;
+        if (data.description_height)
+            this._descHeightInput.value = String(data.description_height);
+        if (data.description) {
+            const d = typeof data.description === 'object' ? data.description : {};
+            if (d.title)
+                this._descTitleInput.value = d.title;
+            if (d.text)
+                this._descTextArea.value = d.text;
+            if (d.path)
+                this._descPathInput.value = d.path;
+            if (d.open === false)
+                this._descOpenCb.checked = false;
+        }
+        if (data.description_title)
+            this._descTitleInput.value = data.description_title;
+        if (data.description_text)
+            this._descTextArea.value = data.description_text;
+        if (data.description_path)
+            this._descPathInput.value = data.description_path;
+        if (data.description_open === false)
+            this._descOpenCb.checked = false;
         if (data.project_enabled !== undefined) {
             this._projectCb.checked = !!data.project_enabled;
             this._projectPathInput.disabled = !this._projectCb.checked;
@@ -9756,4 +9839,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.02666c05422ac2600cd7.js.map
+//# sourceMappingURL=lib_index_js.e229783c09c4d75747c3.js.map

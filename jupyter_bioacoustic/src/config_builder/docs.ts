@@ -5,9 +5,18 @@ export interface SectionDocs {
 
 export const DOCS: Record<string, SectionDocs> = {
   project: {
-    _intro: `Project settings control the widget identity and persistence.\nSet a name to label the session and optionally enable a save button so users can persist their progress.`,
+    _intro: `Setup controls the project identity, file paths, and an optional description panel shown at the top of the annotator.`,
     project_name: `(optional) Widget header title displayed at the top of the annotator.\nIf not set, it is auto-derived from the project filename.`,
-    project_save_btn: `(optional) Show a save-project button in the header.\nSet to true for a default "Save Project" label, or provide a custom string.`,
+    '_sub:Configuration File Paths': `Configure where config files are saved. Enable or disable each file with the checkbox. With all three enabled, the project file references the config file, which references the form file. Uncheck a file to inline its contents into the parent. If you only need a single file, uncheck the others and everything is combined.`,
+    'project file': `Project-specific configuration — data sources, audio paths, output locations, and anything unique to this particular review task. References the config file for shared app settings.`,
+    'config file': `Application setup shared across multiple projects — layout options, column visibility, capture settings, heights, and general widget behavior. Referenced by the project file; references the form file.`,
+    'form file': `Form definition only — the annotation interface controls (selects, textboxes, checkboxes, etc.) and dynamic forms. Kept separate so the same form can be reused across different project/config combinations.`,
+    '_sub:Description Panel': `Add an optional collapsible section at the top of the annotator for project descriptions, reviewer instructions, or other guidance. Accepts inline markdown or a path to a markdown file.`,
+    title: `(optional) Title shown in the collapsible description bar.\nDefault: "Description".`,
+    text: `(optional) Markdown-formatted text displayed in the description panel.\nSupports headings, lists, bold, italic, code blocks, links, and horizontal rules.`,
+    path: `(optional) Path to a markdown file whose contents populate the description panel.\nOverridden by text if both are set.`,
+    open: `(optional) Whether the description panel starts expanded.\nDefault: true.`,
+    height: `(optional) Max height in pixels for the description body.\nLeave empty for auto height. Set to constrain long descriptions with scroll.`,
   },
   data: {
     _intro: `Data is where you define your clip source — a table of detections or segments to review. Each row represents one clip. The table must have at minimum a start_time column (or you must map one). Supported formats: CSV, Parquet, JSON, JSONL.`,
@@ -17,6 +26,7 @@ export const DOCS: Record<string, SectionDocs> = {
     start_time_col: `(optional) Column name containing the segment start time in seconds.\nDefault: "start_time". Remap if your file uses a different name.`,
     end_time_col: `(optional) Column name containing the segment end time in seconds.\nDefault: "end_time". Remap if your file uses a different name.`,
     duration: `(optional) Column name or fixed number (seconds) to compute end_time from start_time.\nUse this if your data has duration instead of end_time.\nExample: "duration" (column) or 5.0 (fixed seconds).`,
+    secrets: `(optional) Key-value pairs for credentials needed to access data.\nExample: API tokens, database passwords. Stored in the session only, never written to config files.`,
   },
   audio: {
     _intro: `Audio defines where to find the sound files for each clip.\nYou can point to a single file, a URL, or a per-row column that holds the path for each detection.`,
@@ -25,6 +35,7 @@ export const DOCS: Record<string, SectionDocs> = {
     prefix: `(optional) Prepended to the audio path with "/" separator.\nUseful for base directories or URL roots.\nExample: "audio/" turns "recording.flac" into "audio/recording.flac"`,
     suffix: `(optional) Appended to the audio path.\nUseful for adding file extensions when paths are stored without them.`,
     fallback: `(optional) Fallback audio file used when column mode yields an empty value.`,
+    secrets: `(optional) Key-value pairs for credentials needed to access audio.\nExample: storage tokens or signed URL secrets.`,
   },
   output: {
     _intro: `Output controls where annotation results are saved.\nResults are written as a table (CSV/Parquet) with one row per submission. Optionally sync to remote storage.`,
@@ -33,6 +44,7 @@ export const DOCS: Record<string, SectionDocs> = {
     sync_button: `(optional) Show a sync button in the widget.\nSet to true for default "Sync" label, or provide a custom string.`,
     sync_label: `(optional) Text label shown next to the sync button.`,
     recursive: `(optional) Write output after every submission instead of waiting for session end. Default: false.`,
+    secrets: `(optional) Key-value pairs for credentials needed for output sync.\nExample: S3 access keys for remote sync.`,
   },
   app: {
     _intro: `Application settings control the widget layout, visible columns, and interaction features like capture and buffering.`,
@@ -48,6 +60,8 @@ export const DOCS: Record<string, SectionDocs> = {
     player_height: `(optional) Player/spectrogram height in pixels. Default: 260.\nAlso determines the spectrogram resolution.`,
     info_card_height: `(optional) Info card height in pixels. Default: 34.`,
     form_panel_height: `(optional) Form panel height in pixels. Default: 140.`,
+    project_save_btn: `(optional) Show a save-project button in the header.\nSet to true for a default "Save Project" label, or provide a custom string.`,
+    secrets: `(optional) Global key-value pairs for credentials available to all sections.\nSection-level secrets override global ones with the same key.`,
   },
   form: {
     _intro: `Form defines the annotation interface — the controls users interact with to label each clip. Elements are rendered in order. Each element writes its value to a specified output column.\n\nElement types: title, select, textbox, checkbox, number, annotation, pass_value, fixed_value, submission_buttons.`,
@@ -60,6 +74,9 @@ export const DOCS: Record<string, SectionDocs> = {
     pass_value: `Copies a value from the data row into the output.\nSet "source_column" (input) and "column" (output).`,
     fixed_value: `Writes a constant value to the output for every submission.\nSet "column" and "value".`,
     submission_buttons: `Submit/skip navigation buttons. Options:\n• line: show a divider above buttons\n• previous: show a back button\n• next: {label: "Skip"} for the skip button\n• submit: {label: "Verify"} for the submit button`,
+    break: `Visual spacer that adds vertical space between form elements.`,
+    line: `Horizontal rule divider between form elements.`,
+    text: `Static text displayed in the form. Set "value" for the text content.`,
     dynamic_forms: `Conditional form sections triggered by select item values.\nWhen a select item has "form: section_name", selecting it reveals the named dynamic form section below.`,
   },
 };
