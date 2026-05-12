@@ -1,5 +1,7 @@
 import { COLORS } from '../styles';
 
+const DEFAULT_DESCRIPTION_TITLE = 'Description';
+
 export interface DescriptionConfig {
   title: string;
   text: string;
@@ -26,9 +28,17 @@ function renderMarkdown(src: string): string {
     if (inList) { out.push(inList === 'ol' ? '</ol>' : '</ul>'); inList = ''; }
   };
 
+  let baseIndent = -1;
+  const nonEmpty = lines.filter(l => l.trim().length > 0);
+  if (nonEmpty.length > 0) {
+    baseIndent = Math.min(...nonEmpty.map(l => l.match(/^(\s*)/)![1].length));
+  }
+  const deindent = (s: string): string =>
+    baseIndent > 0 && s.length >= baseIndent ? s.slice(baseIndent) : s;
+
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    const trimmed = raw.trimEnd();
+    const trimmed = raw.trim();
 
     if (trimmed.startsWith('```')) {
       if (inCode) { out.push('</code></pre>'); inCode = false; }
@@ -36,7 +46,8 @@ function renderMarkdown(src: string): string {
       continue;
     }
     if (inCode) {
-      out.push(trimmed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+      const codeLine = deindent(raw).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      out.push(codeLine);
       continue;
     }
 
@@ -90,7 +101,7 @@ export class DescriptionPanel {
 
     const summary = document.createElement('summary');
     summary.style.cssText =
-      `padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;` +
+      `padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;` +
       `background:${COLORS.bgMantle};color:${COLORS.textPrimary};` +
       `list-style:none;user-select:none;letter-spacing:0.5px;` +
       `border-bottom:1px solid ${COLORS.bgSurface0};` +
@@ -98,7 +109,7 @@ export class DescriptionPanel {
 
     this._chevron = document.createElement('span');
     this._chevron.style.cssText =
-      `font-size:10px;color:${COLORS.textMuted};flex-shrink:0;width:12px;text-align:center;`;
+      `font-size:20px;line-height:0;margin-top:-3px;color:${COLORS.textMuted};flex-shrink:0;width:16px;text-align:center;`;
     this._chevron.textContent = '▾';
 
     this._body = document.createElement('div');
@@ -118,18 +129,19 @@ export class DescriptionPanel {
   }
 
   setConfig(cfg: DescriptionConfig, height?: number): void {
-    if (!cfg.title && !cfg.text) {
+    if (!cfg.text) {
       this.element.style.display = 'none';
       return;
     }
 
+    const title = cfg.title || DEFAULT_DESCRIPTION_TITLE;
     const summary = this.element.querySelector('summary')!;
     const titleSpan = summary.querySelector('span:last-child') as HTMLSpanElement | null;
     if (titleSpan && titleSpan !== this._chevron) {
-      titleSpan.textContent = cfg.title || 'Description';
+      titleSpan.textContent = title;
     } else {
       const s = document.createElement('span');
-      s.textContent = cfg.title || 'Description';
+      s.textContent = title;
       summary.appendChild(s);
     }
 
@@ -153,13 +165,13 @@ export class DescriptionPanel {
         `color:${COLORS.textPrimary};margin:12px 0 6px;font-weight:700;`;
     }
     for (const h1 of this._body.querySelectorAll('h1')) {
-      (h1 as HTMLElement).style.fontSize = '18px';
+      (h1 as HTMLElement).style.fontSize = '15px';
     }
     for (const h2 of this._body.querySelectorAll('h2')) {
-      (h2 as HTMLElement).style.fontSize = '16px';
+      (h2 as HTMLElement).style.fontSize = '14px';
     }
     for (const h3 of this._body.querySelectorAll('h3')) {
-      (h3 as HTMLElement).style.fontSize = '14px';
+      (h3 as HTMLElement).style.fontSize = '13px';
     }
     for (const p of this._body.querySelectorAll('p')) {
       (p as HTMLElement).style.cssText = `margin:6px 0;color:${COLORS.textPrimary};`;
@@ -174,7 +186,7 @@ export class DescriptionPanel {
       (li as HTMLElement).style.cssText = `margin:2px 0;color:${COLORS.textPrimary};`;
     }
     for (const code of this._body.querySelectorAll('pre > code')) {
-      (code as HTMLElement).style.cssText = `color:${COLORS.textPrimary};font-size:12px;`;
+      (code as HTMLElement).style.cssText = `color:${COLORS.textPrimary};font-size:12px;background:transparent;padding:0;border-radius:0;display:block;`;
     }
     for (const code of this._body.querySelectorAll('code')) {
       if ((code as HTMLElement).parentElement?.tagName !== 'PRE') {
@@ -184,7 +196,7 @@ export class DescriptionPanel {
     }
     for (const pre of this._body.querySelectorAll('pre')) {
       (pre as HTMLElement).style.cssText =
-        `background:${COLORS.bgSurface0};color:${COLORS.textPrimary};padding:8px 12px;border-radius:4px;overflow-x:auto;font-size:12px;`;
+        `background:${COLORS.bgSurface0};color:${COLORS.textPrimary};padding:8px 12px;border-radius:4px;overflow-x:auto;font-size:12px;margin:6px 0;`;
     }
     for (const strong of this._body.querySelectorAll('strong')) {
       (strong as HTMLElement).style.color = COLORS.textPrimary;

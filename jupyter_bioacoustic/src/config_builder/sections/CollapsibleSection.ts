@@ -61,7 +61,7 @@ export abstract class CollapsibleSection {
 
     this._chevron = document.createElement('span');
     this._chevron.style.cssText =
-      `font-size:10px;color:${COLORS.textMuted};flex-shrink:0;width:12px;text-align:center;`;
+      `font-size:20px;line-height:0;margin-top:-3px;color:${COLORS.textMuted};flex-shrink:0;width:16px;text-align:center;`;
     this._chevron.textContent = open ? '▾' : '▸';
 
     const titleSpan = document.createElement('span');
