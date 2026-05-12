@@ -7,6 +7,7 @@ export class ProjectSection extends CollapsibleSection {
   readonly loadConfigRequested = new Signal<this, string>(this);
   readonly loadBrowseRequested = new Signal<this, void>(this);
   readonly projectEnabledChanged = new Signal<this, boolean>(this);
+  readonly fileStatesChanged = new Signal<this, { project: boolean; config: boolean; form: boolean }>(this);
 
   private _nameInput: HTMLInputElement;
 
@@ -84,6 +85,7 @@ export class ProjectSection extends CollapsibleSection {
     this._projectBrowseBtn = pRow.btn;
     this._projectCb.addEventListener('change', () => {
       this.projectEnabledChanged.emit(this._projectCb.checked);
+      this._emitFileStates();
     });
     this._body.appendChild(pRow.row);
 
@@ -91,13 +93,23 @@ export class ProjectSection extends CollapsibleSection {
     this._configCb = cRow.cb;
     this._configPathInput = cRow.input;
     this._configBrowseBtn = cRow.btn;
+    this._configCb.addEventListener('change', () => this._emitFileStates());
     this._body.appendChild(cRow.row);
 
     const fRow = this._makeFileRow('form');
     this._formCb = fRow.cb;
     this._formPathInput = fRow.input;
     this._formBrowseBtn = fRow.btn;
+    this._formCb.addEventListener('change', () => this._emitFileStates());
     this._body.appendChild(fRow.row);
+  }
+
+  private _emitFileStates(): void {
+    this.fileStatesChanged.emit({
+      project: this._projectCb.checked,
+      config: this._configCb.checked,
+      form: this._formCb.checked,
+    });
   }
 
   private _makeFileRow(field: string): {
