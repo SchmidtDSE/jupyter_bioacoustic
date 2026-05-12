@@ -78,6 +78,7 @@ export class ConfigPanel {
       section.focused.connect(() => this._onSectionFocused(name));
       section.fieldFocused.connect((_, field) => this._yamlPanel.scrollToField(field));
       section.changed.connect(() => void this._onSectionChanged(name));
+      section.opened.connect(() => this._onAccordionOpen(section));
       left.appendChild(section.element);
     }
 
@@ -474,6 +475,14 @@ export class ConfigPanel {
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
+    }
+  }
+
+  private _onAccordionOpen(opened: CollapsibleSection): void {
+    for (const [, section] of this._sections) {
+      if (section !== opened && !section.isPinned) {
+        section.close();
+      }
     }
   }
 

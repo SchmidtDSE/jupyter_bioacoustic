@@ -19,7 +19,7 @@ export class SecretsEditor {
       `background:${COLORS.bgSurface0};border-radius:6px;`;
 
     const header = document.createElement('div');
-    header.style.cssText = `display:flex;align-items:center;justify-content:space-between;`;
+    header.style.cssText = `display:flex;align-items:center;gap:8px;`;
 
     const label = document.createElement('span');
     label.textContent = 'secrets';
@@ -37,11 +37,8 @@ export class SecretsEditor {
       this.changed.emit(void 0);
     });
     header.appendChild(addBtn);
-    this.element.appendChild(header);
 
     if (showOptOut) {
-      const optRow = document.createElement('div');
-      optRow.style.cssText = `display:flex;align-items:center;gap:6px;`;
       this._optOutCb = document.createElement('input');
       this._optOutCb.type = 'checkbox';
       this._optOutCb.style.cssText = `accent-color:${COLORS.blue};`;
@@ -50,14 +47,18 @@ export class SecretsEditor {
         this._listEl.style.display = this._optedOut ? 'none' : 'flex';
         this.changed.emit(void 0);
       });
-      const optLabel = document.createElement('span');
-      optLabel.textContent = 'opt out of global secrets';
-      optLabel.style.cssText = `color:${COLORS.textSubtle};font-size:11px;`;
-      optRow.append(this._optOutCb, optLabel);
-      this.element.appendChild(optRow);
+      const optLabel = document.createElement('label');
+      optLabel.style.cssText = `display:flex;align-items:center;gap:4px;cursor:pointer;margin-left:auto;`;
+      const optText = document.createElement('span');
+      optText.textContent = 'opt out of global';
+      optText.style.cssText = `color:${COLORS.textSubtle};font-size:11px;`;
+      optLabel.append(this._optOutCb, optText);
+      header.appendChild(optLabel);
     } else {
       this._optOutCb = document.createElement('input');
     }
+
+    this.element.appendChild(header);
 
     const hint = document.createElement('span');
     hint.textContent = 'Each entry is {key, value}. Value: env:VAR, dialog, or literal.';

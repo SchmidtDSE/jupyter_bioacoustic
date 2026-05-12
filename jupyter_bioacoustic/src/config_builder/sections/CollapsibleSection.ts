@@ -7,11 +7,14 @@ export abstract class CollapsibleSection {
   readonly fieldFocused = new Signal<this, string>(this);
   readonly changed = new Signal<this, void>(this);
   readonly targetChanged = new Signal<this, { section: string; target: string }>(this);
+  readonly opened = new Signal<this, void>(this);
 
   protected _body: HTMLDivElement;
   protected _sectionName: string;
   private _targetToggle: HTMLSelectElement | null = null;
   private _hasTargetToggle: boolean;
+  private _chevron: HTMLSpanElement;
+  private _pinned = false;
 
   constructor(title: string, sectionName: string, open = false, showTargetToggle = false) {
     this._sectionName = sectionName;
@@ -29,13 +32,45 @@ export abstract class CollapsibleSection {
       `list-style:none;user-select:none;letter-spacing:0.5px;` +
       `border-bottom:1px solid ${COLORS.bgSurface0};` +
       `display:flex;align-items:center;justify-content:space-between;`;
-    summary.addEventListener('click', () => {
+
+    summary.addEventListener('click', (e: MouseEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        this._pinned = true;
+        if (!this.element.open) this.element.open = true;
+        this._updateChevron();
+        return;
+      }
+      if (!this.element.open) {
+        this.opened.emit(void 0);
+      } else {
+        this._pinned = false;
+      }
       this.focused.emit(this._sectionName);
     });
 
+    summary.addEventListener('dblclick', (e: MouseEvent) => {
+      e.preventDefault();
+      this._pinned = true;
+      if (!this.element.open) this.element.open = true;
+      this._updateChevron();
+    });
+
+    const leftGroup = document.createElement('span');
+    leftGroup.style.cssText = `display:flex;align-items:center;gap:6px;`;
+
+    this._chevron = document.createElement('span');
+    this._chevron.style.cssText =
+      `font-size:10px;color:${COLORS.textMuted};flex-shrink:0;width:12px;text-align:center;`;
+    this._chevron.textContent = open ? '▾' : '▸';
+
     const titleSpan = document.createElement('span');
     titleSpan.textContent = title;
-    summary.appendChild(titleSpan);
+
+    leftGroup.append(this._chevron, titleSpan);
+    summary.appendChild(leftGroup);
+
+    this.element.addEventListener('toggle', () => this._updateChevron());
 
     if (showTargetToggle) {
       const toggleWrap = document.createElement('span');
@@ -69,6 +104,20 @@ export abstract class CollapsibleSection {
       `background:${COLORS.bgBase};`;
 
     this.element.append(summary, this._body);
+  }
+
+  get isPinned(): boolean {
+    return this._pinned;
+  }
+
+  close(): void {
+    this.element.open = false;
+    this._pinned = false;
+    this._updateChevron();
+  }
+
+  private _updateChevron(): void {
+    this._chevron.textContent = this.element.open ? '\u25be' : '\u25b8';
   }
 
   getTarget(): string {
