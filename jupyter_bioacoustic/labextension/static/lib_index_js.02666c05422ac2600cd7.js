@@ -1366,6 +1366,39 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         this.browseRequested = new signaling_1.Signal(this);
         this._displayCols = [];
         this._availableCols = [];
+        this._descTitleInput = this._makeInput('', '200px');
+        this._descTitleInput.placeholder = 'e.g. Instructions';
+        this._descTitleInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('description_title', this._descTitleInput));
+        this._descTextArea = document.createElement('textarea');
+        this._descTextArea.style.cssText =
+            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:4px;` +
+                `color:${styles_1.COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
+                `box-sizing:border-box;resize:vertical;font-family:monospace;`;
+        this._descTextArea.placeholder = 'Markdown text (or use description_path for a file)';
+        this._descTextArea.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('description_text', this._descTextArea));
+        this._descPathInput = this._makeInput('', '200px');
+        this._descPathInput.placeholder = 'docs/instructions.md';
+        this._descPathInput.addEventListener('input', () => this._emitChanged());
+        const descPathRow = this._makeRow();
+        descPathRow.appendChild(this._makeLabel('description_path'));
+        const descPathBrowse = this._makeButton('Browse');
+        descPathBrowse.addEventListener('click', () => {
+            this.browseRequested.emit(this._descPathInput.value || '.');
+        });
+        descPathRow.append(this._descPathInput, descPathBrowse);
+        this._body.appendChild(descPathRow);
+        const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('description_open');
+        this._descOpenCb = descOpenCb;
+        this._descOpenCb.checked = true;
+        this._descOpenCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(descOpenRow);
+        this._descHeightInput = this._makeInput('', '60px');
+        this._descHeightInput.type = 'number';
+        this._descHeightInput.placeholder = 'auto';
+        this._descHeightInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('description_height', this._descHeightInput));
         this._identColSelect = this._makeSelect(['(none)'], '(none)');
         this._identColSelect.addEventListener('change', () => this._emitChanged());
         this._body.appendChild(this._makeFieldRow('ident_column', this._identColSelect));
@@ -1602,6 +1635,25 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         const fph = parseInt(this._formPanelHeightInput.value);
         if (!isNaN(fph) && fph !== 140)
             result.form_panel_height = fph;
+        const dh = parseInt(this._descHeightInput.value);
+        if (!isNaN(dh) && dh > 0)
+            result.description_height = dh;
+        const descTitle = this._descTitleInput.value.trim();
+        const descText = this._descTextArea.value;
+        const descPath = this._descPathInput.value.trim();
+        const descOpen = this._descOpenCb.checked;
+        if (descTitle || descText || descPath) {
+            const desc = {};
+            if (descTitle)
+                desc.title = descTitle;
+            if (descText)
+                desc.text = descText;
+            if (descPath)
+                desc.path = descPath;
+            if (!descOpen)
+                desc.open = false;
+            result.description = desc;
+        }
         const secrets = this._secrets.getData();
         if (secrets !== undefined)
             result.secrets = secrets;
@@ -1635,6 +1687,27 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
             this._infoCardHeightInput.value = String(data.info_card_height);
         if (data.form_panel_height)
             this._formPanelHeightInput.value = String(data.form_panel_height);
+        if (data.description_height)
+            this._descHeightInput.value = String(data.description_height);
+        if (data.description) {
+            const d = typeof data.description === 'object' ? data.description : {};
+            if (d.title)
+                this._descTitleInput.value = d.title;
+            if (d.text)
+                this._descTextArea.value = d.text;
+            if (d.path)
+                this._descPathInput.value = d.path;
+            if (d.open === false)
+                this._descOpenCb.checked = false;
+        }
+        if (data.description_title)
+            this._descTitleInput.value = data.description_title;
+        if (data.description_text)
+            this._descTextArea.value = data.description_text;
+        if (data.description_path)
+            this._descPathInput.value = data.description_path;
+        if (data.description_open === false)
+            this._descOpenCb.checked = false;
         if (data.secrets !== undefined)
             this._secrets.setData(data.secrets);
     }
@@ -1822,7 +1895,7 @@ class CollapsibleSection {
         leftGroup.style.cssText = `display:flex;align-items:center;gap:6px;`;
         this._chevron = document.createElement('span');
         this._chevron.style.cssText =
-            `font-size:10px;color:${styles_1.COLORS.textMuted};flex-shrink:0;width:12px;text-align:center;`;
+            `font-size:20px;line-height:0;margin-top:-3px;color:${styles_1.COLORS.textMuted};flex-shrink:0;width:16px;text-align:center;`;
         this._chevron.textContent = open ? '▾' : '▸';
         const titleSpan = document.createElement('span');
         titleSpan.textContent = title;
@@ -4102,6 +4175,7 @@ const FormPanel_1 = __webpack_require__(/*! ./sections/FormPanel */ "./lib/secti
 const Player_1 = __webpack_require__(/*! ./sections/Player */ "./lib/sections/Player.js");
 const ClipTable_1 = __webpack_require__(/*! ./sections/ClipTable */ "./lib/sections/ClipTable.js");
 const InfoCard_1 = __webpack_require__(/*! ./sections/InfoCard */ "./lib/sections/InfoCard.js");
+const DescriptionPanel_1 = __webpack_require__(/*! ./sections/DescriptionPanel */ "./lib/sections/DescriptionPanel.js");
 // ═══════════════════════════════════════════════════════════════
 // BioacousticWidget
 // ═══════════════════════════════════════════════════════════════
@@ -4149,6 +4223,7 @@ class BioacousticWidget extends widgets_1.Widget {
         header.append(this._titleEl, this._statusEl);
         // ── Clip table (filter + table + pagination) ──────────────────
         // ── Sections ──────────────────────────────────────────────────
+        this._description = new DescriptionPanel_1.DescriptionPanel();
         this._form = new FormPanel_1.FormPanel(this._kernelBridge);
         this._player = new Player_1.Player(this._kernelBridge, this._form);
         this._table = new ClipTable_1.ClipTable(this._form);
@@ -4177,7 +4252,7 @@ class BioacousticWidget extends widgets_1.Widget {
         // Wire Player signals
         this._player.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
         // ── Assemble widget ──────────────────────────────────────────
-        this.node.append(header, this._table.element, this._infoCard.element, this._player.element, this._form.element);
+        this.node.append(header, this._description.element, this._table.element, this._infoCard.element, this._player.element, this._form.element);
     }
     // ─── Lumino lifecycle ────────────────────────────────────────
     onAfterAttach(msg) {
@@ -4227,6 +4302,14 @@ class BioacousticWidget extends widgets_1.Widget {
         const appTitle = cfg.app_title || DEFAULT_TITLE;
         this._titleEl.textContent = appTitle;
         this.title.label = appTitle;
+        if (cfg.description) {
+            try {
+                const descCfg = JSON.parse(cfg.description);
+                const descHeight = parseInt(cfg.description_height) || undefined;
+                this._description.setConfig(descCfg, descHeight);
+            }
+            catch ( /* no description */_f) { /* no description */ }
+        }
         // Initialize form panel
         const syncConfig = JSON.parse(cfg.sync_config || '{}');
         this._form.setContext({
@@ -4797,6 +4880,8 @@ function readKernelVars() {
         `  'info_card_height': _BA_INFO_CARD_HEIGHT,`,
         `  'form_panel_height': _BA_FORM_PANEL_HEIGHT,`,
         `  'project_save_btn': _BA_PROJECT_SAVE_BTN,`,
+        `  'description': _BA_DESCRIPTION,`,
+        `  'description_height': _BA_DESCRIPTION_HEIGHT,`,
         `}))`,
     ].join('\n');
 }
@@ -5854,6 +5939,217 @@ class ClipTable {
     }
 }
 exports.ClipTable = ClipTable;
+
+
+/***/ },
+
+/***/ "./lib/sections/DescriptionPanel.js"
+/*!******************************************!*\
+  !*** ./lib/sections/DescriptionPanel.js ***!
+  \******************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DescriptionPanel = void 0;
+const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
+const DEFAULT_DESCRIPTION_TITLE = 'Description';
+function renderMarkdown(src) {
+    const lines = src.split('\n');
+    const out = [];
+    let inList = '';
+    let inCode = false;
+    const inline = (s) => s
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/_(.+?)_/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    const closeList = () => {
+        if (inList) {
+            out.push(inList === 'ol' ? '</ol>' : '</ul>');
+            inList = '';
+        }
+    };
+    let baseIndent = -1;
+    const nonEmpty = lines.filter(l => l.trim().length > 0);
+    if (nonEmpty.length > 0) {
+        baseIndent = Math.min(...nonEmpty.map(l => l.match(/^(\s*)/)[1].length));
+    }
+    const deindent = (s) => baseIndent > 0 && s.length >= baseIndent ? s.slice(baseIndent) : s;
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const trimmed = raw.trim();
+        if (trimmed.startsWith('```')) {
+            if (inCode) {
+                out.push('</code></pre>');
+                inCode = false;
+            }
+            else {
+                closeList();
+                out.push('<pre><code>');
+                inCode = true;
+            }
+            continue;
+        }
+        if (inCode) {
+            const codeLine = deindent(raw).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            out.push(codeLine);
+            continue;
+        }
+        if (/^\s*$/.test(trimmed)) {
+            closeList();
+            continue;
+        }
+        if (/^---+$/.test(trimmed.trim()) || /^\*\*\*+$/.test(trimmed.trim()) || /^___+$/.test(trimmed.trim())) {
+            closeList();
+            out.push('<hr>');
+            continue;
+        }
+        const hMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (hMatch) {
+            closeList();
+            const level = hMatch[1].length;
+            out.push(`<h${level}>${inline(hMatch[2])}</h${level}>`);
+            continue;
+        }
+        const olMatch = trimmed.match(/^\s*\d+\.\s+(.+)$/);
+        if (olMatch) {
+            if (inList !== 'ol') {
+                closeList();
+                out.push('<ol>');
+                inList = 'ol';
+            }
+            out.push(`<li>${inline(olMatch[1])}</li>`);
+            continue;
+        }
+        const ulMatch = trimmed.match(/^\s*[-*+]\s+(.+)$/);
+        if (ulMatch) {
+            if (inList !== 'ul') {
+                closeList();
+                out.push('<ul>');
+                inList = 'ul';
+            }
+            out.push(`<li>${inline(ulMatch[1])}</li>`);
+            continue;
+        }
+        closeList();
+        out.push(`<p>${inline(trimmed)}</p>`);
+    }
+    closeList();
+    if (inCode)
+        out.push('</code></pre>');
+    return out.join('\n');
+}
+class DescriptionPanel {
+    constructor() {
+        this.element = document.createElement('details');
+        this.element.style.cssText =
+            `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};flex-shrink:0;`;
+        const summary = document.createElement('summary');
+        summary.style.cssText =
+            `padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;` +
+                `background:${styles_1.COLORS.bgMantle};color:${styles_1.COLORS.textPrimary};` +
+                `list-style:none;user-select:none;letter-spacing:0.5px;` +
+                `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};` +
+                `display:flex;align-items:center;gap:6px;`;
+        this._chevron = document.createElement('span');
+        this._chevron.style.cssText =
+            `font-size:20px;line-height:0;margin-top:-3px;color:${styles_1.COLORS.textMuted};flex-shrink:0;width:16px;text-align:center;`;
+        this._chevron.textContent = '▾';
+        this._body = document.createElement('div');
+        this._body.style.cssText =
+            `padding:10px 16px;background:${styles_1.COLORS.bgBase};color:${styles_1.COLORS.textPrimary};` +
+                `font-size:13px;line-height:1.6;overflow-y:auto;`;
+        summary.appendChild(this._chevron);
+        this.element.appendChild(summary);
+        this.element.appendChild(this._body);
+        this.element.addEventListener('toggle', () => {
+            this._chevron.textContent = this.element.open ? '▾' : '▸';
+        });
+        this.element.style.display = 'none';
+    }
+    setConfig(cfg, height) {
+        if (!cfg.text) {
+            this.element.style.display = 'none';
+            return;
+        }
+        const title = cfg.title || DEFAULT_DESCRIPTION_TITLE;
+        const summary = this.element.querySelector('summary');
+        const titleSpan = summary.querySelector('span:last-child');
+        if (titleSpan && titleSpan !== this._chevron) {
+            titleSpan.textContent = title;
+        }
+        else {
+            const s = document.createElement('span');
+            s.textContent = title;
+            summary.appendChild(s);
+        }
+        if (cfg.text) {
+            this._body.innerHTML = renderMarkdown(cfg.text);
+            this._applyContentStyles();
+        }
+        if (height) {
+            this._body.style.maxHeight = `${height}px`;
+        }
+        this.element.open = cfg.open;
+        this._chevron.textContent = cfg.open ? '▾' : '▸';
+        this.element.style.display = '';
+    }
+    _applyContentStyles() {
+        var _a;
+        for (const h of this._body.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+            h.style.cssText =
+                `color:${styles_1.COLORS.textPrimary};margin:12px 0 6px;font-weight:700;`;
+        }
+        for (const h1 of this._body.querySelectorAll('h1')) {
+            h1.style.fontSize = '15px';
+        }
+        for (const h2 of this._body.querySelectorAll('h2')) {
+            h2.style.fontSize = '14px';
+        }
+        for (const h3 of this._body.querySelectorAll('h3')) {
+            h3.style.fontSize = '13px';
+        }
+        for (const p of this._body.querySelectorAll('p')) {
+            p.style.cssText = `margin:6px 0;color:${styles_1.COLORS.textPrimary};`;
+        }
+        for (const a of this._body.querySelectorAll('a')) {
+            a.style.cssText = `color:${styles_1.COLORS.blue};text-decoration:underline;`;
+        }
+        for (const ol of this._body.querySelectorAll('ol,ul')) {
+            ol.style.cssText = `margin:6px 0;padding-left:24px;color:${styles_1.COLORS.textPrimary};`;
+        }
+        for (const li of this._body.querySelectorAll('li')) {
+            li.style.cssText = `margin:2px 0;color:${styles_1.COLORS.textPrimary};`;
+        }
+        for (const code of this._body.querySelectorAll('pre > code')) {
+            code.style.cssText = `color:${styles_1.COLORS.textPrimary};font-size:12px;background:transparent;padding:0;border-radius:0;display:block;`;
+        }
+        for (const code of this._body.querySelectorAll('code')) {
+            if (((_a = code.parentElement) === null || _a === void 0 ? void 0 : _a.tagName) !== 'PRE') {
+                code.style.cssText =
+                    `background:${styles_1.COLORS.bgSurface0};color:${styles_1.COLORS.textPrimary};padding:1px 4px;border-radius:3px;font-size:12px;`;
+            }
+        }
+        for (const pre of this._body.querySelectorAll('pre')) {
+            pre.style.cssText =
+                `background:${styles_1.COLORS.bgSurface0};color:${styles_1.COLORS.textPrimary};padding:8px 12px;border-radius:4px;overflow-x:auto;font-size:12px;margin:6px 0;`;
+        }
+        for (const strong of this._body.querySelectorAll('strong')) {
+            strong.style.color = styles_1.COLORS.textPrimary;
+        }
+        for (const em of this._body.querySelectorAll('em')) {
+            em.style.color = styles_1.COLORS.textPrimary;
+        }
+        for (const hr of this._body.querySelectorAll('hr')) {
+            hr.style.cssText = `border:none;border-top:1px solid ${styles_1.COLORS.bgSurface1};margin:12px 0;`;
+        }
+    }
+}
+exports.DescriptionPanel = DescriptionPanel;
 
 
 /***/ },
@@ -9460,4 +9756,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.edc06562e283a9181d0b.js.map
+//# sourceMappingURL=lib_index_js.02666c05422ac2600cd7.js.map

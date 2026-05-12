@@ -1004,7 +1004,7 @@ class BioacousticAnnotator:
             'title': raw_desc_title or '',
             'text': raw_desc_text or '',
             'open': raw_desc_open if raw_desc_open is not None else True,
-        } if (raw_desc_title or raw_desc_text) else None
+        } if raw_desc_text else None
 
         raw_save_btn = resolve(project_save_btn, 'project_save_btn', False)
         if raw_save_btn is True:
