@@ -25,7 +25,7 @@ export class AppSection extends CollapsibleSection {
   private _secrets: SecretsEditor;
 
   constructor() {
-    super('Application', 'app');
+    super('Application', 'app', false, true);
 
     this._identColSelect = this._makeSelect(['(none)'], '(none)');
     this._identColSelect.addEventListener('change', () => this._emitChanged());
