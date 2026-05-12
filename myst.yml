@@ -49,6 +49,7 @@ project:
     - file: myst/sections/customizable-forms.md
     - file: myst/sections/annotations.md
     - file: myst/sections/projects.md
+    - file: myst/sections/config-builder.md
     - file: myst/sections/audio-io.md
     # - file: myst/sections/params.md
     # - file: myst/sections/install.md
