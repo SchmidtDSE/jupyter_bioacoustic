@@ -19,6 +19,8 @@ const S = {
     `padding:0 5px;font-size:10px;color:${COLORS.peach};margin-right:3px;`,
 };
 
+const USER_INPUT_TYPES = new Set(['select', 'textbox', 'checkbox', 'number']);
+
 export class ConfigSummary {
   readonly element: HTMLDetailsElement;
   private _body: HTMLDivElement;
@@ -198,32 +200,11 @@ export class ConfigSummary {
   }
 
   private _addFormSection(d: Record<string, any>): void {
-    const sec = this._section('Form');
     const isEmpty = Object.keys(d).length === 0;
     if (isEmpty) {
+      const sec = this._section('Form Config');
       this._row(sec, '', 'no form configured', true);
       return;
-    }
-
-    if (d.title) {
-      const titleVal = typeof d.title === 'string' ? d.title : d.title?.value || '';
-      const tracker = (typeof d.title === 'object' && d.title?.progress_tracker) ? ' + tracker' : '';
-      this._row(sec, 'title', titleVal + tracker);
-    }
-
-    if (d.pass_value) {
-      const pv = d.pass_value;
-      this._row(sec, 'pass_value', `${pv.source_column || '?'} → ${pv.column || '?'}`);
-    }
-
-    if (d.fixed_value) {
-      this._row(sec, 'fixed_value', `${d.fixed_value.column} = ${d.fixed_value.value}`);
-    }
-
-    if (d.annotation) {
-      const a = d.annotation;
-      const tools = Array.isArray(a.tools) ? a.tools.join(', ') : '';
-      this._row(sec, 'annotation', tools || 'configured');
     }
 
     const dynFormsMap = new Map<string, any[]>();
@@ -244,36 +225,172 @@ export class ConfigSummary {
       }
     }
 
-    if (Array.isArray(d.form)) {
-      for (const item of d.form) {
-        if (!item || typeof item !== 'object') continue;
-        const [type] = Object.keys(item);
-        const cfg = item[type];
-        const line = this._summarizeFormElement(type, cfg);
-        this._rowHtml(sec, '', `<span style="${S.tag}">${this._esc(type)}</span>${line}`);
+    interface FormItem {
+      type: string;
+      cfg: any;
+      zone: 'top' | 'form' | 'buttons';
+    }
+    const items: FormItem[] = [];
 
-        const referencedForms = this._getReferencedForms(type, cfg);
-        for (const formName of referencedForms) {
-          const dynElems = dynFormsMap.get(formName);
-          if (dynElems) {
-            this._addNestedDynForm(sec, formName, dynElems);
-            dynFormsMap.delete(formName);
+    if (d.title) items.push({ type: 'title', cfg: d.title, zone: 'top' });
+
+    const ordered: Array<{ type: string; cfg: any }> = [];
+    const elementOrder: string[] = Array.isArray(d._element_order) ? d._element_order : [];
+
+    const topLevelMap: Record<string, any> = {};
+    if (d.annotation) topLevelMap.annotation = d.annotation;
+    if (d.pass_value) topLevelMap.pass_value = d.pass_value;
+    if (d.fixed_value) topLevelMap.fixed_value = d.fixed_value;
+
+    const formQueue = Array.isArray(d.form) ? [...d.form] : [];
+
+    if (elementOrder.length > 0) {
+      for (const etype of elementOrder) {
+        if (etype === 'title' || etype === 'submission_buttons') continue;
+        if (etype in topLevelMap) {
+          ordered.push({ type: etype, cfg: topLevelMap[etype] });
+          delete topLevelMap[etype];
+        } else if (formQueue.length > 0) {
+          const item = formQueue.shift()!;
+          if (item && typeof item === 'object') {
+            const [type] = Object.keys(item);
+            ordered.push({ type, cfg: item[type] });
           }
         }
+      }
+    } else {
+      for (const key of Object.keys(topLevelMap)) {
+        ordered.push({ type: key, cfg: topLevelMap[key] });
+      }
+      for (const item of formQueue) {
+        if (!item || typeof item !== 'object') continue;
+        const [type] = Object.keys(item);
+        ordered.push({ type, cfg: item[type] });
+      }
+    }
+
+    let inFormZone = false;
+    for (const entry of ordered) {
+      if (!inFormZone && USER_INPUT_TYPES.has(entry.type)) {
+        inFormZone = true;
+      }
+      if (inFormZone) {
+        items.push({ type: entry.type, cfg: entry.cfg, zone: 'form' });
+      } else {
+        items.push({ type: entry.type, cfg: entry.cfg, zone: 'top' });
       }
     }
 
     if (d.submission_buttons) {
-      const sb = d.submission_buttons;
-      const parts = [];
-      if (sb.previous) parts.push('previous');
-      if (sb.next) parts.push(sb.next?.label || 'next');
-      if (sb.submit) parts.push(sb.submit?.label || 'submit');
-      this._rowHtml(sec, '', `<span style="${S.tag}">buttons</span>${this._esc(parts.join(', ') || 'default')}`);
+      items.push({ type: 'submission_buttons', cfg: d.submission_buttons, zone: 'buttons' });
+    }
+
+    const sec = this._section('Form Config');
+
+    const topItems = items.filter(i => i.zone === 'top');
+    const formItems = items.filter(i => i.zone === 'form');
+    const buttonItems = items.filter(i => i.zone === 'buttons');
+
+    for (const item of topItems) {
+      this._renderFormItem(sec, item.type, item.cfg, dynFormsMap);
+    }
+
+    if (formItems.length > 0) {
+      const formDiv = document.createElement('div');
+      formDiv.style.cssText = S.sectionTitle + `margin-top:4px;`;
+      formDiv.textContent = 'FORM';
+      sec.appendChild(formDiv);
+
+      const formWrap = document.createElement('div');
+      formWrap.style.cssText = S.indent;
+      sec.appendChild(formWrap);
+      for (const item of formItems) {
+        this._renderFormItem(formWrap, item.type, item.cfg, dynFormsMap);
+      }
+    }
+
+    if (buttonItems.length > 0) {
+      const btnDiv = document.createElement('div');
+      btnDiv.style.cssText = S.sectionTitle + `margin-top:4px;`;
+      btnDiv.textContent = 'SUBMIT BUTTONS';
+      sec.appendChild(btnDiv);
+      for (const item of buttonItems) {
+        this._renderFormItem(sec, item.type, item.cfg, dynFormsMap);
+      }
     }
 
     for (const [name, elems] of dynFormsMap) {
       this._addNestedDynForm(sec, name, elems);
+    }
+  }
+
+  private _renderFormItem(
+    parent: HTMLElement,
+    type: string,
+    cfg: any,
+    dynFormsMap: Map<string, any[]>,
+  ): void {
+    if (type === 'title') {
+      const titleVal = typeof cfg === 'string' ? cfg : cfg?.value || '';
+      const tracker = (typeof cfg === 'object' && cfg?.progress_tracker) ? ' + tracker' : '';
+      this._row(parent, 'title', titleVal + tracker);
+      return;
+    }
+
+    if (type === 'submission_buttons') {
+      const sb = cfg;
+      const parts = [];
+      if (sb.previous) parts.push('previous');
+      if (sb.next) parts.push(sb.next?.label || 'next');
+      if (sb.submit) parts.push(sb.submit?.label || 'submit');
+      this._row(parent, 'buttons', parts.join(', ') || 'default');
+      return;
+    }
+
+    if (type === 'annotation') {
+      const a = cfg;
+      const tools = Array.isArray(a.tools) ? a.tools.join(', ') : '';
+      this._row(parent, 'annotation', tools || 'configured');
+      const refs = this._getReferencedForms('annotation', cfg);
+      for (const formName of refs) {
+        const dynElems = dynFormsMap.get(formName);
+        if (dynElems) {
+          this._addNestedDynForm(parent, formName, dynElems);
+          dynFormsMap.delete(formName);
+        }
+      }
+      return;
+    }
+
+    if (type === 'pass_value') {
+      const pv = cfg;
+      this._row(parent, 'pass_value', `${pv.source_column || '?'} → ${pv.column || '?'}`);
+      return;
+    }
+
+    if (type === 'fixed_value') {
+      this._row(parent, 'fixed_value', `${cfg.column || '?'} = ${cfg.value || '?'}`);
+      return;
+    }
+
+    if (type === 'break' || type === 'line') return;
+
+    if (type === 'text') {
+      const val = typeof cfg === 'object' ? (cfg.value || '') : String(cfg ?? '');
+      if (val) this._rowHtml(parent, '', `<span style="${S.tag}">text</span>${this._esc(val)}`);
+      return;
+    }
+
+    const line = this._summarizeFormElement(type, cfg);
+    this._rowHtml(parent, '', `<span style="${S.tag}">${this._esc(type)}</span>${line}`);
+
+    const refs = this._getReferencedForms(type, cfg);
+    for (const formName of refs) {
+      const dynElems = dynFormsMap.get(formName);
+      if (dynElems) {
+        this._addNestedDynForm(parent, formName, dynElems);
+        dynFormsMap.delete(formName);
+      }
     }
   }
 
@@ -283,7 +400,7 @@ export class ConfigSummary {
 
     const header = document.createElement('div');
     header.style.cssText = S.row;
-    header.innerHTML = `<span style="${S.dynTag}">↳ ${this._esc(name)}</span>`;
+    header.innerHTML = `<span style="${S.dynTag}">dynamic form: ${this._esc(name)}</span>`;
     wrap.appendChild(header);
 
     for (const el of elems) {
