@@ -1,19 +1,13 @@
 (config-builder)=
 # Config Builder
 
-```{figure} ../../assets/config-builder/overview.png
+The Config Builder is an interactive GUI for creating and editing BioacousticAnnotator configuration files. Instead of writing YAML by hand, you fill in form fields and the builder generates valid project, config, and form files — ready to launch an annotator session.
+
+```{figure} ../../assets/config_builder/builder-output_section.png
 :class: bordered
 ```
 
-The Config Builder is an interactive GUI for creating and editing BioacousticAnnotator configuration files. Instead of writing YAML by hand, you fill in form fields and the builder generates valid project, config, and form files — ready to launch an annotator session.
-
-There are three ways to open it:
-
-1. **Launcher tile** — click the Bioacoustic Annotator tile in the JupyterLab launcher, then choose **Config Builder**
-2. **Command palette** — search for **"Bioacoustic Config Builder"**
-3. **Python** — `ConfigBuilder().open()` from a notebook cell
-
-The Config Builder opens in a full-width JupyterLab tab with its own Python kernel.
+The builder can be opened from the Launcher tile (click the Bioacoustic Annotator tile in the JupyterLab launcher, then choose **Config Builder**), or directly with the notebook (`ConfigBuilder().open()` from a notebook cell)
 
 ---
 
@@ -34,7 +28,7 @@ Each section on the left is collapsible — click a header to expand it. Only on
 (setup-section)=
 ### Setup
 
-```{figure} ../../assets/config-builder/section-setup.png
+```{figure} ../../assets/config_builder/section-setup.png
 :class: bordered
 ```
 
@@ -48,7 +42,7 @@ Set the **project name** (used as the widget header title and to auto-generate f
 | **Config** | App behavior, column layout, capture, dimensions — shared across projects |
 | **Form** | Annotation controls, dynamic forms, submission buttons — reusable form definitions |
 
-**Load existing config** — browse for an existing YAML file. The builder auto-detects whether it is a project, config, or form file and populates the appropriate sections.
+Each row has **Browse** and **Load** buttons. Enter or browse to a file path and click **Load** to read an existing config and populate the builder. Loading cascades through child references — loading a project file also loads its referenced config and form files. You can then swap individual files: for example, load a project, then load a different config file to update the project's config reference.
 
 **Description Panel** — optionally add a collapsible description section to the top of the annotator for project context, reviewer instructions, or general guidance. Provide markdown text directly or reference a `.md` file.
 
@@ -57,7 +51,7 @@ Set the **project name** (used as the widget header title and to auto-generate f
 (data-section)=
 ### Data
 
-```{figure} ../../assets/config-builder/section-data.png
+```{figure} ../../assets/config_builder/section-data.png
 :class: bordered
 ```
 
@@ -75,7 +69,7 @@ The section auto-loads column names when you enter a valid file path.
 (audio-section)=
 ### Audio
 
-```{figure} ../../assets/config-builder/section-audio.png
+```{figure} ../../assets/config_builder/section-audio.png
 :class: bordered
 ```
 
@@ -103,7 +97,7 @@ Configure where annotation results are saved:
 (app-section)=
 ### Application
 
-```{figure} ../../assets/config-builder/section-app.png
+```{figure} ../../assets/config_builder/section-application.png
 :class: bordered
 ```
 
@@ -123,7 +117,7 @@ Widget layout and behavior:
 (form-section)=
 ### Form
 
-```{figure} ../../assets/config-builder/section-form.png
+```{figure} ../../assets/config_builder/section-form.png
 :class: bordered
 ```
 
@@ -141,7 +135,7 @@ Each element is shown as a card that can be reordered, edited, or removed. The [
 (side-panel)=
 ### Side Panel
 
-```{figure} ../../assets/config-builder/side-panel.png
+```{figure} ../../assets/config_builder/side-panel.png
 :class: bordered
 ```
 

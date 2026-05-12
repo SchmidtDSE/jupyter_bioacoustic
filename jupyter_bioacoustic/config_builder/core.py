@@ -19,6 +19,17 @@ _UNSET = object()
 DEFAULT_PATH = 'projects'
 
 
+def _resolve_path(ref, base_dir):
+    if os.path.isabs(ref):
+        return ref if os.path.exists(ref) else None
+    candidate = os.path.join(base_dir, ref)
+    if os.path.exists(candidate):
+        return candidate
+    if os.path.exists(ref):
+        return ref
+    return None
+
+
 class ConfigBuilder:
     def __init__(self, path=DEFAULT_PATH):
         self._path = path
@@ -461,7 +472,7 @@ class ConfigBuilder:
         self._dirty = True
         return True
 
-    def load_config(self, path):
+    def load_config(self, path, file_type=None):
         try:
             import yaml
         except ImportError:
@@ -480,7 +491,9 @@ class ConfigBuilder:
         has_audio = 'audio' in data
         fully_specified = has_data and has_audio and ('form_config' in data or has_form_key)
 
-        if has_form_key and not has_data and not has_audio and not has_config_key:
+        if file_type in ('project', 'config', 'form'):
+            detected = file_type
+        elif has_form_key and not has_data and not has_audio and not has_config_key:
             detected = 'form'
         elif has_config_key or fully_specified:
             detected = 'project'
@@ -506,8 +519,8 @@ class ConfigBuilder:
 
             config_ref = data.get('config')
             if isinstance(config_ref, str):
-                config_path = config_ref if os.path.isabs(config_ref) else os.path.join(base_dir, config_ref)
-                if os.path.exists(config_path):
+                config_path = _resolve_path(config_ref, base_dir)
+                if config_path:
                     with open(config_path) as f:
                         config_data = yaml.safe_load(f) or {}
                     self._project['config_path'] = config_ref
@@ -520,8 +533,8 @@ class ConfigBuilder:
                             self._project[k] = v
 
                     if isinstance(form_ref, str):
-                        form_path = form_ref if os.path.isabs(form_ref) else os.path.join(base_dir, form_ref)
-                        if os.path.exists(form_path):
+                        form_path = _resolve_path(form_ref, base_dir)
+                        if form_path:
                             with open(form_path) as f:
                                 self._form_config = yaml.safe_load(f) or {}
                             self._project['form_path'] = form_ref
@@ -544,8 +557,8 @@ class ConfigBuilder:
                     if k not in skip_keys and k != 'config':
                         self._project[k] = v
                 if isinstance(form_ref, str):
-                    form_path = form_ref if os.path.isabs(form_ref) else os.path.join(base_dir, form_ref)
-                    if os.path.exists(form_path):
+                    form_path = _resolve_path(form_ref, base_dir)
+                    if form_path:
                         with open(form_path) as f:
                             self._form_config = yaml.safe_load(f) or {}
                         self._project['form_path'] = form_ref
@@ -574,8 +587,8 @@ class ConfigBuilder:
                     self._config[k] = v
 
             if isinstance(form_ref, str):
-                form_path = form_ref if os.path.isabs(form_ref) else os.path.join(base_dir, form_ref)
-                if os.path.exists(form_path):
+                form_path = _resolve_path(form_ref, base_dir)
+                if form_path:
                     with open(form_path) as f:
                         self._form_config = yaml.safe_load(f) or {}
                     self._project['form_path'] = form_ref

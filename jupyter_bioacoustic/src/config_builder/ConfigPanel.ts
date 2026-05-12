@@ -111,13 +111,7 @@ export class ConfigPanel {
     this._project.fileStatesChanged.connect((_, states) => {
       this._updateTargetOptions(states);
     });
-    this._project.loadConfigRequested.connect((_, path) => void this._onLoadConfig(path));
-    this._project.loadBrowseRequested.connect(() => {
-      this._openBrowser('.', ['.yaml', '.yml', '.json'], (p) => {
-        this._project.setLoadPath(p);
-        void this._onLoadConfig(p);
-      });
-    });
+    this._project.loadConfigRequested.connect((_, { field, path }) => void this._onLoadConfig(path, field));
 
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
     this._data.browseRequested.connect((_, dir) => {
@@ -412,12 +406,12 @@ export class ConfigPanel {
     return this._dirty;
   }
 
-  private async _onLoadConfig(path: string): Promise<void> {
+  private async _onLoadConfig(path: string, fileType?: string): Promise<void> {
     await this._readyPromise;
     if (!this._ready) return;
     this._setStatus(`Loading ${path}…`);
     try {
-      const raw = await this._kernel.exec(loadConfig(path));
+      const raw = await this._kernel.exec(loadConfig(path, fileType));
       const state = JSON.parse(extractJson(raw));
       this._applyState(state);
       const detected = state.detected_type || 'config';
@@ -454,25 +448,14 @@ export class ConfigPanel {
     }
   }
 
-  private async _onProjectEnabledChanged(enabled: boolean): Promise<void> {
-    const newTarget = enabled ? 'project' : 'config';
-    for (const sec of [this._data, this._audio, this._output, this._app]) {
-      sec.setTarget(newTarget);
-    }
+  private async _onProjectEnabledChanged(_enabled: boolean): Promise<void> {
     await this._readyPromise;
     if (!this._ready) return;
-    for (const name of ['data', 'audio', 'output', 'app']) {
-      try {
-        const raw = await this._kernel.exec(setSectionTarget(name, newTarget));
-        const state = JSON.parse(extractJson(raw));
-        this._yamls = {
-          project_yaml: state.project_yaml || '',
-          config_yaml: state.config_yaml || '',
-          form_yaml: state.form_yaml || '',
-        };
-        this._yamlPanel.updateYaml(this._yamls);
-      } catch { /* ignore */ }
-    }
+    try {
+      const raw = await this._kernel.exec(updateSection('project', this._project.getData()));
+      const state = JSON.parse(extractJson(raw));
+      this._applyStatePartial(state, 'project');
+    } catch { /* ignore */ }
   }
 
   private async _onTargetChanged(section: string, target: string): Promise<void> {
