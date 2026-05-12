@@ -30,7 +30,7 @@ export class FormSection extends CollapsibleSection {
   private _dynFormsContainer: HTMLDivElement;
 
   constructor() {
-    super('Form', 'form');
+    super('Form', 'form', false, true, ['project', 'config', 'form']);
 
     const hint = document.createElement('div');
     hint.textContent = 'Click on the buttons below to add items to the form.';
