@@ -185,7 +185,8 @@ export class FormSection extends CollapsibleSection {
           Array.isArray(cfg.tools) ? cfg.tools[0] : 'start_end_time_select'
         );
         toolsSel.multiple = true;
-        toolsSel.style.height = '60px';
+        toolsSel.style.width = '140px';
+        toolsSel.style.height = '75px';
         toolsSel.addEventListener('change', () => {
           cfg.tools = Array.from(toolsSel.selectedOptions).map(o => o.value);
           this._emitChanged();
