@@ -59,7 +59,7 @@ class ConfigBuilder:
         target = self._section_targets.get(section, 'project')
 
         if section == 'project':
-            for k in ('project_name', 'project_save_btn', 'project_path', 'config_path',
+            for k in ('project_name', 'project_path', 'config_path',
                       'form_path', 'project_enabled', 'config_enabled', 'form_enabled'):
                 if k in data:
                     self._project[k] = data[k]
@@ -94,7 +94,7 @@ class ConfigBuilder:
 
         elif section == 'app':
             app_keys = (
-                'ident_column', 'display_columns',
+                'project_save_btn', 'ident_column', 'display_columns',
                 'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
                 'spectrogram_resolution', 'visualizations', 'partial_download',
                 'width', 'clip_table_height', 'player_height',
@@ -128,7 +128,7 @@ class ConfigBuilder:
                 new_dict[section] = old_dict.pop(section)
         if section == 'app' and old_target != target:
             app_keys = (
-                'ident_column', 'display_columns',
+                'project_save_btn', 'ident_column', 'display_columns',
                 'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
                 'spectrogram_resolution', 'visualizations', 'partial_download',
                 'width', 'clip_table_height', 'player_height',
@@ -155,11 +155,11 @@ class ConfigBuilder:
         c_path = self._project.get('config_path') or f'config/application/{slug}.yaml'
         f_path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
 
-        skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+        skip_keys = ('project_name', 'project_path', 'config_path',
                      'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
         section_keys = ('data', 'audio', 'output')
         app_keys = (
-            'ident_column', 'display_columns',
+            'project_save_btn', 'ident_column', 'display_columns',
             'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
             'spectrogram_resolution', 'visualizations', 'partial_download',
             'width', 'clip_table_height', 'player_height',
@@ -208,7 +208,7 @@ class ConfigBuilder:
                 conf_data['form_config'] = form_cfg
 
         project_cfg = {}
-        for k in ('project_name', 'project_save_btn'):
+        for k in ('project_name',):
             if k in self._project:
                 project_cfg[k] = self._project[k]
 
@@ -411,7 +411,7 @@ class ConfigBuilder:
             return False
 
         if config_type == 'project':
-            for k in ('project_name', 'project_save_btn'):
+            for k in ('project_name',):
                 if k in parsed:
                     self._project[k] = parsed[k]
                 elif k in self._project:
@@ -420,7 +420,7 @@ class ConfigBuilder:
                 self._project['config_path'] = parsed['config']
         elif config_type == 'config':
             form_ref = parsed.pop('form_config', None)
-            skip = ('project_name', 'project_save_btn', 'project_path', 'config_path', 'form_path')
+            skip = ('project_name', 'project_path', 'config_path', 'form_path')
             for k in list(self._project.keys()):
                 if k not in skip:
                     del self._project[k]
@@ -466,9 +466,9 @@ class ConfigBuilder:
             loaded_paths['form'] = path
 
         elif detected == 'project':
-            skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+            skip_keys = ('project_name', 'project_path', 'config_path',
                          'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
-            for k in ('project_name', 'project_save_btn'):
+            for k in ('project_name',):
                 if k in data:
                     self._project[k] = data[k]
             self._project['project_path'] = path
@@ -540,7 +540,7 @@ class ConfigBuilder:
             for s in ('data', 'audio', 'output', 'app'):
                 self._section_targets[s] = 'config'
 
-            skip_keys = ('project_name', 'project_save_btn', 'project_path', 'config_path',
+            skip_keys = ('project_name', 'project_path', 'config_path',
                          'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
             form_ref = data.pop('form_config', None)
             for k, v in data.items():

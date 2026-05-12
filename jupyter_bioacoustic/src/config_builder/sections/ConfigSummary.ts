@@ -132,7 +132,6 @@ export class ConfigSummary {
   private _addProjectSection(d: Record<string, any>): void {
     const sec = this._section('Project');
     this._row(sec, 'name', d.project_name || '(unnamed)', !d.project_name);
-    if (d.project_save_btn) this._row(sec, 'save button', 'yes');
     const files = [];
     if (d.project_enabled && d.project_path) files.push('project: ' + d.project_path);
     if (d.config_enabled && d.config_path) files.push('config: ' + d.config_path);
@@ -190,6 +189,7 @@ export class ConfigSummary {
     const sec = this._section('Application');
     if (d.ident_column) this._row(sec, 'ident', d.ident_column);
     if (d.display_columns?.length) this._row(sec, 'display', d.display_columns.join(', '));
+    if (d.project_save_btn) this._row(sec, 'save button', 'yes');
     if (d.duplicate_entries) this._row(sec, 'duplicates', 'allowed');
     if (d.default_buffer !== undefined && d.default_buffer !== 3) this._row(sec, 'buffer', String(d.default_buffer));
     this._row(sec, 'capture', d.capture === false ? 'off' : 'on');
