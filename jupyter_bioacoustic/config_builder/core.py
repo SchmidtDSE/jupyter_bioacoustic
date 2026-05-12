@@ -30,7 +30,7 @@ class ConfigBuilder:
             'data': 'project',
             'audio': 'project',
             'output': 'project',
-            'app': 'project',
+            'app': 'config',
             'form': 'form_config',
         }
         self._saved_path = None
