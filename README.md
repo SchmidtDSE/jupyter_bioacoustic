@@ -27,12 +27,6 @@ _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 pip install jupyter-bioacoustic
 ```
 
-Or from a [GitHub Release](https://github.com/SchmidtDSE/jupyter_bioacoustic/releases) wheel:
-
-```bash
-pip install jupyter_bioacoustic-0.5.0-py3-none-any.whl
-```
-
 See the [Development wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) for building from source.
 
 ## Quick Start
