@@ -84,11 +84,12 @@ export class ConfigPanel {
 
     this._form.changed.connect(() => this._updateSummary());
 
-    for (const sec of [this._data, this._audio, this._output]) {
+    for (const sec of [this._data, this._audio, this._output, this._app]) {
       sec.targetChanged.connect((_, { section, target }) => {
         void this._onTargetChanged(section, target);
       });
     }
+    this._app.setTarget('config');
     left.appendChild(this._summary.element);
 
     this._project.browseRequested.connect((_, { field, current }) => {
@@ -389,6 +390,7 @@ export class ConfigPanel {
         if (targets.data) this._data.setTarget(targets.data);
         if (targets.audio) this._audio.setTarget(targets.audio);
         if (targets.output) this._output.setTarget(targets.output);
+        if (targets.app) this._app.setTarget(targets.app);
       }
 
       this._updateSummary();
@@ -445,7 +447,7 @@ export class ConfigPanel {
 
   private async _onProjectEnabledChanged(enabled: boolean): Promise<void> {
     const newTarget = enabled ? 'project' : 'config';
-    for (const sec of [this._data, this._audio, this._output]) {
+    for (const sec of [this._data, this._audio, this._output, this._app]) {
       sec.setTarget(newTarget);
     }
     await this._readyPromise;
