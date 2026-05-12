@@ -128,7 +128,7 @@ export class ProjectSection extends CollapsibleSection {
       `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:4px;` +
       `color:${COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
       `box-sizing:border-box;resize:vertical;font-family:monospace;`;
-    this._descTextArea.placeholder = 'Markdown text (or use description_path for a file)';
+    this._descTextArea.placeholder = 'Markdown text (or use "path" to read from a file)';
     this._descTextArea.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('text', this._descTextArea));
 
