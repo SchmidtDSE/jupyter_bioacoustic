@@ -201,11 +201,20 @@ class ConfigBuilder:
             else:
                 conf_data[k] = v
 
-        if form_enabled and config_enabled:
-            conf_data['form_config'] = f_path
-        elif not form_enabled:
+        form_target = self._section_targets.get('form', 'form_config')
+        if form_target == 'form_config' and form_enabled:
+            if config_enabled:
+                conf_data['form_config'] = f_path
+            else:
+                proj_data['form_config'] = f_path
+        elif form_target == 'config':
             if form_cfg:
                 conf_data['form_config'] = form_cfg
+        elif form_target == 'project':
+            if form_cfg:
+                proj_data['form_config'] = form_cfg
+        elif not form_enabled and form_cfg:
+            conf_data['form_config'] = form_cfg
 
         project_cfg = {}
         for k in ('project_name',):
