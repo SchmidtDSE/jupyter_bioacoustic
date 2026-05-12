@@ -42,6 +42,7 @@ DEFAULT_CLIP_TABLE_HEIGHT = 175
 DEFAULT_PLAYER_HEIGHT = 260
 DEFAULT_INFO_CARD_HEIGHT = 34
 DEFAULT_FORM_PANEL_HEIGHT = 140
+DEFAULT_DESCRIPTION_HEIGHT = 0
 _TOOLBAR_AND_PADDING_PX = 290
 
 
@@ -504,6 +505,8 @@ _CONFIG_PARAMS = {
     'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
     'info_card_height', 'form_panel_height',
+    'description', 'description_title', 'description_text',
+    'description_path', 'description_open', 'description_height',
     'project_name', 'project_save_btn',
     'config',
 }
@@ -562,6 +565,12 @@ class BioacousticAnnotator:
         player_height=_UNSET,
         info_card_height=_UNSET,
         form_panel_height=_UNSET,
+        description=_UNSET,
+        description_title=_UNSET,
+        description_text=_UNSET,
+        description_path=_UNSET,
+        description_open=_UNSET,
+        description_height=_UNSET,
         config=_UNSET,
         **kwargs,
     ):
@@ -970,6 +979,32 @@ class BioacousticAnnotator:
         self._player_height      = resolve(player_height,      'player_height',      DEFAULT_PLAYER_HEIGHT)
         self._info_card_height   = resolve(info_card_height,   'info_card_height',   DEFAULT_INFO_CARD_HEIGHT)
         self._form_panel_height  = resolve(form_panel_height,  'form_panel_height',  DEFAULT_FORM_PANEL_HEIGHT)
+        self._description_height = resolve(description_height, 'description_height', DEFAULT_DESCRIPTION_HEIGHT)
+
+        raw_desc = resolve(description, 'description', None)
+        raw_desc_title = resolve(description_title, 'description_title', None)
+        raw_desc_text = resolve(description_text, 'description_text', None)
+        raw_desc_path = resolve(description_path, 'description_path', None)
+        raw_desc_open = resolve(description_open, 'description_open', None)
+        if isinstance(raw_desc, dict):
+            raw_desc_title = raw_desc_title or raw_desc.get('title')
+            raw_desc_text = raw_desc_text or raw_desc.get('text')
+            raw_desc_path = raw_desc_path or raw_desc.get('path')
+            if raw_desc_open is None:
+                raw_desc_open = raw_desc.get('open', True)
+            if 'height' in raw_desc and description_height is _UNSET:
+                self._description_height = raw_desc['height']
+        if raw_desc_path and not raw_desc_text:
+            try:
+                with open(raw_desc_path) as _f:
+                    raw_desc_text = _f.read()
+            except OSError:
+                raw_desc_text = f'(Could not read {raw_desc_path})'
+        self._description_config = {
+            'title': raw_desc_title or '',
+            'text': raw_desc_text or '',
+            'open': raw_desc_open if raw_desc_open is not None else True,
+        } if (raw_desc_title or raw_desc_text) else None
 
         raw_save_btn = resolve(project_save_btn, 'project_save_btn', False)
         if raw_save_btn is True:
@@ -1046,6 +1081,8 @@ class BioacousticAnnotator:
         ip.user_ns['_BA_INFO_CARD_HEIGHT']  = str(self._info_card_height)
         ip.user_ns['_BA_FORM_PANEL_HEIGHT'] = str(self._form_panel_height)
         ip.user_ns['_BA_PROJECT_SAVE_BTN'] = self._project_save_btn
+        ip.user_ns['_BA_DESCRIPTION'] = json.dumps(self._description_config) if self._description_config else ''
+        ip.user_ns['_BA_DESCRIPTION_HEIGHT'] = str(self._description_height)
         ip.user_ns['_BA_INSTANCE'] = self
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
