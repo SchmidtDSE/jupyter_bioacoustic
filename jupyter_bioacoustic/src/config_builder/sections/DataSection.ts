@@ -157,12 +157,31 @@ export class DataSection extends CollapsibleSection {
       this._selectedChipsArea.appendChild(hint);
       return;
     }
-    for (const col of this._selectedCols) {
+    let dragIdx = -1;
+    for (let i = 0; i < this._selectedCols.length; i++) {
+      const col = this._selectedCols[i];
       const chip = document.createElement('span');
+      chip.draggable = true;
       chip.style.cssText =
         `display:inline-flex;align-items:center;gap:4px;` +
         `background:${COLORS.bgSurface1};border-radius:12px;` +
-        `color:${COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;`;
+        `color:${COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;cursor:grab;`;
+
+      chip.addEventListener('dragstart', (e) => {
+        dragIdx = i;
+        chip.style.opacity = '0.4';
+        e.dataTransfer!.effectAllowed = 'move';
+      });
+      chip.addEventListener('dragend', () => { chip.style.opacity = '1'; });
+      chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer!.dropEffect = 'move'; });
+      chip.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (dragIdx < 0 || dragIdx === i) return;
+        const [moved] = this._selectedCols.splice(dragIdx, 1);
+        this._selectedCols.splice(i, 0, moved);
+        this._rebuildSelectedChips();
+        this._emitChanged();
+      });
 
       const name = document.createElement('span');
       name.textContent = col;
