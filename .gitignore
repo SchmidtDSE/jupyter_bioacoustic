@@ -6,6 +6,7 @@ scratch*
 Untitled*
 dev*
 *.ipynb
+!jupyter_bioacoustic/config_builder/nb/starter-notebook.ipynb
 tmp/
 logs/
 
