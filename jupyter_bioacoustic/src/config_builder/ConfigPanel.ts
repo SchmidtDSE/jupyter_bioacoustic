@@ -84,12 +84,13 @@ export class ConfigPanel {
 
     this._form.changed.connect(() => this._updateSummary());
 
-    for (const sec of [this._data, this._audio, this._output, this._app]) {
+    for (const sec of [this._data, this._audio, this._output, this._app, this._form]) {
       sec.targetChanged.connect((_, { section, target }) => {
         void this._onTargetChanged(section, target);
       });
     }
     this._app.setTarget('config');
+    this._form.setTarget('form');
     left.appendChild(this._summary.element);
 
     this._project.browseRequested.connect((_, { field, current }) => {
@@ -391,6 +392,7 @@ export class ConfigPanel {
         if (targets.audio) this._audio.setTarget(targets.audio);
         if (targets.output) this._output.setTarget(targets.output);
         if (targets.app) this._app.setTarget(targets.app);
+        if (targets.form) this._form.setTarget(targets.form === 'form_config' ? 'form' : targets.form);
       }
 
       this._updateSummary();
@@ -470,8 +472,9 @@ export class ConfigPanel {
     await this._readyPromise;
     if (!this._ready) return;
     this._setStatus('Updating target…');
+    const pyTarget = target === 'form' ? 'form_config' : target;
     try {
-      const raw = await this._kernel.exec(setSectionTarget(section, target));
+      const raw = await this._kernel.exec(setSectionTarget(section, pyTarget));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, section);
       this._setStatus('Ready');
