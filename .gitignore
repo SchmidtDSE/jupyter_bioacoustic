@@ -36,6 +36,7 @@ _build/
 *.jsonl
 
 # Demo
+demo/*.md
 demo/*.png
 demo/*.ipynb
 demo/audio/
