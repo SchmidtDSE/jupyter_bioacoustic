@@ -20,6 +20,7 @@ import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
 import { InfoCard } from './sections/InfoCard';
+import { DescriptionPanel, DescriptionConfig } from './sections/DescriptionPanel';
 
 // ═══════════════════════════════════════════════════════════════
 // BioacousticWidget
@@ -44,6 +45,7 @@ class BioacousticWidget extends Widget {
   private _infoCard!: InfoCard;
   private _player!: Player;
   private _form!: FormPanel;
+  private _description!: DescriptionPanel;
 
   constructor(tracker: INotebookTracker, directKernel?: any) {
     super();
@@ -94,6 +96,7 @@ class BioacousticWidget extends Widget {
     // ── Clip table (filter + table + pagination) ──────────────────
 
     // ── Sections ──────────────────────────────────────────────────
+    this._description = new DescriptionPanel();
     this._form = new FormPanel(this._kernelBridge);
     this._player = new Player(this._kernelBridge, this._form);
     this._table = new ClipTable(this._form);
@@ -129,6 +132,7 @@ class BioacousticWidget extends Widget {
     // ── Assemble widget ──────────────────────────────────────────
     this.node.append(
       header,
+      this._description.element,
       this._table.element,
       this._infoCard.element,
       this._player.element,
@@ -170,6 +174,8 @@ class BioacousticWidget extends Widget {
       clip_table_height: string; player_height: string;
       info_card_height: string; form_panel_height: string;
       project_save_btn: string;
+      description: string;
+      description_height: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -197,6 +203,14 @@ class BioacousticWidget extends Widget {
     const appTitle = cfg.app_title || DEFAULT_TITLE;
     this._titleEl.textContent = appTitle;
     this.title.label = appTitle;
+
+    if (cfg.description) {
+      try {
+        const descCfg = JSON.parse(cfg.description) as DescriptionConfig;
+        const descHeight = parseInt(cfg.description_height) || undefined;
+        this._description.setConfig(descCfg, descHeight);
+      } catch { /* no description */ }
+    }
 
     // Initialize form panel
     const syncConfig = JSON.parse(cfg.sync_config || '{}') as {
