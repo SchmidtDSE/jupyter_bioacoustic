@@ -16,7 +16,7 @@ export abstract class CollapsibleSection {
   private _chevron: HTMLSpanElement;
   private _pinned = false;
 
-  constructor(title: string, sectionName: string, open = false, showTargetToggle = false) {
+  constructor(title: string, sectionName: string, open = false, showTargetToggle = false, targetOptions?: string[]) {
     this._sectionName = sectionName;
     this._hasTargetToggle = showTargetToggle;
 
@@ -85,11 +85,12 @@ export abstract class CollapsibleSection {
       this._targetToggle.style.cssText =
         `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
         `border-radius:3px;color:${COLORS.textPrimary};padding:1px 4px;font-size:10px;cursor:pointer;`;
-      const optP = document.createElement('option');
-      optP.value = 'project'; optP.textContent = 'project';
-      const optC = document.createElement('option');
-      optC.value = 'config'; optC.textContent = 'config';
-      this._targetToggle.append(optP, optC);
+      const opts = targetOptions || ['project', 'config'];
+      for (const val of opts) {
+        const o = document.createElement('option');
+        o.value = val; o.textContent = val;
+        this._targetToggle.appendChild(o);
+      }
       this._targetToggle.addEventListener('change', () => {
         this.targetChanged.emit({ section: this._sectionName, target: this._targetToggle!.value });
       });
@@ -125,9 +126,23 @@ export abstract class CollapsibleSection {
   }
 
   setTarget(target: string): void {
-    if (this._targetToggle && (target === 'project' || target === 'config')) {
+    if (this._targetToggle) {
       this._targetToggle.value = target;
     }
+  }
+
+  setTargetOptions(options: string[]): void {
+    if (!this._targetToggle) return;
+    const current = this._targetToggle.value;
+    this._targetToggle.innerHTML = '';
+    for (const val of options) {
+      const o = document.createElement('option');
+      o.value = val; o.textContent = val;
+      this._targetToggle.appendChild(o);
+    }
+    if (options.includes(current)) this._targetToggle.value = current;
+    else if (options.length > 0) this._targetToggle.value = options[options.length - 1];
+    this._targetToggle.disabled = options.length <= 1;
   }
 
   protected _makeRow(): HTMLDivElement {
