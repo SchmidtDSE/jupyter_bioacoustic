@@ -40,6 +40,8 @@ export function readKernelVars(): string {
     `  'info_card_height': _BA_INFO_CARD_HEIGHT,`,
     `  'form_panel_height': _BA_FORM_PANEL_HEIGHT,`,
     `  'project_save_btn': _BA_PROJECT_SAVE_BTN,`,
+    `  'description': _BA_DESCRIPTION,`,
+    `  'description_height': _BA_DESCRIPTION_HEIGHT,`,
     `}))`,
   ].join('\n');
 }
