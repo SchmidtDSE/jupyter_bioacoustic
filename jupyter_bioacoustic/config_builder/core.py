@@ -63,6 +63,14 @@ class ConfigBuilder:
                       'form_path', 'project_enabled', 'config_enabled', 'form_enabled'):
                 if k in data:
                     self._project[k] = data[k]
+            for k in ('description', 'description_title', 'description_text',
+                      'description_path', 'description_open', 'description_height'):
+                if k in data:
+                    val = data[k]
+                    if val is not None and val != '' and val != []:
+                        self._project[k] = val
+                    elif k in self._project:
+                        del self._project[k]
 
         elif section == 'data':
             data_dict = {}

@@ -30,6 +30,7 @@ export class YamlPanel {
   private _editBar: HTMLDivElement;
   private _yamlTabBar: HTMLDivElement;
   private _yamlTabs: Map<string, HTMLButtonElement> = new Map();
+  private _activeField: HTMLElement | null = null;
 
   constructor() {
     this.element = document.createElement('div');
@@ -225,13 +226,21 @@ export class YamlPanel {
   }
 
   scrollToField(fieldKey: string): void {
-    const el = this._docsContent.querySelector(`[data-field="${fieldKey}"]`);
+    if (this._activeField) {
+      this._activeField.style.borderLeftColor = COLORS.bgSurface1;
+    }
+    const el = this._docsContent.querySelector(`[data-field="${fieldKey}"]`) as HTMLElement | null;
     if (el) {
+      el.style.borderLeftColor = COLORS.sapphire;
+      this._activeField = el;
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      this._activeField = null;
     }
   }
 
   private _renderDocs(section: string): void {
+    this._activeField = null;
     this._docsContent.innerHTML = '';
     const docs = DOCS[section];
     if (!docs) {
@@ -239,8 +248,9 @@ export class YamlPanel {
       return;
     }
 
+    const sectionTitles: Record<string, string> = { project: 'Setup' };
     const title = document.createElement('h3');
-    title.textContent = section;
+    title.textContent = sectionTitles[section] || section;
     title.style.cssText =
       `margin:0 0 8px 0;font-size:14px;font-weight:700;color:${COLORS.blue};` +
       `text-transform:capitalize;`;
@@ -257,11 +267,30 @@ export class YamlPanel {
     for (const [key, text] of Object.entries(docs)) {
       if (key === '_intro') continue;
 
+      if (key.startsWith('_sub:')) {
+        const hr = document.createElement('hr');
+        hr.style.cssText = `border:none;border-top:1px solid ${COLORS.bgSurface1};margin:12px 0 8px;`;
+        this._docsContent.appendChild(hr);
+
+        const subTitle = document.createElement('h4');
+        subTitle.textContent = key.slice(5);
+        subTitle.style.cssText =
+          `margin:0 0 4px 0;font-size:12px;font-weight:700;color:${COLORS.textPrimary};`;
+        this._docsContent.appendChild(subTitle);
+
+        const subIntro = document.createElement('p');
+        subIntro.textContent = text;
+        subIntro.style.cssText =
+          `margin:0 0 10px 0;color:${COLORS.textSubtle};font-size:11px;line-height:1.5;`;
+        this._docsContent.appendChild(subIntro);
+        continue;
+      }
+
       const fieldEl = document.createElement('div');
       fieldEl.setAttribute('data-field', key);
       fieldEl.style.cssText =
         `margin-bottom:10px;padding:8px;background:${COLORS.bgSurface0};border-radius:4px;` +
-        `border-left:3px solid ${COLORS.bgSurface1};`;
+        `border-left:3px solid ${COLORS.bgSurface1};transition:border-color 0.15s ease;`;
 
       const nameEl = document.createElement('div');
       nameEl.textContent = key;

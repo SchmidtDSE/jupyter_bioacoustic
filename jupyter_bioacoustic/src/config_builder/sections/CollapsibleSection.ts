@@ -14,6 +14,7 @@ export abstract class CollapsibleSection {
   private _targetToggle: HTMLSelectElement | null = null;
   private _hasTargetToggle: boolean;
   private _chevron: HTMLSpanElement;
+  private _summary: HTMLElement;
   private _pinned = false;
 
   constructor(title: string, sectionName: string, open = false, showTargetToggle = false, targetOptions?: string[]) {
@@ -104,6 +105,7 @@ export abstract class CollapsibleSection {
       `padding:10px 12px;display:flex;flex-direction:column;gap:8px;` +
       `background:${COLORS.bgBase};`;
 
+    this._summary = summary;
     this.element.append(summary, this._body);
   }
 
@@ -117,8 +119,14 @@ export abstract class CollapsibleSection {
     this._updateChevron();
   }
 
+  unpin(): void {
+    this._pinned = false;
+    this._updateChevron();
+  }
+
   private _updateChevron(): void {
     this._chevron.textContent = this.element.open ? '\u25be' : '\u25b8';
+    this._summary.style.background = (this._pinned && this.element.open) ? COLORS.bgSurface0 : COLORS.bgMantle;
   }
 
   getTarget(): string {

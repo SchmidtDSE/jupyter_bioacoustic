@@ -77,12 +77,14 @@ export class FormSection extends CollapsibleSection {
       btn.style.fontSize = '11px';
       btn.style.padding = '3px 8px';
       btn.addEventListener('click', () => {
+        this.fieldFocused.emit(t);
         if (onAdd) {
           onAdd(t);
         } else {
           this._addElement(t);
         }
       });
+      btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
       bar.appendChild(btn);
     }
     return bar;
@@ -121,6 +123,8 @@ export class FormSection extends CollapsibleSection {
     card.style.cssText =
       `background:${COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
       `display:flex;flex-direction:column;gap:5px;`;
+    card.addEventListener('focusin', () => this.fieldFocused.emit(type));
+    card.addEventListener('click', () => this.fieldFocused.emit(type));
 
     const header = this._makeRow();
     const typeLabel = document.createElement('span');

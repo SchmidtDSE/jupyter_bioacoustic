@@ -24,9 +24,11 @@ export class AudioSection extends CollapsibleSection {
       this._updateValueUI();
       this._emitChanged();
     });
-    this._body.appendChild(this._makeFieldRow('source type', this._sourceType));
+    this._body.appendChild(this._makeFieldRow('source_type', this._sourceType));
 
     this._pathRow = this._makeRow();
+    this._pathRow.addEventListener('focusin', () => this.fieldFocused.emit('value'));
+    this._pathRow.addEventListener('click', () => this.fieldFocused.emit('value'));
     this._pathRow.appendChild(this._makeLabel('value'));
     this._valueInput = this._makeInput('audio/recording.flac', '200px');
     this._valueInput.addEventListener('input', () => this._emitChanged());

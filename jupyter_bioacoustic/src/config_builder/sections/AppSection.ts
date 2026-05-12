@@ -19,11 +19,6 @@ export class AppSection extends CollapsibleSection {
   private _infoCardHeightInput: HTMLInputElement;
   private _formPanelHeightInput: HTMLInputElement;
 
-  private _descTitleInput: HTMLInputElement;
-  private _descTextArea: HTMLTextAreaElement;
-  private _descPathInput: HTMLInputElement;
-  private _descOpenCb: HTMLInputElement;
-  private _descHeightInput: HTMLInputElement;
 
   private _availableCols: string[] = [];
   private _displayChipsArea: HTMLDivElement;
@@ -32,44 +27,6 @@ export class AppSection extends CollapsibleSection {
 
   constructor() {
     super('Application', 'app', false, true);
-
-    this._descTitleInput = this._makeInput('', '200px');
-    this._descTitleInput.placeholder = 'e.g. Instructions';
-    this._descTitleInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('description_title', this._descTitleInput));
-
-    this._descTextArea = document.createElement('textarea');
-    this._descTextArea.style.cssText =
-      `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:4px;` +
-      `color:${COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
-      `box-sizing:border-box;resize:vertical;font-family:monospace;`;
-    this._descTextArea.placeholder = 'Markdown text (or use description_path for a file)';
-    this._descTextArea.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('description_text', this._descTextArea));
-
-    this._descPathInput = this._makeInput('', '200px');
-    this._descPathInput.placeholder = 'docs/instructions.md';
-    this._descPathInput.addEventListener('input', () => this._emitChanged());
-    const descPathRow = this._makeRow();
-    descPathRow.appendChild(this._makeLabel('description_path'));
-    const descPathBrowse = this._makeButton('Browse');
-    descPathBrowse.addEventListener('click', () => {
-      this.browseRequested.emit(this._descPathInput.value || '.');
-    });
-    descPathRow.append(this._descPathInput, descPathBrowse);
-    this._body.appendChild(descPathRow);
-
-    const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('description_open');
-    this._descOpenCb = descOpenCb;
-    this._descOpenCb.checked = true;
-    this._descOpenCb.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(descOpenRow);
-
-    this._descHeightInput = this._makeInput('', '60px');
-    this._descHeightInput.type = 'number';
-    this._descHeightInput.placeholder = 'auto';
-    this._descHeightInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('description_height', this._descHeightInput));
 
     this._identColSelect = this._makeSelect(['(none)'], '(none)');
     this._identColSelect.addEventListener('change', () => this._emitChanged());
@@ -103,6 +60,8 @@ export class AppSection extends CollapsibleSection {
     this._body.appendChild(capRow);
 
     const capDirRow = this._makeRow();
+    capDirRow.addEventListener('focusin', () => this.fieldFocused.emit('capture_dir'));
+    capDirRow.addEventListener('click', () => this.fieldFocused.emit('capture_dir'));
     capDirRow.appendChild(this._makeLabel('capture_dir'));
     this._captureDirInput = this._makeInput('captures/', '160px');
     this._captureDirInput.addEventListener('input', () => this._emitChanged());
@@ -118,6 +77,8 @@ export class AppSection extends CollapsibleSection {
     this._body.appendChild(this._makeFieldRow('width', this._widthInput));
 
     const heightRow = this._makeRow();
+    heightRow.addEventListener('focusin', () => this.fieldFocused.emit('clip_table_height'));
+    heightRow.addEventListener('click', () => this.fieldFocused.emit('clip_table_height'));
     heightRow.appendChild(this._makeLabel('heights'));
 
     this._clipTableHeightInput = this._makeInput('175', '60px');
@@ -323,22 +284,6 @@ export class AppSection extends CollapsibleSection {
     const fph = parseInt(this._formPanelHeightInput.value);
     if (!isNaN(fph) && fph !== 140) result.form_panel_height = fph;
 
-    const dh = parseInt(this._descHeightInput.value);
-    if (!isNaN(dh) && dh > 0) result.description_height = dh;
-
-    const descTitle = this._descTitleInput.value.trim();
-    const descText = this._descTextArea.value;
-    const descPath = this._descPathInput.value.trim();
-    const descOpen = this._descOpenCb.checked;
-    if (descTitle || descText || descPath) {
-      const desc: Record<string, any> = {};
-      if (descTitle) desc.title = descTitle;
-      if (descText) desc.text = descText;
-      if (descPath) desc.path = descPath;
-      if (!descOpen) desc.open = false;
-      result.description = desc;
-    }
-
     const secrets = this._secrets.getData();
     if (secrets !== undefined) result.secrets = secrets;
 
@@ -362,18 +307,6 @@ export class AppSection extends CollapsibleSection {
     if (data.player_height) this._playerHeightInput.value = String(data.player_height);
     if (data.info_card_height) this._infoCardHeightInput.value = String(data.info_card_height);
     if (data.form_panel_height) this._formPanelHeightInput.value = String(data.form_panel_height);
-    if (data.description_height) this._descHeightInput.value = String(data.description_height);
-    if (data.description) {
-      const d = typeof data.description === 'object' ? data.description : {};
-      if (d.title) this._descTitleInput.value = d.title;
-      if (d.text) this._descTextArea.value = d.text;
-      if (d.path) this._descPathInput.value = d.path;
-      if (d.open === false) this._descOpenCb.checked = false;
-    }
-    if (data.description_title) this._descTitleInput.value = data.description_title;
-    if (data.description_text) this._descTextArea.value = data.description_text;
-    if (data.description_path) this._descPathInput.value = data.description_path;
-    if (data.description_open === false) this._descOpenCb.checked = false;
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 }
