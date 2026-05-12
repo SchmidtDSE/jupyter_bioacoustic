@@ -4,8 +4,7 @@ import { CollapsibleSection } from './CollapsibleSection';
 
 export class ProjectSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, { field: string; current: string }>(this);
-  readonly loadConfigRequested = new Signal<this, string>(this);
-  readonly loadBrowseRequested = new Signal<this, void>(this);
+  readonly loadConfigRequested = new Signal<this, { field: string; path: string }>(this);
   readonly projectEnabledChanged = new Signal<this, boolean>(this);
   readonly fileStatesChanged = new Signal<this, { project: boolean; config: boolean; form: boolean }>(this);
 
@@ -22,7 +21,10 @@ export class ProjectSection extends CollapsibleSection {
   private _projectBrowseBtn: HTMLButtonElement;
   private _configBrowseBtn: HTMLButtonElement;
   private _formBrowseBtn: HTMLButtonElement;
-  private _loadPathInput: HTMLInputElement;
+
+  private _projectLoadBtn: HTMLButtonElement;
+  private _configLoadBtn: HTMLButtonElement;
+  private _formLoadBtn: HTMLButtonElement;
 
   private _descTitleInput: HTMLInputElement;
   private _descTextArea: HTMLTextAreaElement;
@@ -32,34 +34,6 @@ export class ProjectSection extends CollapsibleSection {
 
   constructor() {
     super('Setup', 'project', true);
-
-    const loadLabel = document.createElement('div');
-    loadLabel.textContent = 'Load existing config';
-    loadLabel.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
-    this._body.appendChild(loadLabel);
-
-    const loadRow = document.createElement('div');
-    loadRow.style.cssText = `display:flex;align-items:center;gap:6px;margin-bottom:6px;`;
-    this._loadPathInput = this._makeInput('config/projects/my_project.yaml', '220px');
-    const loadBrowse = this._makeButton('Browse');
-    loadBrowse.addEventListener('click', () => this.loadBrowseRequested.emit());
-    const loadBtn = this._makeButton('Load', true);
-    loadBtn.addEventListener('click', () => {
-      const p = this._loadPathInput.value.trim();
-      if (p) this.loadConfigRequested.emit(p);
-    });
-    this._loadPathInput.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        const p = this._loadPathInput.value.trim();
-        if (p) this.loadConfigRequested.emit(p);
-      }
-    });
-    loadRow.append(this._loadPathInput, loadBrowse, loadBtn);
-    this._body.appendChild(loadRow);
-
-    const loadSep = document.createElement('div');
-    loadSep.style.cssText = `height:1px;background:${COLORS.bgSurface1};margin:6px 0;`;
-    this._body.appendChild(loadSep);
 
     this._nameInput = this._makeInput('e.g. Bird Review', '250px');
     this._nameInput.addEventListener('input', () => {
@@ -89,6 +63,7 @@ export class ProjectSection extends CollapsibleSection {
     this._projectCb = pRow.cb;
     this._projectPathInput = pRow.input;
     this._projectBrowseBtn = pRow.btn;
+    this._projectLoadBtn = pRow.loadBtn;
     this._projectCb.addEventListener('change', () => {
       this.projectEnabledChanged.emit(this._projectCb.checked);
       this._emitFileStates();
@@ -99,6 +74,7 @@ export class ProjectSection extends CollapsibleSection {
     this._configCb = cRow.cb;
     this._configPathInput = cRow.input;
     this._configBrowseBtn = cRow.btn;
+    this._configLoadBtn = cRow.loadBtn;
     this._configCb.addEventListener('change', () => this._emitFileStates());
     this._body.appendChild(cRow.row);
 
@@ -106,6 +82,7 @@ export class ProjectSection extends CollapsibleSection {
     this._formCb = fRow.cb;
     this._formPathInput = fRow.input;
     this._formBrowseBtn = fRow.btn;
+    this._formLoadBtn = fRow.loadBtn;
     this._formCb.addEventListener('change', () => this._emitFileStates());
     this._body.appendChild(fRow.row);
 
@@ -168,7 +145,8 @@ export class ProjectSection extends CollapsibleSection {
   }
 
   private _makeFileRow(field: string): {
-    row: HTMLDivElement; cb: HTMLInputElement; input: HTMLInputElement; btn: HTMLButtonElement;
+    row: HTMLDivElement; cb: HTMLInputElement; input: HTMLInputElement;
+    btn: HTMLButtonElement; loadBtn: HTMLButtonElement;
   } {
     const row = document.createElement('div');
     row.style.cssText = `display:flex;align-items:center;gap:6px;flex-wrap:wrap;`;
@@ -199,17 +177,26 @@ export class ProjectSection extends CollapsibleSection {
       this.browseRequested.emit({ field, current: inp.value || '.' });
     });
 
+    const loadBtn = this._makeButton('Load');
+    loadBtn.addEventListener('click', () => {
+      const p = inp.value.trim();
+      if (p) this.loadConfigRequested.emit({ field, path: p });
+    });
+
     cb.addEventListener('change', () => {
-      inp.disabled = !cb.checked;
-      btn.disabled = !cb.checked;
-      inp.style.opacity = cb.checked ? '1' : '0.4';
-      btn.style.opacity = cb.checked ? '1' : '0.4';
+      const on = cb.checked;
+      inp.disabled = !on;
+      btn.disabled = !on;
+      loadBtn.disabled = !on;
+      inp.style.opacity = on ? '1' : '0.4';
+      btn.style.opacity = on ? '1' : '0.4';
+      loadBtn.style.opacity = on ? '1' : '0.4';
       this._emitChanged();
     });
 
-    row.append(lbl, inp, btn);
+    row.append(lbl, inp, btn, loadBtn);
     row.addEventListener('focusin', () => this.fieldFocused.emit(`${field} file`));
-    return { row, cb, input: inp, btn };
+    return { row, cb, input: inp, btn, loadBtn };
   }
 
   private _updateDefaultPaths(): void {
@@ -243,10 +230,6 @@ export class ProjectSection extends CollapsibleSection {
   setFormPath(path: string): void {
     this._formPathInput.value = path;
     this._emitChanged();
-  }
-
-  setLoadPath(path: string): void {
-    this._loadPathInput.value = path;
   }
 
   setCheckedStates(project: boolean, config: boolean, form: boolean): void {
@@ -322,19 +305,34 @@ export class ProjectSection extends CollapsibleSection {
     if (data.description_path) this._descPathInput.value = data.description_path;
     if (data.description_open === false) this._descOpenCb.checked = false;
     if (data.project_enabled !== undefined) {
-      this._projectCb.checked = !!data.project_enabled;
-      this._projectPathInput.disabled = !this._projectCb.checked;
-      this._projectBrowseBtn.disabled = !this._projectCb.checked;
+      const on = !!data.project_enabled;
+      this._projectCb.checked = on;
+      this._projectPathInput.disabled = !on;
+      this._projectBrowseBtn.disabled = !on;
+      this._projectLoadBtn.disabled = !on;
+      this._projectPathInput.style.opacity = on ? '1' : '0.4';
+      this._projectBrowseBtn.style.opacity = on ? '1' : '0.4';
+      this._projectLoadBtn.style.opacity = on ? '1' : '0.4';
     }
     if (data.config_enabled !== undefined) {
-      this._configCb.checked = !!data.config_enabled;
-      this._configPathInput.disabled = !this._configCb.checked;
-      this._configBrowseBtn.disabled = !this._configCb.checked;
+      const on = !!data.config_enabled;
+      this._configCb.checked = on;
+      this._configPathInput.disabled = !on;
+      this._configBrowseBtn.disabled = !on;
+      this._configLoadBtn.disabled = !on;
+      this._configPathInput.style.opacity = on ? '1' : '0.4';
+      this._configBrowseBtn.style.opacity = on ? '1' : '0.4';
+      this._configLoadBtn.style.opacity = on ? '1' : '0.4';
     }
     if (data.form_enabled !== undefined) {
-      this._formCb.checked = !!data.form_enabled;
-      this._formPathInput.disabled = !this._formCb.checked;
-      this._formBrowseBtn.disabled = !this._formCb.checked;
+      const on = !!data.form_enabled;
+      this._formCb.checked = on;
+      this._formPathInput.disabled = !on;
+      this._formBrowseBtn.disabled = !on;
+      this._formLoadBtn.disabled = !on;
+      this._formPathInput.style.opacity = on ? '1' : '0.4';
+      this._formBrowseBtn.style.opacity = on ? '1' : '0.4';
+      this._formLoadBtn.style.opacity = on ? '1' : '0.4';
     }
   }
 }

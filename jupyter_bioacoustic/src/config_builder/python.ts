@@ -124,10 +124,11 @@ export function validateConfig(): string {
   ].join('\n');
 }
 
-export function loadConfig(path: string): string {
+export function loadConfig(path: string, fileType?: string): string {
+  const hint = fileType ? `, file_type='${escPy(fileType)}'` : '';
   return [
     `import json as _j`,
-    `_state = _CB_INSTANCE.load_config('${escPy(path)}')`,
+    `_state = _CB_INSTANCE.load_config('${escPy(path)}'${hint})`,
     wp(`_j.dumps(_state)`),
   ].join('\n');
 }
