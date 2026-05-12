@@ -25,6 +25,7 @@ export class ConfigSummary {
 
   constructor() {
     this.element = document.createElement('details');
+    this.element.open = true;
     this.element.style.cssText =
       `border-top:2px solid ${COLORS.teal};margin-top:4px;`;
 
