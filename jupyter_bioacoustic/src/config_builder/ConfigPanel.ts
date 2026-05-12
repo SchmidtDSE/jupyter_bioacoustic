@@ -104,6 +104,9 @@ export class ConfigPanel {
     this._project.projectEnabledChanged.connect((_, enabled) => {
       void this._onProjectEnabledChanged(enabled);
     });
+    this._project.fileStatesChanged.connect((_, states) => {
+      this._updateTargetOptions(states);
+    });
     this._project.loadConfigRequested.connect((_, path) => void this._onLoadConfig(path));
     this._project.loadBrowseRequested.connect(() => {
       this._openBrowser('.', ['.yaml', '.yml', '.json'], (p) => {
@@ -481,6 +484,20 @@ export class ConfigPanel {
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
     }
+  }
+
+  private _updateTargetOptions(states: { project: boolean; config: boolean; form: boolean }): void {
+    const twoOpts: string[] = [];
+    if (states.project) twoOpts.push('project');
+    if (states.config) twoOpts.push('config');
+    if (twoOpts.length === 0) twoOpts.push('project');
+    for (const sec of [this._data, this._audio, this._output, this._app]) {
+      sec.setTargetOptions(twoOpts);
+    }
+
+    const formOpts: string[] = [...twoOpts];
+    if (states.form) formOpts.push('form');
+    this._form.setTargetOptions(formOpts);
   }
 
   private _onAccordionOpen(opened: CollapsibleSection): void {
