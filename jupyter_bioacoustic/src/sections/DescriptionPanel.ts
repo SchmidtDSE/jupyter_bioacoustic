@@ -63,8 +63,7 @@ export class DescriptionPanel {
     }
 
     if (cfg.text) {
-      const html = marked(cfg.text, { async: false }) as string;
-      this._body.innerHTML = html;
+      this._body.innerHTML = marked.parse(cfg.text) as string;
       this._applyContentStyles();
     }
 
@@ -83,7 +82,7 @@ export class DescriptionPanel {
         `color:${COLORS.textPrimary};margin:12px 0 6px;font-size:14px;`;
     }
     for (const p of this._body.querySelectorAll('p')) {
-      (p as HTMLElement).style.cssText = `margin:6px 0;`;
+      (p as HTMLElement).style.cssText = `margin:6px 0;color:${COLORS.textPrimary};`;
     }
     for (const a of this._body.querySelectorAll('a')) {
       (a as HTMLElement).style.cssText = `color:${COLORS.blue};text-decoration:underline;`;
@@ -94,15 +93,24 @@ export class DescriptionPanel {
       (ol as HTMLElement).style.cssText = `margin:6px 0;padding-left:24px;`;
     }
     for (const li of this._body.querySelectorAll('li')) {
-      (li as HTMLElement).style.cssText = `margin:2px 0;`;
+      (li as HTMLElement).style.cssText = `margin:2px 0;color:${COLORS.textPrimary};`;
     }
     for (const code of this._body.querySelectorAll('code')) {
       (code as HTMLElement).style.cssText =
-        `background:${COLORS.bgSurface0};padding:1px 4px;border-radius:3px;font-size:12px;`;
+        `background:${COLORS.bgSurface0};color:${COLORS.textPrimary};padding:1px 4px;border-radius:3px;font-size:12px;`;
     }
     for (const pre of this._body.querySelectorAll('pre')) {
       (pre as HTMLElement).style.cssText =
-        `background:${COLORS.bgSurface0};padding:8px 12px;border-radius:4px;overflow-x:auto;font-size:12px;`;
+        `background:${COLORS.bgSurface0};color:${COLORS.textPrimary};padding:8px 12px;border-radius:4px;overflow-x:auto;font-size:12px;`;
+    }
+    for (const strong of this._body.querySelectorAll('strong')) {
+      (strong as HTMLElement).style.color = COLORS.textPrimary;
+    }
+    for (const em of this._body.querySelectorAll('em')) {
+      (em as HTMLElement).style.color = COLORS.textPrimary;
+    }
+    for (const hr of this._body.querySelectorAll('hr')) {
+      (hr as HTMLElement).style.cssText = `border:none;border-top:1px solid ${COLORS.bgSurface1};margin:12px 0;`;
     }
   }
 }
