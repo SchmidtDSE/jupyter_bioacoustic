@@ -1,10 +1,81 @@
-import { marked } from 'marked';
 import { COLORS } from '../styles';
 
 export interface DescriptionConfig {
   title: string;
   text: string;
   open: boolean;
+}
+
+function renderMarkdown(src: string): string {
+  const lines = src.split('\n');
+  const out: string[] = [];
+  let inList: 'ol' | 'ul' | '' = '';
+  let inCode = false;
+
+  const inline = (s: string): string =>
+    s
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/_(.+?)_/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  const closeList = () => {
+    if (inList) { out.push(inList === 'ol' ? '</ol>' : '</ul>'); inList = ''; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trimEnd();
+
+    if (trimmed.startsWith('```')) {
+      if (inCode) { out.push('</code></pre>'); inCode = false; }
+      else { closeList(); out.push('<pre><code>'); inCode = true; }
+      continue;
+    }
+    if (inCode) {
+      out.push(trimmed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+      continue;
+    }
+
+    if (/^\s*$/.test(trimmed)) { closeList(); continue; }
+
+    if (/^---+$/.test(trimmed.trim()) || /^\*\*\*+$/.test(trimmed.trim()) || /^___+$/.test(trimmed.trim())) {
+      closeList();
+      out.push('<hr>');
+      continue;
+    }
+
+    const hMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (hMatch) {
+      closeList();
+      const level = hMatch[1].length;
+      out.push(`<h${level}>${inline(hMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    const olMatch = trimmed.match(/^\s*\d+\.\s+(.+)$/);
+    if (olMatch) {
+      if (inList !== 'ol') { closeList(); out.push('<ol>'); inList = 'ol'; }
+      out.push(`<li>${inline(olMatch[1])}</li>`);
+      continue;
+    }
+
+    const ulMatch = trimmed.match(/^\s*[-*+]\s+(.+)$/);
+    if (ulMatch) {
+      if (inList !== 'ul') { closeList(); out.push('<ul>'); inList = 'ul'; }
+      out.push(`<li>${inline(ulMatch[1])}</li>`);
+      continue;
+    }
+
+    closeList();
+    out.push(`<p>${inline(trimmed)}</p>`);
+  }
+  closeList();
+  if (inCode) out.push('</code></pre>');
+  return out.join('\n');
 }
 
 export class DescriptionPanel {
@@ -63,7 +134,7 @@ export class DescriptionPanel {
     }
 
     if (cfg.text) {
-      this._body.innerHTML = marked.parse(cfg.text) as string;
+      this._body.innerHTML = renderMarkdown(cfg.text);
       this._applyContentStyles();
     }
 
@@ -79,25 +150,37 @@ export class DescriptionPanel {
   private _applyContentStyles(): void {
     for (const h of this._body.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
       (h as HTMLElement).style.cssText =
-        `color:${COLORS.textPrimary};margin:12px 0 6px;font-size:14px;`;
+        `color:${COLORS.textPrimary};margin:12px 0 6px;font-weight:700;`;
+    }
+    for (const h1 of this._body.querySelectorAll('h1')) {
+      (h1 as HTMLElement).style.fontSize = '18px';
+    }
+    for (const h2 of this._body.querySelectorAll('h2')) {
+      (h2 as HTMLElement).style.fontSize = '16px';
+    }
+    for (const h3 of this._body.querySelectorAll('h3')) {
+      (h3 as HTMLElement).style.fontSize = '14px';
     }
     for (const p of this._body.querySelectorAll('p')) {
       (p as HTMLElement).style.cssText = `margin:6px 0;color:${COLORS.textPrimary};`;
     }
     for (const a of this._body.querySelectorAll('a')) {
       (a as HTMLElement).style.cssText = `color:${COLORS.blue};text-decoration:underline;`;
-      (a as HTMLAnchorElement).target = '_blank';
-      (a as HTMLAnchorElement).rel = 'noopener noreferrer';
     }
     for (const ol of this._body.querySelectorAll('ol,ul')) {
-      (ol as HTMLElement).style.cssText = `margin:6px 0;padding-left:24px;`;
+      (ol as HTMLElement).style.cssText = `margin:6px 0;padding-left:24px;color:${COLORS.textPrimary};`;
     }
     for (const li of this._body.querySelectorAll('li')) {
       (li as HTMLElement).style.cssText = `margin:2px 0;color:${COLORS.textPrimary};`;
     }
+    for (const code of this._body.querySelectorAll('pre > code')) {
+      (code as HTMLElement).style.cssText = `color:${COLORS.textPrimary};font-size:12px;`;
+    }
     for (const code of this._body.querySelectorAll('code')) {
-      (code as HTMLElement).style.cssText =
-        `background:${COLORS.bgSurface0};color:${COLORS.textPrimary};padding:1px 4px;border-radius:3px;font-size:12px;`;
+      if ((code as HTMLElement).parentElement?.tagName !== 'PRE') {
+        (code as HTMLElement).style.cssText =
+          `background:${COLORS.bgSurface0};color:${COLORS.textPrimary};padding:1px 4px;border-radius:3px;font-size:12px;`;
+      }
     }
     for (const pre of this._body.querySelectorAll('pre')) {
       (pre as HTMLElement).style.cssText =
