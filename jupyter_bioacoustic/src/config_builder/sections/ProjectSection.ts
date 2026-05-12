@@ -9,7 +9,6 @@ export class ProjectSection extends CollapsibleSection {
   readonly projectEnabledChanged = new Signal<this, boolean>(this);
 
   private _nameInput: HTMLInputElement;
-  private _saveBtnCb: HTMLInputElement;
 
   private _projectCb: HTMLInputElement;
   private _configCb: HTMLInputElement;
@@ -61,11 +60,6 @@ export class ProjectSection extends CollapsibleSection {
       this._emitChanged();
     });
     this._body.appendChild(this._makeFieldRow('project_name', this._nameInput));
-
-    const { row, input } = this._makeCheckbox('project_save_btn');
-    this._saveBtnCb = input;
-    this._saveBtnCb.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(row);
 
     const sep = document.createElement('div');
     sep.style.cssText = `height:1px;background:${COLORS.bgSurface1};margin:6px 0;`;
@@ -211,7 +205,6 @@ export class ProjectSection extends CollapsibleSection {
   getData(): Record<string, any> {
     return {
       project_name: this._nameInput.value || undefined,
-      project_save_btn: this._saveBtnCb.checked || undefined,
       project_enabled: this._projectCb.checked,
       config_enabled: this._configCb.checked,
       form_enabled: this._formCb.checked,
@@ -223,7 +216,6 @@ export class ProjectSection extends CollapsibleSection {
 
   setData(data: Record<string, any>): void {
     if (data.project_name !== undefined) this._nameInput.value = data.project_name;
-    if (data.project_save_btn !== undefined) this._saveBtnCb.checked = !!data.project_save_btn;
     if (data.project_path) this._projectPathInput.value = data.project_path;
     if (data.config_path) this._configPathInput.value = data.config_path;
     if (data.form_path) this._formPathInput.value = data.form_path;

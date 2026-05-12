@@ -8,6 +8,7 @@ export class AppSection extends CollapsibleSection {
 
   private _identColSelect: HTMLSelectElement;
   private _displayCols: string[] = [];
+  private _saveBtnCb: HTMLInputElement;
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
   private _captureCb: HTMLInputElement;
@@ -35,6 +36,11 @@ export class AppSection extends CollapsibleSection {
     const displayWrap = this._makeColumnGroupWrapper();
     displayWrap.append(this._makeSectionLabel('display_columns'), this._displayChipsArea, this._displayPickerArea);
     this._body.appendChild(displayWrap);
+
+    const { row: saveBtnRow, input: saveBtnCb } = this._makeCheckbox('project_save_btn');
+    this._saveBtnCb = saveBtnCb;
+    this._saveBtnCb.addEventListener('change', () => this._emitChanged());
+    this._body.appendChild(saveBtnRow);
 
     const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
     this._duplicateCb = dupCb;
@@ -232,6 +238,7 @@ export class AppSection extends CollapsibleSection {
 
     if (this._displayCols.length > 0) result.display_columns = [...this._displayCols];
 
+    if (this._saveBtnCb.checked) result.project_save_btn = true;
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
     const buf = parseFloat(this._bufferInput.value);
@@ -266,6 +273,7 @@ export class AppSection extends CollapsibleSection {
       this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
       this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
     }
+    if (data.project_save_btn !== undefined) this._saveBtnCb.checked = !!data.project_save_btn;
     if (data.duplicate_entries) this._duplicateCb.checked = true;
     if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
     if (data.capture === false) this._captureCb.checked = false;
