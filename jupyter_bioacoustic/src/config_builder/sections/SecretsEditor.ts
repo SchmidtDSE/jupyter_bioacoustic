@@ -4,6 +4,7 @@ import { COLORS } from '../../styles';
 export class SecretsEditor {
   readonly element: HTMLDivElement;
   readonly changed = new Signal<this, void>(this);
+  readonly focused = new Signal<this, void>(this);
 
   private _entries: { key: string; value: string }[] = [];
   private _listEl: HTMLDivElement;
@@ -35,6 +36,7 @@ export class SecretsEditor {
       this._entries.push({ key: '', value: '' });
       this._rebuild();
       this.changed.emit(void 0);
+      this.focused.emit(void 0);
     });
     header.appendChild(addBtn);
 
@@ -58,6 +60,8 @@ export class SecretsEditor {
       this._optOutCb = document.createElement('input');
     }
 
+    this.element.addEventListener('focusin', () => this.focused.emit(void 0));
+    this.element.addEventListener('click', () => this.focused.emit(void 0));
     this.element.appendChild(header);
 
     const hint = document.createElement('span');

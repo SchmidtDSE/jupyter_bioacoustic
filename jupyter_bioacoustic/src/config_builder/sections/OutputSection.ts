@@ -49,6 +49,7 @@ export class OutputSection extends CollapsibleSection {
 
     this._secrets = new SecretsEditor(true);
     this._secrets.changed.connect(() => this._emitChanged());
+    this._secrets.focused.connect(() => this.fieldFocused.emit('secrets'));
     this._body.appendChild(this._secrets.element);
   }
 
