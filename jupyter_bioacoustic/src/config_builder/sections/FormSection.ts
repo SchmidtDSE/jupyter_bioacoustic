@@ -756,6 +756,7 @@ export class FormSection extends CollapsibleSection {
       formList.push({ [elem.type]: cleaned });
     }
 
+    result._element_order = this._elements.map(e => e.type);
     Object.assign(result, topLevel);
     if (formList.length > 0) result.form = formList;
 
