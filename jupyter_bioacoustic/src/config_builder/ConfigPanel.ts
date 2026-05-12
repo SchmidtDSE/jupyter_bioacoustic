@@ -22,7 +22,7 @@ import { OutputSection } from './sections/OutputSection';
 import { AppSection } from './sections/AppSection';
 import { FormSection } from './sections/FormSection';
 import { CollapsibleSection } from './sections/CollapsibleSection';
-import { FormPreview } from './sections/FormPreview';
+import { ConfigSummary } from './sections/ConfigSummary';
 
 export class ConfigPanel {
   readonly element: HTMLDivElement;
@@ -44,7 +44,7 @@ export class ConfigPanel {
   private _output: OutputSection;
   private _app: AppSection;
   private _form: FormSection;
-  private _formPreview: FormPreview;
+  private _summary: ConfigSummary;
 
   constructor(kernel: KernelBridge) {
     this._kernel = kernel;
@@ -63,7 +63,7 @@ export class ConfigPanel {
     this._output = new OutputSection();
     this._app = new AppSection();
     this._form = new FormSection();
-    this._formPreview = new FormPreview(kernel);
+    this._summary = new ConfigSummary();
 
     this._sections = new Map<string, CollapsibleSection>([
       ['project', this._project],
@@ -81,14 +81,14 @@ export class ConfigPanel {
       left.appendChild(section.element);
     }
 
-    this._form.changed.connect(() => this._updateFormPreview());
+    this._form.changed.connect(() => this._updateSummary());
 
     for (const sec of [this._data, this._audio, this._output]) {
       sec.targetChanged.connect((_, { section, target }) => {
         void this._onTargetChanged(section, target);
       });
     }
-    left.appendChild(this._formPreview.element);
+    left.appendChild(this._summary.element);
 
     this._project.browseRequested.connect((_, { field, current }) => {
       this._openBrowser(current, ['.yaml', '.yml'], (p) => {
@@ -188,6 +188,7 @@ export class ConfigPanel {
       const raw = await this._kernel.exec(updateSection(sectionName, data));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, sectionName);
+      this._updateSummary();
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
@@ -389,7 +390,7 @@ export class ConfigPanel {
         if (targets.output) this._output.setTarget(targets.output);
       }
 
-      this._updateFormPreview();
+      this._updateSummary();
     } finally {
       this._suppressChanges = false;
     }
@@ -476,8 +477,15 @@ export class ConfigPanel {
     }
   }
 
-  private _updateFormPreview(): void {
-    this._formPreview.update(this._form.getData());
+  private _updateSummary(): void {
+    this._summary.update({
+      project: this._project.getData(),
+      data: this._data.getData(),
+      audio: this._audio.getData(),
+      output: this._output.getData(),
+      app: this._app.getData(),
+      form: this._form.getData(),
+    });
   }
 
   private _setStatus(msg: string, error = false): void {
