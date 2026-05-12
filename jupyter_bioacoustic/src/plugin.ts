@@ -510,9 +510,47 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
       label: 'Bioacoustic Annotator',
       icon: bioacousticIcon,
       execute: () => {
+        const browserPath = defaultBrowser?.model.path ?? '';
+        const serverRoot = PageConfig.getOption('serverRoot');
+        const cwd = browserPath
+          ? `${serverRoot}/${browserPath}`
+          : serverRoot;
         showLauncherDialog(
           () => app.commands.execute('bioacoustic:open-project'),
           () => app.commands.execute('bioacoustic:open-config-builder'),
+          async () => {
+            const kernel = getExistingKernel(tracker) ?? await startKernel(app);
+            if (!kernel) { window.alert('Failed to start Python kernel.'); return; }
+            const ownsKernel = !getExistingKernel(tracker);
+            const code = [
+              `import os as _os; _os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,
+              `from jupyter_bioacoustic.config_builder.notebook import copy_starter_notebook`,
+              `import json; print(json.dumps(copy_starter_notebook('.')))`,
+            ].join('\n');
+            const future = kernel.requestExecute({ code });
+            let result = '';
+            future.onIOPub = (msg: any) => {
+              if (msg.header?.msg_type === 'stream' && msg.content?.name === 'stdout') {
+                result += msg.content.text;
+              }
+              if (msg.header?.msg_type === 'error') {
+                result = '';
+              }
+            };
+            await future.done;
+            if (ownsKernel) kernel.shutdown().catch(() => {});
+            if (result.trim()) {
+              try {
+                const parsed = JSON.parse(result.trim());
+                const rel = parsed.relative || parsed.path;
+                const nbPath = browserPath ? `${browserPath}/${rel}` : rel;
+                app.commands.execute('docmanager:open', { path: nbPath });
+              } catch { /* ignore parse errors */ }
+            }
+            if (defaultBrowser) {
+              defaultBrowser.model.refresh();
+            }
+          },
         );
       }
     });
@@ -535,6 +573,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
 function showLauncherDialog(
   onAnnotator: () => void,
   onConfigBuilder: () => void,
+  onNotebook: () => void,
 ): void {
   const overlay = document.createElement('div');
   overlay.style.cssText =
@@ -562,14 +601,24 @@ function showLauncherDialog(
   const tileRow = document.createElement('div');
   tileRow.style.cssText = `display:flex;gap:12px;justify-content:center;`;
 
+  const tiles: HTMLButtonElement[] = [];
+  let focusedIdx = 0;
+
+  const setFocused = (idx: number) => {
+    focusedIdx = idx;
+    for (let i = 0; i < tiles.length; i++) {
+      tiles[i].style.borderColor = i === idx ? COLORS.blue : COLORS.bgSurface1;
+    }
+  };
+
   const makeTile = (label: string, desc: string, iconSvg: string, onClick: () => void) => {
     const tile = document.createElement('button');
     tile.style.cssText =
-      `background:${COLORS.bgMantle};border:1px solid ${COLORS.bgSurface1};border-radius:8px;` +
+      `background:${COLORS.bgMantle};border:2px solid ${COLORS.bgSurface1};border-radius:8px;` +
       `padding:16px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;` +
-      `cursor:pointer;flex:1;min-width:130px;transition:border-color 0.15s;`;
-    tile.addEventListener('mouseenter', () => { tile.style.borderColor = COLORS.blue; });
-    tile.addEventListener('mouseleave', () => { tile.style.borderColor = COLORS.bgSurface1; });
+      `cursor:pointer;flex:1;min-width:130px;transition:border-color 0.15s;outline:none;`;
+    tile.addEventListener('mouseenter', () => setFocused(tiles.indexOf(tile)));
+    tile.addEventListener('mouseleave', () => setFocused(focusedIdx));
 
     const icon = document.createElement('div');
     icon.innerHTML = iconSvg;
@@ -590,8 +639,24 @@ function showLauncherDialog(
       overlay.remove();
       onClick();
     });
+    tiles.push(tile);
     return tile;
   };
+
+  const notebookSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4h16v16H4z"/>
+    <path d="M8 4v16"/>
+    <line x1="12" y1="8" x2="18" y2="8"/>
+    <line x1="12" y1="12" x2="18" y2="12"/>
+    <line x1="12" y1="16" x2="16" y2="16"/>
+  </svg>`;
+
+  tileRow.appendChild(makeTile(
+    'Notebook',
+    'Start with a pre-configured Jupyter notebook',
+    notebookSvg,
+    onNotebook,
+  ));
 
   tileRow.appendChild(makeTile(
     'Annotator',
@@ -616,12 +681,30 @@ function showLauncherDialog(
   ));
 
   dialog.appendChild(tileRow);
+  setFocused(0);
+
+  overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setFocused((focusedIdx + 1) % tiles.length);
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setFocused((focusedIdx - 1 + tiles.length) % tiles.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      tiles[focusedIdx].click();
+    } else if (e.key === 'Escape') {
+      overlay.remove();
+    }
+  });
 
   overlay.appendChild(dialog);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) overlay.remove();
   });
+  overlay.tabIndex = -1;
   document.body.appendChild(overlay);
+  overlay.focus();
 }
 
 export default bioacousticPlugin;
