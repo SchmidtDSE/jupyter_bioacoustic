@@ -262,6 +262,10 @@ export class FormPanel {
       }
     }
 
+    for (const [name, el] of this._namedSections) {
+      if (!el.parentElement) this._dynFormEl.appendChild(el);
+    }
+
     if (!cfg.submission_buttons) {
       await this._buildSubmissionButtons({ submit: true });
     }
@@ -487,7 +491,6 @@ export class FormPanel {
       sectionDiv.dataset.formSection = formName;
       sectionDiv.style.cssText = formRowStyle(true);
       await this._buildFormSection(formElements, sectionDiv);
-      this._dynFormEl.appendChild(sectionDiv);
       this._namedSections.set(formName, sectionDiv);
     }
   }
@@ -543,6 +546,7 @@ export class FormPanel {
     lbl.textContent = labelText;
 
     let inputEl: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    const pendingFormSections: string[] = [];
 
     if (type === 'textbox') {
       if (cfg.multiline) {
@@ -718,10 +722,15 @@ export class FormPanel {
         if (required) this._requiredInputs.push({ col, el: sel });
         lbl.appendChild(wrapper);
         container.appendChild(lbl);
+        for (const sn of allFormSections) {
+          const sec = this._namedSections.get(sn);
+          if (sec) container.appendChild(sec);
+        }
         return;
       }
 
       this._formValues[col] = cfg.default ?? selectedDefault;
+      for (const sn of allFormSections) pendingFormSections.push(sn);
       inputEl = sel;
 
     } else if (type === 'checkbox') {
@@ -778,6 +787,17 @@ export class FormPanel {
     this._inputRefs.set(col, inputEl);
     lbl.appendChild(inputEl);
     container.appendChild(lbl);
+    if (type === 'checkbox') {
+      const cf = cfg.checked_form as string | undefined;
+      const uf = cfg.unchecked_form as string | undefined;
+      for (const fn of [cf, uf]) {
+        if (fn) pendingFormSections.push(fn);
+      }
+    }
+    for (const sn of pendingFormSections) {
+      const sec = this._namedSections.get(sn);
+      if (sec) container.appendChild(sec);
+    }
   }
 
   /**
