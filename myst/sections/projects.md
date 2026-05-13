@@ -5,7 +5,7 @@ A `project` is a self-contained YAML file that bundles all settings — data sou
 
 ## Project vs Config
 
-The main difference between a `project` and a config is that a project is **required** to be a complete specification, that doesn't allow overrides.
+Functionally, the main difference between a `project` and a `config` is that a project is **required** to be a complete specification and it doesn't allow overrides.
 
 The importance of a `project` is that it allows the user to fully specify both data sources, such a a clip meta data and audio files, while reusing a configuration file that might be used for many different sets of data sources.
 
@@ -68,7 +68,7 @@ Some of the advantages of this approach over a pure `config` + _in-cell-notebook
 - Cleaner notebooks, and avoiding users from re-running the same notebook over and over changing one or two lines, creating a permenant record of the configurations used
 - Makes it easier to transfer the setup to new research-projects
 
-The user is not able override project configurations, however `**kwargs` (values passed directly to the output file) are still allowed.  For example:
+As mentioned user project configurations do not allow overrides. Note however that `**kwargs` (values passed directly to the output file) are still allowed.  For example:
 
 ```python
 # raises an error
