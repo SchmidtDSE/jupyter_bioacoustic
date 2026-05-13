@@ -1,9 +1,6 @@
 (overview)=
 # Overview
 
-## BioacousticAnnotator
-
-
 ```{figure} ../../assets/app/inline_standalone.png
 :class: bordered
 ```
@@ -20,7 +17,23 @@ ba =  BioacousticAnnotator(...)
 - `ba.source`: returns the input data as a dataframe 
 - `ba.output()`: returns the output data as a dataframe. the data is by default only re-loaded if an update has been made. The user can force a reload `ba.output(force=True)`. Note this is useful if the output data is modified externally. 
 
+Additionally there is a `BioacousticAnnotator` launcher-tile
+
+<img src="../../assets/launcher/tile-row.png" height="100px">
+
+Clicking on the laucher tile gives the user 3 options:
+
+```{figure} ../../assets/launcher/buttons.png
+:class: bordered
+```
+
+1. Notebook: Opens a <a href="https://github.com/SchmidtDSE/jupyter_bioacoustic/blob/main/jupyter_bioacoustic/config_builder/nb/starter-notebook.ipynb" target="_blank">starter notebook</a> with imports and stubbed method calls, along with basic documentation on how to get started. This is the fastest way to start a new annotation project from scratch.
+2. Anotator: After selecting a [project](/projects), opens `BioacousticAnnotator`. This is a great option during data collection when no data selection, filtering, processing or training is needed. 
+3. Config Builder: Opens [config-builder](/config-builder). When combined with the Annotator Launcher (2) provides a no-code environment for pure-annotation tasks.
+
 ---
+
+## BioacousticAnnotator
 
 The app itself is composed of 3 distinct components: 
 

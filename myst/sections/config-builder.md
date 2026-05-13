@@ -33,9 +33,9 @@ Each section on the left is collapsible — click a header to expand it. Only on
 :class: bordered
 ```
 
-Set the **project name** (used as the widget header title and to auto-generate file paths) and configure which output files to create.
+**Project Name** — used as the widget header title and to auto-generate file paths
 
-**Configuration File Paths** — enable or disable each file type with a checkbox. With all three enabled, files reference each other in a chain: project → config → form. Uncheck a file to inline its contents into the parent. If you only need a single file, uncheck the others and everything is combined.
+**Configuration File Paths** — Enter or browse to a file path to save configuration files. Clicking **Load** will read an existing config and populate the builder. There are three types of configuration files:
 
 | File | Purpose |
 |---|---|
@@ -43,14 +43,14 @@ Set the **project name** (used as the widget header title and to auto-generate f
 | **Config** | App behavior, column layout, capture, dimensions — shared across projects |
 | **Form** | Annotation controls, dynamic forms, submission buttons — reusable form definitions |
 
-Each row has **Browse** and **Load** buttons. Enter or browse to a file path and click **Load** to read an existing config and populate the builder. Loading cascades through child references — loading a project file also loads its referenced config and form files. You can then swap individual files: for example, load a project, then load a different config file to update the project's config reference.
-
 **Description Panel** — optionally add a collapsible description section to the top of the annotator for project context, reviewer instructions, or general guidance. Provide markdown text directly or reference a `.md` file.
 
 ---
 
 (data-section)=
 ### Data
+
+Use this section to load meta data for the clips are contained in tabular data (such as CSV or parquet files, or in API or Database Queries).  
 
 ```{figure} ../../assets/config_builder/section-data.png
 :class: bordered
@@ -63,12 +63,12 @@ Configure the clip source:
 - **Columns** — select which columns to include and drag to reorder (auto-populated after loading)
 - **Time columns** — map `start_time`, `end_time`, or `duration` columns from your data
 
-The section auto-loads column names when you enter a valid file path.
-
 ---
 
 (audio-section)=
 ### Audio
+
+Audio data can be loaded from a single source, using local or remote files, or passed through a column in the "Data" (clip-meta-data). 
 
 ```{figure} ../../assets/config_builder/section-audio.png
 :class: bordered
@@ -91,7 +91,6 @@ Configure where annotation results are saved:
 - **Path** — local output file (CSV, Parquet, or JSONL)
 - **Sync URI** — optional remote destination (S3, GCS) with a sync button
 - **Sync button** — enable/disable with a custom label
-- **Recursive** — write output after every submission instead of waiting for session end
 
 ---
 
@@ -136,10 +135,10 @@ Each element is shown as a card that can be reordered, edited, or removed. The [
 (side-panel)=
 ### Side Panel
 
-<!-- ```{figure} ../../assets/config_builder/side-panel.png
+```{figure} ../../assets/config_builder/section-side_panel.png
 :class: bordered
 ```
- -->
+
 The right-hand panel provides two views:
 
 **Docs** — field-level documentation for the currently active section. As you interact with fields on the left, the corresponding doc card highlights with a blue left border. Documentation is organized with subsections matching the builder layout.
