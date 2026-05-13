@@ -61,6 +61,7 @@ export class Player {
   private _viewYMax = 1;  // top edge
   private _panDrag: { startX: number; startY: number; origXMin: number; origXMax: number; origYMin: number; origYMax: number } | null = null;
   private _zoomBoxActive = false;
+  private _panToolActive = false;
   private _zoomBoxDrag: { startCx: number; startCy: number } | null = null;
   private _zoomBoxMoveHandler: ((e: MouseEvent) => void) | null = null;
   private _zoomBoxUpHandler: ((e: MouseEvent) => void) | null = null;
@@ -95,6 +96,7 @@ export class Player {
   private _audio!: HTMLAudioElement;
   private _loadBtn!: HTMLButtonElement;
   private _zoomBoxBtn!: HTMLButtonElement;
+  private _panToolBtn!: HTMLButtonElement;
   private _captureBtn!: HTMLButtonElement;
 
   // ─── Context ───────────────────────────────────────────────
@@ -301,10 +303,25 @@ export class Player {
     this._zoomBoxBtn.style.cssText = btnStyle() + `font-size:13px;padding:2px 8px;`;
     this._zoomBoxBtn.addEventListener('click', () => {
       this._zoomBoxActive = !this._zoomBoxActive;
+      if (this._zoomBoxActive) this._panToolActive = false;
       this._zoomBoxBtn.style.background = this._zoomBoxActive ? COLORS.overlay : COLORS.bgSurface1;
-      this._canvasContainer.style.cursor = this._zoomBoxActive ? 'crosshair' : 'default';
+      this._panToolBtn.style.background = COLORS.bgSurface1;
+      this._updateCursorForZoom();
     });
     viewBar.appendChild(this._zoomBoxBtn);
+
+    this._panToolBtn = document.createElement('button');
+    this._panToolBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`;
+    this._panToolBtn.title = 'Pan — click and drag to move around';
+    this._panToolBtn.style.cssText = btnStyle() + `font-size:13px;padding:2px 8px;display:inline-flex;align-items:center;`;
+    this._panToolBtn.addEventListener('click', () => {
+      this._panToolActive = !this._panToolActive;
+      if (this._panToolActive) this._zoomBoxActive = false;
+      this._panToolBtn.style.background = this._panToolActive ? COLORS.overlay : COLORS.bgSurface1;
+      this._zoomBoxBtn.style.background = COLORS.bgSurface1;
+      this._updateCursorForZoom();
+    });
+    viewBar.appendChild(this._panToolBtn);
 
     const zoomResetBtn = document.createElement('button');
     zoomResetBtn.textContent = 'Reset';
@@ -722,10 +739,10 @@ export class Player {
       }
     }
 
-    // Pan mode: when no annotation tool is active and zoomed in
+    // Pan mode: when pan tool is active, or no annotation tool is active and zoomed in
     const ac = this._form.getAnnotConfig();
     const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
-    if ((!ac || !this._form.getActiveTool()) && isZoomed && this._specBitmap) {
+    if ((this._panToolActive || (!ac || !this._form.getActiveTool())) && isZoomed && this._specBitmap) {
       this._panDrag = {
         startX: e.clientX, startY: e.clientY,
         origXMin: this._viewXMin, origXMax: this._viewXMax,
@@ -1343,6 +1360,15 @@ export class Player {
   }
 
   private _updateCursorForZoom(): void {
+    if (this._zoomBoxActive) {
+      this._canvasContainer.style.cursor = 'crosshair';
+      return;
+    }
+    if (this._panToolActive) {
+      const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
+      this._canvasContainer.style.cursor = isZoomed ? 'grab' : 'default';
+      return;
+    }
     const ac = this._form.getAnnotConfig();
     const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
     if (ac && this._form.getActiveTool()) {
