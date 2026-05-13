@@ -738,7 +738,7 @@ export class FormSection extends CollapsibleSection {
     if (submissionButtons) result.submission_buttons = submissionButtons;
 
     if (this._dynForms.length > 0) {
-      const dynList: any[] = [];
+      const dynDict: Record<string, any[]> = {};
       for (const df of this._dynForms) {
         const elems: any[] = [];
         for (const fe of df.elements) {
@@ -751,9 +751,9 @@ export class FormSection extends CollapsibleSection {
           }
           elems.push({ [fe.type]: cleaned });
         }
-        dynList.push({ [df.name]: elems });
+        dynDict[df.name] = elems;
       }
-      result.dynamic_forms = dynList;
+      result.dynamic_forms = dynDict;
     }
 
     return result;
@@ -860,25 +860,7 @@ export class FormSection extends CollapsibleSection {
     }
 
     const dynForms = data.dynamic_forms;
-    if (Array.isArray(dynForms)) {
-      for (const item of dynForms) {
-        if (item && typeof item === 'object') {
-          for (const [name, elems] of Object.entries(item)) {
-            const feList: FormElement[] = [];
-            if (Array.isArray(elems)) {
-              for (const el of elems) {
-                if (el && typeof el === 'object') {
-                  const [type] = Object.keys(el);
-                  const cfg = typeof el[type] === 'object' && el[type] !== null ? { ...el[type] } : { value: el[type] };
-                  feList.push({ type: type as ElementType, config: cfg, el: document.createElement('div') });
-                }
-              }
-            }
-            this._createDynForm(name, feList);
-          }
-        }
-      }
-    } else if (dynForms && typeof dynForms === 'object') {
+    if (dynForms && typeof dynForms === 'object' && !Array.isArray(dynForms)) {
       for (const [name, elems] of Object.entries(dynForms)) {
         const feList: FormElement[] = [];
         if (Array.isArray(elems)) {
