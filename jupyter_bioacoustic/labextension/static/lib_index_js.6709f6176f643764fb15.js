@@ -118,7 +118,38 @@ class ConfigPanel {
         this._yamlPanel.saveSingleRequested.connect((_, configType) => {
             void this._saveSingleFile(configType);
         });
-        this.element.append(left, this._yamlPanel.element);
+        const handle = document.createElement('div');
+        handle.style.cssText =
+            `width:5px;cursor:col-resize;background:${styles_1.COLORS.bgSurface0};flex-shrink:0;` +
+                `display:flex;align-items:center;justify-content:center;`;
+        const grip = document.createElement('div');
+        grip.style.cssText =
+            `width:3px;height:28px;border-radius:2px;background:${styles_1.COLORS.overlay};`;
+        handle.appendChild(grip);
+        let dragging = false;
+        let startX = 0;
+        let startW = 0;
+        handle.addEventListener('mousedown', (e) => {
+            dragging = true;
+            startX = e.clientX;
+            startW = this._yamlPanel.element.offsetWidth;
+            this._yamlPanel.element.style.transition = 'none';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!dragging)
+                return;
+            const delta = startX - e.clientX;
+            const newW = Math.max(200, Math.min(800, startW + delta));
+            this._yamlPanel.element.style.width = `${newW}px`;
+        });
+        document.addEventListener('mouseup', () => {
+            if (dragging) {
+                dragging = false;
+                this._yamlPanel.element.style.transition = '';
+            }
+        });
+        this.element.append(left, handle, this._yamlPanel.element);
         this._statusEl = document.createElement('span');
         this._statusEl.style.cssText =
             `font-size:11px;color:${styles_1.COLORS.green};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
@@ -324,19 +355,19 @@ class ConfigPanel {
             if (state.project) {
                 this._project.setData(state.project);
                 const targets = state.section_targets || {};
-                const dataSource = targets.data === 'config' ? (state.config || {}) : state.project;
-                const audioSource = targets.audio === 'config' ? (state.config || {}) : state.project;
-                const outputSource = targets.output === 'config' ? (state.config || {}) : state.project;
-                if (dataSource.data && typeof dataSource.data === 'object') {
-                    this._data.setData(dataSource.data);
-                }
-                if (audioSource.audio && typeof audioSource.audio === 'object') {
-                    this._audio.setData(audioSource.audio);
-                }
+                const proj = state.project || {};
+                const conf = state.config || {};
+                const mergedData = this._resolveSectionData('data', targets, proj, conf);
+                if (mergedData)
+                    this._data.setData(mergedData);
+                const mergedAudio = this._resolveSectionData('audio', targets, proj, conf);
+                if (mergedAudio)
+                    this._audio.setData(mergedAudio);
+                const outputSource = targets.output === 'config' ? conf : proj;
                 if (outputSource.output && typeof outputSource.output === 'object') {
                     this._output.setData(outputSource.output);
                 }
-                const appSource = targets.app === 'config' ? Object.assign(Object.assign({}, state.project), (state.config || {})) : state.project;
+                const appSource = targets.app === 'config' ? Object.assign(Object.assign({}, proj), conf) : proj;
                 this._app.setData(appSource);
             }
             if (state.form_config && typeof state.form_config === 'object') {
@@ -443,17 +474,22 @@ class ConfigPanel {
         }
     }
     _updateTargetOptions(states) {
-        const twoOpts = [];
+        const baseOpts = [];
         if (states.project)
-            twoOpts.push('project');
+            baseOpts.push('project');
         if (states.config)
-            twoOpts.push('config');
-        if (twoOpts.length === 0)
-            twoOpts.push('project');
-        for (const sec of [this._data, this._audio, this._output, this._app]) {
-            sec.setTargetOptions(twoOpts);
+            baseOpts.push('config');
+        if (baseOpts.length === 0)
+            baseOpts.push('project');
+        const splitOpts = states.project && states.config
+            ? ['split', ...baseOpts] : [...baseOpts];
+        for (const sec of [this._data, this._audio]) {
+            sec.setTargetOptions(splitOpts);
         }
-        const formOpts = [...twoOpts];
+        for (const sec of [this._output, this._app]) {
+            sec.setTargetOptions(baseOpts);
+        }
+        const formOpts = [...baseOpts];
         if (states.form)
             formOpts.push('form');
         this._form.setTargetOptions(formOpts);
@@ -474,6 +510,18 @@ class ConfigPanel {
             app: this._app.getData(),
             form: this._form.getData(),
         });
+    }
+    _resolveSectionData(section, targets, proj, conf) {
+        const t = targets[section];
+        const pData = proj[section];
+        const cData = conf[section];
+        if (t === 'split') {
+            if (!pData && !cData)
+                return null;
+            return Object.assign(Object.assign({}, (typeof cData === 'object' ? cData : {})), (typeof pData === 'object' ? pData : {}));
+        }
+        const source = t === 'config' ? cData : pData;
+        return source && typeof source === 'object' ? source : null;
     }
     _setStatus(msg, error = false) {
         this._statusEl.textContent = msg;
@@ -1696,7 +1744,7 @@ const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./
 const SecretsEditor_1 = __webpack_require__(/*! ./SecretsEditor */ "./lib/config_builder/sections/SecretsEditor.js");
 class AudioSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
-        super('Audio', 'audio', false, true);
+        super('Audio', 'audio', false, true, ['split', 'project', 'config']);
         this.browseRequested = new signaling_1.Signal(this);
         this._availableCols = [];
         this._sourceType = this._makeSelect(['path', 'url', 'column'], 'path');
@@ -2507,7 +2555,7 @@ const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./
 const SecretsEditor_1 = __webpack_require__(/*! ./SecretsEditor */ "./lib/config_builder/sections/SecretsEditor.js");
 class DataSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
-        super('Data', 'data', false, true);
+        super('Data', 'data', false, true, ['split', 'project', 'config']);
         this.columnsLoaded = new signaling_1.Signal(this);
         this.fileLoadRequested = new signaling_1.Signal(this);
         this.browseRequested = new signaling_1.Signal(this);
@@ -3407,20 +3455,13 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
         this._emitChanged();
     }
     getData() {
+        const USER_INPUT_TYPES = new Set(['select', 'textbox', 'checkbox', 'number']);
         const result = {};
         const formList = [];
-        const topLevel = {};
+        let submissionButtons = null;
+        let seenUserInput = false;
         for (const elem of this._elements) {
             const cfg = Object.assign({}, elem.config);
-            if (elem.type === 'title') {
-                if (cfg.progress_tracker) {
-                    topLevel.title = { value: cfg.value || '', progress_tracker: true };
-                }
-                else {
-                    topLevel.title = cfg.value || '';
-                }
-                continue;
-            }
             if (elem.type === 'submission_buttons') {
                 const sb = {};
                 if (cfg.line)
@@ -3431,53 +3472,32 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
                     sb.next = { label: cfg.next_label };
                 if (cfg.submit_label)
                     sb.submit = { label: cfg.submit_label };
-                topLevel.submission_buttons = sb;
+                submissionButtons = sb;
                 continue;
             }
-            if (elem.type === 'pass_value') {
-                topLevel.pass_value = { source_column: cfg.source_column || '', column: cfg.column || '' };
+            if (USER_INPUT_TYPES.has(elem.type))
+                seenUserInput = true;
+            const serialized = this._serializeElement(elem.type, cfg);
+            if (serialized === null)
                 continue;
+            const isSpecial = elem.type === 'title' || elem.type === 'annotation' ||
+                elem.type === 'pass_value' || elem.type === 'fixed_value';
+            const hasWrapper = typeof serialized === 'object' && serialized !== null &&
+                !Array.isArray(serialized) && '__key' in serialized;
+            const val = hasWrapper ? serialized.__val : serialized;
+            if (!seenUserInput && isSpecial) {
+                result[elem.type] = val;
             }
-            if (elem.type === 'fixed_value') {
-                topLevel.fixed_value = { column: cfg.column || '', value: cfg.value || '' };
-                continue;
-            }
-            if (elem.type === 'annotation') {
-                const annot = {};
-                if (cfg.start_time_col)
-                    annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
-                if (cfg.end_time_col)
-                    annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
-                if (cfg.min_freq_col)
-                    annot.min_frequency = { column: cfg.min_freq_col };
-                if (cfg.max_freq_col)
-                    annot.max_frequency = { column: cfg.max_freq_col };
-                if (cfg.tools)
-                    annot.tools = cfg.tools;
-                if (cfg.form)
-                    annot.form = cfg.form;
-                topLevel.annotation = annot;
-                continue;
-            }
-            if (elem.type === 'break' || elem.type === 'line' || elem.type === 'text') {
-                const val = elem.type === 'text' ? (cfg.value || '') : true;
+            else {
                 formList.push({ [elem.type]: val });
-                continue;
             }
-            const cleaned = {};
-            for (const [k, v] of Object.entries(cfg)) {
-                if (v !== undefined && v !== null && v !== '' && v !== false) {
-                    cleaned[k] = v;
-                }
-            }
-            formList.push({ [elem.type]: cleaned });
         }
-        result._element_order = this._elements.map(e => e.type);
-        Object.assign(result, topLevel);
         if (formList.length > 0)
             result.form = formList;
+        if (submissionButtons)
+            result.submission_buttons = submissionButtons;
         if (this._dynForms.length > 0) {
-            const dynList = [];
+            const dynDict = {};
             for (const df of this._dynForms) {
                 const elems = [];
                 for (const fe of df.elements) {
@@ -3490,11 +3510,52 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
                     }
                     elems.push({ [fe.type]: cleaned });
                 }
-                dynList.push({ [df.name]: elems });
+                dynDict[df.name] = elems;
             }
-            result.dynamic_forms = dynList;
+            result.dynamic_forms = dynDict;
         }
         return result;
+    }
+    _serializeElement(type, cfg) {
+        if (type === 'title') {
+            if (cfg.progress_tracker) {
+                return { __key: 'title', __val: { value: cfg.value || '', progress_tracker: true } };
+            }
+            return { __key: 'title', __val: cfg.value || '' };
+        }
+        if (type === 'pass_value') {
+            return { __key: 'pass_value', __val: { source_column: cfg.source_column || '', column: cfg.column || '' } };
+        }
+        if (type === 'fixed_value') {
+            return { __key: 'fixed_value', __val: { column: cfg.column || '', value: cfg.value || '' } };
+        }
+        if (type === 'annotation') {
+            const annot = {};
+            if (cfg.start_time_col)
+                annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
+            if (cfg.end_time_col)
+                annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
+            if (cfg.min_freq_col)
+                annot.min_frequency = { column: cfg.min_freq_col };
+            if (cfg.max_freq_col)
+                annot.max_frequency = { column: cfg.max_freq_col };
+            if (cfg.tools)
+                annot.tools = cfg.tools;
+            if (cfg.form)
+                annot.form = cfg.form;
+            return { __key: 'annotation', __val: annot };
+        }
+        if (type === 'break' || type === 'line')
+            return true;
+        if (type === 'text')
+            return cfg.value || '';
+        const cleaned = {};
+        for (const [k, v] of Object.entries(cfg)) {
+            if (v !== undefined && v !== null && v !== '' && v !== false) {
+                cleaned[k] = v;
+            }
+        }
+        return cleaned;
     }
     setData(data) {
         var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -3564,26 +3625,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
             this._addElement('submission_buttons', cfg);
         }
         const dynForms = data.dynamic_forms;
-        if (Array.isArray(dynForms)) {
-            for (const item of dynForms) {
-                if (item && typeof item === 'object') {
-                    for (const [name, elems] of Object.entries(item)) {
-                        const feList = [];
-                        if (Array.isArray(elems)) {
-                            for (const el of elems) {
-                                if (el && typeof el === 'object') {
-                                    const [type] = Object.keys(el);
-                                    const cfg = typeof el[type] === 'object' && el[type] !== null ? Object.assign({}, el[type]) : { value: el[type] };
-                                    feList.push({ type: type, config: cfg, el: document.createElement('div') });
-                                }
-                            }
-                        }
-                        this._createDynForm(name, feList);
-                    }
-                }
-            }
-        }
-        else if (dynForms && typeof dynForms === 'object') {
+        if (dynForms && typeof dynForms === 'object' && !Array.isArray(dynForms)) {
             for (const [name, elems] of Object.entries(dynForms)) {
                 const feList = [];
                 if (Array.isArray(elems)) {
@@ -6442,6 +6484,10 @@ class FormPanel {
                 }
             }
         }
+        for (const [name, el] of this._namedSections) {
+            if (!el.parentElement)
+                this._dynFormEl.appendChild(el);
+        }
         if (!cfg.submission_buttons) {
             await this._buildSubmissionButtons({ submit: true });
         }
@@ -6652,28 +6698,13 @@ class FormPanel {
     }
     // ─── Private: form building ────────────────────────────────
     async _registerDynamicForms(dynForms) {
-        if (!dynForms)
+        if (!dynForms || typeof dynForms !== 'object' || Array.isArray(dynForms))
             return;
-        const entries = [];
-        if (Array.isArray(dynForms)) {
-            for (const item of dynForms) {
-                if (item && typeof item === 'object') {
-                    for (const name of Object.keys(item)) {
-                        entries.push([name, item[name]]);
-                    }
-                }
-            }
-        }
-        else if (typeof dynForms === 'object') {
-            for (const name of Object.keys(dynForms)) {
-                entries.push([name, dynForms[name]]);
-            }
-        }
-        for (const [formName, rawElements] of entries) {
+        for (const [formName, rawElements] of Object.entries(dynForms)) {
             let formElements = rawElements;
             if (!Array.isArray(formElements)) {
                 if (formElements && typeof formElements === 'object') {
-                    formElements = Object.keys(formElements).map(k => ({ [k]: formElements[k] }));
+                    formElements = Object.keys(formElements).map((k) => ({ [k]: formElements[k] }));
                 }
                 else {
                     continue;
@@ -6683,7 +6714,6 @@ class FormPanel {
             sectionDiv.dataset.formSection = formName;
             sectionDiv.style.cssText = (0, styles_1.formRowStyle)(true);
             await this._buildFormSection(formElements, sectionDiv);
-            this._dynFormEl.appendChild(sectionDiv);
             this._namedSections.set(formName, sectionDiv);
         }
     }
@@ -6739,6 +6769,7 @@ class FormPanel {
         lbl.style.cssText = (0, styles_1.formLabelStyle)();
         lbl.textContent = labelText;
         let inputEl;
+        const pendingFormSections = [];
         if (type === 'textbox') {
             if (cfg.multiline) {
                 const ta = document.createElement('textarea');
@@ -6917,9 +6948,16 @@ class FormPanel {
                     this._requiredInputs.push({ col, el: sel });
                 lbl.appendChild(wrapper);
                 container.appendChild(lbl);
+                for (const sn of allFormSections) {
+                    const sec = this._namedSections.get(sn);
+                    if (sec)
+                        container.appendChild(sec);
+                }
                 return;
             }
             this._formValues[col] = (_h = cfg.default) !== null && _h !== void 0 ? _h : selectedDefault;
+            for (const sn of allFormSections)
+                pendingFormSections.push(sn);
             inputEl = sel;
         }
         else if (type === 'checkbox') {
@@ -6984,6 +7022,19 @@ class FormPanel {
         this._inputRefs.set(col, inputEl);
         lbl.appendChild(inputEl);
         container.appendChild(lbl);
+        if (type === 'checkbox') {
+            const cf = cfg.checked_form;
+            const uf = cfg.unchecked_form;
+            for (const fn of [cf, uf]) {
+                if (fn)
+                    pendingFormSections.push(fn);
+            }
+        }
+        for (const sn of pendingFormSections) {
+            const sec = this._namedSections.get(sn);
+            if (sec)
+                container.appendChild(sec);
+        }
     }
     /**
      * Load select items. Returns [value, label, formRef?] tuples.
@@ -8147,6 +8198,7 @@ class Player {
         this._viewYMax = 1; // top edge
         this._panDrag = null;
         this._zoomBoxActive = false;
+        this._panToolActive = false;
         this._zoomBoxDrag = null;
         this._zoomBoxMoveHandler = null;
         this._zoomBoxUpHandler = null;
@@ -8330,10 +8382,26 @@ class Player {
         this._zoomBoxBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:13px;padding:2px 8px;`;
         this._zoomBoxBtn.addEventListener('click', () => {
             this._zoomBoxActive = !this._zoomBoxActive;
+            if (this._zoomBoxActive)
+                this._panToolActive = false;
             this._zoomBoxBtn.style.background = this._zoomBoxActive ? styles_1.COLORS.overlay : styles_1.COLORS.bgSurface1;
-            this._canvasContainer.style.cursor = this._zoomBoxActive ? 'crosshair' : 'default';
+            this._panToolBtn.style.background = styles_1.COLORS.bgSurface1;
+            this._updateCursorForZoom();
         });
         viewBar.appendChild(this._zoomBoxBtn);
+        this._panToolBtn = document.createElement('button');
+        this._panToolBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`;
+        this._panToolBtn.title = 'Pan — click and drag to move around';
+        this._panToolBtn.style.cssText = (0, styles_1.btnStyle)() + `font-size:13px;padding:2px 8px;display:inline-flex;align-items:center;`;
+        this._panToolBtn.addEventListener('click', () => {
+            this._panToolActive = !this._panToolActive;
+            if (this._panToolActive)
+                this._zoomBoxActive = false;
+            this._panToolBtn.style.background = this._panToolActive ? styles_1.COLORS.overlay : styles_1.COLORS.bgSurface1;
+            this._zoomBoxBtn.style.background = styles_1.COLORS.bgSurface1;
+            this._updateCursorForZoom();
+        });
+        viewBar.appendChild(this._panToolBtn);
         const zoomResetBtn = document.createElement('button');
         zoomResetBtn.textContent = 'Reset';
         zoomResetBtn.style.cssText = (0, styles_1.btnStyle)();
@@ -8730,10 +8798,10 @@ class Player {
                 return;
             }
         }
-        // Pan mode: when no annotation tool is active and zoomed in
+        // Pan mode: when pan tool is active, or no annotation tool is active and zoomed in
         const ac = this._form.getAnnotConfig();
         const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
-        if ((!ac || !this._form.getActiveTool()) && isZoomed && this._specBitmap) {
+        if ((this._panToolActive || (!ac || !this._form.getActiveTool())) && isZoomed && this._specBitmap) {
             this._panDrag = {
                 startX: e.clientX, startY: e.clientY,
                 origXMin: this._viewXMin, origXMax: this._viewXMax,
@@ -9447,6 +9515,15 @@ class Player {
         this._renderFrame();
     }
     _updateCursorForZoom() {
+        if (this._zoomBoxActive) {
+            this._canvasContainer.style.cursor = 'crosshair';
+            return;
+        }
+        if (this._panToolActive) {
+            const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
+            this._canvasContainer.style.cursor = isZoomed ? 'grab' : 'default';
+            return;
+        }
         const ac = this._form.getAnnotConfig();
         const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
         if (ac && this._form.getActiveTool()) {
@@ -9827,4 +9904,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.96a7ca27b38d35773915.js.map
+//# sourceMappingURL=lib_index_js.6709f6176f643764fb15.js.map
