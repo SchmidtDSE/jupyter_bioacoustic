@@ -697,21 +697,14 @@ export class FormSection extends CollapsibleSection {
   }
 
   getData(): Record<string, any> {
+    const USER_INPUT_TYPES: Set<string> = new Set(['select', 'textbox', 'checkbox', 'number']);
     const result: Record<string, any> = {};
     const formList: any[] = [];
-    const topLevel: Record<string, any> = {};
+    let submissionButtons: Record<string, any> | null = null;
+    let seenUserInput = false;
 
     for (const elem of this._elements) {
       const cfg = { ...elem.config };
-
-      if (elem.type === 'title') {
-        if (cfg.progress_tracker) {
-          topLevel.title = { value: cfg.value || '', progress_tracker: true };
-        } else {
-          topLevel.title = cfg.value || '';
-        }
-        continue;
-      }
 
       if (elem.type === 'submission_buttons') {
         const sb: Record<string, any> = {};
@@ -719,50 +712,30 @@ export class FormSection extends CollapsibleSection {
         if (cfg.previous) sb.previous = true;
         if (cfg.next_label) sb.next = { label: cfg.next_label };
         if (cfg.submit_label) sb.submit = { label: cfg.submit_label };
-        topLevel.submission_buttons = sb;
+        submissionButtons = sb;
         continue;
       }
 
-      if (elem.type === 'pass_value') {
-        topLevel.pass_value = { source_column: cfg.source_column || '', column: cfg.column || '' };
-        continue;
-      }
+      if (USER_INPUT_TYPES.has(elem.type)) seenUserInput = true;
 
-      if (elem.type === 'fixed_value') {
-        topLevel.fixed_value = { column: cfg.column || '', value: cfg.value || '' };
-        continue;
-      }
+      const serialized = this._serializeElement(elem.type, cfg);
+      if (serialized === null) continue;
 
-      if (elem.type === 'annotation') {
-        const annot: Record<string, any> = {};
-        if (cfg.start_time_col) annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
-        if (cfg.end_time_col) annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
-        if (cfg.min_freq_col) annot.min_frequency = { column: cfg.min_freq_col };
-        if (cfg.max_freq_col) annot.max_frequency = { column: cfg.max_freq_col };
-        if (cfg.tools) annot.tools = cfg.tools;
-        if (cfg.form) annot.form = cfg.form;
-        topLevel.annotation = annot;
-        continue;
-      }
+      const isSpecial = elem.type === 'title' || elem.type === 'annotation' ||
+        elem.type === 'pass_value' || elem.type === 'fixed_value';
+      const hasWrapper = typeof serialized === 'object' && serialized !== null &&
+        !Array.isArray(serialized) && '__key' in serialized;
+      const val = hasWrapper ? serialized.__val : serialized;
 
-      if (elem.type === 'break' || elem.type === 'line' || elem.type === 'text') {
-        const val = elem.type === 'text' ? (cfg.value || '') : true;
+      if (!seenUserInput && isSpecial) {
+        result[elem.type] = val;
+      } else {
         formList.push({ [elem.type]: val });
-        continue;
       }
-
-      const cleaned: Record<string, any> = {};
-      for (const [k, v] of Object.entries(cfg)) {
-        if (v !== undefined && v !== null && v !== '' && v !== false) {
-          cleaned[k] = v;
-        }
-      }
-      formList.push({ [elem.type]: cleaned });
     }
 
-    result._element_order = this._elements.map(e => e.type);
-    Object.assign(result, topLevel);
     if (formList.length > 0) result.form = formList;
+    if (submissionButtons) result.submission_buttons = submissionButtons;
 
     if (this._dynForms.length > 0) {
       const dynList: any[] = [];
@@ -784,6 +757,45 @@ export class FormSection extends CollapsibleSection {
     }
 
     return result;
+  }
+
+  private _serializeElement(type: ElementType, cfg: Record<string, any>): any {
+    if (type === 'title') {
+      if (cfg.progress_tracker) {
+        return { __key: 'title', __val: { value: cfg.value || '', progress_tracker: true } };
+      }
+      return { __key: 'title', __val: cfg.value || '' };
+    }
+
+    if (type === 'pass_value') {
+      return { __key: 'pass_value', __val: { source_column: cfg.source_column || '', column: cfg.column || '' } };
+    }
+
+    if (type === 'fixed_value') {
+      return { __key: 'fixed_value', __val: { column: cfg.column || '', value: cfg.value || '' } };
+    }
+
+    if (type === 'annotation') {
+      const annot: Record<string, any> = {};
+      if (cfg.start_time_col) annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
+      if (cfg.end_time_col) annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
+      if (cfg.min_freq_col) annot.min_frequency = { column: cfg.min_freq_col };
+      if (cfg.max_freq_col) annot.max_frequency = { column: cfg.max_freq_col };
+      if (cfg.tools) annot.tools = cfg.tools;
+      if (cfg.form) annot.form = cfg.form;
+      return { __key: 'annotation', __val: annot };
+    }
+
+    if (type === 'break' || type === 'line') return true;
+    if (type === 'text') return cfg.value || '';
+
+    const cleaned: Record<string, any> = {};
+    for (const [k, v] of Object.entries(cfg)) {
+      if (v !== undefined && v !== null && v !== '' && v !== false) {
+        cleaned[k] = v;
+      }
+    }
+    return cleaned;
   }
 
   setData(data: Record<string, any>): void {
