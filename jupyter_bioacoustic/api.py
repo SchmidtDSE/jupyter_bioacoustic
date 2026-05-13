@@ -489,6 +489,31 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
     )
 
 
+_DATA_SOURCE_KEYS = frozenset({'path', 'url', 'uri', 'api', 'sql'})
+_AUDIO_SOURCE_KEYS = frozenset({'src', 'path', 'url', 'uri', 'column', 'sql', 'api'})
+_MERGE_DICT_KEYS = frozenset({'data', 'audio', 'output', 'description'})
+_SOURCE_KEYS_MAP = {
+    'data': _DATA_SOURCE_KEYS,
+    'audio': _AUDIO_SOURCE_KEYS,
+}
+
+
+def _merge_project_over_config(base, proj):
+    for k, v in proj.items():
+        if k in _MERGE_DICT_KEYS and isinstance(v, dict) and isinstance(base.get(k), dict):
+            merged = dict(base[k])
+            source_keys = _SOURCE_KEYS_MAP.get(k)
+            if source_keys:
+                proj_sources = source_keys & v.keys()
+                if proj_sources:
+                    for sk in source_keys:
+                        merged.pop(sk, None)
+            merged.update(v)
+            base[k] = merged
+        else:
+            base[k] = v
+
+
 _CONFIG_PARAMS = {
     'data', 'data_path', 'data_url', 'data_sql', 'data_api',
     'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
@@ -643,7 +668,7 @@ class BioacousticAnnotator:
                         f"Nested 'config' in project must be a file path or dict, "
                         f"got {type(nested).__name__}"
                     )
-                base.update(proj_cfg)
+                _merge_project_over_config(base, proj_cfg)
                 cfg = base
             else:
                 cfg = proj_cfg
