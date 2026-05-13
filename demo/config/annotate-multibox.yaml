@@ -1,48 +1,79 @@
-# Multibox annotation: draw multiple bounding boxes per clip,
-# each with its own species label.
-audio: audio_path
+form:
+- select:
+    label: species
+    column: common_name
+    required: true
+    items:
+      path: data/categories-small.csv
+      value: common_name
+      filter_box: true
+      custom_value: true
+      not_available: Unknown Species
+audio:
+  path: audio/test1.flac
 ident_column: common_name
 capture: false
-
+data:
+  path: data/annotate-data.csv
+  columns:
+  - common_name
+  - confidence
+  - start_time
+  - audio_path
+output:
+  path: outputs/annotate-multibox.csv
 form_config:
-    title:
-        value: MULTIBOX ANNOTATION
-        progress_tracker: true
-    pass_value:
-        source_column: id
-        column: detection_id
-    annotation:
-        start_time:
-            label: start
-            column: start_time
-            source_value: start_time
-        end_time:
-            label: end
-            column: end_time
-            source_value: end_time
-        min_frequency:
-            label: min freq
-            column: min_freq
-        max_frequency:
-            label: max freq
-            column: max_freq
-        tools:
-            - bounding_box
-            - multibox
-        form: box_form
-    dynamic_forms:
-        - box_form:
-              - select:
-                    label: species
-                    column: common_name
-                    required: true
-                    items:
-                        path: data/categories-small.csv
-                        value: common_name
-                        filter_box: true
-    submission_buttons:
-        line: true
-        next:
-            label: Skip
-        submit:
-            label: Submit
+  title:
+    value: MULTIBOX ANNOTATION
+    progress_tracker: true
+  pass_value:
+    source_column: id
+    column: detection_id
+  annotation:
+    start_time:
+      column: start_time
+      source_value: start_time
+    end_time:
+      column: end_time
+      source_value: end_time
+    min_frequency:
+      column: min_freq
+    max_frequency:
+      column: max_freq
+    tools:
+    - time_select
+    - start_end_time_select
+    - bounding_box
+    - multibox
+    form: box_form
+  form:
+  - checkbox:
+      label: bob
+      checked_form: cb_form
+  submission_buttons:
+    line: true
+    next:
+      label: Skip
+    submit:
+      label: Submit
+  dynamic_forms:
+    box_form:
+    - select:
+        label: species
+        column: common_name
+        required: true
+        items:
+          path: data/categories-small.csv
+          value: common_name
+          filter_box: true
+    cb_form:
+    - textbox:
+        value: notes
+        label: cb-notes
+    - select:
+        items:
+        - 1
+        - 3
+        - 6
+        - bob
+        label: cb-select
