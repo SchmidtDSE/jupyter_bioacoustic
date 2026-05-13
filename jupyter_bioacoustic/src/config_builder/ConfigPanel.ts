@@ -150,7 +150,39 @@ export class ConfigPanel {
       void this._saveSingleFile(configType);
     });
 
-    this.element.append(left, this._yamlPanel.element);
+    const handle = document.createElement('div');
+    handle.style.cssText =
+      `width:5px;cursor:col-resize;background:${COLORS.bgSurface0};flex-shrink:0;` +
+      `display:flex;align-items:center;justify-content:center;`;
+    const grip = document.createElement('div');
+    grip.style.cssText =
+      `width:3px;height:28px;border-radius:2px;background:${COLORS.overlay};`;
+    handle.appendChild(grip);
+
+    let dragging = false;
+    let startX = 0;
+    let startW = 0;
+    handle.addEventListener('mousedown', (e) => {
+      dragging = true;
+      startX = e.clientX;
+      startW = this._yamlPanel.element.offsetWidth;
+      this._yamlPanel.element.style.transition = 'none';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const delta = startX - e.clientX;
+      const newW = Math.max(200, Math.min(800, startW + delta));
+      this._yamlPanel.element.style.width = `${newW}px`;
+    });
+    document.addEventListener('mouseup', () => {
+      if (dragging) {
+        dragging = false;
+        this._yamlPanel.element.style.transition = '';
+      }
+    });
+
+    this.element.append(left, handle, this._yamlPanel.element);
 
     this._statusEl = document.createElement('span');
     this._statusEl.style.cssText =
