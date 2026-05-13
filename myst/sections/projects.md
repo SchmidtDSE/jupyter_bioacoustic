@@ -1,24 +1,82 @@
 (projects)=
 # Projects
 
-A **project** is a self-contained YAML file that bundles all settings — data source, audio, form, output, and display — into a single file. Projects can be opened from Python or directly from the launcher tile with no code required.
-
+A `project` is a self-contained YAML file that bundles all settings — data source, audio, form, output, and display — into a single file. Projects can be opened from Python or directly from the launcher tile with no code required.
 
 ## Project vs Config
 
-Both `project` and `config` load a YAML/JSON file, but they differ in how they handle overrides:
+The main difference between a `project` and a config is that a project is **required** to be a complete specification, that doesn't allow overrides.
 
-| | `config` | `project` |
-|---|---|---|
-| Loads YAML/JSON file | Yes | Yes |
-| Inline parameter overrides | Yes | No (raises error) |
-| `**kwargs` (fixed columns) | Yes | Yes |
-| Nested `config:` key | No | Yes |
-| Auto-derives `project_name` | No | Yes |
-| Positional argument | No | Yes |
+The importance of a `project` is that it allows the user to fully specify both data sources, such a a clip meta data and audio files, while reusing a configuration file that might be used for many different sets of data sources.
 
-`config` is a starting point you can override in Python. `project` is a complete, locked specification — ideal for reproducible workflows and sharing with collaborators.
+Consider the following
 
+```python
+ba1 = BioacousticAnnotator(
+    audio='path/to/audio-1.flac',
+    data='path/to/clip-meta-1.csv',
+    config='path/to/config.yaml')
+
+ba2 = BioacousticAnnotator(
+    audio='path/to/audio-2.flac',
+    data='path/to/clip-meta-2.csv',
+    config='path/to/config.yaml')
+
+ba3 = BioacousticAnnotator(
+    audio='path/to/audio-3.flac',
+    data='path/to/clip-meta-3.csv',
+    data_columns=['species', 'confidence', 'rank'],
+    config='path/to/config.yaml')
+```
+
+Here `ba1` and `ba2` use a single configuration. `ba3` also uses the same configuration, however we have overwritten the `data_columns` contained in `path/to/config.yaml`.
+
+Alternatively `projects` we could have done this:
+
+```yaml
+# path/to/project-1
+audio: 'path/to/audio-1.flac'
+data: 'path/to/clip-meta-1.csv'
+config: 'path/to/config.yaml'
+```
+
+```yaml
+# path/to/project-2
+audio: 'path/to/audio-2.flac'
+data: 'path/to/clip-meta-2.csv'
+config: 'path/to/config.yaml'
+```
+
+```yaml
+# path/to/project-3
+audio: 'path/to/audio-3.flac'
+data: 'path/to/clip-meta-3.csv'
+data_columns: ['species', 'confidence', 'rank']
+config: 'path/to/config.yaml'
+```
+
+```python
+ba1 = BioacousticAnnotator('path/to/project-1.yaml')    # project is the first parameter and can be used positionally
+ba2 = BioacousticAnnotator(project='path/to/project-2.yaml')
+ba3 = BioacousticAnnotator(project='path/to/project-3.yaml')
+```
+
+Some of the advantages of this approach over a pure `config` + _in-cell-notebook-overrides_ are:
+
+- Annotators for projects can be opened from the launcher tile, a great option during data collection when no data selection, filtering, processing or training is needed.
+- YAML files are easier to read than python
+- Cleaner notebooks, and avoiding users from re-running the same notebook over and over changing one or two lines, creating a permenant record of the configurations used
+- Makes it easier to transfer the setup to new research-projects
+
+The user is not able override project configurations, however `**kwargs` (values passed directly to the output file) are still allowed.  For example:
+
+```python
+# raises an error
+BioacousticAnnotator(audio='new_audio.flac', project='path/to/project-2.yaml')
+
+# does not raise an error
+BioacousticAnnotator(reviewer='brookie', project='path/to/project-2.yaml')
+```
 
 ## Creating a Project File
 
@@ -129,6 +187,8 @@ The saved file contains the **original constructor arguments** — not processed
 
 **From the UI:** Enable the save button to allow saving from within the running widget:
 
+<img src='../../assets/save-project-btn.png' height='50px'>
+
 ```python
 ba = BioacousticAnnotator(..., project_save_btn=True)
 ba.open()
@@ -140,8 +200,6 @@ Or with a custom label:
 ba = BioacousticAnnotator(..., project_save_btn='Export Config')
 ba.open()
 ```
-
-![TODO: SCREENSHOT OF SAVE PROJECT BUTTON IN FORM PANEL](../../assets/launcher/save-project-btn.png)
 
 Clicking the button shows a path prompt (pre-filled, editable) with overwrite confirmation if the file exists.
 
