@@ -367,20 +367,18 @@ export class ConfigPanel {
       if (state.project) {
         this._project.setData(state.project);
         const targets = state.section_targets || {};
-        const dataSource = targets.data === 'config' ? (state.config || {}) : state.project;
-        const audioSource = targets.audio === 'config' ? (state.config || {}) : state.project;
-        const outputSource = targets.output === 'config' ? (state.config || {}) : state.project;
+        const proj = state.project || {};
+        const conf = state.config || {};
 
-        if (dataSource.data && typeof dataSource.data === 'object') {
-          this._data.setData(dataSource.data);
-        }
-        if (audioSource.audio && typeof audioSource.audio === 'object') {
-          this._audio.setData(audioSource.audio);
-        }
+        const mergedData = this._resolveSectionData('data', targets, proj, conf);
+        if (mergedData) this._data.setData(mergedData);
+        const mergedAudio = this._resolveSectionData('audio', targets, proj, conf);
+        if (mergedAudio) this._audio.setData(mergedAudio);
+        const outputSource = targets.output === 'config' ? conf : proj;
         if (outputSource.output && typeof outputSource.output === 'object') {
           this._output.setData(outputSource.output);
         }
-        const appSource = targets.app === 'config' ? { ...state.project, ...(state.config || {}) } : state.project;
+        const appSource = targets.app === 'config' ? { ...proj, ...conf } : proj;
         this._app.setData(appSource);
       }
       if (state.form_config && typeof state.form_config === 'object') {
@@ -474,15 +472,21 @@ export class ConfigPanel {
   }
 
   private _updateTargetOptions(states: { project: boolean; config: boolean; form: boolean }): void {
-    const twoOpts: string[] = [];
-    if (states.project) twoOpts.push('project');
-    if (states.config) twoOpts.push('config');
-    if (twoOpts.length === 0) twoOpts.push('project');
-    for (const sec of [this._data, this._audio, this._output, this._app]) {
-      sec.setTargetOptions(twoOpts);
+    const baseOpts: string[] = [];
+    if (states.project) baseOpts.push('project');
+    if (states.config) baseOpts.push('config');
+    if (baseOpts.length === 0) baseOpts.push('project');
+
+    const splitOpts = states.project && states.config
+      ? ['split', ...baseOpts] : [...baseOpts];
+    for (const sec of [this._data, this._audio]) {
+      sec.setTargetOptions(splitOpts);
+    }
+    for (const sec of [this._output, this._app]) {
+      sec.setTargetOptions(baseOpts);
     }
 
-    const formOpts: string[] = [...twoOpts];
+    const formOpts: string[] = [...baseOpts];
     if (states.form) formOpts.push('form');
     this._form.setTargetOptions(formOpts);
   }
@@ -504,6 +508,23 @@ export class ConfigPanel {
       app: this._app.getData(),
       form: this._form.getData(),
     });
+  }
+
+  private _resolveSectionData(
+    section: string,
+    targets: Record<string, string>,
+    proj: Record<string, any>,
+    conf: Record<string, any>,
+  ): Record<string, any> | null {
+    const t = targets[section];
+    const pData = proj[section];
+    const cData = conf[section];
+    if (t === 'split') {
+      if (!pData && !cData) return null;
+      return { ...(typeof cData === 'object' ? cData : {}), ...(typeof pData === 'object' ? pData : {}) };
+    }
+    const source = t === 'config' ? cData : pData;
+    return source && typeof source === 'object' ? source : null;
   }
 
   private _setStatus(msg: string, error = false): void {
