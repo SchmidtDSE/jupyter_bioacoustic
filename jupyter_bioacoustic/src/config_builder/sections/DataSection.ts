@@ -23,7 +23,7 @@ export class DataSection extends CollapsibleSection {
   private _debounceTimer: any = null;
 
   constructor() {
-    super('Data', 'data', false, true);
+    super('Data', 'data', false, true, ['split', 'project', 'config']);
 
     this._sourceType = this._makeSelect(['path', 'url', 'sql', 'api'], 'path');
     this._sourceType.addEventListener('change', () => this._emitChanged());
