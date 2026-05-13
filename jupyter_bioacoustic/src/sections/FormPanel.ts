@@ -473,26 +473,12 @@ export class FormPanel {
   // ─── Private: form building ────────────────────────────────
 
   private async _registerDynamicForms(dynForms: any): Promise<void> {
-    if (!dynForms) return;
-    const entries: Array<[string, any]> = [];
-    if (Array.isArray(dynForms)) {
-      for (const item of dynForms) {
-        if (item && typeof item === 'object') {
-          for (const name of Object.keys(item)) {
-            entries.push([name, item[name]]);
-          }
-        }
-      }
-    } else if (typeof dynForms === 'object') {
-      for (const name of Object.keys(dynForms)) {
-        entries.push([name, dynForms[name]]);
-      }
-    }
-    for (const [formName, rawElements] of entries) {
+    if (!dynForms || typeof dynForms !== 'object' || Array.isArray(dynForms)) return;
+    for (const [formName, rawElements] of Object.entries(dynForms) as Array<[string, any]>) {
       let formElements = rawElements;
       if (!Array.isArray(formElements)) {
         if (formElements && typeof formElements === 'object') {
-          formElements = Object.keys(formElements).map(k => ({ [k]: formElements[k] }));
+          formElements = Object.keys(formElements).map((k: string) => ({ [k]: formElements[k] }));
         } else {
           continue;
         }
