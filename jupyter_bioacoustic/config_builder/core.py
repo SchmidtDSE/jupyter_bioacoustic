@@ -18,6 +18,11 @@ from IPython.display import display, HTML
 _UNSET = object()
 DEFAULT_PATH = 'projects'
 
+DATA_PROJECT_KEYS = frozenset({'path', 'url', 'sql', 'api', 'secrets'})
+DATA_CONFIG_KEYS = frozenset({'columns', 'start_time', 'end_time', 'duration'})
+AUDIO_PROJECT_KEYS = frozenset({'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'})
+AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
+
 
 def _resolve_path(ref, base_dir):
     if os.path.isabs(ref):
@@ -38,8 +43,8 @@ class ConfigBuilder:
         self._form_config = {}
         self._section_targets = {
             'project': 'project',
-            'data': 'project',
-            'audio': 'project',
+            'data': 'split',
+            'audio': 'split',
             'output': 'project',
             'app': 'config',
             'form': 'form_config',
@@ -88,18 +93,44 @@ class ConfigBuilder:
             for k, v in data.items():
                 if v is not None and v != '' and v != []:
                     data_dict[k] = v
-            dest = self._project if target == 'project' else self._config
-            dest['data'] = data_dict
+            if target == 'split':
+                proj_part = {k: v for k, v in data_dict.items() if k in DATA_PROJECT_KEYS}
+                conf_part = {k: v for k, v in data_dict.items() if k not in DATA_PROJECT_KEYS}
+                if proj_part:
+                    self._project['data'] = proj_part
+                elif 'data' in self._project:
+                    del self._project['data']
+                if conf_part:
+                    self._config['data'] = conf_part
+                elif 'data' in self._config:
+                    del self._config['data']
+            else:
+                dest = self._project if target == 'project' else self._config
+                other = self._config if target == 'project' else self._project
+                dest['data'] = data_dict
+                other.pop('data', None)
 
         elif section == 'audio':
             audio_dict = {}
             for k, v in data.items():
                 if v is not None and v != '' and v != []:
                     audio_dict[k] = v
-            if target == 'project':
-                self._project['audio'] = audio_dict
+            if target == 'split':
+                proj_part = {k: v for k, v in audio_dict.items() if k in AUDIO_PROJECT_KEYS}
+                conf_part = {k: v for k, v in audio_dict.items() if k not in AUDIO_PROJECT_KEYS}
+                if proj_part:
+                    self._project['audio'] = proj_part
+                elif 'audio' in self._project:
+                    del self._project['audio']
+                if conf_part:
+                    self._config['audio'] = conf_part
+                elif 'audio' in self._config:
+                    del self._config['audio']
             else:
-                self._config['audio'] = audio_dict
+                dest = self._project if target == 'project' else self._config
+                other = self._config if target == 'project' else self._project
+                dest['audio'] = audio_dict
+                other.pop('audio', None)
 
         elif section == 'output':
             output_dict = {}
@@ -138,16 +169,38 @@ class ConfigBuilder:
         return self._get_state()
 
     def set_section_target(self, section, target):
-        if section not in self._section_targets or target not in ('project', 'config', 'form_config'):
+        valid = ('project', 'config', 'form_config', 'split')
+        if section not in self._section_targets or target not in valid:
             return
         old_target = self._section_targets[section]
         self._section_targets[section] = target
 
         if section in ('data', 'audio', 'output') and old_target != target:
-            old_dict = self._project if old_target == 'project' else self._config
-            new_dict = self._project if target == 'project' else self._config
-            if section in old_dict:
-                new_dict[section] = old_dict.pop(section)
+            if target == 'split':
+                combined = {}
+                for d in (self._project, self._config):
+                    if section in d:
+                        combined.update(d.pop(section))
+                split_keys = DATA_PROJECT_KEYS if section == 'data' else AUDIO_PROJECT_KEYS if section == 'audio' else frozenset()
+                proj_part = {k: v for k, v in combined.items() if k in split_keys}
+                conf_part = {k: v for k, v in combined.items() if k not in split_keys}
+                if proj_part:
+                    self._project[section] = proj_part
+                if conf_part:
+                    self._config[section] = conf_part
+            elif old_target == 'split':
+                combined = {}
+                for d in (self._config, self._project):
+                    if section in d:
+                        combined.update(d.pop(section))
+                dest = self._project if target == 'project' else self._config
+                if combined:
+                    dest[section] = combined
+            else:
+                old_dict = self._project if old_target == 'project' else self._config
+                new_dict = self._project if target == 'project' else self._config
+                if section in old_dict:
+                    new_dict[section] = old_dict.pop(section)
         if section == 'app' and old_target != target:
             app_keys = (
                 'project_save_btn', 'ident_column', 'display_columns',
@@ -203,7 +256,10 @@ class ConfigBuilder:
             if k in skip_keys:
                 continue
             if k in section_keys:
-                if self._section_targets.get(k, 'project') == 'project':
+                t = self._section_targets.get(k, 'project')
+                if t == 'split':
+                    proj_data[k] = v
+                elif t == 'project':
                     proj_data[k] = v
                 else:
                     conf_data[k] = v
@@ -217,7 +273,10 @@ class ConfigBuilder:
 
         for k, v in self._config.items():
             if k in section_keys:
-                if self._section_targets.get(k, 'project') == 'config':
+                t = self._section_targets.get(k, 'project')
+                if t == 'split':
+                    conf_data[k] = v
+                elif t == 'config':
                     conf_data[k] = v
                 else:
                     proj_data[k] = v
