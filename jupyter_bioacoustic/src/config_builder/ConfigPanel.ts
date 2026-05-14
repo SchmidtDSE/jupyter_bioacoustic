@@ -77,7 +77,12 @@ export class ConfigPanel {
 
     for (const [name, section] of this._sections) {
       section.focused.connect(() => this._onSectionFocused(name));
-      section.fieldFocused.connect((_, field) => this._yamlPanel.scrollToField(field));
+      section.fieldFocused.connect((_, field) => {
+        if (field.startsWith('description')) {
+          this._yamlPanel.switchToTab('config');
+        }
+        this._yamlPanel.scrollToField(field);
+      });
       section.changed.connect(() => void this._onSectionChanged(name));
       section.opened.connect(() => this._onAccordionOpen(section));
       left.appendChild(section.element);
