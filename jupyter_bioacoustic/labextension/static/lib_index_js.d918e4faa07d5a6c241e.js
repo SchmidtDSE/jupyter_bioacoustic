@@ -28,6 +28,7 @@ class ConfigPanel {
         this._savedPath = '';
         this._suppressChanges = false;
         this._ready = false;
+        this._debug = false;
         this._kernel = kernel;
         this.element = document.createElement('div');
         this.element.style.cssText =
@@ -67,8 +68,8 @@ class ConfigPanel {
         this._form.setTarget('form');
         left.appendChild(this._summary.element);
         this._project.browseRequested.connect((_, { field, current }) => {
-            if (field === 'description_path') {
-                this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
+            if (field === 'output_path') {
+                this._openBrowser(current, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._project.setOutputPath(p));
             }
             else {
                 this._openBrowser(current, ['.yaml', '.yml'], (p) => {
@@ -98,9 +99,6 @@ class ConfigPanel {
         });
         this._audio.browseRequested.connect((_, dir) => {
             this._openBrowser(dir, ['.flac', '.wav', '.mp3', '.ogg', '.m4a', '.aac'], (p) => this._audio.setPath(p));
-        });
-        this._output.browseRequested.connect((_, dir) => {
-            this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._output.setPath(p));
         });
         this._app.browseRequested.connect((_, dir) => {
             this._openBrowser(dir, [], (p) => this._app.setCaptureDir(p), true);
@@ -159,13 +157,22 @@ class ConfigPanel {
         var _a;
         this._setStatus('Initializing…');
         try {
-            await this._kernel.exec((0, python_1.ensureSetup)(this._kernel.cwd));
+            const raw = await this._kernel.exec((0, python_1.ensureSetup)(this._kernel.cwd));
+            const result = JSON.parse((0, python_1.extractJson)(raw));
             this._ready = true;
+            this._debug = !!result.debug;
+            if (this._debug) {
+                console.debug('[JBA] ConfigPanel ready, cwd:', result.cwd);
+            }
             this._setStatus('Ready');
         }
         catch (e) {
             this._setStatus(`Init failed: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
         }
+    }
+    _dbg(...args) {
+        if (this._debug)
+            console.debug('[JBA]', ...args);
     }
     get statusEl() {
         return this._statusEl;
@@ -184,6 +191,7 @@ class ConfigPanel {
         if (!section)
             return;
         const data = section.getData();
+        this._dbg('sectionChanged', sectionName, data);
         this._setStatus('Updating…');
         try {
             const raw = await this._kernel.exec((0, python_1.updateSection)(sectionName, data));
@@ -317,12 +325,14 @@ class ConfigPanel {
             }
             catch ( /* proceed */_b) { /* proceed */ }
         }
+        this._dbg('saveToFile', { enabled });
         this._setStatus(`Saving ${enabled.length} file(s)…`);
         try {
             const raw = await this._kernel.exec((0, python_1.saveAll)());
             const state = JSON.parse((0, python_1.extractJson)(raw));
             this._dirty = false;
             const paths = state.saved_paths || {};
+            this._dbg('saved', paths);
             const savedList = Object.values(paths).join(', ');
             this._savedPath = paths.project || paths.config || paths.form || '';
             this._setStatus(`Saved: ${savedList}`);
@@ -342,6 +352,7 @@ class ConfigPanel {
         this._yamlPanel.updateYaml(this._yamls);
     }
     _applyState(state) {
+        this._dbg('applyState', { targets: state.section_targets, projectKeys: Object.keys(state.project || {}), configKeys: Object.keys(state.config || {}) });
         this._suppressChanges = true;
         try {
             this._yamls = {
@@ -400,6 +411,7 @@ class ConfigPanel {
         await this._readyPromise;
         if (!this._ready)
             return;
+        this._dbg('loadConfig', path, fileType);
         this._setStatus(`Loading ${path}…`);
         try {
             const raw = await this._kernel.exec((0, python_1.loadConfig)(path, fileType));
@@ -502,11 +514,15 @@ class ConfigPanel {
         }
     }
     _updateSummary() {
+        const outputData = this._output.getData();
+        const outputPath = this._project.getOutputPath();
+        if (outputPath)
+            outputData.path = outputPath;
         this._summary.update({
             project: this._project.getData(),
             data: this._data.getData(),
             audio: this._audio.getData(),
-            output: this._output.getData(),
+            output: outputData,
             app: this._app.getData(),
             form: this._form.getData(),
         });
@@ -1315,13 +1331,12 @@ function wp(expr) {
     return `print('${DELIM}'); print(${expr}); print('${DELIM}')`;
 }
 function ensureSetup(cwd) {
-    const lines = [`import json as _j`];
+    const lines = [`import json as _j, os as _os`];
     if (cwd) {
-        lines.push(`import os as _os`);
         lines.push(`_os.chdir(_os.path.expanduser('${(0, util_1.escPy)(cwd)}'))`);
     }
     lines.push(`try:`, `    _CB_INSTANCE`, `except NameError:`, `    from jupyter_bioacoustic.config_builder import ConfigBuilder as _CB_cls`, `    _cb = _CB_cls()`, `    _cb.setup()`);
-    lines.push(wp(`_j.dumps({'ready': True})`));
+    lines.push(wp(`_j.dumps({'ready': True, 'debug': bool(_os.environ.get('JBA_DEBUG_MODE')), 'cwd': _os.getcwd()})`));
     return lines.join('\n');
 }
 exports.ensureSetup = ensureSetup;
@@ -2205,6 +2220,8 @@ class ConfigSummary {
         else {
             this._row(sec, 'files', 'none configured', true);
         }
+        if (d.output_path)
+            this._row(sec, 'output', d.output_path);
     }
     _addDataSection(d) {
         var _a;
@@ -3431,6 +3448,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
         container.appendChild(addBar);
         this._dynForms.push(df);
         this._dynFormsContainer.appendChild(container);
+        requestAnimationFrame(() => container.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
     }
     _moveElement(card, direction, target) {
         const idx = target.elements.findIndex(e => e.el === card);
@@ -3656,25 +3674,11 @@ exports.FormSection = FormSection;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.OutputSection = void 0;
-const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
 const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
 const SecretsEditor_1 = __webpack_require__(/*! ./SecretsEditor */ "./lib/config_builder/sections/SecretsEditor.js");
 class OutputSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
         super('Output', 'output', false, true);
-        this.browseRequested = new signaling_1.Signal(this);
-        const pathRow = this._makeRow();
-        pathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
-        pathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
-        pathRow.appendChild(this._makeLabel('path'));
-        this._pathInput = this._makeInput('outputs/reviews.csv', '200px');
-        this._pathInput.addEventListener('input', () => this._emitChanged());
-        this._browseBtn = this._makeButton('Browse');
-        this._browseBtn.addEventListener('click', () => {
-            this.browseRequested.emit(this._pathInput.value || '.');
-        });
-        pathRow.append(this._pathInput, this._browseBtn);
-        this._body.appendChild(pathRow);
         this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
         this._uriInput.addEventListener('input', () => this._emitChanged());
         this._body.appendChild(this._makeFieldRow('sync_uri', this._uriInput));
@@ -3694,14 +3698,8 @@ class OutputSection extends CollapsibleSection_1.CollapsibleSection {
         this._secrets.focused.connect(() => this.fieldFocused.emit('secrets'));
         this._body.appendChild(this._secrets.element);
     }
-    setPath(path) {
-        this._pathInput.value = path;
-        this._emitChanged();
-    }
     getData() {
         const result = {};
-        if (this._pathInput.value)
-            result.path = this._pathInput.value;
         if (this._uriInput.value)
             result.uri = this._uriInput.value;
         if (this._syncBtnCb.checked) {
@@ -3715,8 +3713,6 @@ class OutputSection extends CollapsibleSection_1.CollapsibleSection {
         return result;
     }
     setData(data) {
-        if (data.path)
-            this._pathInput.value = data.path;
         if (data.uri || data.url)
             this._uriInput.value = data.uri || data.url;
         if (data.sync_button) {
@@ -3798,48 +3794,25 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
         this._formLoadBtn = fRow.loadBtn;
         this._formCb.addEventListener('change', () => this._emitFileStates());
         this._body.appendChild(fRow.row);
-        const descSep = document.createElement('div');
-        descSep.style.cssText = `height:1px;background:${styles_1.COLORS.bgSurface1};margin:6px 0;`;
-        this._body.appendChild(descSep);
-        const descLabel = document.createElement('div');
-        descLabel.textContent = 'Description Panel';
-        descLabel.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
-        this._body.appendChild(descLabel);
-        this._descTitleInput = this._makeInput('', '200px');
-        this._descTitleInput.placeholder = 'e.g. Instructions';
-        this._descTitleInput.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('title', this._descTitleInput));
-        this._descTextArea = document.createElement('textarea');
-        this._descTextArea.style.cssText =
-            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:4px;` +
-                `color:${styles_1.COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
-                `box-sizing:border-box;resize:vertical;font-family:monospace;`;
-        this._descTextArea.placeholder = 'Markdown text (or use "path" to read from a file)';
-        this._descTextArea.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('text', this._descTextArea));
-        this._descPathInput = this._makeInput('', '200px');
-        this._descPathInput.placeholder = 'docs/instructions.md';
-        this._descPathInput.addEventListener('input', () => this._emitChanged());
-        const descPathRow = this._makeRow();
-        descPathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
-        descPathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
-        descPathRow.appendChild(this._makeLabel('path'));
-        const descPathBrowse = this._makeButton('Browse');
-        descPathBrowse.addEventListener('click', () => {
-            this.browseRequested.emit({ field: 'description_path', current: this._descPathInput.value || '.' });
+        const outSep = document.createElement('div');
+        outSep.style.cssText = `height:1px;background:${styles_1.COLORS.bgSurface1};margin:6px 0;`;
+        this._body.appendChild(outSep);
+        const outLabel = document.createElement('div');
+        outLabel.textContent = 'Output';
+        outLabel.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
+        this._body.appendChild(outLabel);
+        const outRow = this._makeRow();
+        outRow.addEventListener('focusin', () => this.fieldFocused.emit('output path'));
+        outRow.addEventListener('click', () => this.fieldFocused.emit('output path'));
+        outRow.appendChild(this._makeLabel('path'));
+        this._outputPathInput = this._makeInput('outputs/my_project.csv', '200px');
+        this._outputPathInput.addEventListener('input', () => this._emitChanged());
+        this._outputBrowseBtn = this._makeButton('Browse');
+        this._outputBrowseBtn.addEventListener('click', () => {
+            this.browseRequested.emit({ field: 'output_path', current: this._outputPathInput.value || '.' });
         });
-        descPathRow.append(this._descPathInput, descPathBrowse);
-        this._body.appendChild(descPathRow);
-        const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('open');
-        this._descOpenCb = descOpenCb;
-        this._descOpenCb.checked = true;
-        this._descOpenCb.addEventListener('change', () => this._emitChanged());
-        this._body.appendChild(descOpenRow);
-        this._descHeightInput = this._makeInput('', '60px');
-        this._descHeightInput.type = 'number';
-        this._descHeightInput.placeholder = 'auto';
-        this._descHeightInput.addEventListener('input', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('height', this._descHeightInput));
+        outRow.append(this._outputPathInput, this._outputBrowseBtn);
+        this._body.appendChild(outRow);
     }
     _emitFileStates() {
         this.fileStatesChanged.emit({
@@ -3862,9 +3835,9 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
         lblText.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-weight:600;`;
         lbl.append(cb, lblText);
         const defaults = {
-            project: 'config/projects/',
-            config: 'config/application/',
-            form: 'config/forms/',
+            project: 'projects/',
+            config: 'config/',
+            form: 'forms/',
         };
         const inp = this._makeInput(`${defaults[field]}my_project.yaml`, '180px');
         inp.addEventListener('input', () => this._emitChanged());
@@ -3904,9 +3877,14 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
                 inp.value = `${dir}${slug}.yaml`;
             }
         };
-        update(this._projectPathInput, 'config/projects/');
-        update(this._configPathInput, 'config/application/');
-        update(this._formPathInput, 'config/forms/');
+        update(this._projectPathInput, 'annotator_config/projects/');
+        update(this._configPathInput, 'annotator_config/config/');
+        update(this._formPathInput, 'annotator_config/forms/');
+        if (!this._outputPathInput.value || this._outputPathInput.value.includes('/')) {
+            const cur = this._outputPathInput.value;
+            const dir = cur ? cur.replace(/[^/]+$/, '') : 'outputs/';
+            this._outputPathInput.value = `${dir}${slug}.csv`;
+        }
     }
     setProjectPath(path) {
         this._projectPathInput.value = path;
@@ -3937,8 +3915,15 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
         this._formPathInput.style.opacity = form ? '1' : '0.4';
         this._formBrowseBtn.style.opacity = form ? '1' : '0.4';
     }
+    setOutputPath(path) {
+        this._outputPathInput.value = path;
+        this._emitChanged();
+    }
+    getOutputPath() {
+        return this._outputPathInput.value;
+    }
     getData() {
-        const result = {
+        return {
             project_name: this._nameInput.value || undefined,
             project_enabled: this._projectCb.checked,
             config_enabled: this._configCb.checked,
@@ -3946,33 +3931,11 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
             project_path: this._projectCb.checked ? (this._projectPathInput.value || undefined) : undefined,
             config_path: this._configCb.checked ? (this._configPathInput.value || undefined) : undefined,
             form_path: this._formCb.checked ? (this._formPathInput.value || undefined) : undefined,
+            output_path: this._outputPathInput.value || undefined,
         };
-        const dh = parseInt(this._descHeightInput.value);
-        if (!isNaN(dh) && dh > 0)
-            result.description_height = dh;
-        const descTitle = this._descTitleInput.value.trim();
-        const descText = this._descTextArea.value;
-        const descPath = this._descPathInput.value.trim();
-        const descOpen = this._descOpenCb.checked;
-        if (descTitle || descText || descPath) {
-            const desc = {};
-            if (descTitle)
-                desc.title = descTitle;
-            if (descText)
-                desc.text = descText;
-            if (descPath)
-                desc.path = descPath;
-            if (!descOpen)
-                desc.open = false;
-            result.description = desc;
-        }
-        return result;
-    }
-    setDescriptionPath(path) {
-        this._descPathInput.value = path;
-        this._emitChanged();
     }
     setData(data) {
+        var _a;
         if (data.project_name !== undefined)
             this._nameInput.value = data.project_name;
         if (data.project_path)
@@ -3981,27 +3944,10 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
             this._configPathInput.value = data.config_path;
         if (data.form_path)
             this._formPathInput.value = data.form_path;
-        if (data.description_height)
-            this._descHeightInput.value = String(data.description_height);
-        if (data.description) {
-            const d = typeof data.description === 'object' ? data.description : {};
-            if (d.title)
-                this._descTitleInput.value = d.title;
-            if (d.text)
-                this._descTextArea.value = d.text;
-            if (d.path)
-                this._descPathInput.value = d.path;
-            if (d.open === false)
-                this._descOpenCb.checked = false;
-        }
-        if (data.description_title)
-            this._descTitleInput.value = data.description_title;
-        if (data.description_text)
-            this._descTextArea.value = data.description_text;
-        if (data.description_path)
-            this._descPathInput.value = data.description_path;
-        if (data.description_open === false)
-            this._descOpenCb.checked = false;
+        if (data.output_path)
+            this._outputPathInput.value = data.output_path;
+        else if ((_a = data.output) === null || _a === void 0 ? void 0 : _a.path)
+            this._outputPathInput.value = data.output.path;
         if (data.project_enabled !== undefined) {
             const on = !!data.project_enabled;
             this._projectCb.checked = on;
@@ -9904,4 +9850,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.6709f6176f643764fb15.js.map
+//# sourceMappingURL=lib_index_js.d918e4faa07d5a6c241e.js.map
