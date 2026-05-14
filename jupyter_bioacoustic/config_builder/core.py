@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import sys
 import uuid
 
 from IPython import get_ipython
@@ -18,12 +19,15 @@ from IPython.display import display, HTML
 _log = logging.getLogger('jupyter_bioacoustic.config_builder')
 
 if os.environ.get('JBA_DEBUG_MODE'):
-    _handler = logging.FileHandler('jba_debug.log')
+    _log_path = os.path.join(os.environ.get('JBA_LOG_DIR', '.'), 'jba_debug.log')
+    _handler = logging.FileHandler(_log_path)
     _handler.setFormatter(logging.Formatter(
         '%(asctime)s %(levelname)s %(name)s: %(message)s'
     ))
     _log.addHandler(_handler)
     _log.setLevel(logging.DEBUG)
+    sys.__stderr__.write(f'[JBA] Debug mode enabled. Logs → {os.path.abspath(_log_path)}\n')
+    sys.__stderr__.flush()
 
 #
 # CONSTANTS
@@ -75,6 +79,7 @@ def _resolve_path(ref, base_dir):
         return candidate
     if os.path.exists(ref):
         return ref
+    _log.debug('_resolve_path failed: ref=%s base_dir=%s cwd=%s', ref, base_dir, os.getcwd())
     return None
 
 
@@ -571,9 +576,7 @@ class ConfigBuilder:
             raise ImportError("pyyaml is required: pip install pyyaml")
 
         if not os.path.exists(path):
-            raise FileNotFoundError(
-                f"No such file: '{path}' (cwd: {os.getcwd()})"
-            )
+            raise FileNotFoundError(path)
 
         with open(path) as f:
             data = yaml.safe_load(f) or {}
