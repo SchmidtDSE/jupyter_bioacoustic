@@ -469,7 +469,9 @@ export class ConfigPanel {
       const warn = missing.length ? ` (⚠ ${missing.join(', ')})` : '';
       this._setStatus(`Loaded as ${detected}: ${loaded.join(', ')}${warn}`, missing.length > 0);
     } catch (e: any) {
-      this._setStatus(`Load failed: ${String(e.message ?? e)}`, true);
+      const msg = String(e.message ?? e);
+      const fnf = msg.match(/FileNotFoundError:\s*(.+)/);
+      this._setStatus(fnf ? `File not found: ${fnf[1]}` : `Load failed: ${msg}`, true);
     }
   }
 
