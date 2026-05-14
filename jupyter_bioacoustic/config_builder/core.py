@@ -661,7 +661,9 @@ class ConfigBuilder:
                     else:
                         self._project['form_enabled'] = False
                 else:
-                    self._project['config_enabled'] = False
+                    _log.warning('config ref not found: %s (tried %s and cwd %s)',
+                                 config_ref, os.path.join(base_dir, config_ref), os.getcwd())
+                    self._project['config_enabled'] = True
                     self._project['form_enabled'] = False
                     for s in ('data', 'audio', 'output', 'app'):
                         self._section_targets[s] = 'project'
