@@ -94,20 +94,9 @@ cwd = "jupyter_bioacoustic"
 [tool.pixi.tasks.lab]
 cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
 
-[tool.pixi.tasks.lab-debug]
-cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
-[tool.pixi.tasks.lab-debug.env]
-JBA_DEBUG_MODE = "1"
-
 [tool.pixi.tasks.demo]
 cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
 cwd = "demo"
-
-[tool.pixi.tasks.demo-debug]
-cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
-cwd = "demo"
-[tool.pixi.tasks.demo-debug.env]
-JBA_DEBUG_MODE = "1"
 
 [tool.pixi.environments]
 default = { features = [] }
