@@ -458,7 +458,16 @@ export class ConfigPanel {
       const detected = state.detected_type || 'config';
       const paths = state.loaded_paths || {};
       const loaded = Object.values(paths).filter(Boolean);
-      this._setStatus(`Loaded as ${detected}: ${loaded.join(', ')}`);
+      const projectData = state.project || {};
+      const missing: string[] = [];
+      if (projectData.config_enabled && projectData.config_path && !paths.config) {
+        missing.push(`config not found: ${projectData.config_path}`);
+      }
+      if (projectData.form_enabled && projectData.form_path && !paths.form) {
+        missing.push(`form not found: ${projectData.form_path}`);
+      }
+      const warn = missing.length ? ` (⚠ ${missing.join(', ')})` : '';
+      this._setStatus(`Loaded as ${detected}: ${loaded.join(', ')}${warn}`, missing.length > 0);
     } catch (e: any) {
       this._setStatus(`Load failed: ${String(e.message ?? e)}`, true);
     }

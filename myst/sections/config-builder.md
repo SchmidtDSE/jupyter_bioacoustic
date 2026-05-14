@@ -139,7 +139,7 @@ Each element is shown as a card that can be reordered, edited, or removed. The [
 :class: bordered
 ```
 
-The right-hand panel provides two views:
+The builder interface contains collapsable/resizable a right-hand panel with two tabs:
 
 **Docs** — field-level documentation for the currently active section. As you interact with fields on the left, the corresponding doc card highlights with a blue left border. Documentation is organized with subsections matching the builder layout.
 
