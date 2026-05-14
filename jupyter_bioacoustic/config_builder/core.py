@@ -7,6 +7,7 @@ Usage:
 """
 
 import json
+import logging
 import os
 import re
 import uuid
@@ -14,14 +15,23 @@ import uuid
 from IPython import get_ipython
 from IPython.display import display, HTML
 
+_log = logging.getLogger('jupyter_bioacoustic.config_builder')
+
+if os.environ.get('JBA_DEBUG_MODE'):
+    _handler = logging.FileHandler('jba_debug.log')
+    _handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s %(name)s: %(message)s'
+    ))
+    _log.addHandler(_handler)
+    _log.setLevel(logging.DEBUG)
+
 #
 # CONSTANTS
 #
 _UNSET = object()
-DEFAULT_ANNOTATOR_CONFIG_DIR = 'annotator_config'
-DEFAULT_PROJECT_DIR = f'{DEFAULT_ANNOTATOR_CONFIG_DIR}/projects'
-DEFAULT_CONFIG_DIR = f'{DEFAULT_ANNOTATOR_CONFIG_DIR}/config'
-DEFAULT_FORM_DIR = f'{DEFAULT_ANNOTATOR_CONFIG_DIR}/forms'
+DEFAULT_PROJECT_DIR = 'projects'
+DEFAULT_CONFIG_DIR = 'config'
+DEFAULT_FORM_DIR = 'forms'
 DATA_PROJECT_KEYS = frozenset({'path', 'url', 'sql', 'api', 'secrets'})
 DATA_CONFIG_KEYS = frozenset({'columns', 'start_time', 'end_time', 'duration'})
 AUDIO_PROJECT_KEYS = frozenset({'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'})
@@ -51,6 +61,12 @@ DESCRIPTION_KEYS = frozenset({
 #
 # HELPERS
 #
+def _ensure_ext(path, extensions=('.yaml', '.yml'), default='.yaml'):
+    if not path.endswith(tuple(extensions)):
+        path += default
+    return path
+
+
 def _resolve_path(ref, base_dir):
     if os.path.isabs(ref):
         return ref if os.path.exists(ref) else None
@@ -103,6 +119,8 @@ class ConfigBuilder:
         return cfg
 
     def update_section(self, section, data):
+        _log.debug('update_section(%s) target=%s data_keys=%s',
+                   section, self._section_targets.get(section, 'project'), list(data.keys()))
         target = self._section_targets.get(section, 'project')
 
         if section == 'project':
@@ -252,7 +270,6 @@ class ConfigBuilder:
         c_path = self._project.get('config_path') or f'{DEFAULT_CONFIG_DIR}/{slug}.yaml'
         f_path = self._project.get('form_path') or f'{DEFAULT_FORM_DIR}/{slug}.yaml'
 
-
         form_cfg = dict(self._form_config) if self._form_config else {}
 
         proj_data = {}
@@ -342,6 +359,7 @@ class ConfigBuilder:
         }
 
     def save_all(self):
+        _log.debug('save_all() cwd=%s', os.getcwd())
         try:
             import yaml
         except ImportError:
@@ -361,24 +379,21 @@ class ConfigBuilder:
         saved = {}
 
         if project_enabled:
-            if not p_path.endswith(('.yaml', '.yml')):
-                p_path += '.yaml'
+            p_path = _ensure_ext(p_path)
             os.makedirs(os.path.dirname(p_path) or '.', exist_ok=True)
             with open(p_path, 'w') as f:
                 yaml.dump(project_cfg, f, default_flow_style=False, sort_keys=False)
             saved['project'] = p_path
 
         if config_enabled:
-            if not c_path.endswith(('.yaml', '.yml')):
-                c_path += '.yaml'
+            c_path = _ensure_ext(c_path)
             os.makedirs(os.path.dirname(c_path) or '.', exist_ok=True)
             with open(c_path, 'w') as f:
                 yaml.dump(config_cfg, f, default_flow_style=False, sort_keys=False)
             saved['config'] = c_path
 
         if form_enabled:
-            if not f_path.endswith(('.yaml', '.yml')):
-                f_path += '.yaml'
+            f_path = _ensure_ext(f_path)
             os.makedirs(os.path.dirname(f_path) or '.', exist_ok=True)
             with open(f_path, 'w') as f:
                 yaml.dump(form_cfg, f, default_flow_style=False, sort_keys=False)
@@ -407,8 +422,7 @@ class ConfigBuilder:
         else:
             return ''
 
-        if not path.endswith(('.yaml', '.yml')):
-            path += '.yaml'
+        path = _ensure_ext(path)
         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
         with open(path, 'w') as f:
             yaml.dump(content, f, default_flow_style=False, sort_keys=False)
@@ -506,6 +520,7 @@ class ConfigBuilder:
         }
 
     def update_config_from_yaml(self, yaml_str, config_type='project'):
+        _log.debug('update_config_from_yaml(%s) len=%d', config_type, len(yaml_str))
         try:
             import yaml
             parsed = yaml.safe_load(yaml_str) or {}
@@ -513,23 +528,35 @@ class ConfigBuilder:
             return False
 
         if config_type == 'project':
-            for k in ('project_name',):
-                if k in parsed:
-                    self._project[k] = parsed[k]
-                elif k in self._project:
-                    del self._project[k]
-            if 'config' in parsed and isinstance(parsed['config'], str):
-                self._project['config_path'] = parsed['config']
-        elif config_type == 'config':
+            if 'project_name' in parsed:
+                self._project['project_name'] = parsed.pop('project_name')
+            elif 'project_name' in self._project:
+                del self._project['project_name']
+            config_ref = parsed.pop('config', None)
+            if isinstance(config_ref, str):
+                self._project['config_path'] = config_ref
             form_ref = parsed.pop('form_config', None)
+            if isinstance(form_ref, str):
+                self._project['form_path'] = form_ref
+            elif isinstance(form_ref, dict):
+                self._form_config = form_ref
             for k in list(self._project.keys()):
-                if k not in SKIP_KEYS:
+                if k not in SKIP_KEYS and k not in DESCRIPTION_KEYS:
                     del self._project[k]
             for k, v in parsed.items():
                 if k not in SKIP_KEYS:
                     self._project[k] = v
-            if form_ref and isinstance(form_ref, str):
+        elif config_type == 'config':
+            form_ref = parsed.pop('form_config', None)
+            for k in list(self._config.keys()):
+                self._config.pop(k)
+            for k, v in parsed.items():
+                if k not in SKIP_KEYS:
+                    self._config[k] = v
+            if isinstance(form_ref, str):
                 self._project['form_path'] = form_ref
+            elif isinstance(form_ref, dict):
+                self._form_config = form_ref
         elif config_type == 'form_config':
             self._form_config = parsed
 
@@ -537,10 +564,16 @@ class ConfigBuilder:
         return True
 
     def load_config(self, path, file_type=None):
+        _log.debug('load_config(%s, file_type=%s) cwd=%s', path, file_type, os.getcwd())
         try:
             import yaml
         except ImportError:
             raise ImportError("pyyaml is required: pip install pyyaml")
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(
+                f"No such file: '{path}' (cwd: {os.getcwd()})"
+            )
 
         with open(path) as f:
             data = yaml.safe_load(f) or {}
@@ -576,26 +609,44 @@ class ConfigBuilder:
             self._project['project_enabled'] = True
             loaded_paths['project'] = path
 
-            for s in ('data', 'audio', 'output', 'app'):
-                self._section_targets[s] = 'project'
+            for k, v in data.items():
+                if k not in SKIP_KEYS and k != 'config' and k != 'form_config':
+                    self._project[k] = v
 
             config_ref = data.get('config')
             if isinstance(config_ref, str):
+                self._project['config_path'] = config_ref
                 config_path = _resolve_path(config_ref, base_dir)
+                _log.debug('config ref=%s base_dir=%s resolved=%s', config_ref, base_dir, config_path)
                 if config_path:
                     with open(config_path) as f:
                         config_data = yaml.safe_load(f) or {}
-                    self._project['config_path'] = config_ref
                     self._project['config_enabled'] = True
                     loaded_paths['config'] = config_ref
 
                     form_ref = config_data.pop('form_config', None)
                     for k, v in config_data.items():
                         if k not in SKIP_KEYS:
-                            self._project[k] = v
+                            self._config[k] = v
+
+                    for s in SECTION_KEYS:
+                        if s in self._project and s in self._config:
+                            self._section_targets[s] = 'split'
+                        elif s in self._config:
+                            self._section_targets[s] = 'config'
+                        else:
+                            self._section_targets[s] = 'project'
+                    for s in APP_KEYS:
+                        if s in self._config:
+                            self._section_targets['app'] = 'config'
+                            break
+                    else:
+                        self._section_targets['app'] = 'project'
 
                     if isinstance(form_ref, str):
-                        form_path = _resolve_path(form_ref, base_dir)
+                        form_path = _resolve_path(form_ref, os.path.dirname(config_path) or base_dir)
+                        if not form_path:
+                            form_path = _resolve_path(form_ref, base_dir)
                         if form_path:
                             with open(form_path) as f:
                                 self._form_config = yaml.safe_load(f) or {}
@@ -612,12 +663,13 @@ class ConfigBuilder:
                 else:
                     self._project['config_enabled'] = False
                     self._project['form_enabled'] = False
+                    for s in ('data', 'audio', 'output', 'app'):
+                        self._section_targets[s] = 'project'
             else:
                 self._project['config_enabled'] = False
+                for s in ('data', 'audio', 'output', 'app'):
+                    self._section_targets[s] = 'project'
                 form_ref = data.get('form_config')
-                for k, v in data.items():
-                    if k not in SKIP_KEYS and k != 'config':
-                        self._project[k] = v
                 if isinstance(form_ref, str):
                     form_path = _resolve_path(form_ref, base_dir)
                     if form_path:
@@ -663,6 +715,7 @@ class ConfigBuilder:
                 self._project['form_enabled'] = False
 
         self._dirty = False
+        _log.debug('load_config result: detected=%s loaded_paths=%s', detected, loaded_paths)
         state = self._get_state()
         state['detected_type'] = detected
         state['loaded_paths'] = loaded_paths
