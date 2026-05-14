@@ -134,9 +134,9 @@ export class ProjectSection extends CollapsibleSection {
     lbl.append(cb, lblText);
 
     const defaults: Record<string, string> = {
-      project: 'annotator_config/projects/',
-      config: 'annotator_config/config/',
-      form: 'annotator_config/forms/',
+      project: 'projects/',
+      config: 'config/',
+      form: 'forms/',
     };
 
     const inp = this._makeInput(`${defaults[field]}my_project.yaml`, '180px');
