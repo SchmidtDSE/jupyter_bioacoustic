@@ -674,6 +674,7 @@ export class FormSection extends CollapsibleSection {
 
     this._dynForms.push(df);
     this._dynFormsContainer.appendChild(container);
+    requestAnimationFrame(() => container.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
 
   private _moveElement(card: HTMLDivElement, direction: number, target: { elements: FormElement[]; listEl: HTMLDivElement }): void {
