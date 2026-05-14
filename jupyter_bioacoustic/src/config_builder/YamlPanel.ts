@@ -190,6 +190,10 @@ export class YamlPanel {
     return this._configType;
   }
 
+  switchToTab(tab: string): void {
+    this._switchYamlTab(tab);
+  }
+
   private _switchYamlTab(tab: string): void {
     this._configType = tab;
     for (const [t, btn] of this._yamlTabs) {

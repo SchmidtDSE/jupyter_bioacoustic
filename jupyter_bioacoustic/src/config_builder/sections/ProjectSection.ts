@@ -123,7 +123,7 @@ export class ProjectSection extends CollapsibleSection {
     this._descTitleInput = this._makeInput('', '200px');
     this._descTitleInput.placeholder = 'e.g. Instructions';
     this._descTitleInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('title', this._descTitleInput));
+    this._body.appendChild(this._makeFieldRow('description title', this._descTitleInput));
 
     this._descTextArea = document.createElement('textarea');
     this._descTextArea.style.cssText =
@@ -132,7 +132,7 @@ export class ProjectSection extends CollapsibleSection {
       `box-sizing:border-box;resize:vertical;font-family:monospace;`;
     this._descTextArea.placeholder = 'Markdown text (or use path for a file)';
     this._descTextArea.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('text', this._descTextArea));
+    this._body.appendChild(this._makeFieldRow('description text', this._descTextArea));
 
     this._descPathInput = this._makeInput('', '200px');
     this._descPathInput.placeholder = 'docs/instructions.md';
@@ -148,7 +148,7 @@ export class ProjectSection extends CollapsibleSection {
     descPathRow.append(this._descPathInput, descPathBrowse);
     this._body.appendChild(descPathRow);
 
-    const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('open');
+    const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('description open');
     this._descOpenCb = descOpenCb;
     this._descOpenCb.checked = true;
     this._descOpenCb.addEventListener('change', () => this._emitChanged());
@@ -158,7 +158,7 @@ export class ProjectSection extends CollapsibleSection {
     this._descHeightInput.type = 'number';
     this._descHeightInput.placeholder = 'auto';
     this._descHeightInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('height', this._descHeightInput));
+    this._body.appendChild(this._makeFieldRow('description height', this._descHeightInput));
   }
 
   private _emitFileStates(): void {
