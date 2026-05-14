@@ -14,16 +14,23 @@ import uuid
 from IPython import get_ipython
 from IPython.display import display, HTML
 
-
+#
+# CONSTANTS
+#
 _UNSET = object()
-DEFAULT_PATH = 'projects'
-
+DEFAULT_ANNOTATOR_CONFIG_DIR = 'annotator_config'
+DEFAULT_PROJECT_DIR = f'{DEFAULT_ANNOTATOR_CONFIG_DIR}/projects'
+DEFAULT_CONFIG_DIR = f'{DEFAULT_ANNOTATOR_CONFIG_DIR}/config'
+DEFAULT_FORM_DIR = f'{DEFAULT_ANNOTATOR_CONFIG_DIR}/forms'
 DATA_PROJECT_KEYS = frozenset({'path', 'url', 'sql', 'api', 'secrets'})
 DATA_CONFIG_KEYS = frozenset({'columns', 'start_time', 'end_time', 'duration'})
 AUDIO_PROJECT_KEYS = frozenset({'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'})
 AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
 
 
+#
+# HELPERS
+#
 def _resolve_path(ref, base_dir):
     if os.path.isabs(ref):
         return ref if os.path.exists(ref) else None
@@ -35,9 +42,13 @@ def _resolve_path(ref, base_dir):
     return None
 
 
+#
+# MAIN
+#
 class ConfigBuilder:
-    def __init__(self, path=DEFAULT_PATH):
-        self._path = path
+
+
+    def __init__(self):
         self._project = {}
         self._config = {}
         self._form_config = {}
@@ -229,9 +240,9 @@ class ConfigBuilder:
         config_enabled = self._project.get('config_enabled', True)
         form_enabled = self._project.get('form_enabled', True)
 
-        p_path = self._project.get('project_path') or f'config/projects/{slug}.yaml'
-        c_path = self._project.get('config_path') or f'config/application/{slug}.yaml'
-        f_path = self._project.get('form_path') or f'config/forms/{slug}.yaml'
+        p_path = self._project.get('project_path') or f'{DEFAULT_PROJECT_DIR}/{slug}.yaml'
+        c_path = self._project.get('config_path') or f'{DEFAULT_CONFIG_DIR}/{slug}.yaml'
+        f_path = self._project.get('form_path') or f'{DEFAULT_FORM_DIR}/{slug}.yaml'
 
         skip_keys = ('project_name', 'project_path', 'config_path',
                      'form_path', 'project_enabled', 'config_enabled', 'form_enabled')
