@@ -81,3 +81,4 @@ dist/
 *sftp-config.json*
 *.pyc
 pip-selfcheck.json
+jba_debug.log
