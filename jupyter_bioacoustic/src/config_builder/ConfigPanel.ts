@@ -97,6 +97,8 @@ export class ConfigPanel {
     this._project.browseRequested.connect((_, { field, current }) => {
       if (field === 'output_path') {
         this._openBrowser(current, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._project.setOutputPath(p));
+      } else if (field === 'description_path') {
+        this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
       } else {
         this._openBrowser(current, ['.yaml', '.yml'], (p) => {
           if (field === 'project') this._project.setProjectPath(p);
@@ -407,10 +409,17 @@ export class ConfigPanel {
       this._yamlPanel.updateYaml(this._yamls);
 
       if (state.project) {
-        this._project.setData(state.project);
-        const targets = state.section_targets || {};
         const proj = state.project || {};
         const conf = state.config || {};
+        const projWithDesc = { ...proj };
+        if (conf.description) projWithDesc.description = conf.description;
+        if (conf.description_title) projWithDesc.description_title = conf.description_title;
+        if (conf.description_text) projWithDesc.description_text = conf.description_text;
+        if (conf.description_path) projWithDesc.description_path = conf.description_path;
+        if (conf.description_open !== undefined) projWithDesc.description_open = conf.description_open;
+        if (conf.description_height) projWithDesc.description_height = conf.description_height;
+        this._project.setData(projWithDesc);
+        const targets = state.section_targets || {};
 
         const mergedData = this._resolveSectionData('data', targets, proj, conf);
         if (mergedData) this._data.setData(mergedData);
