@@ -94,8 +94,8 @@ export class ConfigPanel {
     left.appendChild(this._summary.element);
 
     this._project.browseRequested.connect((_, { field, current }) => {
-      if (field === 'description_path') {
-        this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
+      if (field === 'output_path') {
+        this._openBrowser(current, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._project.setOutputPath(p));
       } else {
         this._openBrowser(current, ['.yaml', '.yml'], (p) => {
           if (field === 'project') this._project.setProjectPath(p);
@@ -124,10 +124,6 @@ export class ConfigPanel {
 
     this._audio.browseRequested.connect((_, dir) => {
       this._openBrowser(dir, ['.flac', '.wav', '.mp3', '.ogg', '.m4a', '.aac'], (p) => this._audio.setPath(p));
-    });
-
-    this._output.browseRequested.connect((_, dir) => {
-      this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._output.setPath(p));
     });
 
     this._app.browseRequested.connect((_, dir) => {
@@ -532,11 +528,14 @@ export class ConfigPanel {
   }
 
   private _updateSummary(): void {
+    const outputData = this._output.getData();
+    const outputPath = this._project.getOutputPath();
+    if (outputPath) outputData.path = outputPath;
     this._summary.update({
       project: this._project.getData(),
       data: this._data.getData(),
       audio: this._audio.getData(),
-      output: this._output.getData(),
+      output: outputData,
       app: this._app.getData(),
       form: this._form.getData(),
     });

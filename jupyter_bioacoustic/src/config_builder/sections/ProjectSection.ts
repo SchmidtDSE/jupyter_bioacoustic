@@ -26,11 +26,8 @@ export class ProjectSection extends CollapsibleSection {
   private _configLoadBtn: HTMLButtonElement;
   private _formLoadBtn: HTMLButtonElement;
 
-  private _descTitleInput: HTMLInputElement;
-  private _descTextArea: HTMLTextAreaElement;
-  private _descPathInput: HTMLInputElement;
-  private _descOpenCb: HTMLInputElement;
-  private _descHeightInput: HTMLInputElement;
+  private _outputPathInput: HTMLInputElement;
+  private _outputBrowseBtn: HTMLButtonElement;
 
   constructor() {
     super('Setup', 'project', true);
@@ -86,54 +83,27 @@ export class ProjectSection extends CollapsibleSection {
     this._formCb.addEventListener('change', () => this._emitFileStates());
     this._body.appendChild(fRow.row);
 
-    const descSep = document.createElement('div');
-    descSep.style.cssText = `height:1px;background:${COLORS.bgSurface1};margin:6px 0;`;
-    this._body.appendChild(descSep);
+    const outSep = document.createElement('div');
+    outSep.style.cssText = `height:1px;background:${COLORS.bgSurface1};margin:6px 0;`;
+    this._body.appendChild(outSep);
 
-    const descLabel = document.createElement('div');
-    descLabel.textContent = 'Description Panel';
-    descLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
-    this._body.appendChild(descLabel);
+    const outLabel = document.createElement('div');
+    outLabel.textContent = 'Output';
+    outLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
+    this._body.appendChild(outLabel);
 
-    this._descTitleInput = this._makeInput('', '200px');
-    this._descTitleInput.placeholder = 'e.g. Instructions';
-    this._descTitleInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('title', this._descTitleInput));
-
-    this._descTextArea = document.createElement('textarea');
-    this._descTextArea.style.cssText =
-      `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:4px;` +
-      `color:${COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
-      `box-sizing:border-box;resize:vertical;font-family:monospace;`;
-    this._descTextArea.placeholder = 'Markdown text (or use "path" to read from a file)';
-    this._descTextArea.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('text', this._descTextArea));
-
-    this._descPathInput = this._makeInput('', '200px');
-    this._descPathInput.placeholder = 'docs/instructions.md';
-    this._descPathInput.addEventListener('input', () => this._emitChanged());
-    const descPathRow = this._makeRow();
-    descPathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
-    descPathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
-    descPathRow.appendChild(this._makeLabel('path'));
-    const descPathBrowse = this._makeButton('Browse');
-    descPathBrowse.addEventListener('click', () => {
-      this.browseRequested.emit({ field: 'description_path', current: this._descPathInput.value || '.' });
+    const outRow = this._makeRow();
+    outRow.addEventListener('focusin', () => this.fieldFocused.emit('output path'));
+    outRow.addEventListener('click', () => this.fieldFocused.emit('output path'));
+    outRow.appendChild(this._makeLabel('path'));
+    this._outputPathInput = this._makeInput('outputs/my_project.csv', '200px');
+    this._outputPathInput.addEventListener('input', () => this._emitChanged());
+    this._outputBrowseBtn = this._makeButton('Browse');
+    this._outputBrowseBtn.addEventListener('click', () => {
+      this.browseRequested.emit({ field: 'output_path', current: this._outputPathInput.value || '.' });
     });
-    descPathRow.append(this._descPathInput, descPathBrowse);
-    this._body.appendChild(descPathRow);
-
-    const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('open');
-    this._descOpenCb = descOpenCb;
-    this._descOpenCb.checked = true;
-    this._descOpenCb.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(descOpenRow);
-
-    this._descHeightInput = this._makeInput('', '60px');
-    this._descHeightInput.type = 'number';
-    this._descHeightInput.placeholder = 'auto';
-    this._descHeightInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('height', this._descHeightInput));
+    outRow.append(this._outputPathInput, this._outputBrowseBtn);
+    this._body.appendChild(outRow);
   }
 
   private _emitFileStates(): void {
@@ -164,9 +134,9 @@ export class ProjectSection extends CollapsibleSection {
     lbl.append(cb, lblText);
 
     const defaults: Record<string, string> = {
-      project: 'config/projects/',
-      config: 'config/application/',
-      form: 'config/forms/',
+      project: 'annotator_config/projects/',
+      config: 'annotator_config/config/',
+      form: 'annotator_config/forms/',
     };
 
     const inp = this._makeInput(`${defaults[field]}my_project.yaml`, '180px');
@@ -212,9 +182,15 @@ export class ProjectSection extends CollapsibleSection {
       }
     };
 
-    update(this._projectPathInput, 'config/projects/');
-    update(this._configPathInput, 'config/application/');
-    update(this._formPathInput, 'config/forms/');
+    update(this._projectPathInput, 'annotator_config/projects/');
+    update(this._configPathInput, 'annotator_config/config/');
+    update(this._formPathInput, 'annotator_config/forms/');
+
+    if (!this._outputPathInput.value || this._outputPathInput.value.includes('/')) {
+      const cur = this._outputPathInput.value;
+      const dir = cur ? cur.replace(/[^/]+$/, '') : 'outputs/';
+      this._outputPathInput.value = `${dir}${slug}.csv`;
+    }
   }
 
   setProjectPath(path: string): void {
@@ -252,8 +228,17 @@ export class ProjectSection extends CollapsibleSection {
     this._formBrowseBtn.style.opacity = form ? '1' : '0.4';
   }
 
+  setOutputPath(path: string): void {
+    this._outputPathInput.value = path;
+    this._emitChanged();
+  }
+
+  getOutputPath(): string {
+    return this._outputPathInput.value;
+  }
+
   getData(): Record<string, any> {
-    const result: Record<string, any> = {
+    return {
       project_name: this._nameInput.value || undefined,
       project_enabled: this._projectCb.checked,
       config_enabled: this._configCb.checked,
@@ -261,30 +246,8 @@ export class ProjectSection extends CollapsibleSection {
       project_path: this._projectCb.checked ? (this._projectPathInput.value || undefined) : undefined,
       config_path: this._configCb.checked ? (this._configPathInput.value || undefined) : undefined,
       form_path: this._formCb.checked ? (this._formPathInput.value || undefined) : undefined,
+      output_path: this._outputPathInput.value || undefined,
     };
-
-    const dh = parseInt(this._descHeightInput.value);
-    if (!isNaN(dh) && dh > 0) result.description_height = dh;
-
-    const descTitle = this._descTitleInput.value.trim();
-    const descText = this._descTextArea.value;
-    const descPath = this._descPathInput.value.trim();
-    const descOpen = this._descOpenCb.checked;
-    if (descTitle || descText || descPath) {
-      const desc: Record<string, any> = {};
-      if (descTitle) desc.title = descTitle;
-      if (descText) desc.text = descText;
-      if (descPath) desc.path = descPath;
-      if (!descOpen) desc.open = false;
-      result.description = desc;
-    }
-
-    return result;
-  }
-
-  setDescriptionPath(path: string): void {
-    this._descPathInput.value = path;
-    this._emitChanged();
   }
 
   setData(data: Record<string, any>): void {
@@ -292,18 +255,8 @@ export class ProjectSection extends CollapsibleSection {
     if (data.project_path) this._projectPathInput.value = data.project_path;
     if (data.config_path) this._configPathInput.value = data.config_path;
     if (data.form_path) this._formPathInput.value = data.form_path;
-    if (data.description_height) this._descHeightInput.value = String(data.description_height);
-    if (data.description) {
-      const d = typeof data.description === 'object' ? data.description : {};
-      if (d.title) this._descTitleInput.value = d.title;
-      if (d.text) this._descTextArea.value = d.text;
-      if (d.path) this._descPathInput.value = d.path;
-      if (d.open === false) this._descOpenCb.checked = false;
-    }
-    if (data.description_title) this._descTitleInput.value = data.description_title;
-    if (data.description_text) this._descTextArea.value = data.description_text;
-    if (data.description_path) this._descPathInput.value = data.description_path;
-    if (data.description_open === false) this._descOpenCb.checked = false;
+    if (data.output_path) this._outputPathInput.value = data.output_path;
+    else if (data.output?.path) this._outputPathInput.value = data.output.path;
     if (data.project_enabled !== undefined) {
       const on = !!data.project_enabled;
       this._projectCb.checked = on;
