@@ -17,9 +17,8 @@ function wp(expr: string): string {
 }
 
 export function ensureSetup(cwd?: string): string {
-  const lines = [`import json as _j`];
+  const lines = [`import json as _j, os as _os`];
   if (cwd) {
-    lines.push(`import os as _os`);
     lines.push(`_os.chdir(_os.path.expanduser('${escPy(cwd)}'))`);
   }
   lines.push(
@@ -30,7 +29,7 @@ export function ensureSetup(cwd?: string): string {
     `    _cb = _CB_cls()`,
     `    _cb.setup()`,
   );
-  lines.push(wp(`_j.dumps({'ready': True})`));
+  lines.push(wp(`_j.dumps({'ready': True, 'debug': bool(_os.environ.get('JBA_DEBUG_MODE')), 'cwd': _os.getcwd()})`));
   return lines.join('\n');
 }
 
