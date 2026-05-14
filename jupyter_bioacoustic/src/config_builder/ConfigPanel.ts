@@ -36,6 +36,7 @@ export class ConfigPanel {
   private _savedPath = '';
   private _suppressChanges = false;
   private _ready = false;
+  private _debug = false;
   private _readyPromise: Promise<void>;
 
   private _project: ProjectSection;
@@ -190,12 +191,21 @@ export class ConfigPanel {
   private async _ensureReady(): Promise<void> {
     this._setStatus('Initializing…');
     try {
-      await this._kernel.exec(ensureSetup(this._kernel.cwd));
+      const raw = await this._kernel.exec(ensureSetup(this._kernel.cwd));
+      const result = JSON.parse(extractJson(raw));
       this._ready = true;
+      this._debug = !!result.debug;
+      if (this._debug) {
+        console.debug('[JBA] ConfigPanel ready, cwd:', result.cwd);
+      }
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Init failed: ${String(e.message ?? e)}`, true);
     }
+  }
+
+  private _dbg(...args: any[]): void {
+    if (this._debug) console.debug('[JBA]', ...args);
   }
 
   get statusEl(): HTMLSpanElement {
@@ -214,6 +224,7 @@ export class ConfigPanel {
     if (!section) return;
 
     const data = section.getData();
+    this._dbg('sectionChanged', sectionName, data);
     this._setStatus('Updating…');
 
     try {
@@ -355,12 +366,14 @@ export class ConfigPanel {
       } catch { /* proceed */ }
     }
 
+    this._dbg('saveToFile', { enabled });
     this._setStatus(`Saving ${enabled.length} file(s)…`);
     try {
       const raw = await this._kernel.exec(saveAll());
       const state = JSON.parse(extractJson(raw));
       this._dirty = false;
       const paths = state.saved_paths || {};
+      this._dbg('saved', paths);
       const savedList = Object.values(paths).join(', ');
       this._savedPath = paths.project || paths.config || paths.form || '';
       this._setStatus(`Saved: ${savedList}`);
@@ -381,6 +394,7 @@ export class ConfigPanel {
   }
 
   private _applyState(state: any): void {
+    this._dbg('applyState', { targets: state.section_targets, projectKeys: Object.keys(state.project || {}), configKeys: Object.keys(state.config || {}) });
     this._suppressChanges = true;
     try {
       this._yamls = {
@@ -435,6 +449,7 @@ export class ConfigPanel {
   private async _onLoadConfig(path: string, fileType?: string): Promise<void> {
     await this._readyPromise;
     if (!this._ready) return;
+    this._dbg('loadConfig', path, fileType);
     this._setStatus(`Loading ${path}…`);
     try {
       const raw = await this._kernel.exec(loadConfig(path, fileType));
