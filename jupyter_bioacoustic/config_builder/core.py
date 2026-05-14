@@ -41,6 +41,10 @@ APP_KEYS = frozenset({
     'description_path', 'description_open', 'description_height',
     'secrets',
 })
+DESCRIPTION_KEYS = frozenset({
+    'description', 'description_title', 'description_text',
+    'description_path', 'description_open', 'description_height',
+})
 
 
 #
@@ -104,8 +108,7 @@ class ConfigBuilder:
             for k in SKIP_KEYS:
                 if k in data:
                     self._project[k] = data[k]
-            for k in ('description', 'description_title', 'description_text',
-                      'description_path', 'description_open', 'description_height'):
+            for k in DESCRIPTION_KEYS:
                 if k in data:
                     val = data[k]
                     if val is not None and val != '' and val != []:
