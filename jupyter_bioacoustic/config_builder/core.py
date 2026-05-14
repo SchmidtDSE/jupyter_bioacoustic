@@ -30,6 +30,7 @@ SECTION_KEYS = frozenset({'data', 'audio', 'output'})
 SKIP_KEYS = frozenset({
     'project_name', 'project_path', 'config_path',
     'form_path', 'project_enabled', 'config_enabled', 'form_enabled',
+    'output_path',
 })
 APP_KEYS = frozenset({
     'project_save_btn', 'ident_column', 'display_columns',
@@ -108,6 +109,16 @@ class ConfigBuilder:
             for k in SKIP_KEYS:
                 if k in data:
                     self._project[k] = data[k]
+            if 'output_path' in data:
+                op = data['output_path']
+                if op:
+                    out = self._project.get('output', {})
+                    if not isinstance(out, dict):
+                        out = {}
+                    out['path'] = op
+                    self._project['output'] = out
+                elif 'output' in self._project and isinstance(self._project['output'], dict):
+                    self._project['output'].pop('path', None)
             for k in DESCRIPTION_KEYS:
                 if k in data:
                     val = data[k]

@@ -146,6 +146,7 @@ export class ConfigSummary {
     } else {
       this._row(sec, 'files', 'none configured', true);
     }
+    if (d.output_path) this._row(sec, 'output', d.output_path);
   }
 
   private _addDataSection(d: Record<string, any>): void {
