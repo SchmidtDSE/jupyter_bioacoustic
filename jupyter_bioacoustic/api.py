@@ -1149,7 +1149,6 @@ class BioacousticAnnotator:
             ))
 
     def sync(self, dest: str = None, recursive: bool = None, **kwargs) -> str:
-        _log.info('sync requested: dest=%s recursive=%s', dest, recursive)
         """Upload the current output file to the configured remote location.
 
         Parameters
@@ -1165,6 +1164,7 @@ class BioacousticAnnotator:
             Overrides any configured ``output.secrets``.
         """
         from jupyter_bioacoustic.audio import io
+        _log.info('sync requested: dest=%s recursive=%s', dest, recursive)
 
         src = self._output
         if not src:
