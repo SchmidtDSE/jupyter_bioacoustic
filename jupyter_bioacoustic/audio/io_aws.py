@@ -51,10 +51,12 @@ def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
 def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
     bucket, key = _parse_s3_uri(path)
     client = kwargs.get('client') or _get_client(**kwargs)
+    _shared.last_warning = None
 
     if partial:
+        _log.debug('S3 partial read: %s  start=%.1fs dur=%.1fs', path, start_sec, dur_sec)
         try:
-            return _shared.read_remote_partial(
+            result = _shared.read_remote_partial(
                 start_sec, dur_sec,
                 get_header=lambda: client.get_object(
                     Bucket=bucket, Key=key, Range='bytes=0-4095'
@@ -66,13 +68,20 @@ def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
                     Bucket=bucket, Key=key, Range=f'bytes={sb}-{eb}'
                 )['Body'].read(),
             )
+            _log.debug('S3 partial read succeeded: %s', path)
+            return result
         except Exception as e:
-            _log.warning(f'S3 partial failed: {type(e).__name__}: {e}')
-            _log.info('falling back to full download + cache')
+            msg = f'Partial download failed ({type(e).__name__}: {e}). Falling back to full download'
+            _log.warning(msg)
+            _shared.last_warning = msg
 
+    _log.debug('S3 full download: %s', path)
     cache = _shared.cache_path(path)
     if not os.path.exists(cache):
+        _log.debug('S3 downloading full file to cache: %s', cache)
         client.download_file(bucket, key, cache)
+    else:
+        _log.debug('S3 using cached file: %s', cache)
     from . import io_local
     return io_local.read_segment(cache, start_sec, dur_sec)
 
