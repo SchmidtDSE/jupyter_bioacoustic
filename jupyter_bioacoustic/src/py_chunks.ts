@@ -69,6 +69,9 @@ import soundfile as _sf2
 _wb = _io.BytesIO()
 _sf2.write(_wb, (_mono * 32767).astype(_np.int16)[:, None], _sr, format='WAV', subtype='PCM_16')
 
+from jupyter_bioacoustic.audio import _shared as _audio_shared
+_audio_warning = getattr(_audio_shared, 'last_warning', None)
+
 print(_j.dumps({
     'spec': _b64.b64encode(_pb.getvalue()).decode(),
     'wav':  _b64.b64encode(_wb.getvalue()).decode(),
@@ -77,6 +80,7 @@ print(_j.dumps({
     'freq_min': float(_f_min),
     'freq_max': float(_f_max),
     'freq_scale': _freq_scale if '_freq_scale' in dir() else ('mel' if '_n_mels' in dir() else 'linear'),
+    'audio_warning': _audio_warning,
 }))
 `;
 
