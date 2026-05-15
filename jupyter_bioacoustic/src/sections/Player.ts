@@ -33,7 +33,7 @@ export class Player {
   // ─── Signals ───────────────────────────────────────────────
 
   /** Status message for the widget header. */
-  readonly statusChanged = new Signal<this, { message: string; error: boolean }>(this);
+  readonly statusChanged = new Signal<this, { message: string; error: boolean; warning?: boolean }>(this);
 
   // ─── Player state ─────────────────────────────────────────
 
@@ -473,7 +473,8 @@ export class Player {
     this.statusChanged.emit({ message: loadMsg, error: false });
 
     let result: { spec: string; wav: string; duration: number; sample_rate: number;
-      freq_min: number; freq_max: number; freq_scale?: string; freq_scale_lut?: number[] | null };
+      freq_min: number; freq_max: number; freq_scale?: string; freq_scale_lut?: number[] | null;
+      audio_warning?: string | null };
     try {
       const vizIdx = parseInt(this._spectTypeSelect.value) || 0;
       const viz = this._vizMeta[vizIdx] ?? this._vizMeta[0];
@@ -515,10 +516,18 @@ export class Player {
     this._enableLoadBtn();
 
     const fname = audioPath.split('/').pop() ?? audioPath;
-    this.statusChanged.emit({
-      message: `✓ ${fname}  ${fmtTime(loadStart)}–${fmtTime(loadStart + result.duration)}`,
-      error: false,
-    });
+    if (result.audio_warning) {
+      this.statusChanged.emit({
+        message: `⚠ ${fname}: ${result.audio_warning}`,
+        error: false,
+        warning: true,
+      });
+    } else {
+      this.statusChanged.emit({
+        message: `✓ ${fname}  ${fmtTime(loadStart)}–${fmtTime(loadStart + result.duration)}`,
+        error: false,
+      });
+    }
   }
 
   private _enableLoadBtn(): void {
