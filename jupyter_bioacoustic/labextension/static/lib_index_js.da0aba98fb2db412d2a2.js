@@ -53,7 +53,12 @@ class ConfigPanel {
         ]);
         for (const [name, section] of this._sections) {
             section.focused.connect(() => this._onSectionFocused(name));
-            section.fieldFocused.connect((_, field) => this._yamlPanel.scrollToField(field));
+            section.fieldFocused.connect((_, field) => {
+                if (field.startsWith('description')) {
+                    this._yamlPanel.switchToTab('config');
+                }
+                this._yamlPanel.scrollToField(field);
+            });
             section.changed.connect(() => void this._onSectionChanged(name));
             section.opened.connect(() => this._onAccordionOpen(section));
             left.appendChild(section.element);
@@ -70,6 +75,9 @@ class ConfigPanel {
         this._project.browseRequested.connect((_, { field, current }) => {
             if (field === 'output_path') {
                 this._openBrowser(current, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._project.setOutputPath(p));
+            }
+            else if (field === 'description_path') {
+                this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
             }
             else {
                 this._openBrowser(current, ['.yaml', '.yml'], (p) => {
@@ -364,10 +372,23 @@ class ConfigPanel {
             this._savedPath = state.saved_path || '';
             this._yamlPanel.updateYaml(this._yamls);
             if (state.project) {
-                this._project.setData(state.project);
-                const targets = state.section_targets || {};
                 const proj = state.project || {};
                 const conf = state.config || {};
+                const projWithDesc = Object.assign({}, proj);
+                if (conf.description)
+                    projWithDesc.description = conf.description;
+                if (conf.description_title)
+                    projWithDesc.description_title = conf.description_title;
+                if (conf.description_text)
+                    projWithDesc.description_text = conf.description_text;
+                if (conf.description_path)
+                    projWithDesc.description_path = conf.description_path;
+                if (conf.description_open !== undefined)
+                    projWithDesc.description_open = conf.description_open;
+                if (conf.description_height)
+                    projWithDesc.description_height = conf.description_height;
+                this._project.setData(projWithDesc);
+                const targets = state.section_targets || {};
                 const mergedData = this._resolveSectionData('data', targets, proj, conf);
                 if (mergedData)
                     this._data.setData(mergedData);
@@ -887,6 +908,9 @@ class YamlPanel {
     }
     get configType() {
         return this._configType;
+    }
+    switchToTab(tab) {
+        this._switchYamlTab(tab);
     }
     _switchYamlTab(tab) {
         this._configType = tab;
@@ -3824,6 +3848,48 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
         });
         outRow.append(this._outputPathInput, this._outputBrowseBtn);
         this._body.appendChild(outRow);
+        const descSep = document.createElement('div');
+        descSep.style.cssText = `height:1px;background:${styles_1.COLORS.bgSurface1};margin:6px 0;`;
+        this._body.appendChild(descSep);
+        const descLabel = document.createElement('div');
+        descLabel.textContent = 'Description Panel';
+        descLabel.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
+        this._body.appendChild(descLabel);
+        this._descTitleInput = this._makeInput('', '200px');
+        this._descTitleInput.placeholder = 'e.g. Instructions';
+        this._descTitleInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('description title', this._descTitleInput));
+        this._descTextArea = document.createElement('textarea');
+        this._descTextArea.style.cssText =
+            `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};border-radius:4px;` +
+                `color:${styles_1.COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
+                `box-sizing:border-box;resize:vertical;font-family:monospace;`;
+        this._descTextArea.placeholder = 'Markdown text (or use path for a file)';
+        this._descTextArea.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('description text', this._descTextArea));
+        this._descPathInput = this._makeInput('', '200px');
+        this._descPathInput.placeholder = 'docs/instructions.md';
+        this._descPathInput.addEventListener('input', () => this._emitChanged());
+        const descPathRow = this._makeRow();
+        descPathRow.addEventListener('focusin', () => this.fieldFocused.emit('description_path'));
+        descPathRow.addEventListener('click', () => this.fieldFocused.emit('description_path'));
+        descPathRow.appendChild(this._makeLabel('path'));
+        const descPathBrowse = this._makeButton('Browse');
+        descPathBrowse.addEventListener('click', () => {
+            this.browseRequested.emit({ field: 'description_path', current: this._descPathInput.value || '.' });
+        });
+        descPathRow.append(this._descPathInput, descPathBrowse);
+        this._body.appendChild(descPathRow);
+        const { row: descOpenRow, input: descOpenCb } = this._makeCheckbox('description open');
+        this._descOpenCb = descOpenCb;
+        this._descOpenCb.checked = true;
+        this._descOpenCb.addEventListener('change', () => this._emitChanged());
+        this._body.appendChild(descOpenRow);
+        this._descHeightInput = this._makeInput('', '60px');
+        this._descHeightInput.type = 'number';
+        this._descHeightInput.placeholder = 'auto';
+        this._descHeightInput.addEventListener('input', () => this._emitChanged());
+        this._body.appendChild(this._makeFieldRow('description height', this._descHeightInput));
     }
     _emitFileStates() {
         this.fileStatesChanged.emit({
@@ -3933,8 +3999,12 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
     getOutputPath() {
         return this._outputPathInput.value;
     }
+    setDescriptionPath(path) {
+        this._descPathInput.value = path;
+        this._emitChanged();
+    }
     getData() {
-        return {
+        const result = {
             project_name: this._nameInput.value || undefined,
             project_enabled: this._projectCb.checked,
             config_enabled: this._configCb.checked,
@@ -3944,6 +4014,26 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
             form_path: this._formCb.checked ? (this._formPathInput.value || undefined) : undefined,
             output_path: this._outputPathInput.value || undefined,
         };
+        const dh = parseInt(this._descHeightInput.value);
+        if (!isNaN(dh) && dh > 0)
+            result.description_height = dh;
+        const descTitle = this._descTitleInput.value.trim();
+        const descText = this._descTextArea.value;
+        const descPath = this._descPathInput.value.trim();
+        const descOpen = this._descOpenCb.checked;
+        if (descTitle || descText || descPath) {
+            const desc = {};
+            if (descTitle)
+                desc.title = descTitle;
+            if (descText)
+                desc.text = descText;
+            if (descPath)
+                desc.path = descPath;
+            if (!descOpen)
+                desc.open = false;
+            result.description = desc;
+        }
+        return result;
     }
     setData(data) {
         var _a;
@@ -3959,6 +4049,27 @@ class ProjectSection extends CollapsibleSection_1.CollapsibleSection {
             this._outputPathInput.value = data.output_path;
         else if ((_a = data.output) === null || _a === void 0 ? void 0 : _a.path)
             this._outputPathInput.value = data.output.path;
+        if (data.description_height)
+            this._descHeightInput.value = String(data.description_height);
+        if (data.description) {
+            const d = typeof data.description === 'object' ? data.description : {};
+            if (d.title)
+                this._descTitleInput.value = d.title;
+            if (d.text)
+                this._descTextArea.value = d.text;
+            if (d.path)
+                this._descPathInput.value = d.path;
+            if (d.open === false)
+                this._descOpenCb.checked = false;
+        }
+        if (data.description_title)
+            this._descTitleInput.value = data.description_title;
+        if (data.description_text)
+            this._descTextArea.value = data.description_text;
+        if (data.description_path)
+            this._descPathInput.value = data.description_path;
+        if (data.description_open === false)
+            this._descOpenCb.checked = false;
         if (data.project_enabled !== undefined) {
             const on = !!data.project_enabled;
             this._projectCb.checked = on;
@@ -9861,4 +9972,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.878cf3ff3bbd75edf16a.js.map
+//# sourceMappingURL=lib_index_js.da0aba98fb2db412d2a2.js.map
