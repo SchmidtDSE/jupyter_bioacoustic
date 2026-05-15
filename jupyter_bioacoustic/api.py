@@ -13,12 +13,15 @@ Usage (config + overrides):
 """
 
 import json
+import logging
 import os
 import re
 import uuid
 
 from IPython import get_ipython
 from IPython.display import display, Javascript, HTML
+
+_log = logging.getLogger('jupyter_bioacoustic.api')
 
 # Sentinel — distinguishes "caller passed nothing" from a real default value
 _UNSET = object()
@@ -70,6 +73,7 @@ def _resolve_secrets(data_secrets) -> dict:
             env_var = v[4:]
             resolved[k] = os.environ.get(env_var, '')
             if not resolved[k]:
+                _log.error('Environment variable %r not set (for secret %r)', env_var, k)
                 raise ValueError(
                     f"Environment variable {env_var!r} not set (for secret {k!r})")
         elif isinstance(v, str) and v.lower() == 'dialog':
@@ -130,8 +134,10 @@ def _read_data_from_url(url: str, cookies: dict = None):
     import requests as req
     import tempfile
 
+    _log.info('fetching data from URL: %s', url[:120])
     resp = req.get(url, cookies=cookies or {}, timeout=120)
     resp.raise_for_status()
+    _log.debug('URL response: status=%d content-type=%s', resp.status_code, resp.headers.get('Content-Type', ''))
 
     ct = resp.headers.get('Content-Type', '').lower()
 
@@ -152,13 +158,12 @@ def _read_data_from_url(url: str, cookies: dict = None):
         import io
         return pd.read_json(io.StringIO(resp.text), lines=True)
 
-    # Try to parse as JSON anyway (some servers don't set Content-Type)
     try:
         data = resp.json()
         if isinstance(data, list):
             return pd.DataFrame(data)
     except (ValueError, TypeError):
-        pass
+        _log.debug('URL response is not JSON, falling back to file download')
 
     # Fall back to downloading as a file
     ext = os.path.splitext(url.split('?')[0])[1].lower() or '.csv'
@@ -202,8 +207,9 @@ def _read_data_from_sql(query: str, secrets: dict = None):
         try:
             conn.execute("INSTALL httpfs")
         except Exception:
-            pass  # may already be installed
+            pass
         conn.execute("LOAD httpfs")
+        _log.debug('duckdb: loaded httpfs extension')
 
     # Duckdb S3/GCS settings that can be SET directly
     _DUCKDB_SET_KEYS = {
@@ -229,10 +235,12 @@ def _read_data_from_sql(query: str, secrets: dict = None):
             conn.execute(
                 "CREATE SECRET IF NOT EXISTS (_type = 's3', provider = 'credential_chain')"
             )
-        except Exception:
-            pass  # credential chain may not be available — duckdb will try unsigned
+        except Exception as e:
+            _log.debug('duckdb: credential chain not available: %s', e)
 
+    _log.info('executing SQL query (%d chars)', len(query))
     result = conn.execute(query).df()
+    _log.info('SQL query returned %d rows, %d columns', len(result), len(result.columns))
     conn.close()
     return result
 
@@ -650,6 +658,7 @@ class BioacousticAnnotator:
                     f"passed. Got: {sorted(passed)}"
                 )
             if isinstance(project, str):
+                _log.info('loading project file: %s', project)
                 proj_cfg = _load_config(project)
             elif isinstance(project, dict):
                 proj_cfg = dict(project)
@@ -660,6 +669,7 @@ class BioacousticAnnotator:
             nested = proj_cfg.pop('config', None)
             if nested:
                 if isinstance(nested, str):
+                    _log.info('loading nested config: %s', nested)
                     base = _load_config(nested)
                 elif isinstance(nested, dict):
                     base = dict(nested)
@@ -673,7 +683,11 @@ class BioacousticAnnotator:
             else:
                 cfg = proj_cfg
         else:
-            cfg = _load_config(config) if config not in (_UNSET, None) else {}
+            if config not in (_UNSET, None):
+                _log.info('loading config file: %s', config)
+                cfg = _load_config(config)
+            else:
+                cfg = {}
 
         self._project_file = project if isinstance(project, str) else None
 
@@ -770,7 +784,9 @@ class BioacousticAnnotator:
         # Top-level type hint overrides auto-detection (for str sources)
         if _top_dtype and isinstance(source, str):
             dtype = _top_dtype
+        _log.info('loading data: dtype=%s source=%s', dtype, str(source)[:100] if isinstance(source, str) else type(source).__name__)
         loaded_data = _load_data(source, dtype=dtype, secrets=resolved_secrets)
+        _log.info('data loaded: %d rows, %d columns', len(loaded_data), len(loaded_data.columns))
 
         # Normalize start_time / end_time / duration columns
         # Resolve from: top-level param > config > data dict > default
@@ -874,6 +890,7 @@ class BioacousticAnnotator:
         self._audio_config = _resolve_audio_config(
             raw_audio, raw_prefix, raw_suffix, raw_fallback,
             audio_secrets=raw_audio_secrets)
+        _log.info('audio config resolved: type=%s value=%s', self._audio_config.get('type'), str(self._audio_config.get('value', ''))[:80])
 
         self._data             = loaded_data
         self._data_source      = source if isinstance(source, str) else None
@@ -944,6 +961,7 @@ class BioacousticAnnotator:
         self._data_columns     = resolved_columns
         raw_form = resolve(form_config, 'form_config', None)
         if isinstance(raw_form, str):
+            _log.info('loading form config: %s', raw_form)
             raw_form = _load_config(raw_form)
         # Append **kwargs as fixed_value entries to the form config
         if kwargs:
@@ -1023,7 +1041,9 @@ class BioacousticAnnotator:
             try:
                 with open(raw_desc_path) as _f:
                     raw_desc_text = _f.read()
-            except OSError:
+                _log.debug('loaded description from %s', raw_desc_path)
+            except OSError as e:
+                _log.warning('could not read description file %s: %s', raw_desc_path, e)
                 raw_desc_text = f'(Could not read {raw_desc_path})'
         self._description_config = {
             'title': raw_desc_title or '',
@@ -1129,6 +1149,7 @@ class BioacousticAnnotator:
             ))
 
     def sync(self, dest: str = None, recursive: bool = None, **kwargs) -> str:
+        _log.info('sync requested: dest=%s recursive=%s', dest, recursive)
         """Upload the current output file to the configured remote location.
 
         Parameters
@@ -1165,7 +1186,10 @@ class BioacousticAnnotator:
             merged_kwargs.update(_resolve_secrets(self._sync_secrets_raw))
         merged_kwargs.update(kwargs)
 
-        return io.write(src, target, recursive=rec, **merged_kwargs)
+        _log.info('syncing %s -> %s (recursive=%s)', src, target, rec)
+        result = io.write(src, target, recursive=rec, **merged_kwargs)
+        _log.info('sync complete: %s', result)
+        return result
 
     def save_as_project(
         self,
@@ -1219,6 +1243,7 @@ class BioacousticAnnotator:
         with open(path, 'w') as f:
             yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
 
+        _log.info('saved project to %s', path)
         return path
 
     def _open_inline(self) -> None:
