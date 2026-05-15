@@ -25,6 +25,7 @@ def _get_client(project=None, credentials=None, **kwargs):
 def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
     from google.cloud import storage
     bucket_name, blob_name = _parse_gcs_uri(src)
+    _log.debug('GCS read: bucket=%s blob=%s byte_range=%s-%s', bucket_name, blob_name, start_byte, end_byte)
     client = kwargs.get('client') or _get_client(**kwargs)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
@@ -98,20 +99,22 @@ def write(src, dest, recursive=False, overwrite=True, **kwargs):
                 if not overwrite and blob.exists():
                     raise FileExistsError(f"gs://{bucket_name}/{blob_name} exists and overwrite=False")
                 blob.upload_from_filename(local_path)
-                _log.info(f'uploaded {local_path} -> gs://{bucket_name}/{blob_name}')
+                _log.debug('uploaded %s -> gs://%s/%s', local_path, bucket_name, blob_name)
+        _log.info('GCS write: uploaded directory to %s', dest)
         return dest
     else:
         blob = bucket.blob(prefix)
         if not overwrite and blob.exists():
             raise FileExistsError(f"gs://{bucket_name}/{prefix} exists and overwrite=False")
         blob.upload_from_filename(src)
-        _log.info(f'uploaded {src} -> gs://{bucket_name}/{prefix}')
+        _log.info('GCS write: uploaded %s -> gs://%s/%s', src, bucket_name, prefix)
         return dest
 
 
 def list_files(path, recursive=False, **kwargs):
     from google.cloud import storage
     bucket_name, prefix = _parse_gcs_uri(path)
+    _log.debug('GCS list_files: bucket=%s prefix=%s recursive=%s', bucket_name, prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
 
     if not prefix.endswith('/'):
@@ -132,5 +135,6 @@ def list_files(path, recursive=False, **kwargs):
 def _blob_size(blob):
     blob.reload()
     if blob.size is None:
+        _log.error('GCS blob size is None for %s', blob.name)
         raise ValueError(f'Could not determine blob size')
     return blob.size
