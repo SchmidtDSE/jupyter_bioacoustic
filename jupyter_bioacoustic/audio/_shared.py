@@ -9,6 +9,7 @@ import numpy as np
 _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 CACHE_DIR = '/tmp/jba_audio_cache'
+last_warning = None
 HEADER_BYTES = 4096
 PADDING_RATIO = 0.25
 
