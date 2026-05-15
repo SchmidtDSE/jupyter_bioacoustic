@@ -26,6 +26,7 @@ def _get_client(profile_name=None, region_name=None, **kwargs):
 def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
     import boto3
     bucket, key = _parse_s3_uri(src)
+    _log.debug('S3 read: bucket=%s key=%s byte_range=%s-%s', bucket, key, start_byte, end_byte)
     client = kwargs.get('client') or _get_client(**kwargs)
 
     get_params = {'Bucket': bucket, 'Key': key}
@@ -108,7 +109,8 @@ def write(src, dest, recursive=False, overwrite=True, **kwargs):
                         pass
                 client.upload_file(local_path, bucket, key)
                 uploaded.append(f's3://{bucket}/{key}')
-                _log.info(f'uploaded {local_path} -> s3://{bucket}/{key}')
+                _log.debug('uploaded %s -> s3://%s/%s', local_path, bucket, key)
+        _log.info('S3 write: uploaded %d files to %s', len(uploaded), dest)
         return dest
     else:
         key = prefix
@@ -119,13 +121,14 @@ def write(src, dest, recursive=False, overwrite=True, **kwargs):
             except client.exceptions.ClientError:
                 pass
         client.upload_file(src, bucket, key)
-        _log.info(f'uploaded {src} -> s3://{bucket}/{key}')
+        _log.info('S3 write: uploaded %s -> s3://%s/%s', src, bucket, key)
         return dest
 
 
 def list_files(path, recursive=False, **kwargs):
     import boto3
     bucket, prefix = _parse_s3_uri(path)
+    _log.debug('S3 list_files: bucket=%s prefix=%s recursive=%s', bucket, prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
 
     if not prefix.endswith('/'):
