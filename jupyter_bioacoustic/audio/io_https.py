@@ -55,8 +55,10 @@ def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
 
     rk = _request_kwargs(kwargs)
 
+    _shared.last_warning = None
+
     if partial:
-        _log.info(f'attempting partial download for {path[:80]}')
+        _log.debug('HTTPS partial read: %s  start=%.1fs dur=%.1fs', path[:80], start_sec, dur_sec)
         try:
             def get_header():
                 h = dict(rk.get('headers', {}))
@@ -97,12 +99,14 @@ def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
                 return r.content
 
             result = _shared.read_remote_partial(start_sec, dur_sec, get_header, get_size, get_range)
-            _log.info(f'partial SUCCESS: {result[0].shape[0]} samples at sr={result[1]}')
+            _log.debug('HTTPS partial read succeeded: %s', path[:80])
             return result
         except Exception as e:
-            _log.warning(f'partial FAILED: {type(e).__name__}: {e}')
-            _log.info('falling back to full download + cache')
+            msg = f'Partial download failed ({type(e).__name__}: {e}). Falling back to full download'
+            _log.warning(msg)
+            _shared.last_warning = msg
 
+    _log.debug('HTTPS full download: %s', path[:80])
     cache = _shared.cache_path(path)
     if not os.path.exists(cache):
         resp = requests.get(path, stream=True, **rk)
