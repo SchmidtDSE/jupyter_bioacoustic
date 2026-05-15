@@ -231,11 +231,13 @@ export class ConfigPanel {
     if (!section) return;
 
     const data = section.getData();
-    this._dbg('sectionChanged', sectionName, data);
+    const uiTarget = section.getTarget();
+    const target = uiTarget === 'form' ? 'form_config' : uiTarget;
+    this._dbg('sectionChanged', sectionName, data, 'target=', target);
     this._setStatus('Updating…');
 
     try {
-      const raw = await this._kernel.exec(updateSection(sectionName, data));
+      const raw = await this._kernel.exec(updateSection(sectionName, data, target));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, sectionName);
       this._updateSummary();
