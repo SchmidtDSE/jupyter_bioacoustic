@@ -66,7 +66,7 @@ def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
     """
     platform = kwargs.pop('platform', None)
     handler = _handler(src, platform)
-    _log.info(f'read src={src[:80]} handler={handler.__name__}')
+    _log.debug('read: src=%s handler=%s', src[:80], handler.__name__)
     return handler.read(src, dest=dest, start_byte=start_byte, end_byte=end_byte, **kwargs)
 
 
@@ -86,7 +86,7 @@ def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
     """
     platform = kwargs.pop('platform', None)
     handler = _handler(path, platform)
-    _log.info(f'read_segment path={path[:80]} start={start_sec} dur={dur_sec} handler={handler.__name__}')
+    _log.debug('read_segment: path=%s start=%.1f dur=%.1f handler=%s', path[:80], start_sec, dur_sec, handler.__name__)
     return handler.read_segment(path, start_sec, dur_sec, partial=partial, **kwargs)
 
 
@@ -106,7 +106,7 @@ def write(src, dest, recursive=False, overwrite=True, **kwargs):
     """
     platform = kwargs.pop('platform', None)
     handler = _handler(dest, platform)
-    _log.info(f'write src={src[:80]} dest={dest[:80]} handler={handler.__name__}')
+    _log.info('write: src=%s dest=%s handler=%s', src[:80], dest[:80], handler.__name__)
     return handler.write(src, dest, recursive=recursive, overwrite=overwrite, **kwargs)
 
 
