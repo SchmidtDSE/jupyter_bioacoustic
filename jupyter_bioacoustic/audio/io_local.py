@@ -5,6 +5,7 @@ import logging
 _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 
+
 def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
     with open(src, 'rb') as f:
         if start_byte is not None:
@@ -28,10 +29,12 @@ def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
 
 def read_segment(path, start_sec, dur_sec, **kwargs):
     import soundfile as sf
+    _log.debug('local read_segment: %s start=%.1fs dur=%.1fs', path, start_sec, dur_sec)
     with sf.SoundFile(path) as f:
         sr = f.samplerate
         f.seek(int(start_sec * sr))
         raw = f.read(int(dur_sec * sr), dtype='float32', always_2d=True)
+    _log.debug('local read_segment: %d samples, sr=%d', raw.shape[0], sr)
     return raw, sr
 
 
