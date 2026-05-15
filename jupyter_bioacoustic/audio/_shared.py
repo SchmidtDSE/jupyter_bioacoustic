@@ -23,6 +23,7 @@ def cache_path(url_or_uri):
 
 def parse_flac_header(header_data):
     if header_data[:4] != b'fLaC':
+        _log.error('FLAC header validation failed: got %r', header_data[:4])
         raise ValueError('Not a valid FLAC file')
     pos = 4
     while pos < len(header_data) - 34:
@@ -38,15 +39,17 @@ def parse_flac_header(header_data):
         pos += 4 + length
         if is_last:
             break
+    _log.error('No STREAMINFO block found in FLAC header (%d bytes)', len(header_data))
     raise ValueError('No STREAMINFO block found')
 
 
 def read_remote_partial(start_sec, dur_sec, get_header, get_size, get_range):
     from pydub import AudioSegment
 
+    _log.debug('read_remote_partial: start=%.1fs dur=%.1fs', start_sec, dur_sec)
     header = get_header()
     sr, total_dur = parse_flac_header(header)
-    _log.info(f'partial: sr={sr} total_dur={total_dur:.1f}s')
+    _log.debug('FLAC header: sr=%d total_dur=%.1fs', sr, total_dur)
 
     file_size = get_size()
     pad = dur_sec * PADDING_RATIO
@@ -55,7 +58,7 @@ def read_remote_partial(start_sec, dur_sec, get_header, get_size, get_range):
     bps = file_size / total_dur
     start_byte = int(padded_start * bps)
     end_byte = min(file_size - 1, int(padded_end * bps))
-    _log.info(f'partial: byte_range={start_byte}-{end_byte} ({(end_byte - start_byte) / (1024 * 1024):.1f}MB)')
+    _log.debug('partial byte range: %d-%d (%.1fMB)', start_byte, end_byte, (end_byte - start_byte) / (1024 * 1024))
 
     audio_bytes = get_range(start_byte, end_byte)
 
@@ -68,7 +71,7 @@ def read_remote_partial(start_sec, dur_sec, get_header, get_size, get_range):
         rel_start_ms = int((start_sec - padded_start) * 1000)
         dur_ms = int(dur_sec * 1000)
         chunk = audio[rel_start_ms:rel_start_ms + dur_ms]
-        _log.info(f'partial: extracted {len(chunk)}ms from pydub')
+        _log.debug('pydub extracted %dms (channels=%d sr=%d)', len(chunk), chunk.channels, chunk.frame_rate)
 
         samples = np.array(chunk.get_array_of_samples(), dtype=np.float32)
         samples = samples / (2 ** (chunk.sample_width * 8 - 1))
