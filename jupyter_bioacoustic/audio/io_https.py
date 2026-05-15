@@ -27,6 +27,7 @@ def _request_kwargs(kwargs):
 
 def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
     import requests
+    _log.debug('HTTPS read: %s byte_range=%s-%s', src[:80], start_byte, end_byte)
 
     rk = _request_kwargs(kwargs)
 
@@ -39,6 +40,7 @@ def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
 
     resp = requests.get(src, stream=True, **rk)
     resp.raise_for_status()
+    _log.debug('HTTPS read: status=%d content-length=%s', resp.status_code, resp.headers.get('Content-Length', 'unknown'))
 
     if dest is None:
         return resp.content
