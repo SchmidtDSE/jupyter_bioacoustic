@@ -377,7 +377,7 @@ class ConfigBuilder:
         }
 
     def save_all(self):
-        _log.debug('save_all() cwd=%s', os.getcwd())
+        _log.info('save_all() cwd=%s', os.getcwd())
         try:
             import yaml
         except ImportError:
@@ -403,6 +403,7 @@ class ConfigBuilder:
             with open(p_path, 'w') as f:
                 yaml.dump(_prep_for_yaml(project_cfg), f, default_flow_style=False, sort_keys=False)
             saved['project'] = p_path
+            _log.info('saved project: %s', p_path)
 
         if config_enabled:
             c_path = _ensure_ext(c_path)
@@ -410,6 +411,7 @@ class ConfigBuilder:
             with open(c_path, 'w') as f:
                 yaml.dump(_prep_for_yaml(config_cfg), f, default_flow_style=False, sort_keys=False)
             saved['config'] = c_path
+            _log.info('saved config: %s', c_path)
 
         if form_enabled:
             f_path = _ensure_ext(f_path)
@@ -417,12 +419,14 @@ class ConfigBuilder:
             with open(f_path, 'w') as f:
                 yaml.dump(_prep_for_yaml(form_cfg), f, default_flow_style=False, sort_keys=False)
             saved['form'] = f_path
+            _log.info('saved form: %s', f_path)
 
         self._saved_path = saved.get('project') or saved.get('config') or saved.get('form', '')
         self._dirty = False
         return saved
 
     def save_single(self, config_type='project'):
+        _log.info('save_single(%s)', config_type)
         try:
             import yaml
         except ImportError:
@@ -446,12 +450,14 @@ class ConfigBuilder:
         yaml.add_representer(_LiteralStr, _literal_representer)
         with open(path, 'w') as f:
             yaml.dump(_prep_for_yaml(content), f, default_flow_style=False, sort_keys=False)
+        _log.info('saved %s: %s', config_type, path)
         return path
 
     def list_files(self, directory, extensions=None):
         try:
             entries = os.listdir(directory)
-        except (OSError, FileNotFoundError):
+        except (OSError, FileNotFoundError) as e:
+            _log.warning('list_files failed for %s: %s', directory, e)
             return []
         results = []
         for e in sorted(entries):
@@ -469,6 +475,7 @@ class ConfigBuilder:
         return results
 
     def read_columns(self, filepath):
+        _log.debug('read_columns: %s', filepath)
         ext = os.path.splitext(filepath)[1].lower()
         try:
             if ext == '.csv':
@@ -483,11 +490,12 @@ class ConfigBuilder:
                 import pandas as pd
                 df = pd.read_json(filepath, lines=(ext == '.jsonl'), nrows=1)
                 return list(df.columns)
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning('read_columns failed for %s: %s', filepath, e)
         return []
 
     def read_sample_data(self, filepath, n_rows=5):
+        _log.debug('read_sample_data: %s (n_rows=%d)', filepath, n_rows)
         ext = os.path.splitext(filepath)[1].lower()
         try:
             if ext == '.csv':
@@ -498,8 +506,8 @@ class ConfigBuilder:
                 import pandas as pd
                 df = pd.read_parquet(filepath).head(n_rows)
                 return json.loads(df.to_json(orient='records'))
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning('read_sample_data failed for %s: %s', filepath, e)
         return []
 
     def _get_state(self):
@@ -545,7 +553,8 @@ class ConfigBuilder:
         try:
             import yaml
             parsed = yaml.safe_load(yaml_str) or {}
-        except Exception:
+        except Exception as e:
+            _log.warning('YAML parse failed for %s: %s', config_type, e)
             return False
 
         if config_type == 'project':
@@ -877,6 +886,10 @@ class ConfigBuilder:
         if self._config:
             self._validate_config_keys(self._config, 'config', errors)
 
+        if errors:
+            _log.warning('validation failed: %s', errors)
+        if warnings:
+            _log.info('validation warnings: %s', warnings)
         return {
             'valid': len(errors) == 0,
             'errors': errors,
