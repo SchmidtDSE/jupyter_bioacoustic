@@ -127,7 +127,7 @@ class BioacousticWidget extends Widget {
     this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
 
     // Wire Player signals
-    this._player.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
+    this._player.statusChanged.connect((_, s) => this._setStatus(s.message, s.error, s.warning));
 
     // ── Assemble widget ──────────────────────────────────────────
     this.node.append(
@@ -369,9 +369,9 @@ class BioacousticWidget extends Widget {
 
   // ─── Utilities ───────────────────────────────────────────────
 
-  private _setStatus(msg: string, error = false): void {
+  private _setStatus(msg: string, error = false, warning = false): void {
     this._statusEl.textContent = msg;
-    this._statusEl.style.color = error ? COLORS.red : COLORS.green;
+    this._statusEl.style.color = error ? COLORS.red : warning ? COLORS.yellow : COLORS.green;
   }
 
 }
