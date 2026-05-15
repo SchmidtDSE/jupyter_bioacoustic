@@ -199,10 +199,12 @@ class ConfigPanel {
         if (!section)
             return;
         const data = section.getData();
-        this._dbg('sectionChanged', sectionName, data);
+        const uiTarget = section.getTarget();
+        const target = uiTarget === 'form' ? 'form_config' : uiTarget;
+        this._dbg('sectionChanged', sectionName, data, 'target=', target);
         this._setStatus('Updating…');
         try {
-            const raw = await this._kernel.exec((0, python_1.updateSection)(sectionName, data));
+            const raw = await this._kernel.exec((0, python_1.updateSection)(sectionName, data, target));
             const state = JSON.parse((0, python_1.extractJson)(raw));
             this._applyStatePartial(state, sectionName);
             this._updateSummary();
@@ -1382,11 +1384,12 @@ function readState() {
     ].join('\n');
 }
 exports.readState = readState;
-function updateSection(section, data) {
+function updateSection(section, data, target) {
     const dataJson = JSON.stringify(data);
+    const targetArg = target ? `, target='${(0, util_1.escPy)(target)}'` : '';
     return [
         `import json as _j`,
-        `_state = _CB_INSTANCE.update_section('${(0, util_1.escPy)(section)}', _j.loads('${(0, util_1.escPy)(dataJson)}'))`,
+        `_state = _CB_INSTANCE.update_section('${(0, util_1.escPy)(section)}', _j.loads('${(0, util_1.escPy)(dataJson)}')${targetArg})`,
         wp(`_j.dumps(_state)`),
     ].join('\n');
 }
@@ -4431,7 +4434,7 @@ class BioacousticWidget extends widgets_1.Widget {
         this._form.saveProjectRequested.connect(() => void this._onSaveProject());
         this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
         // Wire Player signals
-        this._player.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
+        this._player.statusChanged.connect((_, s) => this._setStatus(s.message, s.error, s.warning));
         // ── Assemble widget ──────────────────────────────────────────
         this.node.append(header, this._description.element, this._table.element, this._infoCard.element, this._player.element, this._form.element);
     }
@@ -4625,9 +4628,9 @@ class BioacousticWidget extends widgets_1.Widget {
     // ─── Capture ─────────────────────────────────────────────────
     // ─── Kernel helpers ──────────────────────────────────────────
     // ─── Utilities ───────────────────────────────────────────────
-    _setStatus(msg, error = false) {
+    _setStatus(msg, error = false, warning = false) {
         this._statusEl.textContent = msg;
-        this._statusEl.style.color = error ? styles_1.COLORS.red : styles_1.COLORS.green;
+        this._statusEl.style.color = error ? styles_1.COLORS.red : warning ? styles_1.COLORS.yellow : styles_1.COLORS.green;
     }
 }
 // ═══════════════════════════════════════════════════════════════
@@ -5003,6 +5006,9 @@ import soundfile as _sf2
 _wb = _io.BytesIO()
 _sf2.write(_wb, (_mono * 32767).astype(_np.int16)[:, None], _sr, format='WAV', subtype='PCM_16')
 
+from jupyter_bioacoustic.audio import _shared as _audio_shared
+_audio_warning = getattr(_audio_shared, 'last_warning', None)
+
 print(_j.dumps({
     'spec': _b64.b64encode(_pb.getvalue()).decode(),
     'wav':  _b64.b64encode(_wb.getvalue()).decode(),
@@ -5011,6 +5017,7 @@ print(_j.dumps({
     'freq_min': float(_f_min),
     'freq_max': float(_f_max),
     'freq_scale': _freq_scale if '_freq_scale' in dir() else ('mel' if '_n_mels' in dir() else 'linear'),
+    'audio_warning': _audio_warning,
 }))
 `;
 
@@ -5116,6 +5123,7 @@ function customVizCode(vizIndex, resolutionW, resolutionH) {
         `import soundfile as _sf2`,
         `_wb = _io.BytesIO()`,
         `_sf2.write(_wb, (_mono * 32767).astype(_np.int16)[:, None], _sr, format='WAV', subtype='PCM_16')`,
+        `from jupyter_bioacoustic.audio import _shared as _audio_shared`,
         `print(_j.dumps({`,
         `    'spec': _spec_b64,`,
         `    'wav': _b64.b64encode(_wb.getvalue()).decode(),`,
@@ -5125,6 +5133,7 @@ function customVizCode(vizIndex, resolutionW, resolutionH) {
         `    'freq_max': _f_max,`,
         `    'freq_scale': _freq_scale,`,
         `    'freq_scale_lut': _freq_scale_lut,`,
+        `    'audio_warning': getattr(_audio_shared, 'last_warning', None),`,
         `}))`,
     ].join('\n');
 }
@@ -8639,10 +8648,19 @@ class Player {
         this._renderFrame();
         this._enableLoadBtn();
         const fname = (_f = audioPath.split('/').pop()) !== null && _f !== void 0 ? _f : audioPath;
-        this.statusChanged.emit({
-            message: `✓ ${fname}  ${(0, util_1.fmtTime)(loadStart)}–${(0, util_1.fmtTime)(loadStart + result.duration)}`,
-            error: false,
-        });
+        if (result.audio_warning) {
+            this.statusChanged.emit({
+                message: `⚠ ${fname}: ${result.audio_warning}`,
+                error: false,
+                warning: true,
+            });
+        }
+        else {
+            this.statusChanged.emit({
+                message: `✓ ${fname}  ${(0, util_1.fmtTime)(loadStart)}–${(0, util_1.fmtTime)(loadStart + result.duration)}`,
+                error: false,
+            });
+        }
     }
     _enableLoadBtn() {
         this._loadBtn.disabled = false;
@@ -9972,4 +9990,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.da0aba98fb2db412d2a2.js.map
+//# sourceMappingURL=lib_index_js.8e73328f03295986d7fa.js.map
