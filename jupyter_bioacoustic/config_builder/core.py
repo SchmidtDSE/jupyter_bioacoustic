@@ -52,19 +52,32 @@ APP_KEYS = frozenset({
     'spectrogram_resolution', 'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
     'info_card_height', 'form_panel_height',
-    'description', 'description_title', 'description_text',
-    'description_path', 'description_open', 'description_height',
+    'description',
     'secrets',
-})
-DESCRIPTION_KEYS = frozenset({
-    'description', 'description_title', 'description_text',
-    'description_path', 'description_open', 'description_height',
 })
 
 
 #
 # HELPERS
 #
+class _LiteralStr(str):
+    pass
+
+
+def _literal_representer(dumper, data):
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+
+
+def _prep_for_yaml(obj):
+    if isinstance(obj, dict):
+        return {k: _prep_for_yaml(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_prep_for_yaml(v) for v in obj]
+    if isinstance(obj, str) and '\n' in obj:
+        return _LiteralStr(obj)
+    return obj
+
+
 def _ensure_ext(path, extensions=('.yaml', '.yml'), default='.yaml'):
     if not path.endswith(tuple(extensions)):
         path += default
@@ -142,13 +155,22 @@ class ConfigBuilder:
                     self._project['output'] = out
                 elif 'output' in self._project and isinstance(self._project['output'], dict):
                     self._project['output'].pop('path', None)
-            for k in DESCRIPTION_KEYS:
+            desc_dict = {}
+            if 'description' in data and isinstance(data['description'], dict):
+                for k, v in data['description'].items():
+                    if v is not None and v != '' and v != []:
+                        desc_dict[k] = v
+            for k in ('description_title', 'description_text', 'description_path',
+                       'description_open', 'description_height'):
                 if k in data:
                     val = data[k]
                     if val is not None and val != '' and val != []:
-                        self._project[k] = val
-                    elif k in self._project:
-                        del self._project[k]
+                        desc_dict[k.replace('description_', '')] = val
+            if desc_dict:
+                self._project['description'] = desc_dict
+            elif 'description' in self._project:
+                del self._project['description']
+            self._config.pop('description', None)
 
         elif section == 'data':
             data_dict = {}
@@ -370,6 +392,7 @@ class ConfigBuilder:
         except ImportError:
             raise ImportError("pyyaml is required: pip install pyyaml")
 
+        yaml.add_representer(_LiteralStr, _literal_representer)
         fc = self._build_file_contents()
         project_cfg = fc['project_cfg']
         config_cfg = fc['config_cfg']
@@ -387,21 +410,21 @@ class ConfigBuilder:
             p_path = _ensure_ext(p_path)
             os.makedirs(os.path.dirname(p_path) or '.', exist_ok=True)
             with open(p_path, 'w') as f:
-                yaml.dump(project_cfg, f, default_flow_style=False, sort_keys=False)
+                yaml.dump(_prep_for_yaml(project_cfg), f, default_flow_style=False, sort_keys=False)
             saved['project'] = p_path
 
         if config_enabled:
             c_path = _ensure_ext(c_path)
             os.makedirs(os.path.dirname(c_path) or '.', exist_ok=True)
             with open(c_path, 'w') as f:
-                yaml.dump(config_cfg, f, default_flow_style=False, sort_keys=False)
+                yaml.dump(_prep_for_yaml(config_cfg), f, default_flow_style=False, sort_keys=False)
             saved['config'] = c_path
 
         if form_enabled:
             f_path = _ensure_ext(f_path)
             os.makedirs(os.path.dirname(f_path) or '.', exist_ok=True)
             with open(f_path, 'w') as f:
-                yaml.dump(form_cfg, f, default_flow_style=False, sort_keys=False)
+                yaml.dump(_prep_for_yaml(form_cfg), f, default_flow_style=False, sort_keys=False)
             saved['form'] = f_path
 
         self._saved_path = saved.get('project') or saved.get('config') or saved.get('form', '')
@@ -429,8 +452,9 @@ class ConfigBuilder:
 
         path = _ensure_ext(path)
         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        yaml.add_representer(_LiteralStr, _literal_representer)
         with open(path, 'w') as f:
-            yaml.dump(content, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(_prep_for_yaml(content), f, default_flow_style=False, sort_keys=False)
         return path
 
     def list_files(self, directory, extensions=None):
@@ -498,14 +522,15 @@ class ConfigBuilder:
 
         try:
             import yaml
+            yaml.add_representer(_LiteralStr, _literal_representer)
             project_yaml = yaml.dump(
-                project_content, default_flow_style=False, sort_keys=False
+                _prep_for_yaml(project_content), default_flow_style=False, sort_keys=False
             ) if project_content and project_enabled else ''
             config_yaml = yaml.dump(
-                config_content, default_flow_style=False, sort_keys=False
+                _prep_for_yaml(config_content), default_flow_style=False, sort_keys=False
             ) if config_content and config_enabled else ''
             form_yaml = yaml.dump(
-                form_content, default_flow_style=False, sort_keys=False
+                _prep_for_yaml(form_content), default_flow_style=False, sort_keys=False
             ) if form_content and form_enabled else ''
         except ImportError:
             project_yaml = json.dumps(project_content, indent=2) if project_enabled else ''
@@ -546,7 +571,7 @@ class ConfigBuilder:
             elif isinstance(form_ref, dict):
                 self._form_config = form_ref
             for k in list(self._project.keys()):
-                if k not in SKIP_KEYS and k not in DESCRIPTION_KEYS:
+                if k not in SKIP_KEYS:
                     del self._project[k]
             for k, v in parsed.items():
                 if k not in SKIP_KEYS:
