@@ -27,6 +27,7 @@ dependencies = [
     "pandas",
     "soundfile",
     "pydub",
+    "audioop-lts; python_version>='3.13'",
     "boto3",
     "pyyaml",
 ]
@@ -68,10 +69,6 @@ pandas = "*"
 
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = { path = ".", editable = true }
-soundfile = "*"
-pydub = "*"
-boto3 = "*"
-pyyaml = "*"
 
 [tool.pixi.tasks.jlpm-install]
 cmd = "jlpm install"
