@@ -96,6 +96,7 @@ function customVizCode(vizIndex: number, resolutionW: number, resolutionH?: numb
     `import soundfile as _sf2`,
     `_wb = _io.BytesIO()`,
     `_sf2.write(_wb, (_mono * 32767).astype(_np.int16)[:, None], _sr, format='WAV', subtype='PCM_16')`,
+    `from jupyter_bioacoustic.audio import _shared as _audio_shared`,
     `print(_j.dumps({`,
     `    'spec': _spec_b64,`,
     `    'wav': _b64.b64encode(_wb.getvalue()).decode(),`,
@@ -105,6 +106,7 @@ function customVizCode(vizIndex: number, resolutionW: number, resolutionH?: numb
     `    'freq_max': _f_max,`,
     `    'freq_scale': _freq_scale,`,
     `    'freq_scale_lut': _freq_scale_lut,`,
+    `    'audio_warning': getattr(_audio_shared, 'last_warning', None),`,
     `}))`,
   ].join('\n');
 }
