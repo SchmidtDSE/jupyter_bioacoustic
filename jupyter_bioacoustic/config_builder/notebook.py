@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 import shutil
 from pathlib import Path
+
+_log = logging.getLogger('jupyter_bioacoustic.config_builder')
 
 
 _NB_DIR = Path(__file__).parent / 'nb'
@@ -17,4 +20,5 @@ def copy_starter_notebook(dest_dir: str = '.') -> dict:
         target = dest / f'starter-notebook-{n}.ipynb'
         n += 1
     shutil.copy2(str(_STARTER), str(target))
+    _log.info('copied starter notebook to %s', target)
     return {'path': str(target), 'relative': os.path.relpath(str(target))}
