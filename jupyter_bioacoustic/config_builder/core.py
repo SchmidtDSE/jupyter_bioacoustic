@@ -136,10 +136,12 @@ class ConfigBuilder:
             cfg['form_config'] = dict(self._form_config)
         return cfg
 
-    def update_section(self, section, data):
-        _log.debug('update_section(%s) target=%s data_keys=%s',
-                   section, self._section_targets.get(section, 'project'), list(data.keys()))
+    def update_section(self, section, data, target=None):
+        if target is not None:
+            self._section_targets[section] = target
         target = self._section_targets.get(section, 'project')
+        _log.debug('update_section(%s) target=%s data_keys=%s',
+                   section, target, list(data.keys()))
 
         if section == 'project':
             for k in SKIP_KEYS:
@@ -751,6 +753,51 @@ class ConfigBuilder:
         state['loaded_paths'] = loaded_paths
         return state
 
+    VALID_FORM_KEYS = frozenset({
+        'title', 'progress_tracker', 'pass_value', 'fixed_value',
+        'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
+        'annotation',
+        'select', 'textbox', 'checkbox', 'number',
+        'break', 'line', 'text',
+    })
+
+    VALID_CONFIG_KEYS = frozenset({
+        'data', 'data_path', 'data_url', 'data_sql', 'data_api',
+        'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
+        'data_columns',
+        'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
+        'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
+        'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
+        'audio_response_index',
+        'secrets',
+        'output', 'output_path', 'output_url', 'output_uri',
+        'output_sync_button', 'output_recursive', 'output_secrets',
+        'ident_column', 'display_columns',
+        'form_config', 'duplicate_entries', 'default_buffer',
+        'capture', 'capture_dir', 'spectrogram_resolution',
+        'visualizations', 'partial_download',
+        'width', 'clip_table_height', 'player_height',
+        'info_card_height', 'form_panel_height',
+        'description', 'description_title', 'description_text',
+        'description_path', 'description_open', 'description_height',
+        'project_name', 'project_save_btn',
+        'config',
+    })
+
+    def _validate_form_keys(self, fc, errors):
+        for key in fc:
+            if key not in self.VALID_FORM_KEYS and not isinstance(fc[key], list):
+                errors.append(f'Unknown form config key "{key}"')
+
+    def _validate_config_keys(self, cfg, label, errors):
+        for key in cfg:
+            if key in SKIP_KEYS:
+                continue
+            if key not in self.VALID_CONFIG_KEYS:
+                errors.append(f'Unknown {label} key "{key}"')
+            elif key == 'form_config' and isinstance(cfg[key], dict):
+                self._validate_form_keys(cfg[key], errors)
+
     def validate(self):
         errors = []
         warnings = []
@@ -833,6 +880,13 @@ class ConfigBuilder:
         has_annotation = 'annotation' in fc
         if not has_form and not has_legacy and not has_annotation:
             warnings.append('No form input elements configured')
+
+        self._validate_form_keys(fc, errors)
+
+        if self._project:
+            self._validate_config_keys(self._project, 'project', errors)
+        if self._config:
+            self._validate_config_keys(self._config, 'config', errors)
 
         return {
             'valid': len(errors) == 0,
