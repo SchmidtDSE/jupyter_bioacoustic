@@ -40,11 +40,12 @@ export function readState(): string {
   ].join('\n');
 }
 
-export function updateSection(section: string, data: Record<string, any>): string {
+export function updateSection(section: string, data: Record<string, any>, target?: string): string {
   const dataJson = JSON.stringify(data);
+  const targetArg = target ? `, target='${escPy(target)}'` : '';
   return [
     `import json as _j`,
-    `_state = _CB_INSTANCE.update_section('${escPy(section)}', _j.loads('${escPy(dataJson)}'))`,
+    `_state = _CB_INSTANCE.update_section('${escPy(section)}', _j.loads('${escPy(dataJson)}')${targetArg})`,
     wp(`_j.dumps(_state)`),
   ].join('\n');
 }
