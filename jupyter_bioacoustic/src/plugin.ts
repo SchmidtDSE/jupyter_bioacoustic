@@ -168,7 +168,7 @@ class BioacousticWidget extends Widget {
     let cfg: {
       data: string; audio: string; output: string;
       ident_col: string; app_title: string; display_cols: string; data_cols: string;
-      form_config: string; capture: string; capture_dir: string; duplicate_entries: string;
+      form_config: string; capture: string; capture_dir: string; capture_height: string; duplicate_entries: string;
       default_buffer: string; spec_resolutions: string; viz_meta: string;
       sync_config: string;
       clip_table_height: string; player_height: string;
@@ -241,6 +241,7 @@ class BioacousticWidget extends Widget {
       audioConfig,
       captureLabel: cfg.capture ?? '',
       captureDir: cfg.capture_dir ?? '',
+      captureHeight: parseInt(cfg.capture_height) || undefined,
       identCol: this._identCol,
       displayCols: this._displayCols,
       defaultBuffer: parseFloat(cfg.default_buffer) || 3,
