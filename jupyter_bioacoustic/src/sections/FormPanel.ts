@@ -1774,7 +1774,7 @@ export class FormPanel {
     const outIdCol = idMapping?.col;
     const matchExpr = outIdCol
       ? `str(r.get('${escPy(outIdCol)}','')) == '${row.id}'`
-      : `abs(float(r.get('start_time',0))-${row.start_time})<0.01 and abs(float(r.get('end_time',0))-${row.end_time})<0.01`;
+      : `abs(float(r.get('start_time') or 0)-${row.start_time})<0.01 and abs(float(r.get('end_time') or 0)-${row.end_time})<0.01`;
     const code = deleteOutputRow(this._outputPath, matchExpr);
 
     try {
