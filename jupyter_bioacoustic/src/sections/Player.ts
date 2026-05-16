@@ -104,6 +104,7 @@ export class Player {
   private _audioConfig = { type: 'path', value: '', prefix: '', suffix: '', fallback: '' };
   private _captureLabel = '';
   private _captureDir = '';
+  private _captureHeight: number | undefined;
   private _identCol = '';
   private _displayCols: string[] = [];
   private _currentRow: Detection | null = null;
@@ -126,6 +127,7 @@ export class Player {
     audioConfig: { type: string; value: string; prefix: string; suffix: string; fallback: string };
     captureLabel: string;
     captureDir: string;
+    captureHeight?: number;
     identCol: string;
     displayCols: string[];
     defaultBuffer: number;
@@ -141,6 +143,7 @@ export class Player {
     this._audioConfig = opts.audioConfig;
     this._captureLabel = opts.captureLabel;
     this._captureDir = opts.captureDir;
+    this._captureHeight = opts.captureHeight;
     this._identCol = opts.identCol;
     this._displayCols = opts.displayCols;
     this._rows = opts.rows;
@@ -1471,7 +1474,7 @@ export class Player {
     const sh = (this._viewYMax - this._viewYMin) * bh;
     const W = Math.round(sw);
     const displayAspect = this._canvas.height / Math.max(1, this._canvas.width - Player.AXIS_W);
-    const H = Math.round(W * displayAspect);
+    const H = this._captureHeight ?? Math.round(W * displayAspect);
 
     if (W <= 0 || H <= 0) {
       this.statusChanged.emit({ message: '❌ Capture failed: zoom region too small', error: true });
