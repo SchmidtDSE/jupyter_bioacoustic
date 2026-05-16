@@ -537,6 +537,7 @@ _CONFIG_PARAMS = {
     'capture', 'capture_dir', 'spectrogram_resolution',
     'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
+    'capture_height',
     'info_card_height', 'form_panel_height',
     'description', 'description_title', 'description_text',
     'description_path', 'description_open', 'description_height',
@@ -590,6 +591,7 @@ class BioacousticAnnotator:
         default_buffer=_UNSET,
         capture=_UNSET,
         capture_dir=_UNSET,
+        capture_height=_UNSET,
         spectrogram_resolution=_UNSET,
         visualizations=_UNSET,
         partial_download=_UNSET,
@@ -975,6 +977,7 @@ class BioacousticAnnotator:
         self._default_buffer   = resolve(default_buffer,   'default_buffer',   DEFAULT_BUFFER)
         self._capture          = resolve(capture,          'capture',          True)
         self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')
+        self._capture_height   = resolve(capture_height,   'capture_height',   None)
         raw_res = resolve(spectrogram_resolution, 'spectrogram_resolution', DEFAULT_SPEC_RESOLUTIONS)
         # Normalize to list of strings (preserves "selected::" prefix)
         if isinstance(raw_res, (int, float)):
@@ -1117,6 +1120,7 @@ class BioacousticAnnotator:
             cap = ''
         ip.user_ns['_BA_CAPTURE'] = cap
         ip.user_ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
+        ip.user_ns['_BA_CAPTURE_HEIGHT'] = str(self._capture_height) if self._capture_height else ''
         ip.user_ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(self._spec_resolutions)
         ip.user_ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
         ip.user_ns['_BA_DUPLICATE_ENTRIES'] = 'true' if self._duplicate_entries else ''
