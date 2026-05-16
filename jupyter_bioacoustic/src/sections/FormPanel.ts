@@ -16,11 +16,7 @@ import {
   readOutputRows,
   writeOutputRow,
   deleteOutputRow,
-  loadSelectItemsCsv,
-  loadSelectItemsParquet,
-  loadSelectItemsJsonl,
-  loadSelectItemsYaml,
-  loadSelectItemsText,
+  loadSelectItems,
   INVALIDATE_OUTPUT_CACHE,
 } from '../python';
 import {
@@ -851,23 +847,8 @@ export class FormPanel {
     valueCol?: string,
     labelCol?: string
   ): Promise<Array<[string, string]>> {
-    const ext = path.split('.').pop()?.toLowerCase() ?? '';
-    let code: string;
-
-    if (ext === 'csv') {
-      code = loadSelectItemsCsv(path, valueCol, labelCol);
-    } else if (ext === 'parquet') {
-      code = loadSelectItemsParquet(path, valueCol, labelCol);
-    } else if (ext === 'jsonl' || ext === 'ndjson') {
-      code = loadSelectItemsJsonl(path, valueCol, labelCol);
-    } else if (ext === 'yaml' || ext === 'yml') {
-      code = loadSelectItemsYaml(path, valueCol, labelCol);
-    } else {
-      code = loadSelectItemsText(path);
-    }
-
     try {
-      const result = await this._kernel.exec(code);
+      const result = await this._kernel.exec(loadSelectItems(path, valueCol, labelCol));
       return JSON.parse(result) as Array<[string, string]>;
     } catch {
       return [];
