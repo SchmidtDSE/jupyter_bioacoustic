@@ -1,32 +1,44 @@
 """
-BioacousticAnnotator — opens the bioacoustic review panel from a notebook cell.
+BioacousticAnnotator
+
+Opens the bioacoustic review panel from a notebook cell.
 
 Usage (all args):
-    BioacousticAnnotator(data=df, audio_path='test.flac',
-                 output='observations-test.jsonl').open()
+    BioacousticAnnotator(
+        data=df, audio_path='test.flac',
+        output='observations-test.jsonl',
+    ).open()
 
 Usage (config file):
     BioacousticAnnotator(config='config.yaml').open()
 
 Usage (config + overrides):
-    BioacousticAnnotator(data=df, audio_path='test.flac', config='config.yaml').open()
+    BioacousticAnnotator(
+        data=df, audio_path='test.flac', config='config.yaml',
+    ).open()
+
+License: BSD 3-Clause
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import os
 import re
 import uuid
+from typing import Any, Optional
 
 from IPython import get_ipython
 from IPython.display import display, Javascript, HTML
 
+
+#
+# Constants
+#
 _log = logging.getLogger('jupyter_bioacoustic.api')
 
-# Sentinel — distinguishes "caller passed nothing" from a real default value
 _UNSET = object()
-
-# ─── Defaults ─────────────────────────────────────────────────
 
 DEFAULT_OUTPUT_DIR = 'outputs'
 DEFAULT_OUTPUT_PREFIX = 'annotation_output'
@@ -49,15 +61,18 @@ DEFAULT_DESCRIPTION_HEIGHT = 0
 _TOOLBAR_AND_PADDING_PX = 290
 
 
-# ─── Secret resolution ────────────────────────────────────────
-
-def _resolve_secrets(data_secrets) -> dict:
-    """Resolve a data_secrets param into a plain {key: value} dict.
+#
+# Secret resolution
+#
+def _resolve_secrets(
+    data_secrets: Any,
+) -> dict[str, str]:
+    """Resolve a data_secrets param into a plain dict.
 
     Each entry is ``{key: str, value: str}`` where value can be:
-    - ``env:VAR_NAME`` → reads ``os.environ['VAR_NAME']``
-    - ``dialog`` (case-insensitive) → prompts the user via getpass
-    - anything else → used literally
+    - ``env:VAR_NAME`` -> reads ``os.environ['VAR_NAME']``
+    - ``dialog`` (case-insensitive) -> prompts via getpass
+    - anything else -> used literally
     """
     if not data_secrets:
         return {}
@@ -65,47 +80,60 @@ def _resolve_secrets(data_secrets) -> dict:
         data_secrets = [data_secrets]
 
     import getpass
-    resolved = {}
+    resolved: dict[str, str] = {}
     for entry in data_secrets:
         k = entry['key']
         v = entry['value']
-        if isinstance(v, str) and re.match(r'^env:', v, re.IGNORECASE):
+        if isinstance(v, str) and re.match(
+            r'^env:', v, re.IGNORECASE,
+        ):
             env_var = v[4:]
             resolved[k] = os.environ.get(env_var, '')
             if not resolved[k]:
-                _log.error('Environment variable %r not set (for secret %r)', env_var, k)
+                _log.error(
+                    'Environment variable %r not set '
+                    '(for secret %r)', env_var, k,
+                )
                 raise ValueError(
-                    f"Environment variable {env_var!r} not set (for secret {k!r})")
+                    f"Environment variable {env_var!r} "
+                    f"not set (for secret {k!r})"
+                )
         elif isinstance(v, str) and v.lower() == 'dialog':
-            resolved[k] = getpass.getpass(f'Enter value for {k!r}: ')
+            resolved[k] = getpass.getpass(
+                f'Enter value for {k!r}: ',
+            )
         else:
             resolved[k] = v
     return resolved
 
 
-# ─── Data type detection ───────────────────────────────────────
-
+#
+# Data type detection
+#
 def _detect_data_type(data_str: str) -> str:
     """Detect whether a data string is sql, api, url, or path.
 
-    - Contains 'SELECT ' (case-insensitive, trailing space) → 'sql'
-    - Starts with 'api::' → 'api'
-    - Starts with http://, https://, s3://, gs:// → 'url'
-    - Otherwise → 'path'
+    - Contains 'SELECT ' (case-insensitive) -> 'sql'
+    - Starts with 'api::' -> 'api'
+    - Starts with http/https/s3/gs -> 'url'
+    - Otherwise -> 'path'
     """
     if re.search(r'\bSELECT\s', data_str, re.IGNORECASE):
         return 'sql'
     if data_str.lower().startswith('api::'):
         return 'api'
-    if data_str.startswith(('http://', 'https://', 's3://', 'gs://')):
+    if data_str.startswith(
+        ('http://', 'https://', 's3://', 'gs://'),
+    ):
         return 'url'
     return 'path'
 
 
-# ─── Data loading ──────────────────────────────────────────────
-
-def _read_data(path: str):
-    """Read a DataFrame from a local file path, inferring format from extension."""
+#
+# Data loading
+#
+def _read_data(path: str) -> Any:
+    """Read a DataFrame from a local file path."""
     import pandas as pd
     ext = os.path.splitext(path)[1].lower()
     if ext == '.csv':
@@ -123,12 +151,13 @@ def _read_data(path: str):
         )
 
 
-def _read_data_from_url(url: str, cookies: dict = None):
-    """Fetch data from a URL. Auto-detects file vs JSON response.
+def _read_data_from_url(
+    url: str,
+    cookies: Optional[dict] = None,
+) -> Any:
+    """Fetch data from a URL.
 
-    - If Content-Type is application/json or the body parses as JSON → DataFrame
-    - If Content-Type suggests JSONL/NDJSON → line-delimited JSON
-    - Otherwise → download to temp file and read with _read_data
+    Auto-detects file vs JSON response.
     """
     import pandas as pd
     import requests as req
@@ -137,37 +166,51 @@ def _read_data_from_url(url: str, cookies: dict = None):
     _log.info('fetching data from URL: %s', url[:120])
     resp = req.get(url, cookies=cookies or {}, timeout=120)
     resp.raise_for_status()
-    _log.debug('URL response: status=%d content-type=%s', resp.status_code, resp.headers.get('Content-Type', ''))
+    ct_header = resp.headers.get('Content-Type', '')
+    _log.debug(
+        'URL response: status=%d content-type=%s',
+        resp.status_code, ct_header,
+    )
 
-    ct = resp.headers.get('Content-Type', '').lower()
+    ct = ct_header.lower()
 
-    # JSON response → DataFrame directly
     if 'application/json' in ct:
         data = resp.json()
         if isinstance(data, list):
             return pd.DataFrame(data)
         elif isinstance(data, dict):
-            # Try common wrappers: {data: [...], results: [...]}
-            for key in ('data', 'results', 'items', 'records', 'rows'):
-                if key in data and isinstance(data[key], list):
+            for key in (
+                'data', 'results', 'items', 'records', 'rows',
+            ):
+                if key in data and isinstance(
+                    data[key], list,
+                ):
                     return pd.DataFrame(data[key])
             return pd.DataFrame([data])
 
-    # NDJSON / JSONL
     if 'ndjson' in ct or 'jsonl' in ct:
         import io
-        return pd.read_json(io.StringIO(resp.text), lines=True)
+        return pd.read_json(
+            io.StringIO(resp.text), lines=True,
+        )
 
     try:
         data = resp.json()
         if isinstance(data, list):
             return pd.DataFrame(data)
     except (ValueError, TypeError):
-        _log.debug('URL response is not JSON, falling back to file download')
+        _log.debug(
+            'URL response is not JSON, '
+            'falling back to file download',
+        )
 
-    # Fall back to downloading as a file
-    ext = os.path.splitext(url.split('?')[0])[1].lower() or '.csv'
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+    ext = (
+        os.path.splitext(url.split('?')[0])[1].lower()
+        or '.csv'
+    )
+    with tempfile.NamedTemporaryFile(
+        suffix=ext, delete=False,
+    ) as f:
         f.write(resp.content)
         tmp_path = f.name
     try:
@@ -176,34 +219,38 @@ def _read_data_from_url(url: str, cookies: dict = None):
         os.unlink(tmp_path)
 
 
-def _read_data_from_api(url: str, cookies: dict = None):
-    """Fetch data from an API endpoint. Strips 'api::' prefix if present."""
+def _read_data_from_api(
+    url: str,
+    cookies: Optional[dict] = None,
+) -> Any:
+    """Fetch data from an API endpoint."""
     if url.lower().startswith('api::'):
         url = url[5:]
     return _read_data_from_url(url, cookies=cookies)
 
 
-def _read_data_from_sql(query: str, secrets: dict = None):
+def _read_data_from_sql(
+    query: str,
+    secrets: Optional[dict] = None,
+) -> Any:
     """Execute a SQL query with duckdb and return a DataFrame.
 
-    Automatically loads the httpfs extension if the query references
-    s3:// or gs:// paths. Secrets with S3/GCS-related keys are applied
-    as duckdb SET commands; others are set as environment variables.
-
-    For public S3 buckets, pass ``data_secrets={'key': 's3_region', 'value': 'us-west-2'}``.
-    DuckDB will use unsigned requests by default when no credentials are provided.
+    Automatically loads the httpfs extension if the query
+    references s3:// or gs:// paths.
     """
     try:
         import duckdb
     except ImportError:
         raise ImportError(
-            "duckdb is required for SQL queries: pip install duckdb"
+            "duckdb is required for SQL queries: "
+            "pip install duckdb"
         )
 
     conn = duckdb.connect(':memory:')
 
-    # Auto-load httpfs if query references cloud storage
-    if re.search(r"s3://|gs://|https?://", query, re.IGNORECASE):
+    if re.search(
+        r"s3://|gs://|https?://", query, re.IGNORECASE,
+    ):
         try:
             conn.execute("INSTALL httpfs")
         except Exception:
@@ -211,81 +258,101 @@ def _read_data_from_sql(query: str, secrets: dict = None):
         conn.execute("LOAD httpfs")
         _log.debug('duckdb: loaded httpfs extension')
 
-    # Duckdb S3/GCS settings that can be SET directly
     _DUCKDB_SET_KEYS = {
-        's3_access_key_id', 's3_secret_access_key', 's3_region',
-        's3_endpoint', 's3_session_token', 's3_url_style',
-        's3_use_ssl', 's3_url_compatibility_mode',
+        's3_access_key_id', 's3_secret_access_key',
+        's3_region', 's3_endpoint', 's3_session_token',
+        's3_url_style', 's3_use_ssl',
+        's3_url_compatibility_mode',
     }
 
-    # Apply secrets
     has_credentials = False
     if secrets:
         for k, v in secrets.items():
             if k.lower() in _DUCKDB_SET_KEYS:
                 conn.execute(f"SET {k} = '{v}'")
-                if k.lower() in ('s3_access_key_id', 's3_secret_access_key'):
+                if k.lower() in (
+                    's3_access_key_id',
+                    's3_secret_access_key',
+                ):
                     has_credentials = True
             else:
                 os.environ[k] = str(v)
 
-    # For S3 queries without explicit credentials, try the AWS credential chain
-    if re.search(r"s3://", query, re.IGNORECASE) and not has_credentials:
+    if (
+        re.search(r"s3://", query, re.IGNORECASE)
+        and not has_credentials
+    ):
         try:
             conn.execute(
-                "CREATE SECRET IF NOT EXISTS (_type = 's3', provider = 'credential_chain')"
+                "CREATE SECRET IF NOT EXISTS "
+                "(_type = 's3', "
+                "provider = 'credential_chain')"
             )
         except Exception as e:
-            _log.debug('duckdb: credential chain not available: %s', e)
+            _log.debug(
+                'duckdb: credential chain not '
+                'available: %s', e,
+            )
 
-    _log.info('executing SQL query (%d chars)', len(query))
+    _log.info(
+        'executing SQL query (%d chars)', len(query),
+    )
     result = conn.execute(query).df()
-    _log.info('SQL query returned %d rows, %d columns', len(result), len(result.columns))
+    _log.info(
+        'SQL query returned %d rows, %d columns',
+        len(result), len(result.columns),
+    )
     conn.close()
     return result
 
 
-def _resolve_data_config(data, data_secrets, data_columns):
-    """Normalize the data parameter into (source_str, dtype, secrets, columns).
-
-    Handles:
-    - DataFrame → returned as-is with None dtype
-    - str → auto-detected type
-    - dict → explicit keys: {path|url|uri|api|sql, secrets, columns}
+def _resolve_data_config(
+    data: Any,
+    data_secrets: Any,
+    data_columns: Any,
+) -> tuple[Any, Optional[str], dict, list]:
+    """Normalize the data parameter.
 
     Returns:
-        (data_value, dtype_or_none, resolved_secrets, columns_list)
+        (data_value, dtype_or_none, resolved_secrets,
+         columns_list)
     """
     import pandas as pd
 
     if isinstance(data, pd.DataFrame):
-        return data, None, _resolve_secrets(data_secrets), data_columns or []
+        return (
+            data, None,
+            _resolve_secrets(data_secrets),
+            data_columns or [],
+        )
 
     if isinstance(data, dict):
-        # Dict form: extract source type + value
         type_keys = {'path', 'url', 'uri', 'api', 'sql'}
         found = [k for k in type_keys if k in data]
         if len(found) != 1:
             raise ValueError(
-                f"data dict must have exactly one of {type_keys}, "
-                f"got: {found or 'none'}"
+                f"data dict must have exactly one of "
+                f"{type_keys}, got: {found or 'none'}"
             )
         key = found[0]
         source = data[key]
 
-        # Param secrets/columns override dict (explicit args take precedence)
-        secrets_raw = data_secrets if data_secrets is not None else data.get('secrets')
+        secrets_raw = (
+            data_secrets
+            if data_secrets is not None
+            else data.get('secrets')
+        )
         secrets = _resolve_secrets(secrets_raw)
 
-        columns = data_columns if data_columns is not None else data.get('columns') or []
+        columns = (
+            data_columns
+            if data_columns is not None
+            else data.get('columns') or []
+        )
 
-        # Map key to dtype
         dtype_map = {
-            'path': 'path',
-            'url': 'url',
-            'uri': 'url',
-            'api': 'api',
-            'sql': 'sql',
+            'path': 'path', 'url': 'url', 'uri': 'url',
+            'api': 'api', 'sql': 'sql',
         }
         return source, dtype_map[key], secrets, columns
 
@@ -295,17 +362,17 @@ def _resolve_data_config(data, data_secrets, data_columns):
         return data, dtype, secrets, data_columns or []
 
     raise ValueError(
-        f"'data' must be a DataFrame, str, or dict. Got {type(data).__name__}."
+        f"'data' must be a DataFrame, str, or dict. "
+        f"Got {type(data).__name__}."
     )
 
 
-def _load_data(data, dtype: str = None, secrets: dict = None):
+def _load_data(
+    data: Any,
+    dtype: Optional[str] = None,
+    secrets: Optional[dict] = None,
+) -> Any:
     """Load data from any supported source.
-
-    Args:
-        data: DataFrame, file path, URL, API URL, or SQL query string
-        dtype: Explicit type ('path', 'url', 'api', 'sql') or None for auto-detect
-        secrets: resolved {key: value} dict for auth
 
     Returns:
         pandas DataFrame
@@ -317,7 +384,8 @@ def _load_data(data, dtype: str = None, secrets: dict = None):
 
     if not isinstance(data, str):
         raise ValueError(
-            f"'data' must be a DataFrame or string. Got {type(data).__name__}."
+            f"'data' must be a DataFrame or string. "
+            f"Got {type(data).__name__}."
         )
 
     if dtype is None:
@@ -334,102 +402,123 @@ def _load_data(data, dtype: str = None, secrets: dict = None):
 
 
 def _load_config(path: str) -> dict:
-    """Load a JSON or YAML config file, returning a plain dict."""
+    """Load a JSON or YAML config file."""
     ext = os.path.splitext(path)[1].lower()
     if ext == '.json':
         with open(path) as f:
             return json.load(f) or {}
     else:
-        # .yaml, .yml, or no extension — all treated as YAML
         try:
             import yaml
         except ImportError:
             raise ImportError(
-                "pyyaml is required to load YAML config files: pip install pyyaml"
+                "pyyaml is required to load YAML config "
+                "files: pip install pyyaml"
             )
         with open(path) as f:
             return yaml.safe_load(f) or {}
 
 
+#
+# Audio resolution
+#
 def _detect_audio_type(value: str) -> str:
-    """Detect whether an audio string is a url, column name, or local path.
-
-    - Starts with http://, https://, s3://, gs:// → 'url'
-    - Contains no '/' and no '.' → 'column'
-    - Otherwise → 'path'
-    """
-    if value.startswith(('http://', 'https://', 's3://', 'gs://')):
+    """Detect whether an audio string is url, column, or path."""
+    if value.startswith(
+        ('http://', 'https://', 's3://', 'gs://'),
+    ):
         return 'url'
     if '/' not in value and '.' not in value:
         return 'column'
     return 'path'
 
 
-def _resolve_audio_from_source(source_type, source_value, prop, index, secrets):
-    """Resolve an audio path from an SQL query or API endpoint.
-
-    Args:
-        source_type: 'sql' or 'api'
-        source_value: the SQL query or API URL
-        prop: property/column name to extract from the result row
-        index: 1-based row index (default 1 = first row)
-        secrets: resolved secrets dict
-
-    Returns:
-        str — the resolved audio path/URL
-    """
-    # Convert 1-based to 0-based
+def _resolve_audio_from_source(
+    source_type: str,
+    source_value: str,
+    prop: Optional[str],
+    index: Optional[int],
+    secrets: Optional[dict],
+) -> str:
+    """Resolve an audio path from an SQL query or API."""
     if index is None:
         index = 1
     idx = max(0, index - 1)
 
     if not prop:
         raise ValueError(
-            f"'property' is required when using audio.{source_type} "
-            f"to specify which field contains the audio path."
+            f"'property' is required when using "
+            f"audio.{source_type} to specify which "
+            f"field contains the audio path."
         )
 
     if source_type == 'sql':
         query = source_value
-        # Append LIMIT if not already present
-        if not re.search(r'\bLIMIT\b', query, re.IGNORECASE):
-            query = query.rstrip().rstrip(';') + f' LIMIT {idx + 1}'
+        if not re.search(
+            r'\bLIMIT\b', query, re.IGNORECASE,
+        ):
+            query = (
+                query.rstrip().rstrip(';')
+                + f' LIMIT {idx + 1}'
+            )
         df = _read_data_from_sql(query, secrets=secrets)
         if len(df) <= idx:
             raise ValueError(
-                f"SQL returned {len(df)} rows, but response_index={index} (row {idx})")
+                f"SQL returned {len(df)} rows, but "
+                f"response_index={index} (row {idx})"
+            )
         val = df.iloc[idx][prop]
     elif source_type == 'api':
         import requests as req
         cookies = secrets or {}
-        resp = req.get(source_value, cookies=cookies, timeout=120)
+        resp = req.get(
+            source_value, cookies=cookies, timeout=120,
+        )
         resp.raise_for_status()
         data = resp.json()
         if not isinstance(data, list):
-            # Try common wrappers
-            for k in ('data', 'results', 'items', 'records', 'rows'):
-                if k in data and isinstance(data[k], list):
+            for k in (
+                'data', 'results', 'items',
+                'records', 'rows',
+            ):
+                if k in data and isinstance(
+                    data[k], list,
+                ):
                     data = data[k]
                     break
-        if not isinstance(data, list) or len(data) <= idx:
+        if (
+            not isinstance(data, list)
+            or len(data) <= idx
+        ):
+            n = (
+                len(data)
+                if isinstance(data, list)
+                else 'non-list'
+            )
             raise ValueError(
-                f"API returned {len(data) if isinstance(data, list) else 'non-list'} "
-                f"items, but response_index={index} (row {idx})")
+                f"API returned {n} items, but "
+                f"response_index={index} (row {idx})"
+            )
         val = data[idx][prop]
     else:
-        raise ValueError(f"Unknown audio source type: {source_type}")
+        raise ValueError(
+            f"Unknown audio source type: {source_type}"
+        )
 
     return str(val)
 
 
-def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
-                          audio_secrets=None) -> dict:
+def _resolve_audio_config(
+    audio: Any,
+    audio_prefix: str,
+    audio_suffix: str,
+    audio_fallback: str,
+    audio_secrets: Any = None,
+) -> dict[str, Any]:
     """Normalize the audio parameter into a standard dict.
 
-    Returns dict with keys: type, value, prefix, suffix, fallback, secrets.
-
-    For sql/api sources, the audio path is resolved at init time by
-    executing the query/request and extracting the specified property.
+    Returns dict with keys: type, value, prefix, suffix,
+    fallback, secrets.
     """
     prefix = audio_prefix or ''
     suffix = audio_suffix or ''
@@ -439,30 +528,46 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
         source_keys = {'sql', 'api'}
         guess_keys = {'src'}
         static_keys = {'path', 'url', 'uri', 'column'}
-        all_type_keys = source_keys | guess_keys | static_keys
+        all_type_keys = (
+            source_keys | guess_keys | static_keys
+        )
         found = [k for k in all_type_keys if k in audio]
         if len(found) != 1:
             raise ValueError(
-                f"audio dict must have exactly one of {all_type_keys}, "
+                f"audio dict must have exactly one of "
+                f"{all_type_keys}, "
                 f"got: {found or 'none'}"
             )
         key = found[0]
 
-        secrets_raw = audio_secrets if audio_secrets is not None else audio.get('secrets')
+        secrets_raw = (
+            audio_secrets
+            if audio_secrets is not None
+            else audio.get('secrets')
+        )
         resolved_secrets = _resolve_secrets(secrets_raw)
 
         if key in source_keys:
             prop = audio.get('property')
             index = audio.get('response_index')
             resolved_value = _resolve_audio_from_source(
-                key, audio[key], prop, index, resolved_secrets)
+                key, audio[key], prop, index,
+                resolved_secrets,
+            )
             atype = _detect_audio_type(resolved_value)
             return {
                 'type': atype,
                 'value': resolved_value,
-                'prefix': prefix or audio.get('prefix', ''),
-                'suffix': suffix or audio.get('suffix', ''),
-                'fallback': fallback or audio.get('fallback', ''),
+                'prefix': (
+                    prefix or audio.get('prefix', '')
+                ),
+                'suffix': (
+                    suffix or audio.get('suffix', '')
+                ),
+                'fallback': (
+                    fallback
+                    or audio.get('fallback', '')
+                ),
                 'secrets': resolved_secrets,
             }
 
@@ -477,7 +582,9 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
             'value': audio[key],
             'prefix': prefix or audio.get('prefix', ''),
             'suffix': suffix or audio.get('suffix', ''),
-            'fallback': fallback or audio.get('fallback', ''),
+            'fallback': (
+                fallback or audio.get('fallback', '')
+            ),
             'secrets': resolved_secrets,
         }
 
@@ -492,23 +599,38 @@ def _resolve_audio_config(audio, audio_prefix, audio_suffix, audio_fallback,
         }
 
     raise ValueError(
-        "'audio' is required — pass a path, URL, column name, or dict. "
+        "'audio' is required — pass a path, URL, "
+        "column name, or dict. "
         "See documentation for details."
     )
 
 
-_DATA_SOURCE_KEYS = frozenset({'path', 'url', 'uri', 'api', 'sql'})
-_AUDIO_SOURCE_KEYS = frozenset({'src', 'path', 'url', 'uri', 'column', 'sql', 'api'})
-_MERGE_DICT_KEYS = frozenset({'data', 'audio', 'output', 'description'})
+_DATA_SOURCE_KEYS = frozenset(
+    {'path', 'url', 'uri', 'api', 'sql'},
+)
+_AUDIO_SOURCE_KEYS = frozenset(
+    {'src', 'path', 'url', 'uri', 'column', 'sql', 'api'},
+)
+_MERGE_DICT_KEYS = frozenset(
+    {'data', 'audio', 'output', 'description'},
+)
 _SOURCE_KEYS_MAP = {
     'data': _DATA_SOURCE_KEYS,
     'audio': _AUDIO_SOURCE_KEYS,
 }
 
 
-def _merge_project_over_config(base, proj):
+def _merge_project_over_config(
+    base: dict,
+    proj: dict,
+) -> None:
+    """Merge project overrides on top of base config."""
     for k, v in proj.items():
-        if k in _MERGE_DICT_KEYS and isinstance(v, dict) and isinstance(base.get(k), dict):
+        if (
+            k in _MERGE_DICT_KEYS
+            and isinstance(v, dict)
+            and isinstance(base.get(k), dict)
+        ):
             merged = dict(base[k])
             source_keys = _SOURCE_KEYS_MAP.get(k)
             if source_keys:
@@ -523,15 +645,18 @@ def _merge_project_over_config(base, proj):
 
 
 _CONFIG_PARAMS = {
-    'data', 'data_path', 'data_url', 'data_sql', 'data_api',
-    'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
-    'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
-    'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
-    'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
+    'data', 'data_path', 'data_url', 'data_sql',
+    'data_api', 'data_start_time', 'data_end_time',
+    'data_duration', 'data_secrets',
+    'audio', 'audio_src', 'audio_path', 'audio_url',
+    'audio_uri', 'audio_column', 'audio_prefix',
+    'audio_suffix', 'audio_fallback', 'audio_secrets',
+    'audio_sql', 'audio_api', 'audio_property',
     'audio_response_index',
     'secrets',
     'output', 'output_path', 'output_url', 'output_uri',
-    'output_sync_button', 'output_recursive', 'output_secrets',
+    'output_sync_button', 'output_recursive',
+    'output_secrets',
     'ident_column', 'display_columns', 'data_columns',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
@@ -539,14 +664,20 @@ _CONFIG_PARAMS = {
     'width', 'clip_table_height', 'player_height',
     'capture_height',
     'info_card_height', 'form_panel_height',
-    'description', 'description_title', 'description_text',
-    'description_path', 'description_open', 'description_height',
+    'description', 'description_title',
+    'description_text', 'description_path',
+    'description_open', 'description_height',
     'project_name', 'project_save_btn',
     'config',
 }
 
 
+#
+# Public API
+#
 class BioacousticAnnotator:
+    """Main entry point for the bioacoustic annotation widget."""
+
     def __init__(
         self,
         project=None,
@@ -609,46 +740,6 @@ class BioacousticAnnotator:
         config=_UNSET,
         **kwargs,
     ):
-        """
-        Parameters
-        ----------
-        data : pandas.DataFrame or str, optional
-            Rows with at minimum: id, start_time, end_time.
-            If a string, treated as a file path; .csv, .parquet, .jsonl,
-            and .ndjson are supported.
-        audio_path : str, optional
-            Local path or s3:// URI to the audio file.
-        output : str, optional
-            Path where rows are appended on each submit.
-            Format is inferred from extension: .csv, .parquet, or .jsonl/.ndjson.
-            Parent directories are created automatically.
-            Defaults to ``outputs/annotation_output-YYMMDD_HHMM.csv``
-            when a ``form_config`` is set and no output is provided.
-        ident_column : str, optional
-            Name of the column in ``data`` to highlight in the info
-            card (e.g. ``'common_name'``).
-        display_columns : list of str, optional
-            Extra columns from ``data`` to display in the player info card.
-        data_columns : list of str, optional
-            Ordered list of columns to display in the clip table.
-            Overrides the default column selection.
-        width : int or str, optional
-            Width of the inline widget. Integers are treated as pixels.
-            Default '100%'.
-        clip_table_height : int, optional
-            Height in pixels of the clip table section. Default 175.
-        player_height : int, optional
-            Height in pixels of the player/spectrogram section. Default 260.
-        info_card_height : int, optional
-            Height in pixels of the info card section. Default 34.
-        form_panel_height : int, optional
-            Height in pixels of the form panel section. Default 140.
-        config : str, optional
-            Path to a JSON or YAML config file (.json, .yaml, .yml; no
-            extension assumes YAML). Any parameter above can be set in the
-            file. Explicitly passed arguments always take precedence over
-            config file values.
-        """
         if project is not None:
             passed = {
                 k for k in _CONFIG_PARAMS
@@ -656,49 +747,71 @@ class BioacousticAnnotator:
             }
             if passed:
                 raise ValueError(
-                    f"When 'project' is set, no other config parameters may be "
-                    f"passed. Got: {sorted(passed)}"
+                    f"When 'project' is set, no other "
+                    f"config parameters may be passed. "
+                    f"Got: {sorted(passed)}"
                 )
             if isinstance(project, str):
-                _log.info('loading project file: %s', project)
+                _log.info(
+                    'loading project file: %s', project,
+                )
                 proj_cfg = _load_config(project)
             elif isinstance(project, dict):
                 proj_cfg = dict(project)
             else:
                 raise TypeError(
-                    f"'project' must be a file path (str) or dict, got {type(project).__name__}"
+                    f"'project' must be a file path (str)"
+                    f" or dict, got "
+                    f"{type(project).__name__}"
                 )
             nested = proj_cfg.pop('config', None)
             if nested:
                 if isinstance(nested, str):
-                    _log.info('loading nested config: %s', nested)
+                    _log.info(
+                        'loading nested config: %s',
+                        nested,
+                    )
                     base = _load_config(nested)
                 elif isinstance(nested, dict):
                     base = dict(nested)
                 else:
                     raise TypeError(
-                        f"Nested 'config' in project must be a file path or dict, "
-                        f"got {type(nested).__name__}"
+                        f"Nested 'config' in project must"
+                        f" be a file path or dict, got "
+                        f"{type(nested).__name__}"
                     )
-                _merge_project_over_config(base, proj_cfg)
+                _merge_project_over_config(
+                    base, proj_cfg,
+                )
                 cfg = base
             else:
                 cfg = proj_cfg
         else:
             if config not in (_UNSET, None):
-                _log.info('loading config file: %s', config)
+                _log.info(
+                    'loading config file: %s', config,
+                )
                 cfg = _load_config(config)
             else:
                 cfg = {}
 
-        self._project_file = project if isinstance(project, str) else None
+        self._project_file = (
+            project if isinstance(project, str) else None
+        )
 
         if project_name is not _UNSET:
             self._project_name = project_name
         elif 'project_name' in cfg:
             self._project_name = cfg['project_name']
         elif isinstance(project, str):
-            self._project_name = os.path.splitext(os.path.basename(project))[0].replace('_', ' ').replace('-', ' ').title()
+            self._project_name = (
+                os.path.splitext(
+                    os.path.basename(project),
+                )[0]
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .title()
+            )
         else:
             self._project_name = DEFAULT_PROJECT_NAME
 
@@ -713,131 +826,354 @@ class BioacousticAnnotator:
         import pandas as _pd
         self._init_args = {
             k: v for k, v in _init_cfg.items()
-            if v is not _UNSET and v is not None and not isinstance(v, _pd.DataFrame)
+            if (
+                v is not _UNSET
+                and v is not None
+                and not isinstance(v, _pd.DataFrame)
+            )
         }
         self._init_kwargs = dict(kwargs)
 
         def resolve(val, key, default):
-            """Return val if explicitly provided, else config value, else default."""
             if val is not _UNSET:
                 return val
             if key in cfg:
                 return cfg[key]
             return default
 
-        # Global secrets — fallback for data_secrets, audio_secrets, output_secrets
-        raw_global_secrets = resolve(secrets, 'secrets', None)
+        raw_global_secrets = resolve(
+            secrets, 'secrets', None,
+        )
 
         raw_data = resolve(data, 'data', _UNSET)
-        raw_data_path = resolve(data_path, 'data_path', None)
-        raw_data_url = resolve(data_url, 'data_url', None)
-        raw_data_sql = resolve(data_sql, 'data_sql', None)
-        raw_data_api = resolve(data_api, 'data_api', None)
+        raw_data_path = resolve(
+            data_path, 'data_path', None,
+        )
+        raw_data_url = resolve(
+            data_url, 'data_url', None,
+        )
+        raw_data_sql = resolve(
+            data_sql, 'data_sql', None,
+        )
+        raw_data_api = resolve(
+            data_api, 'data_api', None,
+        )
 
-        # Top-level data_path/url/sql/api can serve as or override the source
         _top_level_data = {
-            'path': raw_data_path, 'url': raw_data_url,
-            'sql': raw_data_sql, 'api': raw_data_api,
+            'path': raw_data_path,
+            'url': raw_data_url,
+            'sql': raw_data_sql,
+            'api': raw_data_api,
         }
-        _top_found = {k: v for k, v in _top_level_data.items() if v is not None}
+        _top_found = {
+            k: v for k, v in _top_level_data.items()
+            if v is not None
+        }
 
         if len(_top_found) > 1:
             raise ValueError(
-                f"Only one of data_path, data_url, data_sql, data_api may be set. "
+                f"Only one of data_path, data_url, "
+                f"data_sql, data_api may be set. "
                 f"Got: {list(_top_found.keys())}"
             )
 
         if _top_found:
-            # A top-level source param was provided
             _tkey, _tval = next(iter(_top_found.items()))
             if raw_data is _UNSET:
-                # No data param at all — use top-level as the source
                 raw_data = _tval
             elif isinstance(raw_data, dict):
-                # Inject/override the source key in the data dict
-                # Remove any existing source keys first
-                for k in ('path', 'url', 'uri', 'api', 'sql'):
+                for k in (
+                    'path', 'url', 'uri', 'api', 'sql',
+                ):
                     raw_data.pop(k, None)
                 raw_data[_tkey] = _tval
             else:
-                # data is a str or DataFrame — top-level overrides it
                 raw_data = _tval
         elif raw_data is _UNSET:
             raise ValueError(
-                "'data' is required — pass a DataFrame, file path, URL, "
-                "API endpoint, SQL query, or dict. "
-                "Alternatively use data_path, data_url, data_sql, or data_api."
+                "'data' is required — pass a DataFrame, "
+                "file path, URL, API endpoint, SQL query,"
+                " or dict. Alternatively use data_path, "
+                "data_url, data_sql, or data_api."
             )
 
-        # Determine dtype for top-level source params
-        _top_dtype = next(iter(_top_found.keys()), None) if _top_found else None
+        _top_dtype = (
+            next(iter(_top_found.keys()), None)
+            if _top_found else None
+        )
 
-        # data_secrets > secrets > data.secrets (False opts out of global fallback)
-        raw_data_secrets = resolve(data_secrets, 'data_secrets', None)
+        raw_data_secrets = resolve(
+            data_secrets, 'data_secrets', None,
+        )
         if raw_data_secrets is None:
             raw_data_secrets = raw_global_secrets
         elif raw_data_secrets is False:
             raw_data_secrets = None
-        raw_data_columns = resolve(data_columns, 'data_columns', None)
+        raw_data_columns = resolve(
+            data_columns, 'data_columns', None,
+        )
 
-        # Resolve data config — handles str, dict, and DataFrame
-        source, dtype, resolved_secrets, resolved_columns = _resolve_data_config(
-            raw_data, raw_data_secrets, raw_data_columns)
-        # Top-level type hint overrides auto-detection (for str sources)
+        (
+            source, dtype, resolved_secrets,
+            resolved_columns,
+        ) = _resolve_data_config(
+            raw_data, raw_data_secrets, raw_data_columns,
+        )
         if _top_dtype and isinstance(source, str):
             dtype = _top_dtype
-        _log.info('loading data: dtype=%s source=%s', dtype, str(source)[:100] if isinstance(source, str) else type(source).__name__)
-        loaded_data = _load_data(source, dtype=dtype, secrets=resolved_secrets)
-        _log.info('data loaded: %d rows, %d columns', len(loaded_data), len(loaded_data.columns))
+        src_label = (
+            str(source)[:100]
+            if isinstance(source, str)
+            else type(source).__name__
+        )
+        _log.info(
+            'loading data: dtype=%s source=%s',
+            dtype, src_label,
+        )
+        loaded_data = _load_data(
+            source, dtype=dtype, secrets=resolved_secrets,
+        )
+        _log.info(
+            'data loaded: %d rows, %d columns',
+            len(loaded_data), len(loaded_data.columns),
+        )
 
-        # Normalize start_time / end_time / duration columns
-        # Resolve from: top-level param > config > data dict > default
-        _dict_st = raw_data.get('start_time') if isinstance(raw_data, dict) else None
-        _dict_et = raw_data.get('end_time') if isinstance(raw_data, dict) else None
-        _dict_dur = raw_data.get('duration') if isinstance(raw_data, dict) else None
-        st_col = resolve(data_start_time, 'data_start_time', None) or _dict_st or DEFAULT_START_TIME_COL
-        et_col = resolve(data_end_time, 'data_end_time', None) or _dict_et or DEFAULT_END_TIME_COL
-        dur_val = resolve(data_duration, 'data_duration', None)
+        _dict_st = (
+            raw_data.get('start_time')
+            if isinstance(raw_data, dict) else None
+        )
+        _dict_et = (
+            raw_data.get('end_time')
+            if isinstance(raw_data, dict) else None
+        )
+        _dict_dur = (
+            raw_data.get('duration')
+            if isinstance(raw_data, dict) else None
+        )
+        st_col = (
+            resolve(
+                data_start_time, 'data_start_time', None,
+            )
+            or _dict_st
+            or DEFAULT_START_TIME_COL
+        )
+        et_col = (
+            resolve(
+                data_end_time, 'data_end_time', None,
+            )
+            or _dict_et
+            or DEFAULT_END_TIME_COL
+        )
+        dur_val = resolve(
+            data_duration, 'data_duration', None,
+        )
         if dur_val is None:
             dur_val = _dict_dur
 
         if dur_val is not None:
-            # duration: compute end_time from start + duration
             if isinstance(dur_val, str):
-                # dur_val is a column name
-                loaded_data['end_time'] = loaded_data[st_col] + loaded_data[dur_val]
+                loaded_data['end_time'] = (
+                    loaded_data[st_col]
+                    + loaded_data[dur_val]
+                )
             else:
-                # dur_val is a fixed number
-                loaded_data['end_time'] = loaded_data[st_col] + dur_val
-            # Rename start col if needed
+                loaded_data['end_time'] = (
+                    loaded_data[st_col] + dur_val
+                )
             if st_col != 'start_time':
-                loaded_data = loaded_data.rename(columns={st_col: 'start_time'})
+                loaded_data = loaded_data.rename(
+                    columns={st_col: 'start_time'},
+                )
         else:
-            # Rename columns if they differ from defaults
             renames = {}
             if st_col != 'start_time':
                 renames[st_col] = 'start_time'
             if et_col != 'end_time':
                 renames[et_col] = 'end_time'
             if renames:
-                loaded_data = loaded_data.rename(columns=renames)
+                loaded_data = loaded_data.rename(
+                    columns=renames,
+                )
 
-        # Resolve audio
-        # audio_secrets > secrets > audio.secrets
+        self._init_audio(
+            resolve, cfg, audio, audio_src, audio_path,
+            audio_url, audio_uri, audio_column,
+            audio_prefix, audio_suffix, audio_fallback,
+            audio_secrets, audio_sql, audio_api,
+            audio_property, audio_response_index,
+            raw_global_secrets,
+        )
+
+        self._data = loaded_data
+        self._data_source = (
+            source if isinstance(source, str) else None
+        )
+        self._data_start_time = st_col
+        self._data_end_time = et_col
+
+        self._init_output(
+            resolve, output, output_path, output_url,
+            output_uri, output_sync_button,
+            output_recursive, output_secrets,
+            raw_global_secrets,
+        )
+
+        self._ident_column = resolve(
+            ident_column, 'ident_column', '',
+        )
+
+        raw_form_check = resolve(
+            form_config, 'form_config', None,
+        )
+        if not self._output and raw_form_check is not None:
+            from datetime import datetime
+            ts = datetime.now().strftime(
+                DEFAULT_OUTPUT_TS_FMT,
+            )
+            self._output = os.path.join(
+                DEFAULT_OUTPUT_DIR,
+                f'{DEFAULT_OUTPUT_PREFIX}-{ts}'
+                f'{DEFAULT_OUTPUT_EXT}',
+            )
+
+        self._display_columns = resolve(
+            display_columns, 'display_columns', None,
+        ) or []
+        self._data_columns = resolved_columns
+
+        raw_form = resolve(
+            form_config, 'form_config', None,
+        )
+        if isinstance(raw_form, str):
+            _log.info(
+                'loading form config: %s', raw_form,
+            )
+            raw_form = _load_config(raw_form)
+        if kwargs:
+            if raw_form is None:
+                raw_form = {}
+            fv_list = [
+                {'fixed_value': {'column': k, 'value': v}}
+                for k, v in kwargs.items()
+            ]
+            raw_form.setdefault('_fixed_kwargs', fv_list)
+        self._form_config = raw_form
+
+        self._duplicate_entries = resolve(
+            duplicate_entries, 'duplicate_entries', False,
+        )
+        self._default_buffer = resolve(
+            default_buffer, 'default_buffer',
+            DEFAULT_BUFFER,
+        )
+        self._capture = resolve(
+            capture, 'capture', True,
+        )
+        self._capture_dir = resolve(
+            capture_dir, 'capture_dir', '',
+        )
+        self._capture_height = resolve(
+            capture_height, 'capture_height', None,
+        )
+
+        self._init_spec_resolutions(
+            resolve, spectrogram_resolution,
+        )
+        self._init_visualizations(resolve, visualizations)
+
+        self._partial_download = resolve(
+            partial_download, 'partial_download', True,
+        )
+        self._width = resolve(
+            width, 'width', DEFAULT_WIDTH,
+        )
+        self._clip_table_height = resolve(
+            clip_table_height, 'clip_table_height',
+            DEFAULT_CLIP_TABLE_HEIGHT,
+        )
+        self._player_height = resolve(
+            player_height, 'player_height',
+            DEFAULT_PLAYER_HEIGHT,
+        )
+        self._info_card_height = resolve(
+            info_card_height, 'info_card_height',
+            DEFAULT_INFO_CARD_HEIGHT,
+        )
+        self._form_panel_height = resolve(
+            form_panel_height, 'form_panel_height',
+            DEFAULT_FORM_PANEL_HEIGHT,
+        )
+        self._description_height = resolve(
+            description_height, 'description_height',
+            DEFAULT_DESCRIPTION_HEIGHT,
+        )
+
+        self._init_description(
+            resolve, description, description_title,
+            description_text, description_path,
+            description_open, description_height,
+        )
+
+        raw_save_btn = resolve(
+            project_save_btn, 'project_save_btn', False,
+        )
+        if raw_save_btn is True:
+            self._project_save_btn = 'Save Project'
+        elif isinstance(raw_save_btn, str):
+            self._project_save_btn = raw_save_btn
+        else:
+            self._project_save_btn = ''
+
+        self._output_cache = None
+
+    def _init_audio(
+        self, resolve, cfg, audio, audio_src, audio_path,
+        audio_url, audio_uri, audio_column, audio_prefix,
+        audio_suffix, audio_fallback, audio_secrets,
+        audio_sql, audio_api, audio_property,
+        audio_response_index, raw_global_secrets,
+    ):
         raw_audio = resolve(audio, 'audio', _UNSET)
-        raw_audio_src = resolve(audio_src, 'audio_src', None)
-        raw_audio_path = resolve(audio_path, 'audio_path', None)
-        raw_audio_url = resolve(audio_url, 'audio_url', None)
-        raw_audio_uri = resolve(audio_uri, 'audio_uri', None)
-        raw_audio_column = resolve(audio_column, 'audio_column', None)
-        raw_prefix = resolve(audio_prefix, 'audio_prefix', '')
-        raw_suffix = resolve(audio_suffix, 'audio_suffix', '')
-        raw_fallback = resolve(audio_fallback, 'audio_fallback', '')
-        raw_audio_secrets = resolve(audio_secrets, 'audio_secrets', None)
-        raw_audio_sql = resolve(audio_sql, 'audio_sql', None)
-        raw_audio_api = resolve(audio_api, 'audio_api', None)
-        raw_audio_property = resolve(audio_property, 'audio_property', None)
-        raw_audio_response_index = resolve(audio_response_index, 'audio_response_index', None)
+        raw_audio_src = resolve(
+            audio_src, 'audio_src', None,
+        )
+        raw_audio_path = resolve(
+            audio_path, 'audio_path', None,
+        )
+        raw_audio_url = resolve(
+            audio_url, 'audio_url', None,
+        )
+        raw_audio_uri = resolve(
+            audio_uri, 'audio_uri', None,
+        )
+        raw_audio_column = resolve(
+            audio_column, 'audio_column', None,
+        )
+        raw_prefix = resolve(
+            audio_prefix, 'audio_prefix', '',
+        )
+        raw_suffix = resolve(
+            audio_suffix, 'audio_suffix', '',
+        )
+        raw_fallback = resolve(
+            audio_fallback, 'audio_fallback', '',
+        )
+        raw_audio_secrets = resolve(
+            audio_secrets, 'audio_secrets', None,
+        )
+        raw_audio_sql = resolve(
+            audio_sql, 'audio_sql', None,
+        )
+        raw_audio_api = resolve(
+            audio_api, 'audio_api', None,
+        )
+        raw_audio_property = resolve(
+            audio_property, 'audio_property', None,
+        )
+        raw_audio_response_index = resolve(
+            audio_response_index,
+            'audio_response_index', None,
+        )
         if raw_audio_secrets is None:
             raw_audio_secrets = raw_global_secrets
         elif raw_audio_secrets is False:
@@ -845,21 +1181,29 @@ class BioacousticAnnotator:
 
         _top_audio = {
             'src': raw_audio_src,
-            'path': raw_audio_path, 'url': raw_audio_url or raw_audio_uri,
+            'path': raw_audio_path,
+            'url': raw_audio_url or raw_audio_uri,
             'column': raw_audio_column,
-            'sql': raw_audio_sql, 'api': raw_audio_api,
+            'sql': raw_audio_sql,
+            'api': raw_audio_api,
         }
-        _top_audio_found = {k: v for k, v in _top_audio.items() if v is not None}
+        _top_audio_found = {
+            k: v for k, v in _top_audio.items()
+            if v is not None
+        }
 
         if len(_top_audio_found) > 1:
             raise ValueError(
-                f"Only one of audio_src, audio_path, audio_url, audio_uri, "
-                f"audio_column, audio_sql, audio_api may be set. "
+                f"Only one of audio_src, audio_path, "
+                f"audio_url, audio_uri, audio_column, "
+                f"audio_sql, audio_api may be set. "
                 f"Got: {list(_top_audio_found.keys())}"
             )
 
         if _top_audio_found:
-            _akey, _aval = next(iter(_top_audio_found.items()))
+            _akey, _aval = next(
+                iter(_top_audio_found.items()),
+            )
             if raw_audio is _UNSET:
                 if _akey == 'src':
                     raw_audio = _aval
@@ -868,7 +1212,10 @@ class BioacousticAnnotator:
                 else:
                     raw_audio = _aval
             elif isinstance(raw_audio, dict):
-                for k in ('src', 'path', 'url', 'uri', 'column', 'sql', 'api'):
+                for k in (
+                    'src', 'path', 'url', 'uri',
+                    'column', 'sql', 'api',
+                ):
                     raw_audio.pop(k, None)
                 if _akey == 'src':
                     raw_audio = _aval
@@ -878,33 +1225,59 @@ class BioacousticAnnotator:
                 raw_audio = _aval
         elif raw_audio is _UNSET:
             raise ValueError(
-                "'audio' is required — pass a path, URL, column name, dict, "
-                "or use audio_src/audio_path/audio_url/audio_column/audio_sql/audio_api."
+                "'audio' is required — pass a path, "
+                "URL, column name, dict, or use "
+                "audio_src/audio_path/audio_url/"
+                "audio_column/audio_sql/audio_api."
             )
 
-        # Inject top-level property/response_index into dict if audio is a dict
         if isinstance(raw_audio, dict):
             if raw_audio_property is not None:
-                raw_audio.setdefault('property', raw_audio_property)
+                raw_audio.setdefault(
+                    'property', raw_audio_property,
+                )
             if raw_audio_response_index is not None:
-                raw_audio['response_index'] = raw_audio_response_index
+                raw_audio['response_index'] = (
+                    raw_audio_response_index
+                )
 
         self._audio_config = _resolve_audio_config(
-            raw_audio, raw_prefix, raw_suffix, raw_fallback,
-            audio_secrets=raw_audio_secrets)
-        _log.info('audio config resolved: type=%s value=%s', self._audio_config.get('type'), str(self._audio_config.get('value', ''))[:80])
+            raw_audio, raw_prefix, raw_suffix,
+            raw_fallback, audio_secrets=raw_audio_secrets,
+        )
+        _log.info(
+            'audio config resolved: type=%s value=%s',
+            self._audio_config.get('type'),
+            str(
+                self._audio_config.get('value', ''),
+            )[:80],
+        )
 
-        self._data             = loaded_data
-        self._data_source      = source if isinstance(source, str) else None
-        self._data_start_time  = st_col
-        self._data_end_time    = et_col
+    def _init_output(
+        self, resolve, output, output_path, output_url,
+        output_uri, output_sync_button, output_recursive,
+        output_secrets, raw_global_secrets,
+    ):
         raw_output = resolve(output, 'output', '')
-        raw_output_path = resolve(output_path, 'output_path', None)
-        raw_output_url = resolve(output_url, 'output_url', None)
-        raw_output_uri = resolve(output_uri, 'output_uri', None)
-        raw_output_sync_button = resolve(output_sync_button, 'output_sync_button', None)
-        raw_output_recursive = resolve(output_recursive, 'output_recursive', None)
-        raw_output_secrets = resolve(output_secrets, 'output_secrets', None)
+        raw_output_path = resolve(
+            output_path, 'output_path', None,
+        )
+        raw_output_url = resolve(
+            output_url, 'output_url', None,
+        )
+        raw_output_uri = resolve(
+            output_uri, 'output_uri', None,
+        )
+        raw_output_sync_button = resolve(
+            output_sync_button, 'output_sync_button',
+            None,
+        )
+        raw_output_recursive = resolve(
+            output_recursive, 'output_recursive', None,
+        )
+        raw_output_secrets = resolve(
+            output_secrets, 'output_secrets', None,
+        )
         if raw_output_secrets is None:
             raw_output_secrets = raw_global_secrets
         elif raw_output_secrets is False:
@@ -912,18 +1285,30 @@ class BioacousticAnnotator:
 
         if isinstance(raw_output, dict):
             self._output = raw_output.get('path', '')
-            self._sync_uri = raw_output.get('uri') or raw_output.get('url') or ''
-            sync_btn_raw = raw_output.get('sync_button', None)
+            self._sync_uri = (
+                raw_output.get('uri')
+                or raw_output.get('url')
+                or ''
+            )
+            sync_btn_raw = raw_output.get(
+                'sync_button', None,
+            )
             if sync_btn_raw is None:
-                self._sync_button = 'Sync' if self._sync_uri else ''
+                self._sync_button = (
+                    'Sync' if self._sync_uri else ''
+                )
             elif isinstance(sync_btn_raw, str):
                 self._sync_button = sync_btn_raw
             elif sync_btn_raw:
                 self._sync_button = 'Sync'
             else:
                 self._sync_button = ''
-            self._sync_recursive = raw_output.get('recursive', False)
-            self._sync_secrets_raw = raw_output.get('secrets')
+            self._sync_recursive = raw_output.get(
+                'recursive', False,
+            )
+            self._sync_secrets_raw = raw_output.get(
+                'secrets',
+            )
         else:
             self._output = raw_output
             self._sync_uri = ''
@@ -931,14 +1316,20 @@ class BioacousticAnnotator:
             self._sync_recursive = False
             self._sync_secrets_raw = None
 
-        # Top-level output_* params override dict values
         if raw_output_path is not None:
             self._output = raw_output_path
-        if raw_output_url is not None or raw_output_uri is not None:
-            self._sync_uri = raw_output_url or raw_output_uri or ''
+        if (
+            raw_output_url is not None
+            or raw_output_uri is not None
+        ):
+            self._sync_uri = (
+                raw_output_url or raw_output_uri or ''
+            )
         if raw_output_sync_button is not None:
             if isinstance(raw_output_sync_button, str):
-                self._sync_button = raw_output_sync_button
+                self._sync_button = (
+                    raw_output_sync_button
+                )
             elif raw_output_sync_button:
                 self._sync_button = 'Sync'
             else:
@@ -948,135 +1339,204 @@ class BioacousticAnnotator:
         if raw_output_secrets is not None:
             self._sync_secrets_raw = raw_output_secrets
 
-        # Default sync button if URI is set but no button configured
         if self._sync_uri and not self._sync_button:
             self._sync_button = 'Sync'
-        self._ident_column = resolve(ident_column, 'ident_column', '')
 
-        # Default output filename when a form is configured but no output path given
-        raw_form_check = resolve(form_config, 'form_config', None)
-        if not self._output and raw_form_check is not None:
-            from datetime import datetime
-            ts = datetime.now().strftime(DEFAULT_OUTPUT_TS_FMT)
-            self._output = os.path.join(DEFAULT_OUTPUT_DIR, f'{DEFAULT_OUTPUT_PREFIX}-{ts}{DEFAULT_OUTPUT_EXT}')
-        self._display_columns  = resolve(display_columns,  'display_columns',  None) or []
-        self._data_columns     = resolved_columns
-        raw_form = resolve(form_config, 'form_config', None)
-        if isinstance(raw_form, str):
-            _log.info('loading form config: %s', raw_form)
-            raw_form = _load_config(raw_form)
-        # Append **kwargs as fixed_value entries to the form config
-        if kwargs:
-            if raw_form is None:
-                raw_form = {}
-            # Build a list of fixed_value entries; append after submission_buttons
-            fv_list = [{'fixed_value': {'column': k, 'value': v}} for k, v in kwargs.items()]
-            raw_form.setdefault('_fixed_kwargs', fv_list)
-        self._form_config = raw_form   # dict or None
-        self._duplicate_entries = resolve(duplicate_entries, 'duplicate_entries', False)
-        self._default_buffer   = resolve(default_buffer,   'default_buffer',   DEFAULT_BUFFER)
-        self._capture          = resolve(capture,          'capture',          True)
-        self._capture_dir      = resolve(capture_dir,     'capture_dir',      '')
-        self._capture_height   = resolve(capture_height,   'capture_height',   None)
-        raw_res = resolve(spectrogram_resolution, 'spectrogram_resolution', DEFAULT_SPEC_RESOLUTIONS)
-        # Normalize to list of strings (preserves "selected::" prefix)
+    def _init_spec_resolutions(
+        self, resolve, spectrogram_resolution,
+    ):
+        raw_res = resolve(
+            spectrogram_resolution,
+            'spectrogram_resolution',
+            DEFAULT_SPEC_RESOLUTIONS,
+        )
         if isinstance(raw_res, (int, float)):
             self._spec_resolutions = [str(int(raw_res))]
         elif isinstance(raw_res, list):
-            self._spec_resolutions = [str(r) for r in raw_res]
+            self._spec_resolutions = [
+                str(r) for r in raw_res
+            ]
         else:
-            self._spec_resolutions = [str(r) for r in DEFAULT_SPEC_RESOLUTIONS]
-        # Normalize visualizations list
-        from jupyter_bioacoustic.utils.visualizations import REGISTRY as _VIZ_REGISTRY
-        raw_viz = resolve(visualizations, 'visualizations', DEFAULT_VISUALIZATIONS)
+            self._spec_resolutions = [
+                str(r) for r in DEFAULT_SPEC_RESOLUTIONS
+            ]
+
+    def _init_visualizations(
+        self, resolve, visualizations,
+    ):
+        from jupyter_bioacoustic.utils.visualizations \
+            import REGISTRY as _VIZ_REGISTRY
+        raw_viz = resolve(
+            visualizations, 'visualizations',
+            DEFAULT_VISUALIZATIONS,
+        )
         self._visualizations = []
-        self._viz_meta = []  # JSON-serializable metadata for TS side
-        for i, v in enumerate(raw_viz if isinstance(raw_viz, list) else [raw_viz]):
+        self._viz_meta = []
+        viz_list = (
+            raw_viz
+            if isinstance(raw_viz, list)
+            else [raw_viz]
+        )
+        for i, v in enumerate(viz_list):
             if isinstance(v, str):
-                if v in ('linear', 'plain', 'mel'):
-                    key = 'linear' if v in ('plain', 'linear') else 'mel'
-                    fs = 'mel' if key == 'mel' else 'linear'
-                    label = key.replace('_', ' ').title()
-                    self._visualizations.append({'type': 'builtin', 'key': key, 'label': label, 'freq_scale': fs})
-                    self._viz_meta.append({'type': 'builtin', 'key': key, 'label': label, 'freq_scale': fs, 'index': i})
-                elif v in _VIZ_REGISTRY:
-                    # Registered visualization function (by name)
-                    fn = _VIZ_REGISTRY[v]
-                    label = v.replace('_', ' ').title()
-                    self._visualizations.append({'type': 'custom', 'fn': fn, 'label': label})
-                    self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
-                else:
-                    raise ValueError(
-                        f"Unknown visualization '{v}'. "
-                        f"Available: {', '.join(sorted(_VIZ_REGISTRY.keys()))}"
-                    )
+                self._add_viz_str(
+                    v, i, _VIZ_REGISTRY,
+                )
             elif callable(v):
-                label = getattr(v, '__name__', f'custom_{i}')
-                self._visualizations.append({'type': 'custom', 'fn': v, 'label': label})
-                self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
-            elif isinstance(v, dict) and 'fn' in v and callable(v['fn']):
-                label = v.get('label', getattr(v['fn'], '__name__', f'custom_{i}'))
-                self._visualizations.append({'type': 'custom', 'fn': v['fn'], 'label': label})
-                self._viz_meta.append({'type': 'custom', 'label': label, 'index': i})
+                label = getattr(
+                    v, '__name__', f'custom_{i}',
+                )
+                self._visualizations.append(
+                    {'type': 'custom', 'fn': v,
+                     'label': label},
+                )
+                self._viz_meta.append(
+                    {'type': 'custom', 'label': label,
+                     'index': i},
+                )
+            elif (
+                isinstance(v, dict)
+                and 'fn' in v
+                and callable(v['fn'])
+            ):
+                label = v.get(
+                    'label',
+                    getattr(
+                        v['fn'], '__name__',
+                        f'custom_{i}',
+                    ),
+                )
+                self._visualizations.append(
+                    {'type': 'custom', 'fn': v['fn'],
+                     'label': label},
+                )
+                self._viz_meta.append(
+                    {'type': 'custom', 'label': label,
+                     'index': i},
+                )
 
-        self._partial_download = resolve(partial_download, 'partial_download', True)
-        self._width              = resolve(width,              'width',              DEFAULT_WIDTH)
-        self._clip_table_height  = resolve(clip_table_height,  'clip_table_height',  DEFAULT_CLIP_TABLE_HEIGHT)
-        self._player_height      = resolve(player_height,      'player_height',      DEFAULT_PLAYER_HEIGHT)
-        self._info_card_height   = resolve(info_card_height,   'info_card_height',   DEFAULT_INFO_CARD_HEIGHT)
-        self._form_panel_height  = resolve(form_panel_height,  'form_panel_height',  DEFAULT_FORM_PANEL_HEIGHT)
-        self._description_height = resolve(description_height, 'description_height', DEFAULT_DESCRIPTION_HEIGHT)
+    def _add_viz_str(
+        self,
+        v: str,
+        i: int,
+        registry: dict,
+    ) -> None:
+        if v in ('linear', 'plain', 'mel'):
+            key = (
+                'linear'
+                if v in ('plain', 'linear')
+                else 'mel'
+            )
+            fs = 'mel' if key == 'mel' else 'linear'
+            label = key.replace('_', ' ').title()
+            self._visualizations.append({
+                'type': 'builtin', 'key': key,
+                'label': label, 'freq_scale': fs,
+            })
+            self._viz_meta.append({
+                'type': 'builtin', 'key': key,
+                'label': label, 'freq_scale': fs,
+                'index': i,
+            })
+        elif v in registry:
+            fn = registry[v]
+            label = v.replace('_', ' ').title()
+            self._visualizations.append(
+                {'type': 'custom', 'fn': fn,
+                 'label': label},
+            )
+            self._viz_meta.append(
+                {'type': 'custom', 'label': label,
+                 'index': i},
+            )
+        else:
+            raise ValueError(
+                f"Unknown visualization '{v}'. "
+                f"Available: "
+                f"{', '.join(sorted(registry.keys()))}"
+            )
 
-        raw_desc = resolve(description, 'description', None)
-        raw_desc_title = resolve(description_title, 'description_title', None)
-        raw_desc_text = resolve(description_text, 'description_text', None)
-        raw_desc_path = resolve(description_path, 'description_path', None)
-        raw_desc_open = resolve(description_open, 'description_open', None)
+    def _init_description(
+        self, resolve, description, description_title,
+        description_text, description_path,
+        description_open, description_height,
+    ):
+        raw_desc = resolve(
+            description, 'description', None,
+        )
+        raw_desc_title = resolve(
+            description_title, 'description_title', None,
+        )
+        raw_desc_text = resolve(
+            description_text, 'description_text', None,
+        )
+        raw_desc_path = resolve(
+            description_path, 'description_path', None,
+        )
+        raw_desc_open = resolve(
+            description_open, 'description_open', None,
+        )
         if isinstance(raw_desc, dict):
-            raw_desc_title = raw_desc_title or raw_desc.get('title')
-            raw_desc_text = raw_desc_text or raw_desc.get('text')
-            raw_desc_path = raw_desc_path or raw_desc.get('path')
+            raw_desc_title = (
+                raw_desc_title
+                or raw_desc.get('title')
+            )
+            raw_desc_text = (
+                raw_desc_text or raw_desc.get('text')
+            )
+            raw_desc_path = (
+                raw_desc_path or raw_desc.get('path')
+            )
             if raw_desc_open is None:
                 raw_desc_open = raw_desc.get('open', True)
-            if 'height' in raw_desc and description_height is _UNSET:
-                self._description_height = raw_desc['height']
+            if (
+                'height' in raw_desc
+                and description_height is _UNSET
+            ):
+                self._description_height = (
+                    raw_desc['height']
+                )
         if raw_desc_path and not raw_desc_text:
             try:
                 with open(raw_desc_path) as _f:
                     raw_desc_text = _f.read()
-                _log.debug('loaded description from %s', raw_desc_path)
+                _log.debug(
+                    'loaded description from %s',
+                    raw_desc_path,
+                )
             except OSError as e:
-                _log.warning('could not read description file %s: %s', raw_desc_path, e)
-                raw_desc_text = f'(Could not read {raw_desc_path})'
-        self._description_config = {
-            'title': raw_desc_title or '',
-            'text': raw_desc_text or '',
-            'open': raw_desc_open if raw_desc_open is not None else True,
-        } if raw_desc_text else None
-
-        raw_save_btn = resolve(project_save_btn, 'project_save_btn', False)
-        if raw_save_btn is True:
-            self._project_save_btn = 'Save Project'
-        elif isinstance(raw_save_btn, str):
-            self._project_save_btn = raw_save_btn
-        else:
-            self._project_save_btn = ''
-
-        self._output_cache     = None
+                _log.warning(
+                    'could not read description '
+                    'file %s: %s',
+                    raw_desc_path, e,
+                )
+                raw_desc_text = (
+                    f'(Could not read {raw_desc_path})'
+                )
+        self._description_config = (
+            {
+                'title': raw_desc_title or '',
+                'text': raw_desc_text or '',
+                'open': (
+                    raw_desc_open
+                    if raw_desc_open is not None
+                    else True
+                ),
+            }
+            if raw_desc_text
+            else None
+        )
 
     @property
-    def source(self):
+    def source(self) -> Any:
         """The input DataFrame passed as ``data``."""
         return self._data
 
-    def output(self, force: bool = False):
+    def output(self, force: bool = False) -> Any:
         """Read and return the output file as a DataFrame.
 
-        Parameters
-        ----------
-        force : bool, optional
-            If True, re-read the file even if a cached copy exists.
-            Default False.
+        Args:
+            force: Re-read even if a cached copy exists.
         """
         if self._output_cache is not None and not force:
             return self._output_cache
@@ -1087,165 +1547,210 @@ class BioacousticAnnotator:
         self._output_cache = _read_data(self._output)
         return self._output_cache
 
-    def _invalidate_output_cache(self):
-        """Called by the widget after each submit to force a re-read."""
+    def _invalidate_output_cache(self) -> None:
+        """Force a re-read on the next output() call."""
         self._output_cache = None
 
     def setup(self) -> None:
-        """Serialize data into kernel variables without opening the widget."""
+        """Serialize data into kernel variables."""
         ip = get_ipython()
         if ip is None:
             raise RuntimeError(
-                'BioacousticAnnotator.setup() must be called from inside a Jupyter kernel.'
+                'BioacousticAnnotator.setup() must be '
+                'called from inside a Jupyter kernel.'
             )
 
-        ip.user_ns['_BA_DATA']           = self._data.to_json(orient='records')
-        ip.user_ns['_BA_AUDIO']          = json.dumps(self._audio_config)
-        ip.user_ns['_BA_OUTPUT']         = self._output
-        ip.user_ns['_BA_SYNC_CONFIG']    = json.dumps({
+        ns = ip.user_ns
+        ns['_BA_DATA'] = self._data.to_json(
+            orient='records',
+        )
+        ns['_BA_AUDIO'] = json.dumps(
+            self._audio_config,
+        )
+        ns['_BA_OUTPUT'] = self._output
+        ns['_BA_SYNC_CONFIG'] = json.dumps({
             'uri': self._sync_uri,
             'button': self._sync_button,
             'recursive': self._sync_recursive,
         })
-        ip.user_ns['_BA_IDENT_COL']      = self._ident_column
-        ip.user_ns['_BA_APP_TITLE']      = self._project_name
-        ip.user_ns['_BA_DISPLAY_COLS']   = json.dumps(self._display_columns)
-        ip.user_ns['_BA_DATA_COLS']      = json.dumps(self._data_columns)
+        ns['_BA_IDENT_COL'] = self._ident_column
+        ns['_BA_APP_TITLE'] = self._project_name
+        ns['_BA_DISPLAY_COLS'] = json.dumps(
+            self._display_columns,
+        )
+        ns['_BA_DATA_COLS'] = json.dumps(
+            self._data_columns,
+        )
 
-        ip.user_ns['_BA_FORM_CONFIG'] = json.dumps(self._form_config)
+        ns['_BA_FORM_CONFIG'] = json.dumps(
+            self._form_config,
+        )
         cap = self._capture
         if cap is True:
             cap = DEFAULT_CAPTURE_LABEL
         elif cap is False:
             cap = ''
-        ip.user_ns['_BA_CAPTURE'] = cap
-        ip.user_ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
-        ip.user_ns['_BA_CAPTURE_HEIGHT'] = str(self._capture_height) if self._capture_height else ''
-        ip.user_ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(self._spec_resolutions)
-        ip.user_ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
-        ip.user_ns['_BA_DUPLICATE_ENTRIES'] = 'true' if self._duplicate_entries else ''
-        ip.user_ns['_BA_DEFAULT_BUFFER'] = str(self._default_buffer)
-        ip.user_ns['_BA_CLIP_TABLE_HEIGHT'] = str(self._clip_table_height)
-        ip.user_ns['_BA_PLAYER_HEIGHT']     = str(self._player_height)
-        ip.user_ns['_BA_INFO_CARD_HEIGHT']  = str(self._info_card_height)
-        ip.user_ns['_BA_FORM_PANEL_HEIGHT'] = str(self._form_panel_height)
-        ip.user_ns['_BA_PROJECT_SAVE_BTN'] = self._project_save_btn
-        ip.user_ns['_BA_DESCRIPTION'] = json.dumps(self._description_config) if self._description_config else ''
-        ip.user_ns['_BA_DESCRIPTION_HEIGHT'] = str(self._description_height)
-        ip.user_ns['_BA_INSTANCE'] = self
+        ns['_BA_CAPTURE'] = cap
+        ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
+        ns['_BA_CAPTURE_HEIGHT'] = (
+            str(self._capture_height)
+            if self._capture_height
+            else ''
+        )
+        ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(
+            self._spec_resolutions,
+        )
+        ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
+        ns['_BA_DUPLICATE_ENTRIES'] = (
+            'true' if self._duplicate_entries else ''
+        )
+        ns['_BA_DEFAULT_BUFFER'] = str(
+            self._default_buffer,
+        )
+        ns['_BA_CLIP_TABLE_HEIGHT'] = str(
+            self._clip_table_height,
+        )
+        ns['_BA_PLAYER_HEIGHT'] = str(
+            self._player_height,
+        )
+        ns['_BA_INFO_CARD_HEIGHT'] = str(
+            self._info_card_height,
+        )
+        ns['_BA_FORM_PANEL_HEIGHT'] = str(
+            self._form_panel_height,
+        )
+        ns['_BA_PROJECT_SAVE_BTN'] = (
+            self._project_save_btn
+        )
+        ns['_BA_DESCRIPTION'] = (
+            json.dumps(self._description_config)
+            if self._description_config
+            else ''
+        )
+        ns['_BA_DESCRIPTION_HEIGHT'] = str(
+            self._description_height,
+        )
+        ns['_BA_INSTANCE'] = self
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
-        """Serialize data into kernel variables and open the widget.
-
-        Parameters
-        ----------
-        inline : bool, optional
-            If True, embed the widget below the cell instead of opening
-            a split-right panel. Default True.
-        """
+        """Serialize data and open the widget."""
         self.setup()
-
         if inline:
             self._open_inline()
         else:
             display(Javascript(
-                "window._bioacousticApp?.commands.execute('bioacoustic:open')"
+                "window._bioacousticApp?.commands"
+                ".execute('bioacoustic:open')"
             ))
 
-    def sync(self, dest: str = None, recursive: bool = None, **kwargs) -> str:
-        """Upload the current output file to the configured remote location.
+    def sync(
+        self,
+        dest: Optional[str] = None,
+        recursive: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Upload the output file to the configured remote.
 
-        Parameters
-        ----------
-        dest : str, optional
-            Override the destination URI. Defaults to the configured
-            ``output.uri`` / ``output.url``.
-        recursive : bool, optional
-            Override the configured ``output.recursive`` setting.
-        **kwargs
-            Additional auth kwargs passed to ``io.write()``
-            (e.g. profile_name, client, cookies, token).
-            Overrides any configured ``output.secrets``.
+        Args:
+            dest: Override the destination URI.
+            recursive: Override recursive setting.
+            **kwargs: Additional auth kwargs.
         """
         from jupyter_bioacoustic.audio import io
-        _log.info('sync requested: dest=%s recursive=%s', dest, recursive)
+        _log.info(
+            'sync requested: dest=%s recursive=%s',
+            dest, recursive,
+        )
 
         src = self._output
         if not src:
             raise ValueError('No output path configured')
         if not os.path.exists(src):
-            raise FileNotFoundError(f'Output file not found: {src}')
+            raise FileNotFoundError(
+                f'Output file not found: {src}',
+            )
 
         target = dest or self._sync_uri
         if not target:
             raise ValueError(
                 'No sync destination configured. '
-                'Set output.uri/url in config or pass dest= to sync().'
+                'Set output.uri/url in config or pass '
+                'dest= to sync().'
             )
 
-        rec = recursive if recursive is not None else self._sync_recursive
+        rec = (
+            recursive
+            if recursive is not None
+            else self._sync_recursive
+        )
 
-        merged_kwargs = {}
+        merged_kwargs: dict[str, Any] = {}
         if self._sync_secrets_raw:
-            merged_kwargs.update(_resolve_secrets(self._sync_secrets_raw))
+            merged_kwargs.update(
+                _resolve_secrets(self._sync_secrets_raw),
+            )
         merged_kwargs.update(kwargs)
 
-        _log.info('syncing %s -> %s (recursive=%s)', src, target, rec)
-        result = io.write(src, target, recursive=rec, **merged_kwargs)
+        _log.info(
+            'syncing %s -> %s (recursive=%s)',
+            src, target, rec,
+        )
+        result = io.write(
+            src, target, recursive=rec, **merged_kwargs,
+        )
         _log.info('sync complete: %s', result)
         return result
 
     def save_as_project(
         self,
-        filename: str = None,
+        filename: Optional[str] = None,
         folder: str = 'projects',
         overwrite: bool = False,
     ) -> str:
-        """Save the current configuration as a fully-specified project YAML.
-
-        Parameters
-        ----------
-        filename : str, optional
-            Output filename. Defaults to a slugified version of project_name.
-        folder : str, optional
-            Parent directory. Default ``'projects'``.
-        overwrite : bool, optional
-            If False (default) and the file exists, raise FileExistsError.
-
-        Returns
-        -------
-        str
-            The path to the saved project file.
-        """
+        """Save the current config as a project YAML."""
         try:
             import yaml
         except ImportError:
             raise ImportError(
-                "pyyaml is required to save project files: pip install pyyaml"
+                "pyyaml is required to save project "
+                "files: pip install pyyaml"
             )
 
         if filename is None:
-            slug = re.sub(r'[^a-z0-9]+', '_', self._project_name.lower()).strip('_')
+            slug = re.sub(
+                r'[^a-z0-9]+', '_',
+                self._project_name.lower(),
+            ).strip('_')
             filename = f'{slug}.yaml'
         elif not os.path.splitext(filename)[1]:
             filename = f'{filename}.yaml'
 
         path = os.path.join(folder, filename)
-        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        os.makedirs(
+            os.path.dirname(path) or '.', exist_ok=True,
+        )
 
         if os.path.exists(path) and not overwrite:
             raise FileExistsError(
-                f"Project file already exists: {path}  (pass overwrite=True to replace)"
+                f"Project file already exists: {path}  "
+                f"(pass overwrite=True to replace)"
             )
 
         cfg = dict(self._init_args)
         cfg['project_name'] = self._project_name
         if self._init_kwargs:
             cfg.update(self._init_kwargs)
-        cfg = {k: v for k, v in cfg.items() if v is not None and v != '' and v != []}
+        cfg = {
+            k: v for k, v in cfg.items()
+            if v is not None and v != '' and v != []
+        }
 
         with open(path, 'w') as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(
+                cfg, f,
+                default_flow_style=False,
+                sort_keys=False,
+            )
 
         _log.info('saved project to %s', path)
         return path
@@ -1253,13 +1758,20 @@ class BioacousticAnnotator:
     def _open_inline(self) -> None:
         """Inject the widget into the cell output area."""
         div_id = f'bioacoustic-{uuid.uuid4().hex[:8]}'
-        w = self._width if isinstance(self._width, str) else f'{self._width}px'
+        w = (
+            self._width
+            if isinstance(self._width, str)
+            else f'{self._width}px'
+        )
         has_form = self._form_config is not None
         total_h = (
             int(self._clip_table_height)
             + int(self._player_height)
             + int(self._info_card_height)
-            + (int(self._form_panel_height) if has_form else 0)
+            + (
+                int(self._form_panel_height)
+                if has_form else 0
+            )
             + _TOOLBAR_AND_PADDING_PX
         )
         h = f'{total_h}px'
@@ -1267,11 +1779,14 @@ class BioacousticAnnotator:
         display(HTML(
             f'<div id="{div_id}" style="'
             f'width:{w};height:{h};'
-            f'border:1px solid #313244;border-radius:6px;'
-            f'overflow:auto;position:relative;resize:both;'
+            f'border:1px solid #313244;'
+            f'border-radius:6px;'
+            f'overflow:auto;position:relative;'
+            f'resize:both;'
             f'"></div>'
         ))
 
         display(Javascript(
-            f"window._bioacousticOpenInline && window._bioacousticOpenInline('{div_id}')"
+            f"window._bioacousticOpenInline && "
+            f"window._bioacousticOpenInline('{div_id}')"
         ))
