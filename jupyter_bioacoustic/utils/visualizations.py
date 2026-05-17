@@ -409,3 +409,6 @@ def _render_png(S: np.ndarray, width: int = 2000, height: int | None = None,
     fig.savefig(buf, format='png', dpi=DEFAULT_DPI, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
     return buf.getvalue()
+
+
+render_png = _render_png
