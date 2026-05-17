@@ -1,18 +1,28 @@
 /**
+ * Python
+ *
  * Python code snippets executed in the Jupyter kernel.
- *
  * Each function returns a Python code string. Template parameters are
- * interpolated into the code. All paths must be pre-escaped with escPy().
+ * interpolated into the code. All paths must be pre-escaped with
+ * escPy(). Most heavy lifting is in jupyter_bioacoustic._kernel_helpers
+ * — these snippets just call into that module.
  *
- * Most heavy lifting is in jupyter_bioacoustic._kernel_helpers — these
- * snippets just call into that module.
+ * License: BSD 3-Clause
  */
-import { escPy } from './util';
 
-const H = 'from jupyter_bioacoustic._kernel_helpers import';
+import {escPy} from './util';
 
-// ─── Kernel variable reading (plugin.ts _init) ──────────────
 
+//
+// Constants
+//
+const HELPERS = 'from jupyter_bioacoustic._kernel_helpers import';
+const DEFAULT_SPEC_WIDTH = 2000;
+
+
+//
+// Kernel variable reading (plugin.ts _init)
+//
 export function readKernelVars(): string {
   return [
     `import json as _j`,
@@ -44,66 +54,86 @@ export function readKernelVars(): string {
   ].join('\n');
 }
 
-// ─── Spectrogram + WAV generation (Player) ───────────────────
 
-export function readAudio(path: string, startSec: number, durSec: number): string {
+//
+// Spectrogram + WAV generation (Player)
+//
+export function readAudio(
+  path: string,
+  startSec: number,
+  durSec: number,
+): string {
   const p = escPy(path);
   return [
     `from jupyter_bioacoustic.audio import read_segment as _read_segment`,
-    `_partial = _BA_INSTANCE._partial_download if hasattr(_BA_INSTANCE, '_partial_download') else True`,
+    `_partial = _BA_INSTANCE._partial_download \\`,
+    `  if hasattr(_BA_INSTANCE, '_partial_download') else True`,
     `_raw, _sr = _read_segment('${p}', ${startSec}, ${durSec}, partial=_partial)`,
   ].join('\n');
 }
 
-export function buildSpectrogram(spectType: 'mel' | 'linear', resolutionW?: number, resolutionH?: number): string {
-  const w = resolutionW ?? 2000;
+export function buildSpectrogram(
+  spectType: 'mel' | 'linear',
+  resolutionW?: number,
+  resolutionH?: number,
+): string {
+  const w = resolutionW ?? DEFAULT_SPEC_WIDTH;
   const h = resolutionH ? `, height=${resolutionH}` : '';
   return [
-    `${H} build_spectrogram as _build_spec`,
+    `${HELPERS} build_spectrogram as _build_spec`,
     `print(_build_spec(_raw, _sr, spec_type='${spectType}', width=${w}${h}))`,
   ].join('\n');
 }
 
-function customVizCode(vizIndex: number, resolutionW: number, resolutionH?: number): string {
-  const h = resolutionH ? `, height=${resolutionH}` : '';
-  return [
-    `${H} run_custom_viz as _run_viz`,
-    `_viz_entry = _BA_INSTANCE._visualizations[${vizIndex}]`,
-    `print(_run_viz(_raw, _sr, _viz_entry, width=${resolutionW}${h}))`,
-  ].join('\n');
-}
-
 export function spectrogramPipeline(
-  path: string, startSec: number, durSec: number,
-  vizType: 'builtin' | 'custom', builtinKey?: string,
-  vizIndex?: number, resolutionW?: number, resolutionH?: number,
+  path: string,
+  startSec: number,
+  durSec: number,
+  vizType: 'builtin' | 'custom',
+  builtinKey?: string,
+  vizIndex?: number,
+  resolutionW?: number,
+  resolutionH?: number,
 ): string {
   const readCode = readAudio(path, startSec, durSec);
   if (vizType === 'custom' && vizIndex != null) {
-    return readCode + '\n' + customVizCode(vizIndex, resolutionW ?? 2000, resolutionH);
+    return readCode + '\n' + _customVizCode(
+      vizIndex, resolutionW ?? DEFAULT_SPEC_WIDTH, resolutionH,
+    );
   }
-  const spectType = (builtinKey === 'mel' ? 'mel' : 'linear') as 'mel' | 'linear';
-  return readCode + '\n' + buildSpectrogram(spectType, resolutionW, resolutionH);
+  const spectType: 'mel' | 'linear' =
+    builtinKey === 'mel' ? 'mel' : 'linear';
+  return readCode + '\n' + buildSpectrogram(
+    spectType, resolutionW, resolutionH,
+  );
 }
 
-// ─── Select items loading (FormPanel) ────────────────────────
 
-export function loadSelectItems(path: string, valueCol?: string, labelCol?: string): string {
+//
+// Select items loading (FormPanel)
+//
+export function loadSelectItems(
+  path: string,
+  valueCol?: string,
+  labelCol?: string,
+): string {
   const p = escPy(path);
   const v = valueCol ? `'${escPy(valueCol)}'` : 'None';
   const l = labelCol ? `'${escPy(labelCol)}'` : 'None';
   return [
-    `${H} load_select_items as _load`,
+    `${HELPERS} load_select_items as _load`,
     `print(_load('${p}', value_col=${v}, label_col=${l}))`,
   ].join('\n');
 }
 
-// ─── Output file operations (FormPanel) ──────────────────────
 
+//
+// Output file operations (FormPanel)
+//
 export function countOutputRows(path: string, ext: string): string {
   const p = escPy(path);
   return [
-    `${H} count_output_rows as _count`,
+    `${HELPERS} count_output_rows as _count`,
     `print(_count('${p}', '${ext}'))`,
   ].join('\n');
 }
@@ -111,54 +141,58 @@ export function countOutputRows(path: string, ext: string): string {
 export function readOutputRows(path: string, ext: string): string {
   const p = escPy(path);
   return [
-    `${H} read_output_rows as _read`,
+    `${HELPERS} read_output_rows as _read`,
     `print(_read('${p}', '${ext}'))`,
   ].join('\n');
 }
 
-export function writeOutputRow(path: string, values: Record<string, any>): string {
+export function writeOutputRow(
+  path: string,
+  values: Record<string, any>,
+): string {
   const outPath = escPy(path);
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
 
   const cols = Object.keys(values);
-  const pyRepr = (val: any): string => {
-    if (val === null || val === undefined) return 'None';
-    if (typeof val === 'boolean') return val ? 'True' : 'False';
-    if (typeof val === 'number') return String(val);
-    return `'${escPy(String(val)).replace(/\n/g, ' ')}'`;
-  };
-  const rowDict = `{\n${cols.map(c => `  '${c}': ${pyRepr(values[c])}`).join(',\n')}\n}`;
+  const rowDict =
+    `{\n${cols.map(c => `  '${c}': ${_pyRepr(values[c])}`).join(',\n')}\n}`;
   const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
 
   return [
-    `${H} write_output_row as _write`,
+    `${HELPERS} write_output_row as _write`,
     `_row = ${rowDict}`,
     `print(_write('${outPath}', _row, ${colsPy}, '${ext}'))`,
   ].join('\n');
 }
 
-export function deleteOutputRow(path: string, matchExpr: string): string {
+export function deleteOutputRow(
+  path: string,
+  matchExpr: string,
+): string {
   const p = escPy(path);
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
-
   return [
-    `${H} delete_output_row as _delete`,
+    `${HELPERS} delete_output_row as _delete`,
     `print(_delete('${p}', lambda r: ${matchExpr}, '${ext}'))`,
   ].join('\n');
 }
 
-// ─── Capture (Player) ────────────────────────────────────────
 
+//
+// Capture (Player)
+//
 export function savePng(filename: string, b64Data: string): string {
   const esc = escPy(filename);
   return [
-    `${H} save_png as _save_png`,
+    `${HELPERS} save_png as _save_png`,
     `print(_save_png('${esc}', '${b64Data}'))`,
   ].join('\n');
 }
 
-// ─── Cache invalidation ──────────────────────────────────────
 
+//
+// Cache & project operations
+//
 export const INVALIDATE_OUTPUT_CACHE =
   'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()';
 
@@ -179,12 +213,17 @@ export function getDefaultProjectPath(): string {
   ].join('\n');
 }
 
-export function saveProject(path: string, overwrite = false): string {
+export function saveProject(
+  path: string,
+  overwrite = false,
+): string {
   return [
     `import os as _os, json as _json`,
     `_folder = _os.path.dirname('${escPy(path)}') or '.'`,
     `_fname = _os.path.basename('${escPy(path)}')`,
-    `_path = _BA_INSTANCE.save_as_project(filename=_fname, folder=_folder, overwrite=${overwrite ? 'True' : 'False'})`,
+    `_ow = ${overwrite ? 'True' : 'False'}`,
+    `_path = _BA_INSTANCE.save_as_project(`,
+    `  filename=_fname, folder=_folder, overwrite=_ow)`,
     `print(_json.dumps({'path': _path}))`,
   ].join('\n');
 }
@@ -194,4 +233,28 @@ export function checkFileExists(path: string): string {
     `import os, json`,
     `print(json.dumps({'exists': os.path.exists('${escPy(path)}')}))`,
   ].join('\n');
+}
+
+
+//
+// Internal
+//
+function _customVizCode(
+  vizIndex: number,
+  resolutionW: number,
+  resolutionH?: number,
+): string {
+  const h = resolutionH ? `, height=${resolutionH}` : '';
+  return [
+    `${HELPERS} run_custom_viz as _run_viz`,
+    `_viz_entry = _BA_INSTANCE._visualizations[${vizIndex}]`,
+    `print(_run_viz(_raw, _sr, _viz_entry, width=${resolutionW}${h}))`,
+  ].join('\n');
+}
+
+function _pyRepr(val: any): string {
+  if (val === null || val === undefined) return 'None';
+  if (typeof val === 'boolean') return val ? 'True' : 'False';
+  if (typeof val === 'number') return String(val);
+  return `'${escPy(String(val)).replace(/\n/g, ' ')}'`;
 }
