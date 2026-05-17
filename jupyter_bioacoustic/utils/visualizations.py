@@ -1,8 +1,7 @@
-"""
-Visualization functions for bioacoustic audio.
+"""Visualization functions for bioacoustic audio.
 
 Each function takes (mono, sr, width) and returns a dict compatible with
-BioacousticAnnotator's custom visualization interface or used in standalone 
+BioacousticAnnotator's custom visualization interface or used in standalone
 visualizations:
 
     {
@@ -30,28 +29,47 @@ Usage:
         result = vis.mel(mono, sr, 2000)
         fig, ax = vis.plot(result)
 
-License: BSD 3-clause
+License: BSD 3-Clause
 """
+from __future__ import annotations
+
 import io
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')
 
-
 #
-# CONSTANTS
+# Constants
 #
 DEFAULT_FFT = 512
 DEFAULT_HOP = 128
 DEFAULT_N_MELS = 80
 DEFAULT_DYNAMIC_RANGE_DB = 80
+DEFAULT_DPI = 100
+DEFAULT_HEIGHT = 500
+DEFAULT_FIGSIZE = (12, 4)
+DEFAULT_WAVEFORM_HEIGHT = 5
+DEFAULT_COLORMAP = 'magma'
+DEFAULT_LOG_HOP = 256
+DEFAULT_BANDPASS_FFT = 1024
+DEFAULT_LOG_FFT = 2048
+DEFAULT_LOG_BINS = 256
+DEFAULT_LOG_F_MIN = 50.0
+DEFAULT_BANDPASS_F_LO = 1000.0
+DEFAULT_BANDPASS_F_HI = 8000.0
+DEFAULT_MEL_F_MIN = 80.0
+DEFAULT_LINE_WIDTH = 0.3
+WAVEFORM_COLOR = '#89b4fa'
+BACKGROUND_COLOR = '#1e1e2e'
 
+_log = True
 
 #
-# VISUALIZATIONS
+# Visualizations
 #
-def spectrogram(mono, sr, width, fft=DEFAULT_FFT, hop=None):
+def spectrogram(mono: np.ndarray, sr: int, width: int,
+               fft: int = DEFAULT_FFT, hop: int | None = None) -> dict:
     """Linear-frequency spectrogram.
 
     Args:
@@ -76,7 +94,8 @@ def spectrogram(mono, sr, width, fft=DEFAULT_FFT, hop=None):
     }
 
 
-def mel(mono, sr, width, fft=DEFAULT_FFT, hop=None, n_mels=DEFAULT_N_MELS):
+def mel(mono: np.ndarray, sr: int, width: int, fft: int = DEFAULT_FFT,
+        hop: int | None = None, n_mels: int = DEFAULT_N_MELS) -> dict:
     """Mel-scale spectrogram.
 
     Applies a mel filterbank to a linear STFT, compressing the frequency
@@ -97,7 +116,7 @@ def mel(mono, sr, width, fft=DEFAULT_FFT, hop=None, n_mels=DEFAULT_N_MELS):
         hop = max(1, len(mono) // width) if width > 0 else DEFAULT_HOP
     mag = _stft(mono, fft=fft, hop=hop)
 
-    f_min, f_max = 80.0, sr / 2.0
+    f_min, f_max = DEFAULT_MEL_F_MIN, sr / 2.0
     mel_pts = np.linspace(
         2595 * np.log10(1 + f_min / 700),
         2595 * np.log10(1 + f_max / 700),
@@ -123,7 +142,10 @@ def mel(mono, sr, width, fft=DEFAULT_FFT, hop=None, n_mels=DEFAULT_N_MELS):
     }
 
 
-def log_frequency(mono, sr, width, fft=2048, hop=None, n_bins=256, f_min=50.0):
+def log_frequency(mono: np.ndarray, sr: int, width: int,
+                 fft: int = DEFAULT_LOG_FFT, hop: int | None = None,
+                 n_bins: int = DEFAULT_LOG_BINS,
+                 f_min: float = DEFAULT_LOG_F_MIN) -> dict:
     """Log-frequency spectrogram.
 
     Resamples a linear STFT onto logarithmically-spaced frequency bins,
@@ -143,7 +165,7 @@ def log_frequency(mono, sr, width, fft=2048, hop=None, n_bins=256, f_min=50.0):
         Visualization dict with log-resampled 'matrix'.
     """
     if hop is None:
-        hop = max(1, len(mono) // width) if width > 0 else 256
+        hop = max(1, len(mono) // width) if width > 0 else DEFAULT_LOG_HOP
     mag = _stft(mono, fft=fft, hop=hop)
 
     f_max = sr / 2.0
@@ -165,7 +187,9 @@ def log_frequency(mono, sr, width, fft=2048, hop=None, n_bins=256, f_min=50.0):
     }
 
 
-def bandpass(mono, sr, width, fft=1024, hop=None, f_lo=1000.0, f_hi=8000.0):
+def bandpass(mono: np.ndarray, sr: int, width: int, fft: int = DEFAULT_BANDPASS_FFT,
+            hop: int | None = None, f_lo: float = DEFAULT_BANDPASS_F_LO,
+            f_hi: float = DEFAULT_BANDPASS_F_HI) -> dict:
     """Bandpass spectrogram focused on a specific frequency range.
 
     Extracts a frequency band from the STFT — useful for isolating
@@ -184,7 +208,7 @@ def bandpass(mono, sr, width, fft=1024, hop=None, f_lo=1000.0, f_hi=8000.0):
         Visualization dict with bandpass-filtered 'matrix'.
     """
     if hop is None:
-        hop = max(1, len(mono) // width) if width > 0 else 256
+        hop = max(1, len(mono) // width) if width > 0 else DEFAULT_LOG_HOP
     mag = _stft(mono, fft=fft, hop=hop)
 
     freqs = np.linspace(0, sr / 2, mag.shape[0])
@@ -201,7 +225,7 @@ def bandpass(mono, sr, width, fft=1024, hop=None, f_lo=1000.0, f_hi=8000.0):
     }
 
 
-def waveform(mono, sr, width):
+def waveform(mono: np.ndarray, sr: int, width: int) -> dict:
     """Waveform visualization as a PNG.
 
     Renders the audio waveform directly — not a spectrogram. The y-axis
@@ -216,18 +240,18 @@ def waveform(mono, sr, width):
     Returns:
         Visualization dict with 'png_bytes'.
     """
-    fig = plt.figure(figsize=(width / 100, 5), dpi=100)
+    fig = plt.figure(figsize=(width / DEFAULT_DPI, DEFAULT_WAVEFORM_HEIGHT), dpi=DEFAULT_DPI)
     ax = fig.add_axes([0, 0, 1, 1])
     t = np.linspace(0, len(mono) / sr, len(mono))
-    ax.plot(t, mono, color='#89b4fa', linewidth=0.3)
+    ax.plot(t, mono, color=WAVEFORM_COLOR, linewidth=DEFAULT_LINE_WIDTH)
     ax.set_xlim(0, len(mono) / sr)
     amp = max(abs(mono.min()), abs(mono.max()), 1e-6)
     ax.set_ylim(-amp, amp)
-    ax.set_facecolor('#1e1e2e')
+    ax.set_facecolor(BACKGROUND_COLOR)
     ax.set_axis_off()
-    fig.patch.set_facecolor('#1e1e2e')
+    fig.patch.set_facecolor(BACKGROUND_COLOR)
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=100, bbox_inches='tight', pad_inches=0)
+    fig.savefig(buf, format='png', dpi=DEFAULT_DPI, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
 
     return {
@@ -237,12 +261,13 @@ def waveform(mono, sr, width):
         'freq_scale': 'linear',
     }
 
-
 #
-# HELPERS
+# Helpers
 #
-def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
-         figsize=None, dpi=100, **kwargs):
+def plot(viz_dict: dict, cmap: str = DEFAULT_COLORMAP,
+         dynamic_range_db: float = DEFAULT_DYNAMIC_RANGE_DB,
+         figsize: tuple[float, float] | None = None, dpi: int = DEFAULT_DPI,
+         **kwargs) -> tuple[plt.Figure, plt.Axes]:
     """Plot a visualization dict as a matplotlib figure.
 
     Accepts the dict returned by any visualization function and renders
@@ -259,7 +284,7 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
     Returns:
         (fig, ax) matplotlib figure and axes.
     """
-    figsize = figsize or (12, 4)
+    figsize = figsize or DEFAULT_FIGSIZE
     with plt.ioff():
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
 
@@ -317,9 +342,8 @@ def plot(viz_dict, cmap='magma', dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
 
     return fig, ax
 
-
 #
-# Registry:  enables string based lookup for jupyter_bioacoustic tools
+# Registry
 #
 REGISTRY = {
     'linear': spectrogram,
@@ -331,11 +355,10 @@ REGISTRY = {
     'waveform': waveform,
 }
 
-
 #
-# INTERNAL
+# Internal
 #
-def _stft(mono, fft=DEFAULT_FFT, hop=DEFAULT_HOP):
+def _stft(mono: np.ndarray, fft: int = DEFAULT_FFT, hop: int = DEFAULT_HOP) -> np.ndarray:
     """Compute magnitude STFT. Returns magnitude 2D array (freq × time)."""
     win = 0.5 * (1 - np.cos(2 * np.pi * np.arange(fft) / (fft - 1)))
     n_frames = max(1, (len(mono) - fft) // hop + 1)
@@ -345,9 +368,10 @@ def _stft(mono, fft=DEFAULT_FFT, hop=DEFAULT_HOP):
     return mag
 
 
-def render_png(S, width=2000, height=None, matrix_scale=None,
-                         dynamic_range_db=DEFAULT_DYNAMIC_RANGE_DB,
-                         cmap='magma'):
+def _render_png(S: np.ndarray, width: int = 2000, height: int | None = None,
+               matrix_scale: str | None = None,
+               dynamic_range_db: float = DEFAULT_DYNAMIC_RANGE_DB,
+               cmap: str = DEFAULT_COLORMAP) -> bytes:
     """Render a 2D spectrogram matrix to PNG bytes.
 
     Handles dB conversion, normalization, and colormap rendering.
@@ -366,7 +390,7 @@ def render_png(S, width=2000, height=None, matrix_scale=None,
         PNG bytes.
     """
     if height is None:
-        height = 500
+        height = DEFAULT_HEIGHT
     S = np.array(S, dtype=float)
     if matrix_scale is None:
         matrix_scale = 'db' if S.min() < 0 else 'linear'
@@ -377,14 +401,11 @@ def render_png(S, width=2000, height=None, matrix_scale=None,
     S_db = np.clip(S_db, S_db.max() - dynamic_range_db, S_db.max())
     S_norm = (S_db - S_db.min()) / max(float(S_db.max() - S_db.min()), 1e-10)
 
-    dpi = 100
-    fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
+    fig = plt.figure(figsize=(width / DEFAULT_DPI, height / DEFAULT_DPI), dpi=DEFAULT_DPI)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.imshow(S_norm, aspect='auto', cmap=cmap, origin='lower', interpolation='bilinear')
     ax.set_axis_off()
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', pad_inches=0)
+    fig.savefig(buf, format='png', dpi=DEFAULT_DPI, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
     return buf.getvalue()
-
-
