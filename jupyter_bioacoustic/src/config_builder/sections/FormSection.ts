@@ -184,13 +184,16 @@ export class FormSection extends CollapsibleSection {
         this._addNumField(card, cfg, 'step', 'step', '60px');
         break;
       case 'annotation': {
+        const existingTools: string[] = Array.isArray(cfg.tools) ? cfg.tools : ['start_end_time_select'];
         const toolsSel = this._makeSelect(
           ['time_select', 'start_end_time_select', 'bounding_box', 'multibox'],
-          Array.isArray(cfg.tools) ? cfg.tools[0] : 'start_end_time_select'
         );
         toolsSel.multiple = true;
         toolsSel.style.width = '140px';
         toolsSel.style.height = '75px';
+        for (const opt of toolsSel.options) {
+          opt.selected = existingTools.includes(opt.value);
+        }
         toolsSel.addEventListener('change', () => {
           cfg.tools = Array.from(toolsSel.selectedOptions).map(o => o.value);
           this._emitChanged();
