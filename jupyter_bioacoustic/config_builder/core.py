@@ -4,7 +4,10 @@ ConfigBuilder — GUI-driven configuration file builder for BioacousticAnnotator
 Usage:
     from jupyter_bioacoustic import ConfigBuilder
     ConfigBuilder().open()
+
+License: BSD 3-Clause
 """
+from __future__ import annotations
 
 import json
 import logging
@@ -16,18 +19,20 @@ import uuid
 from IPython import get_ipython
 from IPython.display import display, HTML
 
+#
+# Constants
+#
 _log = logging.getLogger('jupyter_bioacoustic.config_builder')
 
-#
-# CONSTANTS
-#
 _UNSET = object()
 DEFAULT_PROJECT_DIR = 'projects'
 DEFAULT_CONFIG_DIR = 'config'
 DEFAULT_FORM_DIR = 'forms'
 DATA_PROJECT_KEYS = frozenset({'path', 'url', 'sql', 'api', 'secrets'})
 DATA_CONFIG_KEYS = frozenset({'columns', 'start_time', 'end_time', 'duration'})
-AUDIO_PROJECT_KEYS = frozenset({'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'})
+AUDIO_PROJECT_KEYS = frozenset({
+    'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'
+})
 AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
 SECTION_KEYS = frozenset({'data', 'audio', 'output'})
 SKIP_KEYS = frozenset({
@@ -45,9 +50,8 @@ APP_KEYS = frozenset({
     'secrets',
 })
 
-
 #
-# HELPERS
+# Internal helpers
 #
 class _LiteralStr(str):
     pass
@@ -67,13 +71,14 @@ def _prep_for_yaml(obj):
     return obj
 
 
-def _ensure_ext(path, extensions=('.yaml', '.yml'), default='.yaml'):
+def _ensure_ext(path: str, extensions: tuple = ('.yaml', '.yml'),
+                default: str = '.yaml') -> str:
     if not path.endswith(tuple(extensions)):
         path += default
     return path
 
 
-def _resolve_path(ref, base_dir):
+def _resolve_path(ref: str, base_dir: str) -> str | None:
     if os.path.isabs(ref):
         return ref if os.path.exists(ref) else None
     candidate = os.path.join(base_dir, ref)
@@ -81,17 +86,46 @@ def _resolve_path(ref, base_dir):
         return candidate
     if os.path.exists(ref):
         return ref
-    _log.debug('_resolve_path failed: ref=%s base_dir=%s cwd=%s', ref, base_dir, os.getcwd())
+    _log.debug('_resolve_path failed: ref=%s base_dir=%s cwd=%s', ref, base_dir,
+               os.getcwd())
     return None
 
-
 #
-# MAIN
+# Public API
 #
 class ConfigBuilder:
+    VALID_FORM_KEYS = frozenset({
+        'title', 'progress_tracker', 'pass_value', 'fixed_value',
+        'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
+        'annotation',
+        'select', 'textbox', 'checkbox', 'number',
+        'break', 'line', 'text',
+    })
 
+    VALID_CONFIG_KEYS = frozenset({
+        'data', 'data_path', 'data_url', 'data_sql', 'data_api',
+        'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
+        'data_columns',
+        'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
+        'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
+        'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
+        'audio_response_index',
+        'secrets',
+        'output', 'output_path', 'output_url', 'output_uri',
+        'output_sync_button', 'output_recursive', 'output_secrets',
+        'ident_column', 'display_columns',
+        'form_config', 'duplicate_entries', 'default_buffer',
+        'capture', 'capture_dir', 'spectrogram_resolution',
+        'visualizations', 'partial_download',
+        'width', 'clip_table_height', 'player_height',
+        'info_card_height', 'form_panel_height',
+        'description', 'description_title', 'description_text',
+        'description_path', 'description_open', 'description_height',
+        'project_name', 'project_save_btn',
+        'config',
+    })
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._project = {}
         self._config = {}
         self._form_config = {}
@@ -106,7 +140,8 @@ class ConfigBuilder:
         self._saved_path = None
         self._dirty = False
 
-    def get_config(self, config_type='project'):
+    def get_config(self, config_type: str = 'project') -> dict:
+        """Get configuration data for the specified type."""
         if config_type == 'project':
             cfg = dict(self._project)
             if self._form_config:
@@ -118,14 +153,16 @@ class ConfigBuilder:
             return dict(self._form_config)
         return {}
 
-    def get_merged_config(self):
+    def get_merged_config(self) -> dict:
+        """Get merged configuration from all sources."""
         cfg = dict(self._project)
         cfg.update(self._config)
         if self._form_config:
             cfg['form_config'] = dict(self._form_config)
         return cfg
 
-    def update_section(self, section, data, target=None):
+    def update_section(self, section: str, data: dict, target: str | None = None):
+        """Update configuration section with provided data."""
         if target is not None:
             self._section_targets[section] = target
         target = self._section_targets.get(section, 'project')
@@ -233,7 +270,8 @@ class ConfigBuilder:
         self._dirty = True
         return self._get_state()
 
-    def set_section_target(self, section, target):
+    def set_section_target(self, section: str, target: str) -> None:
+        """Set the target configuration for a section."""
         valid = ('project', 'config', 'form_config', 'split')
         if section not in self._section_targets or target not in valid:
             return
@@ -246,7 +284,9 @@ class ConfigBuilder:
                 for d in (self._project, self._config):
                     if section in d:
                         combined.update(d.pop(section))
-                split_keys = DATA_PROJECT_KEYS if section == 'data' else AUDIO_PROJECT_KEYS if section == 'audio' else frozenset()
+                split_keys = (DATA_PROJECT_KEYS if section == 'data'
+                              else AUDIO_PROJECT_KEYS if section == 'audio'
+                              else frozenset())
                 proj_part = {k: v for k, v in combined.items() if k in split_keys}
                 conf_part = {k: v for k, v in combined.items() if k not in split_keys}
                 if proj_part:
@@ -273,10 +313,11 @@ class ConfigBuilder:
                 if k in old_dict:
                     new_dict[k] = old_dict.pop(k)
 
-    def save(self, path=None, config_type='project'):
+    def save(self, path: str | None = None, config_type: str = 'project') -> dict:
+        """Save configuration files."""
         return self.save_all()
 
-    def _build_file_contents(self):
+    def _build_file_contents(self) -> dict:
         name = self._project.get('project_name', 'config')
         slug = re.sub(r'[^a-z0-9]+', '_', str(name).lower()).strip('_')
 
@@ -376,7 +417,8 @@ class ConfigBuilder:
             'f_path': f_path,
         }
 
-    def save_all(self):
+    def save_all(self) -> dict:
+        """Save all configuration files."""
         _log.info('save_all() cwd=%s', os.getcwd())
         try:
             import yaml
@@ -401,7 +443,8 @@ class ConfigBuilder:
             p_path = _ensure_ext(p_path)
             os.makedirs(os.path.dirname(p_path) or '.', exist_ok=True)
             with open(p_path, 'w') as f:
-                yaml.dump(_prep_for_yaml(project_cfg), f, default_flow_style=False, sort_keys=False)
+                yaml.dump(_prep_for_yaml(project_cfg), f,
+                          default_flow_style=False, sort_keys=False)
             saved['project'] = p_path
             _log.info('saved project: %s', p_path)
 
@@ -409,7 +452,8 @@ class ConfigBuilder:
             c_path = _ensure_ext(c_path)
             os.makedirs(os.path.dirname(c_path) or '.', exist_ok=True)
             with open(c_path, 'w') as f:
-                yaml.dump(_prep_for_yaml(config_cfg), f, default_flow_style=False, sort_keys=False)
+                yaml.dump(_prep_for_yaml(config_cfg), f,
+                          default_flow_style=False, sort_keys=False)
             saved['config'] = c_path
             _log.info('saved config: %s', c_path)
 
@@ -417,7 +461,8 @@ class ConfigBuilder:
             f_path = _ensure_ext(f_path)
             os.makedirs(os.path.dirname(f_path) or '.', exist_ok=True)
             with open(f_path, 'w') as f:
-                yaml.dump(_prep_for_yaml(form_cfg), f, default_flow_style=False, sort_keys=False)
+                yaml.dump(_prep_for_yaml(form_cfg), f,
+                          default_flow_style=False, sort_keys=False)
             saved['form'] = f_path
             _log.info('saved form: %s', f_path)
 
@@ -425,7 +470,8 @@ class ConfigBuilder:
         self._dirty = False
         return saved
 
-    def save_single(self, config_type='project'):
+    def save_single(self, config_type: str = 'project') -> str:
+        """Save a single configuration file."""
         _log.info('save_single(%s)', config_type)
         try:
             import yaml
@@ -449,11 +495,13 @@ class ConfigBuilder:
         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
         yaml.add_representer(_LiteralStr, _literal_representer)
         with open(path, 'w') as f:
-            yaml.dump(_prep_for_yaml(content), f, default_flow_style=False, sort_keys=False)
+            yaml.dump(_prep_for_yaml(content), f,
+                      default_flow_style=False, sort_keys=False)
         _log.info('saved %s: %s', config_type, path)
         return path
 
-    def list_files(self, directory, extensions=None):
+    def list_files(self, directory: str, extensions: list | None = None) -> list:
+        """List files in directory with optional extension filtering."""
         try:
             entries = os.listdir(directory)
         except (OSError, FileNotFoundError) as e:
@@ -474,7 +522,8 @@ class ConfigBuilder:
                 results.append({'name': e, 'is_dir': False})
         return results
 
-    def read_columns(self, filepath):
+    def read_columns(self, filepath: str) -> list:
+        """Read column names from a data file."""
         _log.debug('read_columns: %s', filepath)
         ext = os.path.splitext(filepath)[1].lower()
         try:
@@ -494,7 +543,8 @@ class ConfigBuilder:
             _log.warning('read_columns failed for %s: %s', filepath, e)
         return []
 
-    def read_sample_data(self, filepath, n_rows=5):
+    def read_sample_data(self, filepath: str, n_rows: int = 5) -> list:
+        """Read sample data from a file."""
         _log.debug('read_sample_data: %s (n_rows=%d)', filepath, n_rows)
         ext = os.path.splitext(filepath)[1].lower()
         try:
@@ -510,7 +560,7 @@ class ConfigBuilder:
             _log.warning('read_sample_data failed for %s: %s', filepath, e)
         return []
 
-    def _get_state(self):
+    def _get_state(self) -> dict:
         fc = self._build_file_contents()
         project_content = fc['project_cfg']
         config_content = fc['config_cfg']
@@ -523,13 +573,16 @@ class ConfigBuilder:
             import yaml
             yaml.add_representer(_LiteralStr, _literal_representer)
             project_yaml = yaml.dump(
-                _prep_for_yaml(project_content), default_flow_style=False, sort_keys=False
+                _prep_for_yaml(project_content), default_flow_style=False,
+                sort_keys=False
             ) if project_content and project_enabled else ''
             config_yaml = yaml.dump(
-                _prep_for_yaml(config_content), default_flow_style=False, sort_keys=False
+                _prep_for_yaml(config_content), default_flow_style=False,
+                sort_keys=False
             ) if config_content and config_enabled else ''
             form_yaml = yaml.dump(
-                _prep_for_yaml(form_content), default_flow_style=False, sort_keys=False
+                _prep_for_yaml(form_content), default_flow_style=False,
+                sort_keys=False
             ) if form_content and form_enabled else ''
         except ImportError:
             project_yaml = json.dumps(project_content, indent=2) if project_enabled else ''
@@ -548,7 +601,8 @@ class ConfigBuilder:
             'dirty': self._dirty,
         }
 
-    def update_config_from_yaml(self, yaml_str, config_type='project'):
+    def update_config_from_yaml(self, yaml_str: str, config_type: str = 'project') -> bool:
+        """Update configuration from YAML string."""
         _log.debug('update_config_from_yaml(%s) len=%d', config_type, len(yaml_str))
         try:
             import yaml
@@ -593,7 +647,8 @@ class ConfigBuilder:
         self._dirty = True
         return True
 
-    def load_config(self, path, file_type=None):
+    def load_config(self, path: str, file_type: str | None = None) -> dict:
+        """Load configuration from file."""
         _log.debug('load_config(%s, file_type=%s) cwd=%s', path, file_type, os.getcwd())
         try:
             import yaml
@@ -645,7 +700,8 @@ class ConfigBuilder:
             if isinstance(config_ref, str):
                 self._project['config_path'] = config_ref
                 config_path = _resolve_path(config_ref, base_dir)
-                _log.debug('config ref=%s base_dir=%s resolved=%s', config_ref, base_dir, config_path)
+                _log.debug('config ref=%s base_dir=%s resolved=%s',
+                           config_ref, base_dir, config_path)
                 if config_path:
                     with open(config_path) as f:
                         config_data = yaml.safe_load(f) or {}
@@ -672,7 +728,8 @@ class ConfigBuilder:
                         self._section_targets['app'] = 'project'
 
                     if isinstance(form_ref, str):
-                        form_path = _resolve_path(form_ref, os.path.dirname(config_path) or base_dir)
+                        form_path = _resolve_path(form_ref,
+                                                  os.path.dirname(config_path) or base_dir)
                         if not form_path:
                             form_path = _resolve_path(form_ref, base_dir)
                         if form_path:
@@ -690,7 +747,8 @@ class ConfigBuilder:
                         self._project['form_enabled'] = False
                 else:
                     _log.warning('config ref not found: %s (tried %s and cwd %s)',
-                                 config_ref, os.path.join(base_dir, config_ref), os.getcwd())
+                                 config_ref, os.path.join(base_dir, config_ref),
+                                 os.getcwd())
                     self._project['config_enabled'] = True
                     self._project['form_enabled'] = False
                     for s in ('data', 'audio', 'output', 'app'):
@@ -751,43 +809,12 @@ class ConfigBuilder:
         state['loaded_paths'] = loaded_paths
         return state
 
-    VALID_FORM_KEYS = frozenset({
-        'title', 'progress_tracker', 'pass_value', 'fixed_value',
-        'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
-        'annotation',
-        'select', 'textbox', 'checkbox', 'number',
-        'break', 'line', 'text',
-    })
-
-    VALID_CONFIG_KEYS = frozenset({
-        'data', 'data_path', 'data_url', 'data_sql', 'data_api',
-        'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
-        'data_columns',
-        'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
-        'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
-        'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
-        'audio_response_index',
-        'secrets',
-        'output', 'output_path', 'output_url', 'output_uri',
-        'output_sync_button', 'output_recursive', 'output_secrets',
-        'ident_column', 'display_columns',
-        'form_config', 'duplicate_entries', 'default_buffer',
-        'capture', 'capture_dir', 'spectrogram_resolution',
-        'visualizations', 'partial_download',
-        'width', 'clip_table_height', 'player_height',
-        'info_card_height', 'form_panel_height',
-        'description', 'description_title', 'description_text',
-        'description_path', 'description_open', 'description_height',
-        'project_name', 'project_save_btn',
-        'config',
-    })
-
-    def _validate_form_keys(self, fc, errors):
+    def _validate_form_keys(self, fc: dict, errors: list) -> None:
         for key in fc:
             if key not in self.VALID_FORM_KEYS and not isinstance(fc[key], list):
                 errors.append(f'Unknown form config key "{key}"')
 
-    def _validate_config_keys(self, cfg, label, errors):
+    def _validate_config_keys(self, cfg: dict, label: str, errors: list) -> None:
         for key in cfg:
             if key in SKIP_KEYS:
                 continue
@@ -796,7 +823,8 @@ class ConfigBuilder:
             elif key == 'form_config' and isinstance(cfg[key], dict):
                 self._validate_form_keys(cfg[key], errors)
 
-    def validate(self):
+    def validate(self) -> dict:
+        """Validate configuration and return errors/warnings."""
         errors = []
         warnings = []
         fc = self._form_config or {}
@@ -896,7 +924,8 @@ class ConfigBuilder:
             'warnings': warnings,
         }
 
-    def setup(self):
+    def setup(self) -> None:
+        """Setup ConfigBuilder in Jupyter environment."""
         ip = get_ipython()
         if ip is None:
             raise RuntimeError(
@@ -905,7 +934,8 @@ class ConfigBuilder:
         ip.user_ns['_CB_INSTANCE'] = self
         ip.user_ns['_CB_STATE'] = json.dumps(self._get_state())
 
-    def open(self, inline=True):
+    def open(self, inline: bool = True) -> None:
+        """Open the configuration builder interface."""
         self.setup()
         if inline:
             self._open_inline()
@@ -916,7 +946,7 @@ class ConfigBuilder:
                 "</script>"
             ))
 
-    def _open_inline(self):
+    def _open_inline(self) -> None:
         div_id = f'config-builder-{uuid.uuid4().hex[:8]}'
         display(HTML(
             f'<div id="{div_id}" style="'
