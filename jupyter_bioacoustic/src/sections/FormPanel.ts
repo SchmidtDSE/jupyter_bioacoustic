@@ -1003,6 +1003,29 @@ export class FormPanel {
       ac.tools = ['time_select'];
     }
 
+    const needsTime = ac.tools.some(t =>
+      ['time_select', 'start_end_time_select', 'bounding_box', 'multibox'].includes(t));
+    const needsEndTime = ac.tools.some(t =>
+      ['start_end_time_select', 'bounding_box', 'multibox'].includes(t));
+    const needsFreq = ac.tools.some(t =>
+      ['bounding_box', 'multibox'].includes(t));
+    if (needsTime && !ac.startTime) {
+      ac.startTime = { col: 'start_time', sourceValue: 'start_time' };
+      this._formValues['start_time'] = null;
+    }
+    if (needsEndTime && !ac.endTime) {
+      ac.endTime = { col: 'end_time', sourceValue: 'end_time' };
+      this._formValues['end_time'] = null;
+    }
+    if (needsFreq && !ac.minFreq) {
+      ac.minFreq = { col: 'min_frequency' };
+      this._formValues['min_frequency'] = null;
+    }
+    if (needsFreq && !ac.maxFreq) {
+      ac.maxFreq = { col: 'max_frequency' };
+      this._formValues['max_frequency'] = null;
+    }
+
     // Parse annotation.form for multibox per-box forms
     if (config.form) {
       ac.form = typeof config.form === 'string' ? config.form : null;
@@ -1062,10 +1085,10 @@ export class FormPanel {
       wrapper.appendChild(lbl);
     };
 
-    if (ac.startTime) mkInput('startTime', config.start_time?.label ?? 'start', 's');
-    if (ac.endTime) mkInput('endTime', config.end_time?.label ?? 'end', 's');
-    if (ac.minFreq) mkInput('minFreq', config.min_frequency?.label ?? 'min freq', 'Hz');
-    if (ac.maxFreq) mkInput('maxFreq', config.max_frequency?.label ?? 'max freq', 'Hz');
+    if (ac.startTime) mkInput('startTime', config.start_time?.label ?? 'start_time', 's');
+    if (ac.endTime) mkInput('endTime', config.end_time?.label ?? 'end_time', 's');
+    if (ac.minFreq) mkInput('minFreq', config.min_frequency?.label ?? 'min_frequency', 'Hz');
+    if (ac.maxFreq) mkInput('maxFreq', config.max_frequency?.label ?? 'max_frequency', 'Hz');
 
     container.appendChild(wrapper);
 
