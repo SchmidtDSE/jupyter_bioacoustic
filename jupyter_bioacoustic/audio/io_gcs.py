@@ -1,31 +1,35 @@
+"""GCS IO backend.
+
+GCS (Google Cloud Storage) backend for reading and writing audio files.
+
+License: BSD 3-Clause
+"""
+from __future__ import annotations
+
 import os
 import logging
+from typing import Any
 
 from . import _shared
 
-_log = logging.getLogger('jupyter_bioacoustic.audio')
+#
+# Constants
+#
 
+_DEFAULT_HEADER_SIZE: int = 4095
+_GCS_URI_PREFIX: str = 'gs://'
 
-def _parse_gcs_uri(uri):
-    path = uri.replace('gs://', '')
-    slash = path.index('/')
-    return path[:slash], path[slash + 1:]
+#
+# Public API
+#
 
-
-def _get_client(project=None, credentials=None, **kwargs):
-    from google.cloud import storage
-    client_kwargs = {}
-    if project:
-        client_kwargs['project'] = project
-    if credentials:
-        client_kwargs['credentials'] = credentials
-    return storage.Client(**client_kwargs)
-
-
-def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
+def read(src: str, dest: str | None = None, start_byte: int | None = None,
+         end_byte: int | None = None, **kwargs: Any) -> bytes | str:
+    """Read data from GCS blob with optional byte range."""
     from google.cloud import storage
     bucket_name, blob_name = _parse_gcs_uri(src)
-    _log.debug('GCS read: bucket=%s blob=%s byte_range=%s-%s', bucket_name, blob_name, start_byte, end_byte)
+    _log.debug('GCS read: bucket=%s blob=%s byte_range=%s-%s', bucket_name,
+               blob_name, start_byte, end_byte)
     client = kwargs.get('client') or _get_client(**kwargs)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
@@ -47,7 +51,9 @@ def read(src, dest=None, start_byte=None, end_byte=None, **kwargs):
     return dest
 
 
-def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
+def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = True,
+                 **kwargs: Any) -> Any:
+    """Read audio segment from GCS blob."""
     from google.cloud import storage
     bucket_name, blob_name = _parse_gcs_uri(path)
     client = kwargs.get('client') or _get_client(**kwargs)
@@ -57,18 +63,22 @@ def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
     _shared.last_warning = None
 
     if partial:
-        _log.debug('GCS partial read: %s  start=%.1fs dur=%.1fs', path, start_sec, dur_sec)
+        _log.debug('GCS partial read: %s  start=%.1fs dur=%.1fs', path,
+                   start_sec, dur_sec)
         try:
             result = _shared.read_remote_partial(
                 start_sec, dur_sec,
-                get_header=lambda: blob.download_as_bytes(start=0, end=4095),
+                get_header=lambda: blob.download_as_bytes(start=0,
+                                                          end=_DEFAULT_HEADER_SIZE),
                 get_size=lambda: _blob_size(blob),
-                get_range=lambda sb, eb: blob.download_as_bytes(start=sb, end=eb),
+                get_range=lambda sb, eb: blob.download_as_bytes(start=sb,
+                                                                end=eb),
             )
             _log.debug('GCS partial read succeeded: %s', path)
             return result
         except Exception as e:
-            msg = f'Partial download failed ({type(e).__name__}: {e}). Falling back to full download'
+            msg = (f'Partial download failed ({type(e).__name__}: {e}). '
+                   f'Falling back to full download')
             _log.warning(msg)
             _shared.last_warning = msg
 
@@ -81,7 +91,9 @@ def read_segment(path, start_sec, dur_sec, partial=True, **kwargs):
     return io_local.read_segment(cache, start_sec, dur_sec)
 
 
-def write(src, dest, recursive=False, overwrite=True, **kwargs):
+def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
+          **kwargs: Any) -> str:
+    """Write files to GCS."""
     from google.cloud import storage
     bucket_name, prefix = _parse_gcs_uri(dest)
     client = kwargs.get('client') or _get_client(**kwargs)
@@ -94,27 +106,35 @@ def write(src, dest, recursive=False, overwrite=True, **kwargs):
             for fname in files:
                 local_path = os.path.join(root, fname)
                 rel_path = os.path.relpath(local_path, src)
-                blob_name = prefix.rstrip('/') + '/' + rel_path.replace(os.sep, '/')
+                blob_name = (prefix.rstrip('/') + '/' +
+                             rel_path.replace(os.sep, '/'))
                 blob = bucket.blob(blob_name)
                 if not overwrite and blob.exists():
-                    raise FileExistsError(f"gs://{bucket_name}/{blob_name} exists and overwrite=False")
+                    raise FileExistsError(
+                        f"gs://{bucket_name}/{blob_name} exists and "
+                        f"overwrite=False")
                 blob.upload_from_filename(local_path)
-                _log.debug('uploaded %s -> gs://%s/%s', local_path, bucket_name, blob_name)
+                _log.debug('uploaded %s -> gs://%s/%s', local_path,
+                           bucket_name, blob_name)
         _log.info('GCS write: uploaded directory to %s', dest)
         return dest
     else:
         blob = bucket.blob(prefix)
         if not overwrite and blob.exists():
-            raise FileExistsError(f"gs://{bucket_name}/{prefix} exists and overwrite=False")
+            raise FileExistsError(f"gs://{bucket_name}/{prefix} exists and "
+                                  f"overwrite=False")
         blob.upload_from_filename(src)
-        _log.info('GCS write: uploaded %s -> gs://%s/%s', src, bucket_name, prefix)
+        _log.info('GCS write: uploaded %s -> gs://%s/%s', src, bucket_name,
+                  prefix)
         return dest
 
 
-def list_files(path, recursive=False, **kwargs):
+def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
+    """List files in GCS bucket prefix."""
     from google.cloud import storage
     bucket_name, prefix = _parse_gcs_uri(path)
-    _log.debug('GCS list_files: bucket=%s prefix=%s recursive=%s', bucket_name, prefix, recursive)
+    _log.debug('GCS list_files: bucket=%s prefix=%s recursive=%s', bucket_name,
+               prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
 
     if not prefix.endswith('/'):
@@ -131,8 +151,30 @@ def list_files(path, recursive=False, **kwargs):
 
     return sorted(results)
 
+#
+# Internal
 
-def _blob_size(blob):
+_log = logging.getLogger('jupyter_bioacoustic.audio')
+
+
+def _parse_gcs_uri(uri: str) -> tuple[str, str]:
+    path = uri.replace(_GCS_URI_PREFIX, '')
+    slash = path.index('/')
+    return path[:slash], path[slash + 1:]
+
+
+def _get_client(project: str | None = None, credentials: Any | None = None,
+                **kwargs: Any) -> Any:
+    from google.cloud import storage
+    client_kwargs = {}
+    if project:
+        client_kwargs['project'] = project
+    if credentials:
+        client_kwargs['credentials'] = credentials
+    return storage.Client(**client_kwargs)
+
+
+def _blob_size(blob: Any) -> int:
     blob.reload()
     if blob.size is None:
         _log.error('GCS blob size is None for %s', blob.name)
