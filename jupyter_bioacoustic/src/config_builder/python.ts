@@ -140,3 +140,11 @@ export function loadConfig(path: string, fileType?: string): string {
     wp(`_j.dumps(_state)`),
   ].join('\n');
 }
+
+export function getSummary(): string {
+  return [
+    `import json as _j`,
+    `from jupyter_bioacoustic.config_builder.summary import build_summary_from_builder as _bsfb`,
+    wp(`_j.dumps(_bsfb(_CB_INSTANCE))`),
+  ].join('\n');
+}
