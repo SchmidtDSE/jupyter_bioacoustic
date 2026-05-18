@@ -65,32 +65,48 @@ export class FormSection extends CollapsibleSection {
   private _makeAddBar(onAdd?: (type: ElementType) => void): HTMLDivElement {
     const bar = document.createElement('div');
     bar.style.cssText =
-      `display:flex;flex-direction:column;gap:4px;padding:6px 0;border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
-    const groups: ElementType[][] = [
-      ['title', 'annotation', 'pass_value', 'fixed_value'],
-      ['select', 'textbox', 'checkbox', 'number'],
-      ['submission_buttons'],
-      ['line', 'text', 'break'],
+      `display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:2px 8px;padding:6px 0;` +
+      `border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
+    const columns: { header: string; rows: ElementType[][] }[] = [
+      { header: 'Display', rows: [['title', 'text'], ['line', 'break']] },
+      { header: 'User Input', rows: [['annotation', 'select'], ['textbox', 'checkbox', 'number']] },
+      { header: 'Data', rows: [['pass_value'], ['fixed_value']] },
+      { header: 'Navigation', rows: [['submission_buttons']] },
     ];
-    for (const group of groups) {
-      const row = document.createElement('div');
-      row.style.cssText = `display:flex;gap:4px;flex-wrap:wrap;`;
-      for (const t of group) {
-        const btn = this._makeButton(`+ ${t}`);
-        btn.style.fontSize = '11px';
-        btn.style.padding = '3px 8px';
-        btn.addEventListener('click', () => {
-          this.fieldFocused.emit(t);
-          if (onAdd) {
-            onAdd(t);
-          } else {
-            this._addElement(t);
-          }
-        });
-        btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
-        row.appendChild(btn);
+    const mkBtn = (t: ElementType) => {
+      const btn = this._makeButton(`+ ${t}`);
+      btn.style.fontSize = '11px';
+      btn.style.padding = '3px 8px';
+      btn.addEventListener('click', () => {
+        this.fieldFocused.emit(t);
+        if (onAdd) { onAdd(t); } else { this._addElement(t); }
+      });
+      btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
+      return btn;
+    };
+    for (const col of columns) {
+      const hdr = document.createElement('div');
+      hdr.textContent = col.header;
+      hdr.style.cssText =
+        `font-size:10px;font-weight:700;color:${COLORS.textMuted};text-transform:uppercase;` +
+        `letter-spacing:0.5px;padding-bottom:2px;`;
+      bar.appendChild(hdr);
+    }
+    for (const col of columns) {
+      const cell = document.createElement('div');
+      cell.style.cssText = `display:flex;flex-direction:column;gap:2px;`;
+      for (const row of col.rows) {
+        const rowEl = document.createElement('div');
+        rowEl.style.cssText = `display:flex;gap:3px;`;
+        for (const t of row) {
+          const b = mkBtn(t);
+          b.style.flex = '1';
+          b.style.minWidth = '0';
+          rowEl.appendChild(b);
+        }
+        cell.appendChild(rowEl);
       }
-      bar.appendChild(row);
+      bar.appendChild(cell);
     }
     return bar;
   }
