@@ -86,6 +86,7 @@ Select items can include a `form:` reference to show additional fields based on 
 - **Annotation tools** — embedded directly in the form
 - **Progress tracker** — session and total counts
 - **Fixed values** — constants written to every output row
+- **Static elements** — text, horizontal lines, and breaks for form layout
 
 ![Progress tracker](../../assets/tracker.png)
 
@@ -142,7 +143,7 @@ The `data` parameter accepts multiple source types, auto-detected from the strin
 |---|---|
 | `SELECT ...` | SQL query (via DuckDB) |
 | `api::https://...` | API endpoint |
-| `https://...`, `s3://...` | URL / URI |
+| `https://...`, `s3://...`, `gs://...` | URL / URI |
 | Everything else | Local file path |
 
 Each source type supports authentication through a flexible secrets system (`env:VAR_NAME`, interactive `dialog` prompts, or literal values).

@@ -233,6 +233,7 @@ form_config:
 | `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
+| `capture_height` | int | `None` | Capture image height in pixels. Defaults to `player_height` if not set. |
 | `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. Prefix an item with `selected::` to set the default (e.g. `[1000, 'selected::2000', 4000]`). |
 | `visualizations` | list | `['linear', 'mel']` | Visualization types for the dropdown. Built-in strings (`'linear'`, `'mel'`, `'log_frequency'`, `'bandpass'`, `'waveform'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#custom-visualizations). |
 | `partial_download` | bool | `True` | Use byte-range downloads for remote audio (requires ffmpeg/pydub). Set to `False` to always download and cache the full file. |

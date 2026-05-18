@@ -60,7 +60,7 @@ export const DOCS: Record<string, SectionDocs> = {
     player_height: `(optional) Player/spectrogram height in pixels. Default: 260.\nAlso determines the spectrogram resolution.`,
     info_card_height: `(optional) Info card height in pixels. Default: 34.`,
     form_panel_height: `(optional) Form panel height in pixels. Default: 140.`,
-    project_save_btn: `(optional) Show a save-project button in the header.\nSet to true for a default "Save Project" label, or provide a custom string.`,
+    capture_height: `(optional) Capture image height in pixels.\nDefaults to player_height if not set.`,
     secrets: `(optional) Global key-value pairs for credentials available to all sections.\nSection-level secrets override global ones with the same key.`,
   },
   form: {

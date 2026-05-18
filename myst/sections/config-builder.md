@@ -105,12 +105,11 @@ Widget layout and behavior:
 
 - **Identity column** — primary column shown in the info card and used for capture filenames
 - **Display columns** — additional info-card columns (drag to reorder)
-- **Project save button** — allow users to save the running config as a project file
 - **Duplicate entries** — permit multiple submissions per row
 - **Buffer** — seconds of context before/after each audio clip
 - **Capture** — enable spectrogram PNG export
 - **Width** — widget width (pixels or percentage)
-- **Heights** — pixel heights for clip table, player, info card, and form panel
+- **Heights** — pixel heights for clip table, player, info card, form panel, and capture
 
 ---
 

@@ -189,13 +189,14 @@ dynamic_forms:
 | `project` | `None` | Project file path or dict. No other config params allowed when set. |
 | `ident_column` | `''` | Shown first in info card (no label) and capture filenames |
 | `project_name` | `None` | Widget header title. Auto-derived from project filename if not set. |
-| `project_save_btn` | `False` | Save-project button (`True` for "Save Project", string for label) |
+| `project_save_btn` | `False` | *(deprecated — no longer rendered)* |
 | `display_columns` | `[]` | Extra columns in the info card |
 | `data_columns` | `[]` | Columns for the clip table |
 | `duplicate_entries` | `False` | Allow multiple submissions per row |
 | `default_buffer` | `3` | Buffer time in seconds |
 | `capture` | `True` | Capture button (`False` to hide, string for label) |
 | `capture_dir` | `''` | Directory for captures |
+| `capture_height` | `None` | Capture image height in pixels. Defaults to `player_height` if not set |
 | `spectrogram_resolution` | `[1000, 2000, 4000]` | Image width(s) in px. `selected::` prefix for default |
 | `visualizations` | `['linear', 'mel']` | Built-in strings or callables |
 | `partial_download` | `True` | Byte-range downloads for remote audio (requires ffmpeg) |
