@@ -87,6 +87,14 @@ export function listFiles(directory: string, extensions?: string[]): string {
   ].join('\n');
 }
 
+export function createDirectory(dirPath: string): string {
+  return [
+    `import json as _j, os as _os`,
+    `_os.makedirs('${escPy(dirPath)}', exist_ok=True)`,
+    wp(`_j.dumps({'created': '${escPy(dirPath)}'})`),
+  ].join('\n');
+}
+
 export function readColumns(filepath: string): string {
   return [
     `import json as _j`,
