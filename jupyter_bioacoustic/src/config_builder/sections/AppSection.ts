@@ -18,7 +18,7 @@ export class AppSection extends CollapsibleSection {
   private _playerHeightInput: HTMLInputElement;
   private _infoCardHeightInput: HTMLInputElement;
   private _formPanelHeightInput: HTMLInputElement;
-
+  private _captureHeightInput: HTMLInputElement;
 
   private _availableCols: string[] = [];
   private _displayChipsArea: HTMLDivElement;
@@ -95,9 +95,13 @@ export class AppSection extends CollapsibleSection {
       inp.addEventListener('input', () => this._emitChanged());
     }
 
-    const hLabels = ['clip_table', 'player', 'info_card', 'form_panel'];
+    this._captureHeightInput = this._makeInput('', '60px');
+    this._captureHeightInput.type = 'number';
+    this._captureHeightInput.addEventListener('input', () => this._emitChanged());
+
+    const hLabels = ['clip_table', 'player', 'info_card', 'form_panel', 'capture'];
     const hInputs = [this._clipTableHeightInput, this._playerHeightInput,
-      this._infoCardHeightInput, this._formPanelHeightInput];
+      this._infoCardHeightInput, this._formPanelHeightInput, this._captureHeightInput];
 
     for (let i = 0; i < hLabels.length; i++) {
       const mini = document.createElement('span');
@@ -284,6 +288,8 @@ export class AppSection extends CollapsibleSection {
     if (!isNaN(ich) && ich !== 34) result.info_card_height = ich;
     const fph = parseInt(this._formPanelHeightInput.value);
     if (!isNaN(fph) && fph !== 140) result.form_panel_height = fph;
+    const ch = parseInt(this._captureHeightInput.value);
+    if (!isNaN(ch) && ch > 0) result.capture_height = ch;
 
     const secrets = this._secrets.getData();
     if (secrets !== undefined) result.secrets = secrets;
@@ -308,6 +314,7 @@ export class AppSection extends CollapsibleSection {
     if (data.player_height) this._playerHeightInput.value = String(data.player_height);
     if (data.info_card_height) this._infoCardHeightInput.value = String(data.info_card_height);
     if (data.form_panel_height) this._formPanelHeightInput.value = String(data.form_panel_height);
+    if (data.capture_height) this._captureHeightInput.value = String(data.capture_height);
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 }
