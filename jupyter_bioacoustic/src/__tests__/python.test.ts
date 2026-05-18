@@ -8,7 +8,7 @@ import {
   extractJson, ensureSetup, updateSection, listFiles, checkFileExists,
   readState, updateConfigFromYaml, saveAll, saveSingleFile,
   createDirectory, readColumns, readSampleData, setSectionTarget,
-  validateConfig, loadConfig,
+  validateConfig, loadConfig, getSummary,
 } from '../config_builder/python';
 
 describe('readKernelVars', () => {
@@ -352,5 +352,13 @@ describe('loadConfig', () => {
   test('includes file type hint', () => {
     const code = loadConfig('/proj.yaml', 'project');
     expect(code).toContain("file_type='project'");
+  });
+});
+
+describe('getSummary', () => {
+  test('calls build_summary_from_builder', () => {
+    const code = getSummary();
+    expect(code).toContain('build_summary_from_builder');
+    expect(code).toContain('_CB_INSTANCE');
   });
 });
