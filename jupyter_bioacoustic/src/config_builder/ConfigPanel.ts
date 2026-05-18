@@ -12,6 +12,7 @@ import {
   validateConfig,
   loadConfig,
   setSectionTarget,
+  getSummary,
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
@@ -88,7 +89,7 @@ export class ConfigPanel {
       left.appendChild(section.element);
     }
 
-    this._form.changed.connect(() => this._updateSummary());
+    this._form.changed.connect(() => void this._updateSummary());
 
     for (const sec of [this._data, this._audio, this._output, this._app, this._form]) {
       sec.targetChanged.connect((_, { section, target }) => {
@@ -240,7 +241,7 @@ export class ConfigPanel {
       const raw = await this._kernel.exec(updateSection(sectionName, data, target));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, sectionName);
-      this._updateSummary();
+      void this._updateSummary();
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
@@ -452,7 +453,7 @@ export class ConfigPanel {
         if (targets.form) this._form.setTarget(targets.form === 'form_config' ? 'form' : targets.form);
       }
 
-      this._updateSummary();
+      void this._updateSummary();
     } finally {
       this._suppressChanges = false;
     }
@@ -569,18 +570,13 @@ export class ConfigPanel {
     }
   }
 
-  private _updateSummary(): void {
-    const outputData = this._output.getData();
-    const outputPath = this._project.getOutputPath();
-    if (outputPath) outputData.path = outputPath;
-    this._summary.update({
-      project: this._project.getData(),
-      data: this._data.getData(),
-      audio: this._audio.getData(),
-      output: outputData,
-      app: this._app.getData(),
-      form: this._form.getData(),
-    });
+  private async _updateSummary(): Promise<void> {
+    if (!this._ready) return;
+    try {
+      const raw = await this._kernel.exec(getSummary());
+      const sections = JSON.parse(extractJson(raw));
+      this._summary.update(sections);
+    } catch { /* ignore summary errors */ }
   }
 
   private _resolveSectionData(
