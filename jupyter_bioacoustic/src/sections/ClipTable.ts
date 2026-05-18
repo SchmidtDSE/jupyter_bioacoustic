@@ -255,6 +255,7 @@ export class ClipTable {
   }
 
   private _updateValueInput(): void {
+    const prev = (this._valueContainer.querySelector('input, select') as HTMLInputElement | null)?.value ?? '';
     this._valueContainer.innerHTML = '';
     if (!this._currentOpNeedsValue()) return;
 
@@ -274,6 +275,7 @@ export class ClipTable {
       inp.placeholder = 'value';
       inp.style.cssText = inputStyle('140px');
     }
+    inp.value = prev;
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') this._addFilter(); });
     this._valueContainer.appendChild(inp);
   }
