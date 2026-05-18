@@ -1,7 +1,7 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS, btnStyle } from '../styles';
 import { KernelBridge } from '../kernel';
-import { extractJson, listFiles } from './python';
+import { extractJson, listFiles, createDirectory } from './python';
 
 interface FileEntry {
   name: string;
@@ -124,13 +124,43 @@ export class FileBrowser {
         `display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;` +
         `font-size:12px;color:${COLORS.green};font-weight:700;` +
         `border-bottom:1px solid ${COLORS.bgSurface0};background:${COLORS.bgSurface0};`;
-      selectRow.textContent = `Select this folder: ${this._cwd}`;
+      selectRow.textContent = `\u2713 Select this folder: ${this._cwd}`;
       selectRow.addEventListener('click', () => {
         this.fileSelected.emit(this._cwd);
       });
       selectRow.addEventListener('mouseenter', () => { selectRow.style.background = COLORS.bgHover; });
       selectRow.addEventListener('mouseleave', () => { selectRow.style.background = COLORS.bgSurface0; });
       this._listEl.appendChild(selectRow);
+
+      const newFolderRow = document.createElement('div');
+      newFolderRow.style.cssText =
+        `display:flex;align-items:center;gap:6px;padding:4px 12px;` +
+        `border-bottom:1px solid ${COLORS.bgSurface0};`;
+      const nfInput = document.createElement('input');
+      nfInput.type = 'text';
+      nfInput.placeholder = 'new folder name';
+      nfInput.style.cssText =
+        `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+        `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
+        `font-size:11px;flex:1;box-sizing:border-box;`;
+      const nfBtn = document.createElement('button');
+      nfBtn.textContent = '+ New Folder';
+      nfBtn.style.cssText = btnStyle() + `font-size:11px;padding:3px 8px;`;
+      const doCreate = async () => {
+        const name = nfInput.value.trim();
+        if (!name) return;
+        const newPath = this._cwd === '.' ? name : `${this._cwd}/${name}`;
+        try {
+          await this._kernel.exec(createDirectory(newPath));
+          void this._loadDir(newPath);
+        } catch (e: any) {
+          this._statusEl.textContent = `Error: ${String(e.message ?? e)}`;
+        }
+      };
+      nfBtn.addEventListener('click', doCreate);
+      nfInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') void doCreate(); });
+      newFolderRow.append(nfInput, nfBtn);
+      this._listEl.appendChild(newFolderRow);
     }
 
     const upRow = this._makeEntryRow('📁', '..', true);
