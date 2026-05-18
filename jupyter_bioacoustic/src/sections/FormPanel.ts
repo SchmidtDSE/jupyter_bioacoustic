@@ -514,7 +514,9 @@ export class FormPanel {
       } else if (type === 'text') {
         const d = document.createElement('div');
         d.style.cssText = mutedTextStyle({ width: '100%' });
-        d.textContent = String(config);
+        const textVal = config && typeof config === 'object' ? (config.value ?? '') : config;
+        d.textContent = String(textVal);
+        if (String(textVal).includes('\n')) d.style.whiteSpace = 'pre-wrap';
         container.appendChild(d);
       } else {
         await this._buildInputElement(type, config, container);
