@@ -67,9 +67,6 @@ export class FormPanel {
   /** Sync button was clicked — orchestrator handles the kernel call. */
   readonly syncRequested = new Signal<this, void>(this);
 
-  /** Save-project button was clicked — orchestrator handles the kernel call. */
-  readonly saveProjectRequested = new Signal<this, void>(this);
-
   /** A status message to show in the widget header. */
   readonly statusChanged = new Signal<this, { message: string; error: boolean }>(this);
 
@@ -121,8 +118,6 @@ export class FormPanel {
   private _outputPath = '';
   private _syncConfig: { uri?: string; button?: string; recursive?: boolean } = {};
   private _syncBtn: HTMLButtonElement | null = null;
-  private _projectSaveBtn: string = '';
-  private _projectSaveBtnEl: HTMLButtonElement | null = null;
   private _selectedIdx = -1;
   private _filteredLength = 0;
 
@@ -176,7 +171,6 @@ export class FormPanel {
     this._duplicateEntries = opts.duplicateEntries;
     this._outputPath = opts.outputPath;
     this._syncConfig = opts.syncConfig ?? {};
-    this._projectSaveBtn = opts.projectSaveBtn ?? '';
   }
 
   /** Update selection info (called each time a row is selected). Used for
@@ -906,26 +900,15 @@ export class FormPanel {
       }
     }
 
-    if (this._syncConfig.button || this._projectSaveBtn) {
+    if (this._syncConfig.button) {
       const spacer = document.createElement('span');
       spacer.style.flex = '1';
       btnContainer.appendChild(spacer);
-    }
-
-    if (this._syncConfig.button) {
       this._syncBtn = document.createElement('button');
       this._syncBtn.textContent = this._syncConfig.button;
       this._syncBtn.style.cssText = btnStyle() + `font-size:12px;`;
       this._syncBtn.addEventListener('click', () => void this._onSync());
       btnContainer.appendChild(this._syncBtn);
-    }
-
-    if (this._projectSaveBtn) {
-      this._projectSaveBtnEl = document.createElement('button');
-      this._projectSaveBtnEl.textContent = this._projectSaveBtn;
-      this._projectSaveBtnEl.style.cssText = btnStyle() + `font-size:12px;margin-left:6px;`;
-      this._projectSaveBtnEl.addEventListener('click', () => void this._onSaveProject());
-      btnContainer.appendChild(this._projectSaveBtnEl);
     }
 
     this._dynFormEl.appendChild(btnContainer);
@@ -949,21 +932,6 @@ export class FormPanel {
     this._resetSyncBtnLabel()
     this._syncBtn.disabled = false;
     this._syncBtn.style.opacity = '1';
-  }
-
-  private async _onSaveProject(): Promise<void> {
-    if (!this._projectSaveBtnEl) return;
-    this._projectSaveBtnEl.disabled = true;
-    this._projectSaveBtnEl.textContent = 'Saving…';
-    this._projectSaveBtnEl.style.opacity = '0.4';
-    this.saveProjectRequested.emit(void 0);
-  }
-
-  _enableSaveProjectBtn(msg?: string): void {
-    if (!this._projectSaveBtnEl) return;
-    this._projectSaveBtnEl.textContent = msg ?? this._projectSaveBtn;
-    this._projectSaveBtnEl.disabled = false;
-    this._projectSaveBtnEl.style.opacity = '1';
   }
 
   private async _buildAnnotationElement(config: any, container: HTMLElement): Promise<void> {

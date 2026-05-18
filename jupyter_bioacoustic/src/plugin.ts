@@ -15,7 +15,7 @@ import {
 } from './styles';
 import { Detection } from './types';
 import { KernelBridge } from './kernel';
-import { readKernelVars, syncOutput, getDefaultProjectPath, saveProject, checkFileExists } from './python';
+import { readKernelVars, syncOutput } from './python';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
@@ -123,7 +123,6 @@ class BioacousticWidget extends Widget {
       this._player.renderFrame();
     });
     this._form.syncRequested.connect(() => void this._onSync());
-    this._form.saveProjectRequested.connect(() => void this._onSaveProject());
     this._form.statusChanged.connect((_, s) => this._setStatus(s.message, s.error));
 
     // Wire Player signals
@@ -225,7 +224,6 @@ class BioacousticWidget extends Widget {
       outputPath,
       syncConfig,
       height: parseInt(cfg.form_panel_height) || undefined,
-      projectSaveBtn: cfg.project_save_btn || '',
     });
     await this._form.build();
     await this._form.loadOutputFileProgress();
@@ -321,44 +319,6 @@ class BioacousticWidget extends Widget {
     } catch (e: any) {
       this._setStatus(`❌ Sync failed: ${String(e.message ?? e)}`, true);
       this._form._enableSyncBtn();
-    }
-  }
-
-  // ─── Save Project ──────────────────────────────────────────
-
-  private async _onSaveProject(): Promise<void> {
-    try {
-      const defRaw = await this._kernelBridge.exec(getDefaultProjectPath());
-      const defPath = JSON.parse(defRaw).path as string;
-
-      const chosen = window.prompt('Save project as:', defPath);
-      if (!chosen) {
-        this._form._enableSaveProjectBtn();
-        return;
-      }
-      const savePath = chosen.trim();
-
-      let overwrite = false;
-      try {
-        const existsRaw = await this._kernelBridge.exec(checkFileExists(savePath));
-        const exists = JSON.parse(existsRaw).exists as boolean;
-        if (exists) {
-          overwrite = window.confirm(`${savePath} already exists. Overwrite?`);
-          if (!overwrite) {
-            this._form._enableSaveProjectBtn();
-            return;
-          }
-        }
-      } catch { /* proceed — worst case save_as_project raises */ }
-
-      this._setStatus('Saving project…');
-      const raw = await this._kernelBridge.exec(saveProject(savePath, overwrite));
-      const result = JSON.parse(raw);
-      this._setStatus(`✓ Project saved: ${result.path}`);
-      this._form._enableSaveProjectBtn();
-    } catch (e: any) {
-      this._setStatus(`❌ Save failed: ${String(e.message ?? e)}`, true);
-      this._form._enableSaveProjectBtn();
     }
   }
 
