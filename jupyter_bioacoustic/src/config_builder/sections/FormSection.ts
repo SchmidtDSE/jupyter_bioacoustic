@@ -65,27 +65,32 @@ export class FormSection extends CollapsibleSection {
   private _makeAddBar(onAdd?: (type: ElementType) => void): HTMLDivElement {
     const bar = document.createElement('div');
     bar.style.cssText =
-      `display:flex;gap:4px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
-    const inputTypes: ElementType[] = [
-      'select', 'textbox', 'checkbox', 'number',
-      'annotation', 'pass_value', 'fixed_value',
-      'title', 'submission_buttons',
-      'break', 'line', 'text',
+      `display:flex;flex-direction:column;gap:4px;padding:6px 0;border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
+    const groups: ElementType[][] = [
+      ['title', 'annotation', 'pass_value', 'fixed_value'],
+      ['select', 'textbox', 'checkbox', 'number'],
+      ['submission_buttons'],
+      ['line', 'text', 'break'],
     ];
-    for (const t of inputTypes) {
-      const btn = this._makeButton(`+ ${t}`);
-      btn.style.fontSize = '11px';
-      btn.style.padding = '3px 8px';
-      btn.addEventListener('click', () => {
-        this.fieldFocused.emit(t);
-        if (onAdd) {
-          onAdd(t);
-        } else {
-          this._addElement(t);
-        }
-      });
-      btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
-      bar.appendChild(btn);
+    for (const group of groups) {
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;gap:4px;flex-wrap:wrap;`;
+      for (const t of group) {
+        const btn = this._makeButton(`+ ${t}`);
+        btn.style.fontSize = '11px';
+        btn.style.padding = '3px 8px';
+        btn.addEventListener('click', () => {
+          this.fieldFocused.emit(t);
+          if (onAdd) {
+            onAdd(t);
+          } else {
+            this._addElement(t);
+          }
+        });
+        btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
+        row.appendChild(btn);
+      }
+      bar.appendChild(row);
     }
     return bar;
   }
@@ -158,27 +163,23 @@ export class FormSection extends CollapsibleSection {
         this._addCheckboxField(card, cfg, 'progress_tracker', 'progress_tracker');
         break;
       case 'select':
-        this._addField(card, cfg, 'label', 'label', '150px');
-        this._addField(card, cfg, 'column', 'column', '150px');
+        this._addLabelColumnFields(card, cfg);
         this._addCheckboxField(card, cfg, 'required', 'required');
         this._addSelectItemsBuilder(card, cfg);
         break;
       case 'textbox':
-        this._addField(card, cfg, 'label', 'label', '150px');
-        this._addField(card, cfg, 'column', 'column', '150px');
+        this._addLabelColumnFields(card, cfg);
         this._addCheckboxField(card, cfg, 'multiline', 'multiline');
         break;
       case 'checkbox':
-        this._addField(card, cfg, 'label', 'label', '150px');
-        this._addField(card, cfg, 'column', 'column', '150px');
+        this._addLabelColumnFields(card, cfg);
         this._addField(card, cfg, 'checked_value', 'checked_value', '100px');
         this._addField(card, cfg, 'unchecked_value', 'unchecked_value', '100px');
         this._addField(card, cfg, 'checked_form', 'checked_form', '150px');
         this._addField(card, cfg, 'unchecked_form', 'unchecked_form', '150px');
         break;
       case 'number':
-        this._addField(card, cfg, 'label', 'label', '150px');
-        this._addField(card, cfg, 'column', 'column', '150px');
+        this._addLabelColumnFields(card, cfg);
         this._addNumField(card, cfg, 'min', 'min', '60px');
         this._addNumField(card, cfg, 'max', 'max', '60px');
         this._addNumField(card, cfg, 'step', 'step', '60px');
@@ -221,13 +222,49 @@ export class FormSection extends CollapsibleSection {
         this._addField(card, cfg, 'submit_label', 'submit label', '100px');
         break;
       }
-      case 'text':
-        this._addField(card, cfg, 'value', 'text', '250px');
+      case 'text': {
+        const ta = document.createElement('textarea');
+        ta.rows = 2;
+        ta.style.cssText =
+          `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+          `border-radius:4px;color:${COLORS.textPrimary};padding:4px 8px;` +
+          `font-size:12px;width:250px;resize:vertical;font-family:inherit;box-sizing:border-box;`;
+        if (cfg.value != null) ta.value = String(cfg.value);
+        ta.addEventListener('input', () => {
+          cfg.value = ta.value;
+          this._emitChanged();
+        });
+        card.appendChild(this._makeFieldRow('text', ta));
         break;
+      }
       case 'break':
       case 'line':
         break;
     }
+  }
+
+  private _addLabelColumnFields(card: HTMLDivElement, cfg: Record<string, any>): void {
+    const labelInp = this._makeInput('label', '150px');
+    if (cfg.label != null) labelInp.value = String(cfg.label);
+    const colInp = this._makeInput('column', '150px');
+    if (cfg.column != null) colInp.value = String(cfg.column);
+    const userEditedCol = { value: !!cfg.column };
+    labelInp.addEventListener('input', () => {
+      cfg.label = labelInp.value;
+      if (!userEditedCol.value) {
+        const snake = labelInp.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        colInp.value = snake;
+        cfg.column = snake;
+      }
+      this._emitChanged();
+    });
+    colInp.addEventListener('input', () => {
+      userEditedCol.value = !!colInp.value;
+      cfg.column = colInp.value;
+      this._emitChanged();
+    });
+    card.appendChild(this._makeFieldRow('label', labelInp));
+    card.appendChild(this._makeFieldRow('column', colInp));
   }
 
   private _addField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string, width: string): void {
@@ -644,12 +681,36 @@ export class FormSection extends CollapsibleSection {
     const header = this._makeRow();
     const lbl = document.createElement('span');
     lbl.textContent = name;
-    lbl.style.cssText = `font-size:12px;font-weight:700;color:${COLORS.mauve};flex:1;`;
+    lbl.style.cssText = `font-size:12px;font-weight:700;color:${COLORS.mauve};flex:1;cursor:pointer;`;
+    lbl.title = 'Double-click to rename';
+    lbl.addEventListener('dblclick', () => {
+      const renameInp = this._makeInput(df.name, '160px');
+      renameInp.value = df.name;
+      renameInp.style.fontSize = '12px';
+      renameInp.style.fontWeight = '700';
+      lbl.replaceWith(renameInp);
+      renameInp.focus();
+      renameInp.select();
+      const commit = () => {
+        const newName = renameInp.value.trim();
+        if (newName && newName !== df.name && !this._dynForms.some(d => d !== df && d.name === newName)) {
+          df.name = newName;
+        }
+        lbl.textContent = df.name;
+        renameInp.replaceWith(lbl);
+        this._emitChanged();
+      };
+      renameInp.addEventListener('blur', commit);
+      renameInp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); renameInp.blur(); }
+        if (e.key === 'Escape') { renameInp.value = df.name; renameInp.blur(); }
+      });
+    });
 
     const rmBtn = this._makeButton('✕');
     rmBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
     rmBtn.addEventListener('click', () => {
-      const idx = this._dynForms.findIndex(df => df.name === name);
+      const idx = this._dynForms.findIndex(d => d === df);
       if (idx >= 0) this._dynForms.splice(idx, 1);
       container.remove();
       this._emitChanged();
