@@ -3022,10 +3022,14 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
                 this._addNumField(card, cfg, 'step', 'step', '60px');
                 break;
             case 'annotation': {
-                const toolsSel = this._makeSelect(['time_select', 'start_end_time_select', 'bounding_box', 'multibox'], Array.isArray(cfg.tools) ? cfg.tools[0] : 'start_end_time_select');
+                const existingTools = Array.isArray(cfg.tools) ? cfg.tools : ['start_end_time_select'];
+                const toolsSel = this._makeSelect(['time_select', 'start_end_time_select', 'bounding_box', 'multibox']);
                 toolsSel.multiple = true;
                 toolsSel.style.width = '140px';
                 toolsSel.style.height = '75px';
+                for (const opt of toolsSel.options) {
+                    opt.selected = existingTools.includes(opt.value);
+                }
                 toolsSel.addEventListener('change', () => {
                     cfg.tools = Array.from(toolsSel.selectedOptions).map(o => o.value);
                     this._emitChanged();
@@ -7063,6 +7067,25 @@ class FormPanel {
         else {
             ac.tools = ['time_select'];
         }
+        const needsTime = ac.tools.some(t => ['time_select', 'start_end_time_select', 'bounding_box', 'multibox'].includes(t));
+        const needsEndTime = ac.tools.some(t => ['start_end_time_select', 'bounding_box', 'multibox'].includes(t));
+        const needsFreq = ac.tools.some(t => ['bounding_box', 'multibox'].includes(t));
+        if (needsTime && !ac.startTime) {
+            ac.startTime = { col: 'start_time', sourceValue: 'start_time' };
+            this._formValues['start_time'] = null;
+        }
+        if (needsEndTime && !ac.endTime) {
+            ac.endTime = { col: 'end_time', sourceValue: 'end_time' };
+            this._formValues['end_time'] = null;
+        }
+        if (needsFreq && !ac.minFreq) {
+            ac.minFreq = { col: 'min_frequency' };
+            this._formValues['min_frequency'] = null;
+        }
+        if (needsFreq && !ac.maxFreq) {
+            ac.maxFreq = { col: 'max_frequency' };
+            this._formValues['max_frequency'] = null;
+        }
         // Parse annotation.form for multibox per-box forms
         if (config.form) {
             ac.form = typeof config.form === 'string' ? config.form : null;
@@ -7120,13 +7143,13 @@ class FormPanel {
             wrapper.appendChild(lbl);
         };
         if (ac.startTime)
-            mkInput('startTime', (_l = (_k = config.start_time) === null || _k === void 0 ? void 0 : _k.label) !== null && _l !== void 0 ? _l : 'start', 's');
+            mkInput('startTime', (_l = (_k = config.start_time) === null || _k === void 0 ? void 0 : _k.label) !== null && _l !== void 0 ? _l : 'start_time', 's');
         if (ac.endTime)
-            mkInput('endTime', (_o = (_m = config.end_time) === null || _m === void 0 ? void 0 : _m.label) !== null && _o !== void 0 ? _o : 'end', 's');
+            mkInput('endTime', (_o = (_m = config.end_time) === null || _m === void 0 ? void 0 : _m.label) !== null && _o !== void 0 ? _o : 'end_time', 's');
         if (ac.minFreq)
-            mkInput('minFreq', (_q = (_p = config.min_frequency) === null || _p === void 0 ? void 0 : _p.label) !== null && _q !== void 0 ? _q : 'min freq', 'Hz');
+            mkInput('minFreq', (_q = (_p = config.min_frequency) === null || _p === void 0 ? void 0 : _p.label) !== null && _q !== void 0 ? _q : 'min_frequency', 'Hz');
         if (ac.maxFreq)
-            mkInput('maxFreq', (_s = (_r = config.max_frequency) === null || _r === void 0 ? void 0 : _r.label) !== null && _s !== void 0 ? _s : 'max freq', 'Hz');
+            mkInput('maxFreq', (_s = (_r = config.max_frequency) === null || _r === void 0 ? void 0 : _r.label) !== null && _s !== void 0 ? _s : 'max_frequency', 'Hz');
         container.appendChild(wrapper);
         // Annotation form container — shows per-box forms in multibox mode,
         // or a single form instance for other annotation tools
@@ -9714,4 +9737,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.ea375f5b04514500f294.js.map
+//# sourceMappingURL=lib_index_js.b5de71b950f95b7edb90.js.map
