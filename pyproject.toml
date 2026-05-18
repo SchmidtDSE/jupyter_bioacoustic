@@ -101,6 +101,10 @@ dev = { features = ["dev"] }
 demo = { features = ["demo"] }
 demo-oss = { features = ["demo", "oss"] }
 mystmd = { features = ["mystmd"] }
+test = { features = ["test"] }
+
+[tool.pixi.feature.test.dependencies]
+pytest = "*"
 
 [tool.pixi.feature.dev.dependencies]
 twine = "*"
