@@ -30,7 +30,11 @@ dependencies = [
     "audioop-lts; python_version>='3.13'",
     "boto3",
     "pyyaml",
+    "click>=8.0",
 ]
+
+[project.scripts]
+jba = "jupyter_bioacoustic.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/SchmidtDSE/jupyter_bioacoustic"
