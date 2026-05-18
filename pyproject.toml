@@ -104,7 +104,7 @@ mystmd = { features = ["mystmd"] }
 test = { features = ["test"] }
 
 [tool.pixi.feature.test.dependencies]
-pytest = "*"
+pytest = ">=9.0.3,<10"
 
 [tool.pixi.feature.dev.dependencies]
 twine = "*"
