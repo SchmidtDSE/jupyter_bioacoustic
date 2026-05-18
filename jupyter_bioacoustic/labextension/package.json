@@ -1,6 +1,6 @@
 {
   "name": "jupyter-bioacoustic",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "JupyterLab bioacoustic audio review plugin",
   "keywords": [
     "jupyter",
@@ -20,7 +20,8 @@
     "build:lib": "tsc --sourceMap",
     "build:lib:prod": "tsc",
     "watch:src": "tsc -w --sourceMap",
-    "clean": "rimraf lib labextension tsconfig.tsbuildinfo"
+    "clean": "rimraf lib labextension tsconfig.tsbuildinfo",
+    "test": "jest"
   },
   "dependencies": {
     "@jupyterlab/application": "^4.0.0",
@@ -34,14 +35,17 @@
   },
   "devDependencies": {
     "@jupyterlab/builder": "^4.0.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
     "rimraf": "^5.0.0",
+    "ts-jest": "^29.4.9",
     "typescript": "~5.1.0"
   },
   "jupyterlab": {
     "extension": true,
     "outputDir": "labextension",
     "_build": {
-      "load": "static/remoteEntry.df0b403999aa00e5225f.js",
+      "load": "static/remoteEntry.3fe376b420ae48b852af.js",
       "extension": "./extension"
     }
   }
