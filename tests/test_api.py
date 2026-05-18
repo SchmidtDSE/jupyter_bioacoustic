@@ -20,8 +20,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jupyter_bioacoustic.api import (
     _detect_data_type,
+    _detect_audio_type,
     _resolve_secrets,
     _read_data,
+    _merge_project_over_config,
 )
 
 
@@ -126,3 +128,74 @@ class TestReadData:
         p.write_text("hello")
         with pytest.raises(ValueError, match='Unsupported'):
             _read_data(str(p))
+
+
+#
+# _detect_audio_type
+#
+class TestDetectAudioType:
+
+    def test_https_url(self):
+        assert _detect_audio_type('https://example.com/audio.flac') == 'url'
+
+    def test_s3_url(self):
+        assert _detect_audio_type('s3://bucket/audio.flac') == 'url'
+
+    def test_gs_url(self):
+        assert _detect_audio_type('gs://bucket/audio.flac') == 'url'
+
+    def test_column_name(self):
+        assert _detect_audio_type('audio_path') == 'column'
+
+    def test_path_with_slash(self):
+        assert _detect_audio_type('data/audio.flac') == 'path'
+
+    def test_path_with_dot(self):
+        assert _detect_audio_type('audio.flac') == 'path'
+
+
+#
+# _merge_project_over_config
+#
+class TestMergeProjectOverConfig:
+
+    def test_simple_override(self):
+        base = {'ident_column': 'species', 'width': 800}
+        proj = {'width': 1200}
+        _merge_project_over_config(base, proj)
+        assert base['width'] == 1200
+        assert base['ident_column'] == 'species'
+
+    def test_dict_merge_data(self):
+        base = {'data': {'path': 'old.csv', 'columns': ['a']}}
+        proj = {'data': {'path': 'new.csv'}}
+        _merge_project_over_config(base, proj)
+        assert base['data']['path'] == 'new.csv'
+        assert base['data']['columns'] == ['a']
+
+    def test_dict_merge_replaces_source_keys(self):
+        base = {'data': {'url': 'https://old.com/data.csv', 'columns': ['a']}}
+        proj = {'data': {'path': 'local.csv'}}
+        _merge_project_over_config(base, proj)
+        assert base['data']['path'] == 'local.csv'
+        assert 'url' not in base['data']
+
+    def test_audio_merge_replaces_source_keys(self):
+        base = {'audio': {'src': 'old_col', 'prefix': '/audio/'}}
+        proj = {'audio': {'path': '/new/path'}}
+        _merge_project_over_config(base, proj)
+        assert base['audio']['path'] == '/new/path'
+        assert 'src' not in base['audio']
+        assert base['audio']['prefix'] == '/audio/'
+
+    def test_non_merge_key_replaced(self):
+        base = {'capture': True}
+        proj = {'capture': False}
+        _merge_project_over_config(base, proj)
+        assert base['capture'] is False
+
+    def test_new_key_added(self):
+        base = {'ident_column': 'species'}
+        proj = {'default_buffer': 5}
+        _merge_project_over_config(base, proj)
+        assert base['default_buffer'] == 5
