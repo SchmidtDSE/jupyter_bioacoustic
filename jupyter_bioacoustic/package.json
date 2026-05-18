@@ -20,7 +20,8 @@
     "build:lib": "tsc --sourceMap",
     "build:lib:prod": "tsc",
     "watch:src": "tsc -w --sourceMap",
-    "clean": "rimraf lib labextension tsconfig.tsbuildinfo"
+    "clean": "rimraf lib labextension tsconfig.tsbuildinfo",
+    "test": "jest"
   },
   "dependencies": {
     "@jupyterlab/application": "^4.0.0",
@@ -34,7 +35,10 @@
   },
   "devDependencies": {
     "@jupyterlab/builder": "^4.0.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
     "rimraf": "^5.0.0",
+    "ts-jest": "^29.4.9",
     "typescript": "~5.1.0"
   },
   "jupyterlab": {
