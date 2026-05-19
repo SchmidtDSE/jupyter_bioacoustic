@@ -10,8 +10,8 @@
         {
           "test": "/(?<!\\.raw)\\.css$/",
           "use": [
-            "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/style-loader@3.3.4_webpack@5.106.2/node_modules/style-loader/dist/cjs.js",
-            "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/css-loader@6.11.0_webpack@5.106.2/node_modules/css-loader/dist/cjs.js"
+            "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/style-loader@3.3.4_webpack@5.106.2/node_modules/style-loader/dist/cjs.js",
+            "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/css-loader@6.11.0_webpack@5.106.2/node_modules/css-loader/dist/cjs.js"
           ]
         },
         {
@@ -81,7 +81,7 @@
           "test": "/\\.js$/",
           "enforce": "pre",
           "use": [
-            "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/source-map-loader@1.0.2_webpack@5.106.2/node_modules/source-map-loader/dist/cjs.js"
+            "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/source-map-loader@1.0.2_webpack@5.106.2/node_modules/source-map-loader/dist/cjs.js"
           ]
         }
       ]
@@ -91,8 +91,8 @@
         "url": false,
         "buffer": false,
         "crypto": false,
-        "path": "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/path-browserify@1.0.1/node_modules/path-browserify/index.js",
-        "process": "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/process@0.11.10/node_modules/process/browser.js"
+        "path": "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/path-browserify@1.0.1/node_modules/path-browserify/index.js",
+        "process": "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/node_modules/.pnpm/process@0.11.10/node_modules/process/browser.js"
       }
     },
     "watchOptions": {
@@ -102,7 +102,7 @@
     "output": {
       "hashFunction": "sha256",
       "filename": "[name].[contenthash].js",
-      "path": "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/labextension/static",
+      "path": "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/labextension/static",
       "publicPath": "auto"
     },
     "plugins": [
@@ -123,8 +123,8 @@
           },
           "filename": "remoteEntry.[contenthash].js",
           "exposes": {
-            "./index": "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/lib/index.js",
-            "./extension": "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/lib/index.js"
+            "./index": "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/lib/index.js",
+            "./extension": "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/lib/index.js"
           },
           "shared": {
             "@jupyterlab/application": {
@@ -713,7 +713,7 @@
             "jupyter-bioacoustic": {
               "version": "0.6.8",
               "singleton": true,
-              "import": "/Users/brookie/code/dse/soundhub/jupyteraudio/jupyter_bioacoustic/jupyter_bioacoustic/lib/index.js"
+              "import": "/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/jupyter_bioacoustic/lib/index.js"
             }
           }
         }

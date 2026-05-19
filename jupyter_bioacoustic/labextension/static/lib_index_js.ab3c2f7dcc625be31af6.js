@@ -4226,9 +4226,30 @@ class BioacousticWidget extends widgets_1.Widget {
         this._statusEl = document.createElement('span');
         this._statusEl.style.cssText =
             `flex:1;text-align:right;font-size:11px;color:${styles_1.COLORS.green};` +
-                `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+                `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;`;
         this._statusEl.textContent = 'Loading…';
-        header.append(this._titleEl, this._statusEl);
+        // ── Info toggle button ──────────────────────────────────────────
+        this._infoToggle = document.createElement('button');
+        this._infoToggle.innerHTML = `&#9432;`;
+        this._infoToggle.style.cssText =
+            `background:none;border:none;cursor:pointer;padding:2px;` +
+                `flex-shrink:0;transition:all 0.15s;font-size:14px;color:${styles_1.COLORS.textSubtle};`;
+        this._infoToggle.title = 'Toggle configuration info';
+        this._infoToggle.onclick = () => this._toggleInfoPanel();
+        // Hover effect
+        this._infoToggle.onmouseenter = () => {
+            this._infoToggle.style.backgroundColor = styles_1.COLORS.bgHover;
+        };
+        this._infoToggle.onmouseleave = () => {
+            this._infoToggle.style.backgroundColor = 'transparent';
+        };
+        header.append(this._titleEl, this._statusEl, this._infoToggle);
+        // ── Info panel ──────────────────────────────────────────────────
+        this._infoPanel = document.createElement('div');
+        this._infoPanel.style.cssText =
+            `display:none;background:${styles_1.COLORS.bgSurface0};border-bottom:1px solid ${styles_1.COLORS.bgSurface1};` +
+                `padding:12px 16px;font-size:11px;line-height:1.4;`;
+        this._infoPanel.innerHTML = `<div style="color:${styles_1.COLORS.textSubtle};">Loading configuration info...</div>`;
         // ── Clip table (filter + table + pagination) ──────────────────
         // ── Sections ──────────────────────────────────────────────────
         this._description = new DescriptionPanel_1.DescriptionPanel();
@@ -4259,7 +4280,7 @@ class BioacousticWidget extends widgets_1.Widget {
         // Wire Player signals
         this._player.statusChanged.connect((_, s) => this._setStatus(s.message, s.error, s.warning));
         // ── Assemble widget ──────────────────────────────────────────
-        this.node.append(header, this._description.element, this._table.element, this._infoCard.element, this._player.element, this._form.element);
+        this.node.append(header, this._infoPanel, this._description.element, this._table.element, this._infoCard.element, this._player.element, this._form.element);
     }
     // ─── Lumino lifecycle ────────────────────────────────────────
     onAfterAttach(msg) {
@@ -4370,6 +4391,8 @@ class BioacousticWidget extends widgets_1.Widget {
             await this._player.loadRow(this._table.filtered[0]);
         }
         this._setStatus(`✓ ${rows.length} clips loaded`);
+        // Populate info panel with configuration details
+        this._populateInfoPanel(cfg, audioConfig, outputPath, syncConfig);
     }
     /** Orchestrator: update info card + form for the selected row. */
     _selectRow(filteredIdx) {
@@ -4420,6 +4443,97 @@ class BioacousticWidget extends widgets_1.Widget {
     }
     // ─── Capture ─────────────────────────────────────────────────
     // ─── Kernel helpers ──────────────────────────────────────────
+    // ─── Info Panel ──────────────────────────────────────────────
+    _toggleInfoPanel() {
+        const isVisible = this._infoPanel.style.display !== 'none';
+        if (isVisible) {
+            this._infoPanel.style.display = 'none';
+            // Closed state: outline info icon
+            this._infoToggle.innerHTML = `&#9432;`;
+            this._infoToggle.style.color = styles_1.COLORS.textSubtle;
+        }
+        else {
+            this._infoPanel.style.display = 'block';
+            // Open state: white filled circle with black i
+            this._infoToggle.innerHTML = `<span style="
+        display:inline-block;
+        width:14px;
+        height:14px;
+        border-radius:50%;
+        background:white;
+        color:black;
+        text-align:center;
+        line-height:14px;
+        font-size:10px;
+        font-weight:bold;
+      ">i</span>`;
+            this._infoToggle.style.color = styles_1.COLORS.blue;
+        }
+    }
+    _populateInfoPanel(cfg, audioConfig, outputPath, syncConfig) {
+        // Helper function to format paths
+        const formatPath = (path, type) => {
+            if (!path)
+                return `<span style="color:${styles_1.COLORS.textSubtle};">Not specified</span>`;
+            if (path.startsWith('http://') || path.startsWith('https://')) {
+                return `<span style="color:${styles_1.COLORS.blue};">(url)</span> ${path}`;
+            }
+            if (path.startsWith('s3://') || path.startsWith('gs://')) {
+                return `<span style="color:${styles_1.COLORS.blue};">(${path.startsWith('s3://') ? 's3' : 'gcs'})</span> ${path}`;
+            }
+            return `<span style="color:${styles_1.COLORS.blue};">(${type})</span> ${path}`;
+        };
+        // Data source info
+        const dataInfo = cfg.data ? JSON.parse(cfg.data) : [];
+        const dataSourceText = Array.isArray(dataInfo)
+            ? `<span style="color:${styles_1.COLORS.blue};">(kernel)</span> ${dataInfo.length} rows loaded`
+            : `<span style="color:${styles_1.COLORS.blue};">(kernel)</span> Data loaded`;
+        // Audio source info
+        let audioSourceText = '';
+        if (audioConfig.type === 'column') {
+            audioSourceText = `<span style="color:${styles_1.COLORS.blue};">(column)</span> ${audioConfig.value}`;
+        }
+        else if (audioConfig.type === 'value') {
+            audioSourceText = formatPath(audioConfig.value, 'path');
+        }
+        else {
+            audioSourceText = `<span style="color:${styles_1.COLORS.textSubtle};">Unknown audio source</span>`;
+        }
+        // Output info
+        let outputText = formatPath(outputPath, 'local');
+        if (syncConfig && syncConfig.uri) {
+            outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${styles_1.COLORS.blue};">(sync)</span> ${syncConfig.uri}`;
+        }
+        // Configuration file paths
+        let configText = '';
+        if (cfg.project_path) {
+            configText += `<div style="margin-bottom:4px;">• <strong>project:</strong> ${formatPath(cfg.project_path, 'file')}</div>`;
+        }
+        if (cfg.config_path) {
+            configText += `<div style="margin-bottom:4px;">• <strong>config:</strong> ${formatPath(cfg.config_path, 'file')}</div>`;
+        }
+        if (cfg.form_path) {
+            configText += `<div style="margin-bottom:4px;">• <strong>form:</strong> ${formatPath(cfg.form_path, 'file')}</div>`;
+        }
+        if (!configText) {
+            configText = `<div style="color:${styles_1.COLORS.textSubtle};">No configuration files loaded</div>`;
+        }
+        this._infoPanel.innerHTML = `
+      <div style="font-family:monospace;">
+        <div style="font-weight:600;margin-bottom:8px;color:${styles_1.COLORS.textPrimary};">Data Sources & Output</div>
+        <div style="margin-bottom:4px;">• <strong>data:</strong> ${dataSourceText}</div>
+        <div style="margin-bottom:4px;">• <strong>audio:</strong> ${audioSourceText}</div>
+        <div style="margin-bottom:12px;">• <strong>output:</strong><br>&nbsp;&nbsp;&nbsp;&nbsp;${outputText}</div>
+
+        <div style="font-weight:600;margin-bottom:8px;color:${styles_1.COLORS.textPrimary};">Configuration Files</div>
+        <div style="margin-bottom:12px;">${configText}</div>
+
+        <div style="font-weight:600;margin-bottom:8px;color:${styles_1.COLORS.textPrimary};">Documentation</div>
+        <div style="margin-bottom:4px;">• <strong>site:</strong> <a href="https://schmidtdse.github.io/jupyter_bioacoustic" target="_blank" style="color:${styles_1.COLORS.blue};">schmidtdse.github.io/jupyter_bioacoustic</a></div>
+        <div>• <strong>docs:</strong> <a href="https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki" target="_blank" style="color:${styles_1.COLORS.blue};">github.com/SchmidtDSE/jupyter_bioacoustic/wiki</a></div>
+      </div>
+    `;
+    }
     // ─── Utilities ───────────────────────────────────────────────
     _setStatus(msg, error = false, warning = false) {
         this._statusEl.textContent = msg;
@@ -4462,27 +4576,290 @@ function _validateFormConfig(fc) {
 function escPy(s) {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
+async function getOptimalProjectPath(browser, currentPath) {
+    if (!browser)
+        return currentPath;
+    const manager = browser.model.manager;
+    // Helper function to check if a directory exists
+    const dirExists = async (path) => {
+        try {
+            const contents = await manager.services.contents.get(path);
+            return contents.type === 'directory';
+        }
+        catch (_a) {
+            return false;
+        }
+    };
+    // Check for annotator_config/projects in current directory first
+    const localProjectsPath = currentPath ? `${currentPath}/annotator_config/projects` : 'annotator_config/projects';
+    if (await dirExists(localProjectsPath)) {
+        return localProjectsPath;
+    }
+    // Check for annotator_config in current directory
+    const localConfigPath = currentPath ? `${currentPath}/annotator_config` : 'annotator_config';
+    if (await dirExists(localConfigPath)) {
+        return localConfigPath;
+    }
+    // Fallback to workspace root annotator_config/projects
+    if (await dirExists('annotator_config/projects')) {
+        return 'annotator_config/projects';
+    }
+    // Fallback to workspace root annotator_config
+    if (await dirExists('annotator_config')) {
+        return 'annotator_config';
+    }
+    // Use current directory as final fallback
+    return currentPath;
+}
 async function pickProjectFile(browser, defaultPath) {
-    var _a, _b;
+    var _a;
     if (browser) {
-        const result = await filebrowser_1.FileDialog.getOpenFiles({
-            manager: browser.model.manager,
-            title: 'Select a Bioacoustic Project',
-            defaultPath,
-            filter: (model) => {
-                if (model.type === 'directory')
-                    return {};
-                const name = model.name.toLowerCase();
-                return (name.endsWith('.yaml') || name.endsWith('.yml') || name.endsWith('.json'))
-                    ? {} : null;
-            },
-        });
-        if (!result.button.accept || !((_a = result.value) === null || _a === void 0 ? void 0 : _a.length))
-            return '';
-        return result.value[0].path;
+        // Get optimal starting path based on annotator_config directory structure
+        const optimalPath = await getOptimalProjectPath(browser, defaultPath);
+        return showProjectFileDialog(browser, optimalPath, defaultPath);
     }
     const path = window.prompt('Project file path (.yaml)');
-    return (_b = path === null || path === void 0 ? void 0 : path.trim()) !== null && _b !== void 0 ? _b : '';
+    return (_a = path === null || path === void 0 ? void 0 : path.trim()) !== null && _a !== void 0 ? _a : '';
+}
+async function showProjectFileDialog(browser, initialPath, cwdPath) {
+    // Create a custom dialog with file browser + text input
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: white; border: 1px solid #ccc; border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10000;
+    width: 600px; max-height: 500px; display: flex; flex-direction: column;
+    font-family: var(--jp-ui-font-family);
+  `;
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = `
+    padding: 16px 20px; border-bottom: 1px solid #e0e0e0;
+    font-weight: 600; font-size: 16px;
+  `;
+    header.textContent = 'Select Bioacoustic Project';
+    // Path input section
+    const inputSection = document.createElement('div');
+    inputSection.style.cssText = `
+    padding: 16px 20px; border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+  `;
+    const inputLabel = document.createElement('div');
+    inputLabel.style.cssText = `
+    margin-bottom: 8px; font-size: 13px; font-weight: 500; color: #333;
+  `;
+    inputLabel.textContent = 'Project file path (local, s3://, gs://, or https://):';
+    const pathInput = document.createElement('input');
+    pathInput.type = 'text';
+    pathInput.placeholder = 'e.g., annotator_config/projects/my_project.yaml or s3://bucket/config.yaml';
+    pathInput.style.cssText = `
+    width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 3px;
+    font-size: 13px; font-family: monospace; box-sizing: border-box;
+  `;
+    inputSection.appendChild(inputLabel);
+    inputSection.appendChild(pathInput);
+    // File browser section
+    const browserSection = document.createElement('div');
+    browserSection.style.cssText = `
+    flex: 1; overflow: hidden; display: flex; flex-direction: column;
+    min-height: 200px;
+  `;
+    const browserLabel = document.createElement('div');
+    browserLabel.style.cssText = `
+    padding: 12px 20px; font-size: 13px; font-weight: 500; color: #555;
+    border-bottom: 1px solid #f0f0f0;
+  `;
+    browserLabel.textContent = 'Or browse files:';
+    const browserContainer = document.createElement('div');
+    browserContainer.style.cssText = `
+    flex: 1; overflow: auto; padding: 16px 20px;
+  `;
+    browserSection.appendChild(browserLabel);
+    browserSection.appendChild(browserContainer);
+    // Buttons
+    const buttonSection = document.createElement('div');
+    buttonSection.style.cssText = `
+    padding: 16px 20px; border-top: 1px solid #e0e0e0;
+    display: flex; justify-content: flex-end; gap: 12px;
+  `;
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = `
+    padding: 8px 16px; border: 1px solid #ccc; background: white; border-radius: 3px;
+    cursor: pointer; font-size: 13px;
+  `;
+    const selectBtn = document.createElement('button');
+    selectBtn.textContent = 'Select';
+    selectBtn.style.cssText = `
+    padding: 8px 16px; border: none; background: #2196F3; color: white; border-radius: 3px;
+    cursor: pointer; font-size: 13px;
+  `;
+    buttonSection.appendChild(cancelBtn);
+    buttonSection.appendChild(selectBtn);
+    // Assemble dialog
+    dialog.appendChild(header);
+    dialog.appendChild(inputSection);
+    dialog.appendChild(browserSection);
+    dialog.appendChild(buttonSection);
+    // Overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5); z-index: 9999;
+  `;
+    document.body.appendChild(overlay);
+    overlay.appendChild(dialog);
+    // State tracking
+    let selectedFile = '';
+    let selectedFromBrowser = false;
+    let currentBrowserPath = initialPath;
+    pathInput.addEventListener('input', () => { selectedFromBrowser = false; });
+    // Update path input based on current browser directory and handle remote URIs
+    const updatePathContext = () => {
+        const currentValue = pathInput.value.trim();
+        const isRemoteUri = currentValue.startsWith('s3://') ||
+            currentValue.startsWith('gs://') ||
+            currentValue.startsWith('http://') ||
+            currentValue.startsWith('https://');
+        if (isRemoteUri) {
+            // Disable and grey out file browser for remote URIs
+            browserSection.style.opacity = '0.4';
+            browserSection.style.pointerEvents = 'none';
+            browserLabel.textContent = 'File browser (disabled for remote URIs)';
+            browserLabel.style.color = '#999';
+            pathInput.placeholder = 'Remote URI detected - file browser disabled';
+        }
+        else {
+            // Enable file browser for local paths
+            browserSection.style.opacity = '1';
+            browserSection.style.pointerEvents = 'auto';
+            browserLabel.textContent = 'Or browse files:';
+            browserLabel.style.color = '#555';
+            if (currentValue && !currentValue.startsWith('/')) {
+                // If user typed a relative path, combine with current browser path
+                pathInput.placeholder = `Current dir: ${currentBrowserPath}/`;
+            }
+            else {
+                pathInput.placeholder = 'e.g., annotator_config/projects/my_project.yaml or s3://bucket/config.yaml';
+            }
+        }
+    };
+    // Simulate file browser (simplified version)
+    const loadFileBrowser = async (path) => {
+        browserContainer.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">Loading...</div>';
+        try {
+            const contents = await browser.model.manager.services.contents.get(path);
+            browserContainer.innerHTML = '';
+            // Add parent directory link if not at server root
+            if (path !== '') {
+                const parentDir = path.split('/').slice(0, -1).join('/') || '';
+                const parentItem = document.createElement('div');
+                parentItem.style.cssText = `
+          padding: 6px 0; cursor: pointer; color: #2196F3;
+          border-bottom: 1px solid #f0f0f0;
+        `;
+                parentItem.innerHTML = '📁 ..';
+                parentItem.onclick = () => {
+                    currentBrowserPath = parentDir;
+                    loadFileBrowser(parentDir);
+                    updatePathContext();
+                };
+                browserContainer.appendChild(parentItem);
+            }
+            if (contents.content) {
+                for (const item of contents.content) {
+                    const itemEl = document.createElement('div');
+                    itemEl.style.cssText = `
+            padding: 6px 0; cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+          `;
+                    if (item.type === 'directory') {
+                        itemEl.innerHTML = `📁 ${item.name}`;
+                        itemEl.onclick = () => {
+                            currentBrowserPath = item.path;
+                            loadFileBrowser(item.path);
+                            updatePathContext();
+                        };
+                    }
+                    else if (item.name.toLowerCase().match(/\.(yaml|yml|json)$/)) {
+                        itemEl.innerHTML = `📄 ${item.name}`;
+                        const selectFile = () => {
+                            selectedFile = item.path;
+                            selectedFromBrowser = true;
+                            const displayPath = cwdPath && item.path.startsWith(cwdPath + '/')
+                                ? item.path.substring(cwdPath.length + 1)
+                                : item.path;
+                            pathInput.value = displayPath;
+                        };
+                        itemEl.onclick = selectFile;
+                        itemEl.ondblclick = () => {
+                            selectFile();
+                            selectBtn.click();
+                        };
+                        itemEl.onmouseover = () => itemEl.style.backgroundColor = '#f0f0f0';
+                        itemEl.onmouseout = () => itemEl.style.backgroundColor = 'transparent';
+                    }
+                    else {
+                        itemEl.innerHTML = `📄 ${item.name}`;
+                        itemEl.style.color = '#ccc';
+                    }
+                    browserContainer.appendChild(itemEl);
+                }
+            }
+        }
+        catch (error) {
+            browserContainer.innerHTML = `<div style="color: #f44336; padding: 20px;">Error loading directory: ${error}</div>`;
+        }
+    };
+    // Load initial browser
+    loadFileBrowser(initialPath);
+    updatePathContext();
+    // Input handling
+    pathInput.addEventListener('input', updatePathContext);
+    // Promise-based dialog
+    return new Promise((resolve) => {
+        let onKeydown = null;
+        const cleanup = () => {
+            if (onKeydown)
+                document.removeEventListener('keydown', onKeydown);
+            document.body.removeChild(overlay);
+        };
+        cancelBtn.onclick = () => {
+            cleanup();
+            resolve('');
+        };
+        selectBtn.onclick = () => {
+            let finalPath = pathInput.value.trim();
+            if (!finalPath) {
+                alert('Please enter a file path or select a file.');
+                return;
+            }
+            // Handle relative paths — only prepend currentBrowserPath for manually typed paths,
+            // not for paths set by clicking a file in the browser (those are already full paths)
+            if (!selectedFromBrowser && finalPath && !finalPath.includes('://') && !finalPath.startsWith('/') && currentBrowserPath) {
+                finalPath = `${currentBrowserPath}/${finalPath}`.replace(/\/+/g, '/');
+            }
+            cleanup();
+            resolve(finalPath);
+        };
+        overlay.onclick = (e) => {
+            if (e.target === overlay) {
+                cleanup();
+                resolve('');
+            }
+        };
+        onKeydown = (e) => {
+            if (e.key === 'Enter' && pathInput.value.trim()) {
+                selectBtn.click();
+            }
+            else if (e.key === 'Escape') {
+                cancelBtn.click();
+            }
+        };
+        document.addEventListener('keydown', onKeydown);
+        // Focus the input
+        pathInput.focus();
+    });
 }
 async function startKernel(app) {
     try {
@@ -4809,6 +5186,9 @@ function readKernelVars() {
         `  'project_save_btn': _BA_PROJECT_SAVE_BTN,`,
         `  'description': _BA_DESCRIPTION,`,
         `  'description_height': _BA_DESCRIPTION_HEIGHT,`,
+        `  'project_path': _BA_PROJECT_PATH,`,
+        `  'config_path': _BA_CONFIG_PATH,`,
+        `  'form_path': _BA_FORM_PATH,`,
         `}))`,
     ].join('\n');
 }
@@ -9533,4 +9913,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.7cb96c1b2770270868bb.js.map
+//# sourceMappingURL=lib_index_js.ab3c2f7dcc625be31af6.js.map
