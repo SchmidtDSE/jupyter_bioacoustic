@@ -136,19 +136,15 @@ def describe(
     if search_all or search_form:
         search_order.append(('forms', 'Form'))
 
+    scope_map = {'projects': 'project', 'config': 'config', 'forms': 'form'}
     for subdir, label in search_order:
         path = _find_yaml(root / subdir, name)
         if path is not None:
             cb = ConfigBuilder()
-            file_type_map = {
-                'projects': 'project',
-                'config': 'config',
-                'forms': 'form',
-            }
-            cb.load_config(str(path), file_type=file_type_map[subdir])
+            cb.load_config(str(path), file_type=scope_map[subdir])
             click.echo(f'{label} Configuration Summary')
             click.echo('=' * 40)
-            sections = build_summary_from_builder(cb)
+            sections = build_summary_from_builder(cb, scope=scope_map[subdir])
             click.echo(format_text(sections))
             return
 
