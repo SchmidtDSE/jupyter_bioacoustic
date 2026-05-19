@@ -262,7 +262,7 @@ def _resolve_config_target(
     scope = None
     for key, val in active.items():
         scope = FLAG_SCOPE_MAP[key]
-        if isinstance(val, str):
+        if isinstance(val, str) and val != 'True':
             path_flag = val
         break
 
