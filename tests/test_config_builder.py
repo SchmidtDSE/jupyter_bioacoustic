@@ -187,6 +187,50 @@ class TestConfigBuilderValidate:
         result = cb.validate()
         assert any('orphan_form' in w for w in result['warnings'])
 
+    def test_valid_annotation_tools(self):
+        cb = ConfigBuilder()
+        cb._form_config = {
+            'annotation': {
+                'start_time': 'start_time',
+                'end_time': 'end_time',
+                'tools': ['time_select', 'start_end_time_select', 'multibox'],
+            },
+        }
+        result = cb.validate()
+        assert result['valid'] is True
+
+    def test_invalid_annotation_tool_top_level(self):
+        cb = ConfigBuilder()
+        cb._form_config = {
+            'annotation': {
+                'tools': ['time_marker', 'start_end_time'],
+            },
+        }
+        result = cb.validate()
+        assert result['valid'] is False
+        assert any('time_marker' in e for e in result['errors'])
+        assert any('start_end_time' in e for e in result['errors'])
+
+    def test_invalid_annotation_tool_in_form_list(self):
+        cb = ConfigBuilder()
+        cb._form_config = {
+            'form': [
+                {'annotation': {'tools': ['bounding_box', 'bad_tool']}},
+            ],
+        }
+        result = cb.validate()
+        assert result['valid'] is False
+        assert any('bad_tool' in e for e in result['errors'])
+
+    def test_annotation_tool_string_validated(self):
+        cb = ConfigBuilder()
+        cb._form_config = {
+            'annotation': {'tools': 'wrong_tool'},
+        }
+        result = cb.validate()
+        assert result['valid'] is False
+        assert any('wrong_tool' in e for e in result['errors'])
+
 
 #
 # _resolve_path
