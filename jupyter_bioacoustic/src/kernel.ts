@@ -4,6 +4,18 @@
  */
 import { INotebookTracker } from '@jupyterlab/notebook';
 
+
+export class KernelError extends Error {
+  readonly traceback: string;
+
+  constructor(message: string, traceback: string) {
+    super(message);
+    this.name = 'KernelError';
+    this.traceback = traceback;
+  }
+}
+
+
 export class KernelBridge {
   private _tracker: INotebookTracker | null;
   private _directKernel: any;
@@ -29,6 +41,7 @@ export class KernelBridge {
     const kernel = this._kernel();
     if (!kernel) throw new Error('No active kernel');
     let out = '', err = '';
+    let summary = '';
     const future = kernel.requestExecute({ code });
     future.onIOPub = (msg: any) => {
       const t = msg.header.msg_type;
@@ -37,12 +50,15 @@ export class KernelBridge {
         if (msg.content?.name === 'stderr') err += msg.content.text as string;
       } else if (t === 'error') {
         const tb: string[] = msg.content?.traceback ?? [];
-        err += (msg.content?.ename ?? '') + ': ' + (msg.content?.evalue ?? '') +
-               '\n' + tb.join('\n');
+        summary = (msg.content?.ename ?? '') + ': ' + (msg.content?.evalue ?? '');
+        err += summary + '\n' + tb.join('\n');
       }
     };
     await future.done;
-    if (!out.trim() && err) throw new Error(err.trim());
+    if (!out.trim() && err) {
+      const e = new KernelError(summary || err.trim(), err.trim());
+      throw e;
+    }
     return out.trim();
   }
 }
