@@ -191,6 +191,11 @@ describe('deleteOutputRow', () => {
     expect(code).toContain('/data/out.jsonl');
     expect(code).toContain("'jsonl'");
   });
+
+  test('imports _safe_float', () => {
+    const code = deleteOutputRow('/out.csv', "abs(_sf(r.get('start_time'))-10.5)<0.01");
+    expect(code).toContain('_safe_float as _sf');
+  });
 });
 
 describe('loadSelectItems', () => {
