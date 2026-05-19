@@ -4110,7 +4110,15 @@ exports["default"] = [plugin_1.bioacousticPlugin, config_builder_1.configBuilder
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.KernelBridge = void 0;
+exports.KernelBridge = exports.KernelError = void 0;
+class KernelError extends Error {
+    constructor(message, traceback) {
+        super(message);
+        this.name = 'KernelError';
+        this.traceback = traceback;
+    }
+}
+exports.KernelError = KernelError;
 class KernelBridge {
     constructor(tracker, directKernel, cwd) {
         this._tracker = tracker;
@@ -4130,6 +4138,7 @@ class KernelBridge {
         if (!kernel)
             throw new Error('No active kernel');
         let out = '', err = '';
+        let summary = '';
         const future = kernel.requestExecute({ code });
         future.onIOPub = (msg) => {
             var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -4142,13 +4151,15 @@ class KernelBridge {
             }
             else if (t === 'error') {
                 const tb = (_d = (_c = msg.content) === null || _c === void 0 ? void 0 : _c.traceback) !== null && _d !== void 0 ? _d : [];
-                err += ((_f = (_e = msg.content) === null || _e === void 0 ? void 0 : _e.ename) !== null && _f !== void 0 ? _f : '') + ': ' + ((_h = (_g = msg.content) === null || _g === void 0 ? void 0 : _g.evalue) !== null && _h !== void 0 ? _h : '') +
-                    '\n' + tb.join('\n');
+                summary = ((_f = (_e = msg.content) === null || _e === void 0 ? void 0 : _e.ename) !== null && _f !== void 0 ? _f : '') + ': ' + ((_h = (_g = msg.content) === null || _g === void 0 ? void 0 : _g.evalue) !== null && _h !== void 0 ? _h : '');
+                err += summary + '\n' + tb.join('\n');
             }
         };
         await future.done;
-        if (!out.trim() && err)
-            throw new Error(err.trim());
+        if (!out.trim() && err) {
+            const e = new KernelError(summary || err.trim(), err.trim());
+            throw e;
+        }
         return out.trim();
     }
 }
@@ -6309,6 +6320,7 @@ exports.FormPanel = void 0;
  * Communicates with the rest of the widget via Lumino signals.
  */
 const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
+const kernel_1 = __webpack_require__(/*! ../kernel */ "./lib/kernel.js");
 const util_1 = __webpack_require__(/*! ../util */ "./lib/util.js");
 const python_1 = __webpack_require__(/*! ../python */ "./lib/python.js");
 const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
@@ -7955,7 +7967,10 @@ class FormPanel {
                 });
             }
             catch (e) {
-                this.statusChanged.emit({ message: `❌ Write failed: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, error: true });
+                const summary = e instanceof kernel_1.KernelError ? e.message : String((_a = e.message) !== null && _a !== void 0 ? _a : e);
+                if (e instanceof kernel_1.KernelError)
+                    console.error('[JBA] Write failed:', e.traceback);
+                this.statusChanged.emit({ message: `❌ Write failed: ${summary}`, error: true });
                 return;
             }
             this._sessionCount++;
@@ -7997,7 +8012,10 @@ class FormPanel {
             this.statusChanged.emit({ message: `✓ Saved clip ${activeRow.id} → ${this._outputPath}`, error: false });
         }
         catch (e) {
-            this.statusChanged.emit({ message: `❌ Write failed: ${String((_b = e.message) !== null && _b !== void 0 ? _b : e)}`, error: true });
+            const summary = e instanceof kernel_1.KernelError ? e.message : String((_b = e.message) !== null && _b !== void 0 ? _b : e);
+            if (e instanceof kernel_1.KernelError)
+                console.error('[JBA] Write failed:', e.traceback);
+            this.statusChanged.emit({ message: `❌ Write failed: ${summary}`, error: true });
             return;
         }
         this._sessionCount++;
@@ -9913,4 +9931,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.ab3c2f7dcc625be31af6.js.map
+//# sourceMappingURL=lib_index_js.ab7ee0e15f3f2feb1c04.js.map
