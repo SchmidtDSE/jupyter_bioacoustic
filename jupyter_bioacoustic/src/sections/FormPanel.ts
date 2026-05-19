@@ -9,7 +9,7 @@
  */
 import { Signal } from '@lumino/signaling';
 import { Detection, AnnotConfig, MultiboxEntry } from '../types';
-import { KernelBridge } from '../kernel';
+import { KernelBridge, KernelError } from '../kernel';
 import { escPy, AccuracyConfig, parseAccuracyConfig, isTruthyValue } from '../util';
 import {
   countOutputRows,
@@ -1692,7 +1692,9 @@ export class FormPanel {
           error: false,
         });
       } catch (e: any) {
-        this.statusChanged.emit({ message: `❌ Write failed: ${String(e.message ?? e)}`, error: true });
+        const summary = e instanceof KernelError ? e.message : String(e.message ?? e);
+        if (e instanceof KernelError) console.error('[JBA] Write failed:', e.traceback);
+        this.statusChanged.emit({ message: `❌ Write failed: ${summary}`, error: true });
         return;
       }
       this._sessionCount++;
@@ -1722,7 +1724,9 @@ export class FormPanel {
       await this._kernel.exec(code);
       this.statusChanged.emit({ message: `✓ Saved clip ${activeRow.id} → ${this._outputPath}`, error: false });
     } catch (e: any) {
-      this.statusChanged.emit({ message: `❌ Write failed: ${String(e.message ?? e)}`, error: true });
+      const summary = e instanceof KernelError ? e.message : String(e.message ?? e);
+      if (e instanceof KernelError) console.error('[JBA] Write failed:', e.traceback);
+      this.statusChanged.emit({ message: `❌ Write failed: ${summary}`, error: true });
       return;
     }
     this._sessionCount++;
