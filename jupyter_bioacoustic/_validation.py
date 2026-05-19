@@ -1,0 +1,239 @@
+"""
+Config Validation
+
+Shared validation logic for BioacousticAnnotator and ConfigBuilder.
+Validates config keys, form keys, annotation tools, and dynamic forms.
+
+License: BSD 3-Clause
+"""
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+
+#
+# Constants
+#
+_log = logging.getLogger('jupyter_bioacoustic.validation')
+
+VALID_FORM_KEYS = frozenset({
+    'title', 'progress_tracker', 'pass_value', 'fixed_value',
+    'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
+    'annotation',
+    'select', 'textbox', 'checkbox', 'number',
+    'break', 'line', 'text',
+})
+
+VALID_CONFIG_KEYS = frozenset({
+    'data', 'data_path', 'data_url', 'data_sql', 'data_api',
+    'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
+    'data_columns',
+    'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
+    'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
+    'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
+    'audio_response_index',
+    'secrets',
+    'output', 'output_path', 'output_url', 'output_uri',
+    'output_sync_button', 'output_recursive', 'output_secrets',
+    'ident_column', 'display_columns',
+    'form_config', 'duplicate_entries', 'default_buffer',
+    'capture', 'capture_dir', 'spectrogram_resolution',
+    'visualizations', 'partial_download',
+    'width', 'clip_table_height', 'player_height',
+    'capture_height',
+    'info_card_height', 'form_panel_height',
+    'description', 'description_title', 'description_text',
+    'description_path', 'description_open', 'description_height',
+    'project_name', 'project_save_btn',
+    'config',
+})
+
+VALID_ANNOTATION_TOOLS = frozenset({
+    'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
+})
+
+SKIP_KEYS = frozenset({
+    'project_name', 'project_path', 'config_path',
+    'form_path', 'project_enabled', 'config_enabled', 'form_enabled',
+    'output_path',
+})
+
+
+#
+# Public
+#
+def validate_config(
+    config: Optional[dict] = None,
+    form_config: Optional[dict] = None,
+    project: Optional[dict] = None,
+) -> dict:
+    """Validate configuration dicts and return errors/warnings.
+
+    Args:
+        config: The merged config dict (data, audio, output, app keys).
+        form_config: The form configuration dict.
+        project: The project-level dict (before merge), if available.
+
+    Returns:
+        Dict with 'valid' (bool), 'errors' (list), 'warnings' (list).
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    fc = form_config or {}
+
+    _validate_form_keys(fc, errors)
+
+    if project:
+        _validate_config_keys(project, 'project', errors)
+    if config:
+        _validate_config_keys(config, 'config', errors)
+
+    _validate_forms_and_annotations(fc, errors, warnings)
+
+    if errors:
+        _log.warning('validation failed: %s', errors)
+    if warnings:
+        _log.info('validation warnings: %s', warnings)
+    return {
+        'valid': len(errors) == 0,
+        'errors': errors,
+        'warnings': warnings,
+    }
+
+
+#
+# Internal
+#
+def _validate_form_keys(fc: dict, errors: list) -> None:
+    """Check for unknown top-level form config keys."""
+    for key in fc:
+        if key not in VALID_FORM_KEYS and not isinstance(fc[key], list):
+            errors.append(f'Unknown form config key "{key}"')
+
+
+def _validate_config_keys(
+    cfg: dict, label: str, errors: list,
+) -> None:
+    """Check for unknown config/project keys."""
+    for key in cfg:
+        if key in SKIP_KEYS:
+            continue
+        if key not in VALID_CONFIG_KEYS:
+            errors.append(f'Unknown {label} key "{key}"')
+        elif key == 'form_config' and isinstance(cfg[key], dict):
+            _validate_form_keys(cfg[key], errors)
+
+
+def _validate_forms_and_annotations(
+    fc: dict, errors: list, warnings: list,
+) -> None:
+    """Validate dynamic forms, annotation tools, and form element presence."""
+    defined_forms: set[str] = set()
+    dyn = fc.get('dynamic_forms')
+    if isinstance(dyn, list):
+        for item in dyn:
+            if isinstance(item, dict):
+                defined_forms.update(item.keys())
+    elif isinstance(dyn, dict):
+        defined_forms.update(dyn.keys())
+
+    referenced_forms: set[str] = set()
+
+    def _scan_items(items: list) -> None:
+        if isinstance(items, list):
+            for it in items:
+                if isinstance(it, dict) and 'form' in it:
+                    referenced_forms.add(it['form'])
+
+    def _scan_elements(elements: list) -> None:
+        if not isinstance(elements, list):
+            return
+        for el in elements:
+            if not isinstance(el, dict):
+                continue
+            for etype, ecfg in el.items():
+                if not isinstance(ecfg, dict):
+                    continue
+                if etype == 'select' and 'items' in ecfg:
+                    _scan_items(ecfg['items'])
+                if etype == 'checkbox':
+                    for fkey in ('checked_form', 'unchecked_form'):
+                        if ecfg.get(fkey):
+                            referenced_forms.add(ecfg[fkey])
+
+    form_list = fc.get('form')
+    if isinstance(form_list, list):
+        _scan_elements(form_list)
+
+    for top_key in ('select', 'checkbox'):
+        if top_key in fc and isinstance(fc[top_key], dict):
+            cfg = fc[top_key]
+            if top_key == 'select' and 'items' in cfg:
+                _scan_items(cfg['items'])
+            for fkey in ('checked_form', 'unchecked_form'):
+                if cfg.get(fkey):
+                    referenced_forms.add(cfg[fkey])
+
+    if isinstance(dyn, list):
+        for item in dyn:
+            if isinstance(item, dict):
+                for _, elems in item.items():
+                    _scan_elements(
+                        elems if isinstance(elems, list) else [],
+                    )
+    elif isinstance(dyn, dict):
+        for _, elems in dyn.items():
+            _scan_elements(
+                elems if isinstance(elems, list) else [],
+            )
+
+    missing_forms = referenced_forms - defined_forms
+    unreferenced_forms = defined_forms - referenced_forms
+
+    annot_configs = []
+    if 'annotation' in fc and isinstance(fc['annotation'], dict):
+        annot_configs.append(fc['annotation'])
+    if isinstance(form_list, list):
+        for el in form_list:
+            if isinstance(el, dict) and 'annotation' in el:
+                annot_configs.append(el['annotation'])
+
+    for annot in annot_configs:
+        if not isinstance(annot, dict):
+            continue
+        annot_form = annot.get('form')
+        if annot_form:
+            referenced_forms.add(annot_form)
+            if annot_form in unreferenced_forms:
+                unreferenced_forms.discard(annot_form)
+            if annot_form not in defined_forms:
+                missing_forms.add(annot_form)
+        tools = annot.get('tools', [])
+        if isinstance(tools, str):
+            tools = [tools]
+        if isinstance(tools, list):
+            for t in tools:
+                if t not in VALID_ANNOTATION_TOOLS:
+                    errors.append(
+                        f'Unknown annotation tool "{t}". '
+                        f'Valid tools: '
+                        f'{", ".join(sorted(VALID_ANNOTATION_TOOLS))}'
+                    )
+
+    for f in sorted(missing_forms):
+        errors.append(
+            f'Referenced dynamic form "{f}" is not defined',
+        )
+    for f in sorted(unreferenced_forms):
+        warnings.append(
+            f'Dynamic form "{f}" is defined but never referenced',
+        )
+
+    has_form = bool(fc.get('form'))
+    has_legacy = any(
+        k in fc for k in ('select', 'textbox', 'checkbox', 'number')
+    )
+    has_annotation = 'annotation' in fc
+    if not has_form and not has_legacy and not has_annotation:
+        warnings.append('No form input elements configured')
