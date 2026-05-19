@@ -13,10 +13,12 @@ import sys
 
 _log = logging.getLogger('jupyter_bioacoustic')
 
+DEFAULT_LOG_FILENAME = 'jba_debug.log'
+
 if os.environ.get('JBA_DEBUG_MODE'):
     _log_path = os.path.join(
         os.environ.get('JBA_LOG_DIR', '.'),
-        'jba_debug.log',
+        os.environ.get('JBA_LOG_FILE', DEFAULT_LOG_FILENAME),
     )
     _handler = logging.FileHandler(_log_path)
     _handler.setFormatter(logging.Formatter(
