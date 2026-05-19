@@ -27,10 +27,13 @@ import logging
 import os
 import re
 import uuid
+import warnings
 from typing import Any, Optional
 
 from IPython import get_ipython
 from IPython.display import display, Javascript, HTML
+
+from ._validation import validate_config
 
 
 #
@@ -1731,6 +1734,14 @@ class BioacousticAnnotator:
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
         """Serialize data and open the widget."""
+        result = validate_config(
+            config=self._init_args or None,
+            form_config=self._form_config or None,
+        )
+        for msg in result['errors']:
+            warnings.warn(f'Config error: {msg}', stacklevel=2)
+        for msg in result['warnings']:
+            _log.info('Config warning: %s', msg)
         self.setup()
         if inline:
             self._open_inline()
