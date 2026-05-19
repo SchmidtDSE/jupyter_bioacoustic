@@ -720,6 +720,29 @@ def _merge_project_over_config(
             base[k] = v
 
 
+def _filter_session_args(
+    policy: object,
+    kwargs: dict[str, object],
+) -> tuple[dict[str, object], list[str]]:
+    """Filter kwargs according to the session_args policy.
+
+    Returns:
+        Tuple of (allowed kwargs dict, sorted list of stripped key names).
+    """
+    if not kwargs:
+        return kwargs, []
+    if policy is None or policy is True or policy == '*':
+        return kwargs, []
+    if policy is False:
+        return {}, sorted(kwargs)
+    if isinstance(policy, list):
+        allowed = set(policy)
+        stripped = sorted(set(kwargs) - allowed)
+        filtered = {k: v for k, v in kwargs.items() if k in allowed}
+        return filtered, stripped
+    return kwargs, []
+
+
 _CONFIG_PARAMS = {
     'data', 'data_path', 'data_url', 'data_sql',
     'data_api', 'data_start_time', 'data_end_time',
@@ -744,7 +767,7 @@ _CONFIG_PARAMS = {
     'description_text', 'description_path',
     'description_open', 'description_height',
     'project_name', 'project_save_btn',
-    'config',
+    'config', 'session_args',
 }
 
 
@@ -814,6 +837,7 @@ class BioacousticAnnotator:
         description_open=_UNSET,
         description_height=_UNSET,
         config=_UNSET,
+        session_args=_UNSET,
         **kwargs,
     ):
         # Initialize path tracking variables
@@ -904,6 +928,7 @@ class BioacousticAnnotator:
                 _init_overrides[_k] = _v
         _init_cfg.update(_init_overrides)
         _init_cfg.pop('config', None)
+        _init_cfg.pop('session_args', None)
         import pandas as _pd
         self._init_args = {
             k: v for k, v in _init_cfg.items()
@@ -913,8 +938,6 @@ class BioacousticAnnotator:
                 and not isinstance(v, _pd.DataFrame)
             )
         }
-        self._init_kwargs = dict(kwargs)
-
         def resolve(val, key, default):
             if val is not _UNSET:
                 return val
@@ -1131,6 +1154,13 @@ class BioacousticAnnotator:
             )
             self._form_file = raw_form
             raw_form = _load_config(raw_form)
+        self._session_args = resolve(
+            session_args, 'session_args', None,
+        )
+        kwargs, self._stripped_args = _filter_session_args(
+            self._session_args, kwargs,
+        )
+        self._init_kwargs = dict(kwargs)
         if kwargs:
             if raw_form is None:
                 raw_form = {}
@@ -1734,6 +1764,18 @@ class BioacousticAnnotator:
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
         """Serialize data and open the widget."""
+        if self._stripped_args:
+            policy = self._session_args
+            if isinstance(policy, list):
+                permitted = sorted(policy)
+            else:
+                permitted = []
+            warnings.warn(
+                f'session_args not allowed: {self._stripped_args}. '
+                f'Stripped from input.'
+                + (f' Permitted: {permitted}' if permitted else ''),
+                stacklevel=2,
+            )
         result = validate_config(
             config=self._init_args or None,
             form_config=self._form_config or None,
