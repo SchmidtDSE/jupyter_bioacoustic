@@ -40,6 +40,9 @@ SKIP_KEYS = frozenset({
     'form_path', 'project_enabled', 'config_enabled', 'form_enabled',
     'output_path',
 })
+VALID_ANNOTATION_TOOLS = frozenset({
+    'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
+})
 APP_KEYS = frozenset({
     'project_save_btn', 'ident_column', 'display_columns',
     'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
@@ -887,14 +890,34 @@ class ConfigBuilder:
         missing_forms = referenced_forms - defined_forms
         unreferenced_forms = defined_forms - referenced_forms
 
+        annot_configs = []
         if 'annotation' in fc and isinstance(fc['annotation'], dict):
-            annot_form = fc['annotation'].get('form')
+            annot_configs.append(fc['annotation'])
+        if isinstance(form_list, list):
+            for el in form_list:
+                if isinstance(el, dict) and 'annotation' in el:
+                    annot_configs.append(el['annotation'])
+
+        for annot in annot_configs:
+            if not isinstance(annot, dict):
+                continue
+            annot_form = annot.get('form')
             if annot_form:
                 referenced_forms.add(annot_form)
                 if annot_form in unreferenced_forms:
                     unreferenced_forms.discard(annot_form)
                 if annot_form not in defined_forms:
                     missing_forms.add(annot_form)
+            tools = annot.get('tools', [])
+            if isinstance(tools, str):
+                tools = [tools]
+            if isinstance(tools, list):
+                for t in tools:
+                    if t not in VALID_ANNOTATION_TOOLS:
+                        errors.append(
+                            f'Unknown annotation tool "{t}". '
+                            f'Valid tools: {", ".join(sorted(VALID_ANNOTATION_TOOLS))}'
+                        )
 
         for f in sorted(missing_forms):
             errors.append(f'Referenced dynamic form "{f}" is not defined')
