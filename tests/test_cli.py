@@ -76,6 +76,7 @@ class TestLab:
         result = runner.invoke(main, ['lab', '--help'])
         assert result.exit_code == 0
         assert 'rate-limit' in result.output
+        assert '--debug' in result.output
 
 
 #
