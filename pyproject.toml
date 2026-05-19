@@ -92,13 +92,6 @@ depends-on = ["build"]
 cmd = "jlpm run watch:src"
 cwd = "jupyter_bioacoustic"
 
-[tool.pixi.tasks.lab]
-cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
-
-[tool.pixi.tasks.demo]
-cmd = "jupyter lab --ServerApp.iopub_data_rate_limit=1e10"
-cwd = "demo"
-
 [tool.pixi.environments]
 default = { features = [] }
 dev = { features = ["dev"] }
