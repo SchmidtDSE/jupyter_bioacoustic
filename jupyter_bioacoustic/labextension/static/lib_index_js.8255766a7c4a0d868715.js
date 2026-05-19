@@ -4964,6 +4964,20 @@ exports.bioacousticPlugin = {
                     window.alert(`Bioacoustic Annotator error:\n${error}`);
                     return;
                 }
+                const valError = await execInKernel(kernel, [
+                    `from jupyter_bioacoustic import ConfigBuilder as _CB`,
+                    `_cb = _CB()`,
+                    `_cb.load_config('${escPy(relPath)}')`,
+                    `_vr = _cb.validate()`,
+                    `if _vr['errors']:`,
+                    `    raise ValueError('\\n'.join(_vr['errors']))`,
+                ].join('\n'));
+                if (valError) {
+                    if (ownsKernel)
+                        kernel.shutdown().catch(() => { });
+                    window.alert('Config validation failed:\n\n' + valError);
+                    return;
+                }
                 const widget = new BioacousticWidget(tracker, ownsKernel ? kernel : undefined);
                 app.shell.add(widget, 'main');
                 app.shell.activateById(widget.id);
@@ -8516,6 +8530,7 @@ class Player {
         var _a, _b, _c, _d, _e, _f;
         const audioPath = this._resolveAudioPath();
         if (!audioPath) {
+            console.error('[JBA] No audio configured — set audio param');
             this.statusChanged.emit({ message: '❌ No audio configured — set audio param', error: true });
             return;
         }
@@ -9931,4 +9946,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.ab7ee0e15f3f2feb1c04.js.map
+//# sourceMappingURL=lib_index_js.8255766a7c4a0d868715.js.map

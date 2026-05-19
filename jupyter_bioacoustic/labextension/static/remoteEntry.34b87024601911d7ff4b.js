@@ -115,7 +115,7 @@ __webpack_require__.d(exports, {
 /******/ 		// This function allow to reference async chunks
 /******/ 		__webpack_require__.u = (chunkId) => {
 /******/ 			// return url for filenames based on template
-/******/ 			return "" + chunkId + "." + "ab7ee0e15f3f2feb1c04" + ".js";
+/******/ 			return "" + chunkId + "." + "8255766a7c4a0d868715" + ".js";
 /******/ 		};
 /******/ 	})();
 /******/ 	
@@ -222,7 +222,7 @@ __webpack_require__.d(exports, {
 /******/ 			var promises = [];
 /******/ 			switch(name) {
 /******/ 				case "default": {
-/******/ 					register("jupyter-bioacoustic", "0.6.8", () => (__webpack_require__.e("lib_index_js").then(() => (() => (__webpack_require__(/*! ./lib/index.js */ "./lib/index.js"))))));
+/******/ 					register("jupyter-bioacoustic", "0.6.9", () => (__webpack_require__.e("lib_index_js").then(() => (() => (__webpack_require__(/*! ./lib/index.js */ "./lib/index.js"))))));
 /******/ 				}
 /******/ 				break;
 /******/ 			}
@@ -534,4 +534,4 @@ __webpack_require__.d(exports, {
 /******/ 	
 /******/ })()
 ;
-//# sourceMappingURL=remoteEntry.0f3ecbed15fb2197fea0.js.map
+//# sourceMappingURL=remoteEntry.34b87024601911d7ff4b.js.map
