@@ -172,7 +172,7 @@ export function deleteOutputRow(
   const p = escPy(path);
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
   return [
-    `${HELPERS} delete_output_row as _delete`,
+    `${HELPERS} delete_output_row as _delete, _safe_float as _sf`,
     `print(_delete('${p}', lambda r: ${matchExpr}, '${ext}'))`,
   ].join('\n');
 }
