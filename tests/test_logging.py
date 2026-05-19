@@ -2,12 +2,13 @@
 Test Logging
 
 Tests for the resilient file handler that recovers
-from log file deletion or external modification.
+from log file deletion, replacement, or external modification.
 
 License: BSD 3-Clause
 """
 import logging
 import os
+import tempfile
 
 import pytest
 
@@ -74,3 +75,19 @@ def test_log_survives_truncation(logger: logging.Logger, log_file: str) -> None:
     with open(log_file) as f:
         contents = f.read()
     assert 'second message' in contents
+
+
+def test_log_survives_atomic_replace(logger: logging.Logger, log_file: str) -> None:
+    """Logging continues after the log file is replaced via atomic rename."""
+    logger.info('before replace')
+    assert os.path.exists(log_file)
+
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(log_file))
+    os.write(tmp_fd, b'replaced content\n')
+    os.close(tmp_fd)
+    os.replace(tmp_path, log_file)
+
+    logger.info('after replace')
+    with open(log_file) as f:
+        contents = f.read()
+    assert 'after replace' in contents
