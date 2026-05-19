@@ -24,6 +24,7 @@ from jupyter_bioacoustic._kernel_helpers import (
     _encode_wav,
     _mel_filterbank,
     _resolve_freq_scale,
+    _safe_float,
     count_output_rows,
     read_output_rows,
     write_output_row,
@@ -151,6 +152,39 @@ class TestResolveFreqScale:
 
 
 #
+# _safe_float
+#
+class TestSafeFloat:
+
+    def test_numeric_string(self):
+        assert _safe_float('3.14') == pytest.approx(3.14)
+
+    def test_integer_string(self):
+        assert _safe_float('42') == 42.0
+
+    def test_none_returns_nan(self):
+        import math
+        assert math.isnan(_safe_float(None))
+
+    def test_non_numeric_string_returns_nan(self):
+        import math
+        assert math.isnan(_safe_float('brookie'))
+
+    def test_empty_string_returns_nan(self):
+        import math
+        assert math.isnan(_safe_float(''))
+
+    def test_custom_default(self):
+        assert _safe_float('bad', default=0.0) == 0.0
+
+    def test_float_passthrough(self):
+        assert _safe_float(2.5) == 2.5
+
+    def test_int_passthrough(self):
+        assert _safe_float(7) == 7.0
+
+
+#
 # count_output_rows / read_output_rows
 #
 class TestOutputRowsCsv:
@@ -235,6 +269,29 @@ class TestWriteOutputRow:
         write_output_row(p, {'a': '1'}, ['a'], 'csv')
         assert os.path.exists(p)
 
+    def test_write_csv_preserves_existing_column_order(self, tmp_path):
+        p = str(tmp_path / 'order.csv')
+        write_output_row(
+            p,
+            {'name': 'owl', 'start': '1.0', 'end': '2.0', 'user': 'alice'},
+            ['name', 'start', 'end', 'user'],
+            'csv',
+        )
+        write_output_row(
+            p,
+            {'name': 'hawk', 'user': 'bob', 'start': '3.0', 'end': '4.0'},
+            ['name', 'user', 'start', 'end'],
+            'csv',
+        )
+        with open(p) as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            row1 = next(reader)
+            row2 = next(reader)
+        assert header == ['name', 'start', 'end', 'user']
+        assert row1 == ['owl', '1.0', '2.0', 'alice']
+        assert row2 == ['hawk', '3.0', '4.0', 'bob']
+
 
 #
 # delete_output_row
@@ -260,6 +317,52 @@ class TestDeleteOutputRow:
             rows = [json.loads(line) for line in f if line.strip()]
         assert len(rows) == 1
         assert rows[0]['id'] == 2
+
+    def test_delete_csv_with_non_numeric_values(self, tmp_path):
+        p = str(tmp_path / 'mixed.csv')
+        write_output_row(
+            p, {'start_time': '10.5', 'end_time': '15.0', 'name': 'brookie'},
+            ['start_time', 'end_time', 'name'], 'csv',
+        )
+        write_output_row(
+            p, {'start_time': '20.0', 'end_time': '25.0', 'name': 'owl'},
+            ['start_time', 'end_time', 'name'], 'csv',
+        )
+        delete_output_row(
+            p,
+            lambda r: (
+                abs(_safe_float(r.get('start_time')) - 10.5) < 0.01
+                and abs(_safe_float(r.get('end_time')) - 15.0) < 0.01
+            ),
+            'csv',
+        )
+        with open(p) as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) == 1
+        assert rows[0]['name'] == 'owl'
+
+    def test_delete_csv_safe_float_skips_non_numeric_rows(self, tmp_path):
+        p = str(tmp_path / 'bad.csv')
+        write_output_row(
+            p, {'start_time': 'brookie', 'end_time': 'owl', 'val': 'x'},
+            ['start_time', 'end_time', 'val'], 'csv',
+        )
+        write_output_row(
+            p, {'start_time': '10.5', 'end_time': '15.0', 'val': 'y'},
+            ['start_time', 'end_time', 'val'], 'csv',
+        )
+        delete_output_row(
+            p,
+            lambda r: (
+                abs(_safe_float(r.get('start_time')) - 10.5) < 0.01
+                and abs(_safe_float(r.get('end_time')) - 15.0) < 0.01
+            ),
+            'csv',
+        )
+        with open(p) as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) == 1
+        assert rows[0]['val'] == 'x'
 
 
 #
