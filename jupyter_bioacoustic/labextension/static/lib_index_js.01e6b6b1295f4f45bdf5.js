@@ -4856,7 +4856,7 @@ function deleteOutputRow(path, matchExpr) {
     const p = (0, util_1.escPy)(path);
     const ext = (_b = (_a = path.split('.').pop()) === null || _a === void 0 ? void 0 : _a.toLowerCase()) !== null && _b !== void 0 ? _b : '';
     return [
-        `${HELPERS} delete_output_row as _delete`,
+        `${HELPERS} delete_output_row as _delete, _safe_float as _sf`,
         `print(_delete('${p}', lambda r: ${matchExpr}, '${ext}'))`,
     ].join('\n');
 }
@@ -6910,7 +6910,7 @@ class FormPanel {
         container.appendChild(wrapper);
         // Annotation form container — shows per-box forms in multibox mode,
         // or a single form instance for other annotation tools
-        if (ac.form) {
+        if (ac.form || ac.tools.includes('multibox')) {
             this._multiboxContainer = document.createElement('div');
             this._multiboxContainer.style.cssText =
                 `display:flex;flex-direction:column;gap:6px;overflow-y:auto;`;
@@ -7602,7 +7602,7 @@ class FormPanel {
         const outIdCol = idMapping === null || idMapping === void 0 ? void 0 : idMapping.col;
         const matchExpr = outIdCol
             ? `str(r.get('${(0, util_1.escPy)(outIdCol)}','')) == '${row.id}'`
-            : `abs(float(r.get('start_time') or 0)-${row.start_time})<0.01 and abs(float(r.get('end_time') or 0)-${row.end_time})<0.01`;
+            : `abs(_sf(r.get('start_time'))-${row.start_time})<0.01 and abs(_sf(r.get('end_time'))-${row.end_time})<0.01`;
         const code = (0, python_1.deleteOutputRow)(this._outputPath, matchExpr);
         try {
             await this._kernel.exec(code);
@@ -9494,4 +9494,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.64857df8b6ffbb68ff78.js.map
+//# sourceMappingURL=lib_index_js.01e6b6b1295f4f45bdf5.js.map
