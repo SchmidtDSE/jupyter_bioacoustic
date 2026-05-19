@@ -19,6 +19,14 @@ import uuid
 from IPython import get_ipython
 from IPython.display import display, HTML
 
+from .._validation import (
+    SKIP_KEYS,
+    VALID_ANNOTATION_TOOLS,
+    VALID_CONFIG_KEYS,
+    VALID_FORM_KEYS,
+    validate_config,
+)
+
 #
 # Constants
 #
@@ -35,14 +43,6 @@ AUDIO_PROJECT_KEYS = frozenset({
 })
 AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
 SECTION_KEYS = frozenset({'data', 'audio', 'output'})
-SKIP_KEYS = frozenset({
-    'project_name', 'project_path', 'config_path',
-    'form_path', 'project_enabled', 'config_enabled', 'form_enabled',
-    'output_path',
-})
-VALID_ANNOTATION_TOOLS = frozenset({
-    'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
-})
 APP_KEYS = frozenset({
     'project_save_btn', 'ident_column', 'display_columns',
     'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
@@ -97,37 +97,6 @@ def _resolve_path(ref: str, base_dir: str) -> str | None:
 # Public API
 #
 class ConfigBuilder:
-    VALID_FORM_KEYS = frozenset({
-        'title', 'progress_tracker', 'pass_value', 'fixed_value',
-        'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
-        'annotation',
-        'select', 'textbox', 'checkbox', 'number',
-        'break', 'line', 'text',
-    })
-
-    VALID_CONFIG_KEYS = frozenset({
-        'data', 'data_path', 'data_url', 'data_sql', 'data_api',
-        'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
-        'data_columns',
-        'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
-        'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
-        'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
-        'audio_response_index',
-        'secrets',
-        'output', 'output_path', 'output_url', 'output_uri',
-        'output_sync_button', 'output_recursive', 'output_secrets',
-        'ident_column', 'display_columns',
-        'form_config', 'duplicate_entries', 'default_buffer',
-        'capture', 'capture_dir', 'spectrogram_resolution',
-        'visualizations', 'partial_download',
-        'width', 'clip_table_height', 'player_height',
-        'info_card_height', 'form_panel_height',
-        'description', 'description_title', 'description_text',
-        'description_path', 'description_open', 'description_height',
-        'project_name', 'project_save_btn',
-        'config',
-    })
-
     def __init__(self) -> None:
         self._project = {}
         self._config = {}
@@ -812,140 +781,13 @@ class ConfigBuilder:
         state['loaded_paths'] = loaded_paths
         return state
 
-    def _validate_form_keys(self, fc: dict, errors: list) -> None:
-        for key in fc:
-            if key not in self.VALID_FORM_KEYS and not isinstance(fc[key], list):
-                errors.append(f'Unknown form config key "{key}"')
-
-    def _validate_config_keys(self, cfg: dict, label: str, errors: list) -> None:
-        for key in cfg:
-            if key in SKIP_KEYS:
-                continue
-            if key not in self.VALID_CONFIG_KEYS:
-                errors.append(f'Unknown {label} key "{key}"')
-            elif key == 'form_config' and isinstance(cfg[key], dict):
-                self._validate_form_keys(cfg[key], errors)
-
     def validate(self) -> dict:
         """Validate configuration and return errors/warnings."""
-        errors = []
-        warnings = []
-        fc = self._form_config or {}
-
-        defined_forms = set()
-        dyn = fc.get('dynamic_forms')
-        if isinstance(dyn, list):
-            for item in dyn:
-                if isinstance(item, dict):
-                    defined_forms.update(item.keys())
-        elif isinstance(dyn, dict):
-            defined_forms.update(dyn.keys())
-
-        referenced_forms = set()
-
-        def _scan_items(items):
-            if isinstance(items, list):
-                for it in items:
-                    if isinstance(it, dict) and 'form' in it:
-                        referenced_forms.add(it['form'])
-
-        def _scan_elements(elements):
-            if not isinstance(elements, list):
-                return
-            for el in elements:
-                if not isinstance(el, dict):
-                    continue
-                for etype, ecfg in el.items():
-                    if not isinstance(ecfg, dict):
-                        continue
-                    if etype == 'select' and 'items' in ecfg:
-                        _scan_items(ecfg['items'])
-                    if etype == 'checkbox':
-                        for fkey in ('checked_form', 'unchecked_form'):
-                            if ecfg.get(fkey):
-                                referenced_forms.add(ecfg[fkey])
-
-        form_list = fc.get('form')
-        if isinstance(form_list, list):
-            _scan_elements(form_list)
-
-        for top_key in ('select', 'checkbox'):
-            if top_key in fc and isinstance(fc[top_key], dict):
-                cfg = fc[top_key]
-                if top_key == 'select' and 'items' in cfg:
-                    _scan_items(cfg['items'])
-                for fkey in ('checked_form', 'unchecked_form'):
-                    if cfg.get(fkey):
-                        referenced_forms.add(cfg[fkey])
-
-        if isinstance(dyn, list):
-            for item in dyn:
-                if isinstance(item, dict):
-                    for _, elems in item.items():
-                        _scan_elements(elems if isinstance(elems, list) else [])
-        elif isinstance(dyn, dict):
-            for _, elems in dyn.items():
-                _scan_elements(elems if isinstance(elems, list) else [])
-
-        missing_forms = referenced_forms - defined_forms
-        unreferenced_forms = defined_forms - referenced_forms
-
-        annot_configs = []
-        if 'annotation' in fc and isinstance(fc['annotation'], dict):
-            annot_configs.append(fc['annotation'])
-        if isinstance(form_list, list):
-            for el in form_list:
-                if isinstance(el, dict) and 'annotation' in el:
-                    annot_configs.append(el['annotation'])
-
-        for annot in annot_configs:
-            if not isinstance(annot, dict):
-                continue
-            annot_form = annot.get('form')
-            if annot_form:
-                referenced_forms.add(annot_form)
-                if annot_form in unreferenced_forms:
-                    unreferenced_forms.discard(annot_form)
-                if annot_form not in defined_forms:
-                    missing_forms.add(annot_form)
-            tools = annot.get('tools', [])
-            if isinstance(tools, str):
-                tools = [tools]
-            if isinstance(tools, list):
-                for t in tools:
-                    if t not in VALID_ANNOTATION_TOOLS:
-                        errors.append(
-                            f'Unknown annotation tool "{t}". '
-                            f'Valid tools: {", ".join(sorted(VALID_ANNOTATION_TOOLS))}'
-                        )
-
-        for f in sorted(missing_forms):
-            errors.append(f'Referenced dynamic form "{f}" is not defined')
-        for f in sorted(unreferenced_forms):
-            warnings.append(f'Dynamic form "{f}" is defined but never referenced')
-
-        has_form = bool(fc.get('form'))
-        has_legacy = any(k in fc for k in ('select', 'textbox', 'checkbox', 'number'))
-        has_annotation = 'annotation' in fc
-        if not has_form and not has_legacy and not has_annotation:
-            warnings.append('No form input elements configured')
-
-        self._validate_form_keys(fc, errors)
-
-        if self._project:
-            self._validate_config_keys(self._project, 'project', errors)
-        if self._config:
-            self._validate_config_keys(self._config, 'config', errors)
-
-        if errors:
-            _log.warning('validation failed: %s', errors)
-        if warnings:
-            _log.info('validation warnings: %s', warnings)
-        return {
-            'valid': len(errors) == 0,
-            'errors': errors,
-            'warnings': warnings,
-        }
+        return validate_config(
+            config=self._config or None,
+            form_config=self._form_config or None,
+            project=self._project or None,
+        )
 
     def setup(self) -> None:
         """Setup ConfigBuilder in Jupyter environment."""
