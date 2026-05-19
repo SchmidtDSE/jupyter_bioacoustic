@@ -46,7 +46,7 @@ VALID_CONFIG_KEYS = frozenset({
     'description', 'description_title', 'description_text',
     'description_path', 'description_open', 'description_height',
     'project_name', 'project_save_btn',
-    'config',
+    'config', 'session_args',
 })
 
 VALID_ANNOTATION_TOOLS = frozenset({
