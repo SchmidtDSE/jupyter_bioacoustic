@@ -30,6 +30,7 @@ def build_summary(
     config: dict[str, Any],
     form_config: dict[str, Any],
     merged: dict[str, Any],
+    scope: str = 'project',
 ) -> list[dict[str, Any]]:
     """Build a structured configuration summary.
 
@@ -38,6 +39,8 @@ def build_summary(
         config: Config-level configuration dict (``ConfigBuilder._config``).
         form_config: Form configuration dict (``ConfigBuilder._form_config``).
         merged: Merged configuration (``ConfigBuilder.get_merged_config()``).
+        scope: One of ``'project'`` (all sections), ``'config'`` (data, audio,
+            output, app, form), or ``'form'`` (form only).
 
     Returns:
         A list of section dicts, each containing:
@@ -49,8 +52,11 @@ def build_summary(
                 ``indent`` (int, optional — nesting depth),
                 ``children`` (list, optional — nested rows).
     """
+    if scope == 'form':
+        return [_form_section(form_config)]
     sections: list[dict[str, Any]] = []
-    sections.append(_project_section(project))
+    if scope == 'project':
+        sections.append(_project_section(project))
     sections.append(_data_section(merged))
     sections.append(_audio_section(merged))
     sections.append(_output_section(merged))
@@ -59,7 +65,10 @@ def build_summary(
     return sections
 
 
-def build_summary_from_builder(builder: Any) -> list[dict[str, Any]]:
+def build_summary_from_builder(
+    builder: Any,
+    scope: str = 'project',
+) -> list[dict[str, Any]]:
     """Build a summary directly from a ``ConfigBuilder`` instance.
 
     Convenience wrapper for CLI and kernel bridge usage.
@@ -69,6 +78,7 @@ def build_summary_from_builder(builder: Any) -> list[dict[str, Any]]:
         config=builder._config,
         form_config=builder._form_config or {},
         merged=builder.get_merged_config(),
+        scope=scope,
     )
 
 
@@ -82,11 +92,15 @@ def format_text(sections: list[dict[str, Any]]) -> str:
         Multi-line string suitable for terminal display.
     """
     lines: list[str] = []
+    skip_headers = len(sections) == 1
     for section in sections:
-        lines.append('')
-        title = section['title'].upper()
-        lines.append(f'  {title}')
-        lines.append(f'  {"-" * len(title)}')
+        if skip_headers:
+            lines.append('')
+        else:
+            lines.append('')
+            title = section['title'].upper()
+            lines.append(f'  {title}')
+            lines.append(f'  {"-" * len(title)}')
         for row in section.get('rows', []):
             _format_row(lines, row, depth=0)
     return '\n'.join(lines)
