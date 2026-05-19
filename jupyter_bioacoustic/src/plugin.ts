@@ -27,6 +27,9 @@ import { DescriptionPanel, DescriptionConfig } from './sections/DescriptionPanel
 // ═══════════════════════════════════════════════════════════════
 
 const DEFAULT_TITLE = 'Jupyter Bioacoustic';
+const VALID_ANNOTATION_TOOLS = new Set([
+  'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
+]);
 let _counter = 0;
 
 class BioacousticWidget extends Widget {
@@ -190,6 +193,13 @@ class BioacousticWidget extends Widget {
     const duplicateEntries = !!cfg.duplicate_entries;
     const outputPath     = cfg.output;
 
+    const configErrors = _validateFormConfig(formConfig);
+    if (configErrors.length > 0) {
+      this._setStatus('❌ Config validation failed', true);
+      window.alert('Config validation failed:\n\n• ' + configErrors.join('\n• '));
+      return;
+    }
+
     let rows: Detection[];
     try {
       rows = JSON.parse(cfg.data) as Detection[];
@@ -340,6 +350,36 @@ class BioacousticWidget extends Widget {
 // ═══════════════════════════════════════════════════════════════
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
+
+function _validateFormConfig(fc: any): string[] {
+  if (!fc || typeof fc !== 'object') return [];
+  const errors: string[] = [];
+
+  const checkAnnotTools = (annot: any) => {
+    if (!annot || typeof annot !== 'object') return;
+    let tools: any[] = [];
+    if (typeof annot.tools === 'string') tools = [annot.tools];
+    else if (Array.isArray(annot.tools)) tools = annot.tools;
+    for (const t of tools) {
+      if (typeof t === 'string' && !VALID_ANNOTATION_TOOLS.has(t)) {
+        errors.push(
+          `Unknown annotation tool "${t}". ` +
+          `Valid tools: ${[...VALID_ANNOTATION_TOOLS].sort().join(', ')}`,
+        );
+      }
+    }
+  };
+
+  if (fc.annotation) checkAnnotTools(fc.annotation);
+  if (Array.isArray(fc.form)) {
+    for (const el of fc.form) {
+      if (el && typeof el === 'object' && el.annotation) {
+        checkAnnotTools(el.annotation);
+      }
+    }
+  }
+  return errors;
+}
 
 function escPy(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
