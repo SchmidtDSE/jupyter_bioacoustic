@@ -264,6 +264,33 @@ class TestBuildSummary:
         assert 'number' in tags
         assert 'checkbox' in tags
 
+    def test_scope_form_returns_one_section(self):
+        sections = build_summary(
+            project=FULL_PROJECT, config={}, form_config=FULL_FORM,
+            merged=FULL_MERGED, scope='form',
+        )
+        assert len(sections) == 1
+        assert sections[0]['title'] == 'Form Config'
+
+    def test_scope_config_omits_project(self):
+        sections = build_summary(
+            project=FULL_PROJECT, config={}, form_config=FULL_FORM,
+            merged=FULL_MERGED, scope='config',
+        )
+        titles = [s['title'] for s in sections]
+        assert 'Project' not in titles
+        assert 'Data' in titles
+        assert 'Form Config' in titles
+        assert len(sections) == 5
+
+    def test_scope_project_includes_all(self):
+        sections = build_summary(
+            project=FULL_PROJECT, config={}, form_config=FULL_FORM,
+            merged=FULL_MERGED, scope='project',
+        )
+        assert len(sections) == 6
+        assert sections[0]['title'] == 'Project'
+
 
 #
 # build_summary_from_builder
@@ -274,6 +301,12 @@ class TestBuildSummaryFromBuilder:
         cb = ConfigBuilder()
         sections = build_summary_from_builder(cb)
         assert len(sections) == 6
+
+    def test_scope_passed_through(self):
+        cb = ConfigBuilder()
+        sections = build_summary_from_builder(cb, scope='form')
+        assert len(sections) == 1
+        assert sections[0]['title'] == 'Form Config'
 
 
 #
@@ -310,6 +343,23 @@ class TestFormatText:
         text = format_text(sections)
         assert '[textbox]' in text
         assert '[number]' in text
+
+    def test_single_section_skips_header(self):
+        sections = build_summary(
+            project={}, config={}, form_config=FULL_FORM, merged={}, scope='form',
+        )
+        text = format_text(sections)
+        assert 'FORM CONFIG' not in text
+        assert '---' not in text
+        assert 'REVIEW' in text
+
+    def test_multi_section_shows_headers(self):
+        sections = build_summary(
+            project={}, config={}, form_config=FULL_FORM, merged=FULL_MERGED, scope='config',
+        )
+        text = format_text(sections)
+        assert 'DATA' in text
+        assert 'FORM CONFIG' in text
 
 
 #
