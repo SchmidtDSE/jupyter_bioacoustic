@@ -401,8 +401,81 @@ def _load_data(
         return _read_data(data)
 
 
+def _load_config_from_remote(uri: str) -> dict:
+    """Load a JSON or YAML config file from a remote URI (HTTP/S3/GCS)."""
+    import os
+    import tempfile
+    from urllib.parse import urlparse
+
+    _log.info('fetching config from remote URI: %s', uri[:120])
+
+    # Get file extension from URI path
+    parsed = urlparse(uri)
+    ext = os.path.splitext(parsed.path)[1].lower()
+
+    if uri.startswith(('http://', 'https://')):
+        # Handle HTTP/HTTPS URLs
+        import requests as req
+        resp = req.get(uri, timeout=120)
+        resp.raise_for_status()
+
+        # If no extension in URL, try to detect from content-type
+        if not ext:
+            ct_header = resp.headers.get('Content-Type', '')
+            if 'json' in ct_header:
+                ext = '.json'
+            elif 'yaml' in ct_header or 'yml' in ct_header:
+                ext = '.yaml'
+            else:
+                # Default to YAML as most config files are YAML
+                ext = '.yaml'
+
+        content = resp.text
+    else:
+        # Handle S3/GCS URIs using the audio.io module
+        from .audio import io
+
+        # Create a temporary file to download to
+        with tempfile.NamedTemporaryFile(mode='w+', suffix=ext or '.yaml', delete=False) as tmp_file:
+            temp_path = tmp_file.name
+
+        try:
+            # Download the file using audio.io which handles S3/GCS auth
+            io.read(uri, dest=temp_path)
+
+            # Read the content from the temporary file
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+        # Default to YAML if no extension detected
+        if not ext:
+            ext = '.yaml'
+
+    # Parse the content based on extension
+    if ext == '.json':
+        return json.loads(content) or {}
+    else:
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError(
+                "pyyaml is required to load YAML config "
+                "files: pip install pyyaml"
+            )
+        return yaml.safe_load(content) or {}
+
+
 def _load_config(path: str) -> dict:
-    """Load a JSON or YAML config file."""
+    """Load a JSON or YAML config file from local path or remote URI."""
+    # Check if this is a remote URI (HTTP/HTTPS/S3/GCS)
+    if path.startswith(('http://', 'https://', 's3://', 'gs://')):
+        return _load_config_from_remote(path)
+
+    # Local file loading
     ext = os.path.splitext(path)[1].lower()
     if ext == '.json':
         with open(path) as f:
@@ -740,6 +813,11 @@ class BioacousticAnnotator:
         config=_UNSET,
         **kwargs,
     ):
+        # Initialize path tracking variables
+        self._project_file = None
+        self._config_file = None
+        self._form_file = None
+
         if project is not None:
             passed = {
                 k for k in _CONFIG_PARAMS
@@ -755,6 +833,7 @@ class BioacousticAnnotator:
                 _log.info(
                     'loading project file: %s', project,
                 )
+                self._project_file = project
                 proj_cfg = _load_config(project)
             elif isinstance(project, dict):
                 proj_cfg = dict(project)
@@ -772,6 +851,7 @@ class BioacousticAnnotator:
                         nested,
                     )
                     base = _load_config(nested)
+                    self._config_file = nested
                 elif isinstance(nested, dict):
                     base = dict(nested)
                 else:
@@ -792,12 +872,10 @@ class BioacousticAnnotator:
                     'loading config file: %s', config,
                 )
                 cfg = _load_config(config)
+                self._config_file = config
             else:
                 cfg = {}
 
-        self._project_file = (
-            project if isinstance(project, str) else None
-        )
 
         if project_name is not _UNSET:
             self._project_name = project_name
@@ -1048,6 +1126,7 @@ class BioacousticAnnotator:
             _log.info(
                 'loading form config: %s', raw_form,
             )
+            self._form_file = raw_form
             raw_form = _load_config(raw_form)
         if kwargs:
             if raw_form is None:
@@ -1532,6 +1611,21 @@ class BioacousticAnnotator:
         """The input DataFrame passed as ``data``."""
         return self._data
 
+    @property
+    def project_path(self) -> Optional[str]:
+        """Path to the project file, if loaded from a file."""
+        return self._project_file
+
+    @property
+    def config_path(self) -> Optional[str]:
+        """Path to the config file, if loaded from a file."""
+        return self._config_file
+
+    @property
+    def form_path(self) -> Optional[str]:
+        """Path to the form config file, if loaded from a file."""
+        return self._form_file
+
     def output(self, force: bool = False) -> Any:
         """Read and return the output file as a DataFrame.
 
@@ -1630,6 +1724,9 @@ class BioacousticAnnotator:
         ns['_BA_DESCRIPTION_HEIGHT'] = str(
             self._description_height,
         )
+        ns['_BA_PROJECT_PATH'] = self._project_file or ''
+        ns['_BA_CONFIG_PATH'] = self._config_file or ''
+        ns['_BA_FORM_PATH'] = self._form_file or ''
         ns['_BA_INSTANCE'] = self
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
