@@ -2,7 +2,7 @@
 Test CLI
 
 Tests for the jba command-line interface covering
-lab, config list, and describe commands.
+lab, list, describe, and validate commands.
 
 License: BSD 3-Clause
 """
@@ -80,12 +80,12 @@ class TestLab:
 
 
 #
-# jba config list
+# jba list
 #
 class TestConfigList:
 
     def test_lists_all_subdirs(self, runner, config_dir):
-        result = runner.invoke(main, ['config', 'list', '-d', str(config_dir)])
+        result = runner.invoke(main, ['list', '-d', str(config_dir)])
         assert result.exit_code == 0
         assert 'projects:' in result.output
         assert 'config:' in result.output
@@ -94,30 +94,30 @@ class TestConfigList:
         assert 'simple' in result.output
 
     def test_filter_projects_only(self, runner, config_dir):
-        result = runner.invoke(main, ['config', 'list', '-d', str(config_dir), '-p'])
+        result = runner.invoke(main, ['list', '-d', str(config_dir), '-p'])
         assert result.exit_code == 0
         assert 'projects:' in result.output
         assert 'config:' not in result.output
         assert 'forms:' not in result.output
 
     def test_filter_configs_only(self, runner, config_dir):
-        result = runner.invoke(main, ['config', 'list', '-d', str(config_dir), '-c'])
+        result = runner.invoke(main, ['list', '-d', str(config_dir), '-c'])
         assert result.exit_code == 0
         assert 'config:' in result.output
         assert 'projects:' not in result.output
 
     def test_filter_forms_only(self, runner, config_dir):
-        result = runner.invoke(main, ['config', 'list', '-d', str(config_dir), '-f'])
+        result = runner.invoke(main, ['list', '-d', str(config_dir), '-f'])
         assert result.exit_code == 0
         assert 'forms:' in result.output
         assert 'projects:' not in result.output
 
     def test_missing_directory(self, runner):
-        result = runner.invoke(main, ['config', 'list', '-d', '/nonexistent/path'])
+        result = runner.invoke(main, ['list', '-d', '/nonexistent/path'])
         assert result.exit_code == 1
 
     def test_no_extension_in_output(self, runner, config_dir):
-        result = runner.invoke(main, ['config', 'list', '-d', str(config_dir)])
+        result = runner.invoke(main, ['list', '-d', str(config_dir)])
         assert '.yaml' not in result.output
 
     def test_nested_directories(self, runner, tmp_path):
@@ -125,7 +125,7 @@ class TestConfigList:
         sub = projects / 'nested'
         sub.mkdir(parents=True)
         (sub / 'deep.yaml').write_text('project_name: Deep\n')
-        result = runner.invoke(main, ['config', 'list', '-d', str(tmp_path), '-p'])
+        result = runner.invoke(main, ['list', '-d', str(tmp_path), '-p'])
         assert 'nested/' in result.output
         assert 'deep' in result.output
 
@@ -209,7 +209,7 @@ class TestFindYaml:
 class TestDemoIntegration:
 
     def test_list_demo_configs(self, runner):
-        result = runner.invoke(main, ['config', 'list', '-d', DEMO_CONFIG_DIR])
+        result = runner.invoke(main, ['list', '-d', DEMO_CONFIG_DIR])
         assert result.exit_code == 0
         assert 'projects:' in result.output
 
