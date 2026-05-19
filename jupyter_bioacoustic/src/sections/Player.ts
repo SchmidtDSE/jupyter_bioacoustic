@@ -433,6 +433,7 @@ export class Player {
   private async _loadAudio(): Promise<void> {
     const audioPath = this._resolveAudioPath();
     if (!audioPath) {
+      console.error('[JBA] No audio configured — set audio param');
       this.statusChanged.emit({ message: '❌ No audio configured — set audio param', error: true });
       return;
     }
