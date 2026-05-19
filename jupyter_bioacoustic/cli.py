@@ -3,12 +3,14 @@ CLI
 
 Command-line interface for jupyter-bioacoustic. Provides
 convenience commands for launching JupyterLab, listing
-configuration files, and describing configurations.
+configuration files, describing configurations, and
+validating configurations.
 
 Usage:
     jba lab
-    jba config list
-    jba describe <name>
+    jba list
+    jba describe [name]
+    jba validate [name]
 
 License: BSD 3-Clause
 """
@@ -34,6 +36,9 @@ DEFAULT_RATE_LIMIT = '1e10'
 DEBUG_FLAG_VALUE = '__FLAG__'
 YAML_EXTENSIONS = ('.yaml', '.yml')
 CONFIG_SUBDIRS = ('projects', 'config', 'forms')
+FLAG_SCOPE_MAP = {'search_project': 'project', 'search_config': 'config', 'search_form': 'form'}
+SCOPE_SUBDIR = {'project': 'projects', 'config': 'config', 'form': 'forms'}
+SCOPE_LABEL = {'project': 'Project', 'config': 'Config', 'form': 'Form'}
 
 
 #
@@ -75,12 +80,7 @@ def lab(rate_limit: str, debug: str | None) -> None:
     subprocess.run(cmd, env=env)
 
 
-@main.group('config')
-def config_group() -> None:
-    """Configuration file commands."""
-
-
-@config_group.command('list')
+@main.command('list')
 @click.option(
     '-d', '--dir', 'directory',
     default=DEFAULT_CONFIG_DIR,
@@ -121,61 +121,196 @@ def config_list(
 
 
 @main.command()
-@click.argument('name')
+@click.argument('name', required=False, default=None)
 @click.option(
     '-d', '--dir', 'directory',
     default=DEFAULT_CONFIG_DIR,
     show_default=True,
     help='Root configuration directory.',
 )
-@click.option('-p', '--project', 'search_project', is_flag=True, help='Search projects only.')
-@click.option('-c', '--config', 'search_config', is_flag=True, help='Search configs only.')
-@click.option('-f', '--form', 'search_form', is_flag=True, help='Search forms only.')
+@click.option(
+    '-p', '--project', 'search_project',
+    is_flag=False, flag_value=True, default=None,
+    help='Search projects only. Optionally pass a file path.',
+)
+@click.option(
+    '-c', '--config', 'search_config',
+    is_flag=False, flag_value=True, default=None,
+    help='Search configs only. Optionally pass a file path.',
+)
+@click.option(
+    '-f', '--form', 'search_form',
+    is_flag=False, flag_value=True, default=None,
+    help='Search forms only. Optionally pass a file path.',
+)
 def describe(
-    name: str,
+    name: str | None,
     directory: str,
-    search_project: bool,
-    search_config: bool,
-    search_form: bool,
+    search_project: str | bool | None,
+    search_config: str | bool | None,
+    search_form: str | bool | None,
 ) -> None:
-    """Describe a configuration by name."""
-    root = Path(directory)
-    if not root.is_dir():
-        click.echo(f'Directory not found: {directory}', err=True)
+    """Describe a configuration by name or path."""
+    resolved = _resolve_config_target(
+        name, directory,
+        search_project=search_project,
+        search_config=search_config,
+        search_form=search_form,
+    )
+    if resolved is None:
         sys.exit(1)
+    path, scope, label = resolved
+    cb = ConfigBuilder()
+    cb.load_config(str(path), file_type=scope)
+    click.echo(f'{label} Configuration Summary')
+    click.echo('=' * 40)
+    sections = build_summary_from_builder(cb, scope=scope)
+    click.echo(format_text(sections))
 
-    search_all = not (search_project or search_config or search_form)
-    search_order: list[tuple[str, str]] = []
-    if search_all or search_project:
-        search_order.append(('projects', 'Project'))
-    if search_all or search_config:
-        search_order.append(('config', 'Config'))
-    if search_all or search_form:
-        search_order.append(('forms', 'Form'))
 
-    scope_map = {'projects': 'project', 'config': 'config', 'forms': 'form'}
-    for subdir, label in search_order:
-        path = _find_yaml(root / subdir, name)
-        if path is not None:
-            cb = ConfigBuilder()
-            cb.load_config(str(path), file_type=scope_map[subdir])
-            click.echo(f'{label} Configuration Summary')
-            click.echo('=' * 40)
-            sections = build_summary_from_builder(cb, scope=scope_map[subdir])
-            click.echo(format_text(sections))
-            return
-
-    if search_all:
-        click.echo(f'No configuration found: {name}', err=True)
+@main.command()
+@click.argument('name', required=False, default=None)
+@click.option(
+    '-d', '--dir', 'directory',
+    default=DEFAULT_CONFIG_DIR,
+    show_default=True,
+    help='Root configuration directory.',
+)
+@click.option(
+    '-p', '--project', 'search_project',
+    is_flag=False, flag_value=True, default=None,
+    help='Search projects only. Optionally pass a file path.',
+)
+@click.option(
+    '-c', '--config', 'search_config',
+    is_flag=False, flag_value=True, default=None,
+    help='Search configs only. Optionally pass a file path.',
+)
+@click.option(
+    '-f', '--form', 'search_form',
+    is_flag=False, flag_value=True, default=None,
+    help='Search forms only. Optionally pass a file path.',
+)
+def validate(
+    name: str | None,
+    directory: str,
+    search_project: str | bool | None,
+    search_config: str | bool | None,
+    search_form: str | bool | None,
+) -> None:
+    """Validate a configuration by name or path."""
+    resolved = _resolve_config_target(
+        name, directory,
+        search_project=search_project,
+        search_config=search_config,
+        search_form=search_form,
+    )
+    if resolved is None:
+        sys.exit(1)
+    path, scope, label = resolved
+    cb = ConfigBuilder()
+    cb.load_config(str(path), file_type=scope)
+    result = cb.validate()
+    click.echo(f'{label}: {path}')
+    if result['errors']:
+        click.echo(f"\nErrors ({len(result['errors'])}):")
+        for e in result['errors']:
+            click.echo(f'  ✗ {e}')
+    if result['warnings']:
+        click.echo(f"\nWarnings ({len(result['warnings'])}):")
+        for w in result['warnings']:
+            click.echo(f'  ⚠ {w}')
+    if result['valid'] and not result['warnings']:
+        click.echo('✓ Valid')
+    elif result['valid']:
+        click.echo(f'\n✓ Valid (with warnings)')
     else:
-        kind = search_order[0][1].lower()
-        click.echo(f'No {kind} configuration found: {name}', err=True)
-    sys.exit(1)
+        click.echo(f'\n✗ Invalid')
+        sys.exit(1)
 
 
 #
 # INTERNAL
 #
+def _resolve_config_target(
+    name: str | None,
+    directory: str,
+    *,
+    search_project: str | bool | None = None,
+    search_config: str | bool | None = None,
+    search_form: str | bool | None = None,
+) -> tuple[Path, str, str] | None:
+    """Resolve a config file target from CLI arguments.
+
+    Returns ``(path, scope, label)`` on success, or ``None`` after printing
+    an error message on failure.
+
+    Resolution rules:
+    * ``-p/c/f <path>`` with *name*: treat path as directory, search for *name* in it.
+    * ``-p/c/f <path>`` without *name*: treat path as a direct file path.
+    * ``-p/c/f`` (flag only) with *name*: search the default subdirectory.
+    * *name* alone (no flags): search all subdirectories.
+    * Neither *name* nor a path flag: error.
+    """
+    flags = {
+        'search_project': search_project,
+        'search_config': search_config,
+        'search_form': search_form,
+    }
+    active = {k: v for k, v in flags.items() if v is not None}
+    path_flag = None
+    scope = None
+    for key, val in active.items():
+        scope = FLAG_SCOPE_MAP[key]
+        if isinstance(val, str):
+            path_flag = val
+        break
+
+    if path_flag and name:
+        p = _find_yaml(Path(path_flag), name)
+        if p is None:
+            click.echo(f'No {scope} configuration found: {name} in {path_flag}', err=True)
+            return None
+        return p, scope, SCOPE_LABEL[scope]
+
+    if path_flag and not name:
+        p = Path(path_flag)
+        if not p.exists():
+            for ext in YAML_EXTENSIONS:
+                candidate = Path(path_flag + ext)
+                if candidate.exists():
+                    p = candidate
+                    break
+        if not p.is_file():
+            click.echo(f'File not found: {path_flag}', err=True)
+            return None
+        return p, scope, SCOPE_LABEL[scope]
+
+    if name is None:
+        click.echo('Name or -p/-c/-f path required.', err=True)
+        return None
+
+    root = Path(directory)
+    if not root.is_dir():
+        click.echo(f'Directory not found: {directory}', err=True)
+        return None
+
+    if scope is not None:
+        subdir = SCOPE_SUBDIR[scope]
+        p = _find_yaml(root / subdir, name)
+        if p is not None:
+            return p, scope, SCOPE_LABEL[scope]
+        click.echo(f'No {scope} configuration found: {name}', err=True)
+        return None
+
+    for s in ('project', 'config', 'form'):
+        p = _find_yaml(root / SCOPE_SUBDIR[s], name)
+        if p is not None:
+            return p, s, SCOPE_LABEL[s]
+    click.echo(f'No configuration found: {name}', err=True)
+    return None
+
+
 def _print_yaml_names(directory: Path, indent: int = 0) -> None:
     """Recursively print YAML filenames (without extension) under *directory*."""
     if not directory.is_dir():
