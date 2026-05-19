@@ -227,37 +227,41 @@ def write_output_row(
     Returns:
         ``'ok'`` on success.
     """
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
+    try:
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
 
-    if ext == 'csv':
-        exists = os.path.exists(path)
-        if exists:
-            with open(path, newline='') as rf:
-                reader = csv.reader(rf)
-                existing_cols = next(reader, None)
-            if existing_cols:
-                columns = existing_cols
-        with open(path, 'a', newline='') as f:
-            w = csv.DictWriter(f, fieldnames=columns)
-            if not exists:
-                w.writeheader()
-            w.writerow(row_dict)
-    elif ext == 'parquet':
-        import pandas as pd
-        new = pd.DataFrame([row_dict])
-        if os.path.exists(path):
-            existing = pd.read_parquet(path)
-            pd.concat(
-                [existing, new], ignore_index=True,
-            ).to_parquet(path, index=False)
+        if ext == 'csv':
+            exists = os.path.exists(path)
+            if exists:
+                with open(path, newline='') as rf:
+                    reader = csv.reader(rf)
+                    existing_cols = next(reader, None)
+                if existing_cols:
+                    columns = existing_cols
+            with open(path, 'a', newline='') as f:
+                w = csv.DictWriter(f, fieldnames=columns)
+                if not exists:
+                    w.writeheader()
+                w.writerow(row_dict)
+        elif ext == 'parquet':
+            import pandas as pd
+            new = pd.DataFrame([row_dict])
+            if os.path.exists(path):
+                existing = pd.read_parquet(path)
+                pd.concat(
+                    [existing, new], ignore_index=True,
+                ).to_parquet(path, index=False)
+            else:
+                new.to_parquet(path, index=False)
         else:
-            new.to_parquet(path, index=False)
-    else:
-        with open(path, 'a') as f:
-            f.write(json.dumps(row_dict) + '\n')
-    return 'ok'
+            with open(path, 'a') as f:
+                f.write(json.dumps(row_dict) + '\n')
+        return 'ok'
+    except Exception:
+        _log.exception('write_output_row failed for %s', path)
+        raise
 
 
 def delete_output_row(
@@ -270,28 +274,32 @@ def delete_output_row(
     Returns:
         ``'ok'`` on success.
     """
-    if ext == 'csv':
-        with open(path) as f:
-            rows = list(csv.DictReader(f))
-        keep = [r for r in rows if not match_fn(r)]
-        with open(path, 'w', newline='') as f:
-            if keep:
-                w = csv.DictWriter(f, fieldnames=keep[0].keys())
-                w.writeheader()
-                w.writerows(keep)
-    elif ext == 'parquet':
-        import pandas as pd
-        df = pd.read_parquet(path)
-        df = df[~df.apply(match_fn, axis=1)]
-        df.to_parquet(path, index=False)
-    else:
-        with open(path) as f:
-            rows = [json.loads(line) for line in f if line.strip()]
-        keep = [r for r in rows if not match_fn(r)]
-        with open(path, 'w') as f:
-            for r in keep:
-                f.write(json.dumps(r) + '\n')
-    return 'ok'
+    try:
+        if ext == 'csv':
+            with open(path) as f:
+                rows = list(csv.DictReader(f))
+            keep = [r for r in rows if not match_fn(r)]
+            with open(path, 'w', newline='') as f:
+                if keep:
+                    w = csv.DictWriter(f, fieldnames=keep[0].keys())
+                    w.writeheader()
+                    w.writerows(keep)
+        elif ext == 'parquet':
+            import pandas as pd
+            df = pd.read_parquet(path)
+            df = df[~df.apply(match_fn, axis=1)]
+            df.to_parquet(path, index=False)
+        else:
+            with open(path) as f:
+                rows = [json.loads(line) for line in f if line.strip()]
+            keep = [r for r in rows if not match_fn(r)]
+            with open(path, 'w') as f:
+                for r in keep:
+                    f.write(json.dumps(r) + '\n')
+        return 'ok'
+    except Exception:
+        _log.exception('delete_output_row failed for %s', path)
+        raise
 
 
 def load_select_items(
