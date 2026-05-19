@@ -14,6 +14,7 @@ License: BSD 3-Clause
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,7 @@ from .config_builder.summary import build_summary_from_builder, format_text
 #
 DEFAULT_CONFIG_DIR = 'annotator_config'
 DEFAULT_RATE_LIMIT = '1e10'
+DEBUG_FLAG_VALUE = '__FLAG__'
 YAML_EXTENSIONS = ('.yaml', '.yml')
 CONFIG_SUBDIRS = ('projects', 'config', 'forms')
 
@@ -49,13 +51,28 @@ def main() -> None:
     show_default=True,
     help='IOPub data rate limit for ServerApp.',
 )
-def lab(rate_limit: str) -> None:
+@click.option(
+    '-d', '--debug',
+    is_flag=False,
+    flag_value=DEBUG_FLAG_VALUE,
+    default=None,
+    help='Enable debug logging. Optionally pass a log file path.',
+)
+def lab(rate_limit: str, debug: str | None) -> None:
     """Launch JupyterLab with the required IOPub rate limit."""
+    env = os.environ.copy()
+    if debug is not None:
+        env['JBA_DEBUG_MODE'] = '1'
+        if debug != DEBUG_FLAG_VALUE:
+            log_path = Path(debug)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            env['JBA_LOG_DIR'] = str(log_path.parent)
+            env['JBA_LOG_FILE'] = log_path.name
     cmd = [
         sys.executable, '-m', 'jupyter', 'lab',
         f'--ServerApp.iopub_data_rate_limit={rate_limit}',
     ]
-    subprocess.run(cmd)
+    subprocess.run(cmd, env=env)
 
 
 @main.group('config')
