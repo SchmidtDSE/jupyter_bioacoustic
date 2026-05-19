@@ -252,9 +252,10 @@ Example notebooks are included in the `demo/` directory. They require additional
 
 **With pixi:**
 ```bash
-pixi run -e demo lab
+cd demo
+pixi run -e demo jba lab
 ```
-This launches JupyterLab with the demo dependencies and sets the working directory to `demo/`.
+This launches JupyterLab inside the `demo` pixi environment with the data-rate limit pre-configured.
 
 **With pip:**
 ```bash
