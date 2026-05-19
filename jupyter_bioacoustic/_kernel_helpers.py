@@ -233,6 +233,12 @@ def write_output_row(
 
     if ext == 'csv':
         exists = os.path.exists(path)
+        if exists:
+            with open(path, newline='') as rf:
+                reader = csv.reader(rf)
+                existing_cols = next(reader, None)
+            if existing_cols:
+                columns = existing_cols
         with open(path, 'a', newline='') as f:
             w = csv.DictWriter(f, fieldnames=columns)
             if not exists:
@@ -334,6 +340,14 @@ def save_png(path: str, b64_data: str) -> str:
 #
 # Internal
 #
+def _safe_float(val: Any, default: float = float('nan')) -> float:
+    """Convert *val* to float, returning *default* on failure."""
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _to_mono(raw: np.ndarray) -> np.ndarray:
     """Convert multi-channel audio to mono."""
     return raw.mean(axis=1) if raw.shape[1] > 1 else raw[:, 0]
