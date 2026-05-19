@@ -4185,6 +4185,9 @@ const DescriptionPanel_1 = __webpack_require__(/*! ./sections/DescriptionPanel *
 // BioacousticWidget
 // ═══════════════════════════════════════════════════════════════
 const DEFAULT_TITLE = 'Jupyter Bioacoustic';
+const VALID_ANNOTATION_TOOLS = new Set([
+    'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
+]);
 let _counter = 0;
 class BioacousticWidget extends widgets_1.Widget {
     constructor(tracker, directKernel) {
@@ -4294,6 +4297,12 @@ class BioacousticWidget extends widgets_1.Widget {
         const formConfig = JSON.parse(cfg.form_config);
         const duplicateEntries = !!cfg.duplicate_entries;
         const outputPath = cfg.output;
+        const configErrors = _validateFormConfig(formConfig);
+        if (configErrors.length > 0) {
+            this._setStatus('❌ Config validation failed', true);
+            window.alert('Config validation failed:\n\n• ' + configErrors.join('\n• '));
+            return;
+        }
         let rows;
         try {
             rows = JSON.parse(cfg.data);
@@ -4420,6 +4429,36 @@ class BioacousticWidget extends widgets_1.Widget {
 // ═══════════════════════════════════════════════════════════════
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
+function _validateFormConfig(fc) {
+    if (!fc || typeof fc !== 'object')
+        return [];
+    const errors = [];
+    const checkAnnotTools = (annot) => {
+        if (!annot || typeof annot !== 'object')
+            return;
+        let tools = [];
+        if (typeof annot.tools === 'string')
+            tools = [annot.tools];
+        else if (Array.isArray(annot.tools))
+            tools = annot.tools;
+        for (const t of tools) {
+            if (typeof t === 'string' && !VALID_ANNOTATION_TOOLS.has(t)) {
+                errors.push(`Unknown annotation tool "${t}". ` +
+                    `Valid tools: ${[...VALID_ANNOTATION_TOOLS].sort().join(', ')}`);
+            }
+        }
+    };
+    if (fc.annotation)
+        checkAnnotTools(fc.annotation);
+    if (Array.isArray(fc.form)) {
+        for (const el of fc.form) {
+            if (el && typeof el === 'object' && el.annotation) {
+                checkAnnotTools(el.annotation);
+            }
+        }
+    }
+    return errors;
+}
 function escPy(s) {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
@@ -9494,4 +9533,4 @@ exports.isTruthyValue = isTruthyValue;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.01e6b6b1295f4f45bdf5.js.map
+//# sourceMappingURL=lib_index_js.7cb96c1b2770270868bb.js.map
