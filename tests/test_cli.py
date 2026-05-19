@@ -139,17 +139,21 @@ class TestDescribe:
         assert result.exit_code == 0
         assert 'Config Configuration Summary' in result.output
         assert 'species' in result.output
+        assert 'PROJECT' not in result.output
 
     def test_describe_form(self, runner, config_dir):
         result = runner.invoke(main, ['describe', 'simple', '-d', str(config_dir), '-f'])
         assert result.exit_code == 0
         assert 'Form Configuration Summary' in result.output
         assert 'ANNOTATE' in result.output
+        assert 'PROJECT' not in result.output
+        assert 'DATA' not in result.output
 
     def test_describe_project_priority(self, runner, config_dir):
         result = runner.invoke(main, ['describe', 'my_project', '-d', str(config_dir)])
         assert result.exit_code == 0
         assert 'Project Configuration Summary' in result.output
+        assert 'PROJECT' in result.output
 
     def test_describe_not_found(self, runner, config_dir):
         result = runner.invoke(main, ['describe', 'nonexistent', '-d', str(config_dir)])
