@@ -50,6 +50,9 @@ export function readKernelVars(): string {
     `  'project_save_btn': _BA_PROJECT_SAVE_BTN,`,
     `  'description': _BA_DESCRIPTION,`,
     `  'description_height': _BA_DESCRIPTION_HEIGHT,`,
+    `  'project_path': _BA_PROJECT_PATH,`,
+    `  'config_path': _BA_CONFIG_PATH,`,
+    `  'form_path': _BA_FORM_PATH,`,
     `}))`,
   ].join('\n');
 }
