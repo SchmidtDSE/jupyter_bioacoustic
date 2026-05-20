@@ -696,6 +696,26 @@ _SOURCE_KEYS_MAP = {
 }
 
 
+def _loading_html(div_id: str) -> str:
+    """Return an HTML loading indicator with a spinner."""
+    return (
+        f'<div id="{div_id}" style="'
+        f'display:flex;align-items:center;gap:10px;'
+        f'padding:10px 14px;margin:4px 0;'
+        f'background:#1e1e2e;border:1px solid #313244;'
+        f'border-radius:6px;font-family:sans-serif;">'
+        f'<div style="'
+        f'width:16px;height:16px;border:2px solid #313244;'
+        f'border-top-color:#89b4fa;border-radius:50%;'
+        f'animation:jba-spin 0.8s linear infinite;flex-shrink:0;'
+        f'"></div>'
+        f'<span style="color:#cdd6f4;font-size:13px;">'
+        f'Opening annotator\u2026</span>'
+        f'<style>@keyframes jba-spin{{to{{transform:rotate(360deg)}}}}</style>'
+        f'</div>'
+    )
+
+
 def _merge_project_over_config(
     base: dict,
     proj: dict,
@@ -1784,7 +1804,13 @@ class BioacousticAnnotator:
             warnings.warn(f'Config error: {msg}', stacklevel=2)
         for msg in result['warnings']:
             _log.info('Config warning: %s', msg)
+        loading_id = f'jba-loading-{uuid.uuid4().hex[:8]}'
+        display(HTML(_loading_html(loading_id)))
         self.setup()
+        display(Javascript(
+            f"document.getElementById('{loading_id}')"
+            f"?.remove();"
+        ))
         if inline:
             self._open_inline()
         else:
