@@ -1,6 +1,7 @@
 /**
  * Small stateless utilities used across sections.
  */
+import { COLORS, btnStyle } from './styles';
 
 /** Format a time in seconds as "m:ss.cc" (with leading - sign if negative). */
 export function fmtTime(s: number): string {
@@ -62,4 +63,65 @@ export function isTruthyValue(val: any): boolean {
   }
 
   return false;
+}
+
+
+export interface DialogButton {
+  label: string;
+  primary?: boolean;
+}
+
+export function showDialog(opts: {
+  title?: string;
+  body: string;
+  buttons?: DialogButton[];
+}): Promise<string | null> {
+  const buttons = opts.buttons ?? [{ label: 'OK', primary: true }];
+
+  return new Promise(resolve => {
+    const backdrop = document.createElement('div');
+    backdrop.style.cssText =
+      `position:fixed;inset:0;z-index:100000;display:flex;align-items:center;` +
+      `justify-content:center;background:rgba(0,0,0,0.55);`;
+
+    const card = document.createElement('div');
+    card.style.cssText =
+      `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};border-radius:8px;` +
+      `padding:20px 24px;max-width:520px;width:90%;max-height:80vh;display:flex;` +
+      `flex-direction:column;gap:12px;font-family:sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.5);`;
+
+    if (opts.title) {
+      const h = document.createElement('div');
+      h.textContent = opts.title;
+      h.style.cssText =
+        `font-size:14px;font-weight:700;color:${COLORS.textPrimary};`;
+      card.appendChild(h);
+    }
+
+    const bodyEl = document.createElement('div');
+    bodyEl.style.cssText =
+      `font-size:12px;color:${COLORS.textSubtle};white-space:pre-wrap;` +
+      `overflow-y:auto;max-height:50vh;line-height:1.5;`;
+    bodyEl.textContent = opts.body;
+    card.appendChild(bodyEl);
+
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;gap:8px;justify-content:flex-end;margin-top:4px;`;
+    for (const b of buttons) {
+      const btn = document.createElement('button');
+      btn.textContent = b.label;
+      btn.style.cssText = btnStyle(b.primary);
+      btn.addEventListener('click', () => { backdrop.remove(); resolve(b.label); });
+      row.appendChild(btn);
+    }
+    card.appendChild(row);
+
+    backdrop.appendChild(card);
+    backdrop.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { backdrop.remove(); resolve(null); }
+    });
+    document.body.appendChild(backdrop);
+    const firstPrimary = row.querySelector('button:last-child') as HTMLButtonElement | null;
+    firstPrimary?.focus();
+  });
 }

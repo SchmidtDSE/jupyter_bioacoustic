@@ -1,4 +1,5 @@
 import { COLORS, btnStyle } from '../styles';
+import { showDialog } from '../util';
 import { KernelBridge } from '../kernel';
 import {
   extractJson,
@@ -363,6 +364,34 @@ export class ConfigPanel {
       return;
     }
 
+    this._setStatus('Validating…');
+    try {
+      const vRaw = await this._kernel.exec(validateConfig());
+      const vResult = JSON.parse(extractJson(vRaw));
+      const msgs: string[] = [];
+      if (vResult.errors?.length) msgs.push('Errors:\n• ' + vResult.errors.join('\n• '));
+      if (vResult.warnings?.length) msgs.push('Warnings:\n• ' + vResult.warnings.join('\n• '));
+      if (!vResult.valid) {
+        const choice = await showDialog({
+          title: 'Validation Failed',
+          body: msgs.join('\n\n'),
+          buttons: [
+            { label: 'Cancel' },
+            { label: 'Save Anyway', primary: true },
+          ],
+        });
+        if (choice !== 'Save Anyway') {
+          this._setStatus('Save cancelled', false, true);
+          return;
+        }
+      } else if (msgs.length > 0) {
+        this._setStatus('Validation passed with warnings');
+      }
+    } catch (e: any) {
+      this._setStatus(`Validation error: ${String(e.message ?? e)}`, true);
+      return;
+    }
+
     const checkPath = (projectData.project_enabled && projectData.project_path) ||
       (projectData.config_enabled && projectData.config_path) || '';
     if (checkPath) {
@@ -370,8 +399,15 @@ export class ConfigPanel {
         const existsRaw = await this._kernel.exec(checkFileExists(checkPath));
         const exists = JSON.parse(extractJson(existsRaw)).exists as boolean;
         if (exists) {
-          const ok = window.confirm(`Files already exist. Overwrite?`);
-          if (!ok) return;
+          const choice = await showDialog({
+            title: 'Overwrite Files?',
+            body: 'Configuration files already exist at the specified paths.',
+            buttons: [
+              { label: 'Cancel' },
+              { label: 'Overwrite', primary: true },
+            ],
+          });
+          if (choice !== 'Overwrite') return;
         }
       } catch { /* proceed */ }
     }
@@ -504,13 +540,13 @@ export class ConfigPanel {
       if (result.warnings?.length) msgs.push('Warnings:\n• ' + result.warnings.join('\n• '));
       if (result.valid && msgs.length === 0) {
         this._setStatus('Validation passed');
-        window.alert('Validation passed – no issues found.');
+        await showDialog({ title: 'Validation Passed', body: 'No issues found.' });
       } else if (result.valid) {
-        this._setStatus('Validation passed with warnings');
-        window.alert('Validation passed with warnings:\n\n' + msgs.join('\n\n'));
+        this._setStatus('Validation passed with warnings', false, true);
+        await showDialog({ title: 'Validation Passed', body: msgs.join('\n\n') });
       } else {
         this._setStatus('Validation failed', true);
-        window.alert('Validation failed:\n\n' + msgs.join('\n\n'));
+        await showDialog({ title: 'Validation Failed', body: msgs.join('\n\n') });
       }
     } catch (e: any) {
       this._setStatus(`Validate error: ${String(e.message ?? e)}`, true);
@@ -596,8 +632,8 @@ export class ConfigPanel {
     return source && typeof source === 'object' ? source : null;
   }
 
-  private _setStatus(msg: string, error = false): void {
+  private _setStatus(msg: string, error = false, warning = false): void {
     this._statusEl.textContent = msg;
-    this._statusEl.style.color = error ? COLORS.red : COLORS.green;
+    this._statusEl.style.color = error ? COLORS.red : warning ? COLORS.yellow : COLORS.green;
   }
 }

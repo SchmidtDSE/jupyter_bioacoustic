@@ -131,6 +131,7 @@ export class ProjectSection extends CollapsibleSection {
       `color:${COLORS.textPrimary};padding:4px 6px;font-size:12px;width:100%;min-height:60px;` +
       `box-sizing:border-box;resize:vertical;font-family:monospace;`;
     this._descTextArea.placeholder = 'Markdown text (or use path for a file)';
+    this._descTextArea.addEventListener('keydown', (e) => e.stopPropagation());
     this._descTextArea.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('description text', this._descTextArea));
 

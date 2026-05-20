@@ -14,6 +14,7 @@ import {
   injectGlobalStyles,
 } from './styles';
 import { Detection } from './types';
+import { showDialog } from './util';
 import { KernelBridge } from './kernel';
 import { readKernelVars, syncOutput } from './python';
 import { FormPanel } from './sections/FormPanel';
@@ -228,7 +229,10 @@ class BioacousticWidget extends Widget {
     const configErrors = _validateFormConfig(formConfig);
     if (configErrors.length > 0) {
       this._setStatus('❌ Config validation failed', true);
-      window.alert('Config validation failed:\n\n• ' + configErrors.join('\n• '));
+      await showDialog({
+        title: 'Config Validation Failed',
+        body: '• ' + configErrors.join('\n• '),
+      });
       return;
     }
 
@@ -993,7 +997,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
         const kernel = getExistingKernel(tracker) ?? await startKernel(app);
         if (!kernel) {
           placeholder.dispose();
-          window.alert('Failed to start a Python kernel.');
+          void showDialog({ title: 'Error', body: 'Failed to start a Python kernel.' });
           return;
         }
         const ownsKernel = !getExistingKernel(tracker);
@@ -1024,7 +1028,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
 
         if (error) {
           if (ownsKernel) kernel.shutdown().catch(() => {});
-          window.alert(`Bioacoustic Annotator error:\n${error}`);
+          void showDialog({ title: 'Annotator Error', body: error });
           return;
         }
 
@@ -1051,7 +1055,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
           () => app.commands.execute('bioacoustic:open-config-builder'),
           async () => {
             const kernel = getExistingKernel(tracker) ?? await startKernel(app);
-            if (!kernel) { window.alert('Failed to start Python kernel.'); return; }
+            if (!kernel) { void showDialog({ title: 'Error', body: 'Failed to start Python kernel.' }); return; }
             const ownsKernel = !getExistingKernel(tracker);
             const code = [
               `import os as _os; _os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,

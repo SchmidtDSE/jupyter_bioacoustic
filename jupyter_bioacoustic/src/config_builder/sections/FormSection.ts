@@ -699,7 +699,8 @@ export class FormSection extends CollapsibleSection {
     lbl.textContent = name;
     lbl.style.cssText = `font-size:12px;font-weight:700;color:${COLORS.mauve};flex:1;cursor:pointer;`;
     lbl.title = 'Double-click to rename';
-    lbl.addEventListener('dblclick', () => {
+
+    const startRename = () => {
       const renameInp = this._makeInput(df.name, '160px');
       renameInp.value = df.name;
       renameInp.style.fontSize = '12px';
@@ -721,7 +722,14 @@ export class FormSection extends CollapsibleSection {
         if (e.key === 'Enter') { e.preventDefault(); renameInp.blur(); }
         if (e.key === 'Escape') { renameInp.value = df.name; renameInp.blur(); }
       });
-    });
+    };
+
+    lbl.addEventListener('dblclick', startRename);
+
+    const renameBtn = this._makeButton('✎');
+    renameBtn.title = 'Rename form';
+    renameBtn.style.cssText += `font-size:12px;padding:2px 6px;color:${COLORS.textPrimary};`;
+    renameBtn.addEventListener('click', startRename);
 
     const rmBtn = this._makeButton('✕');
     rmBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
@@ -732,7 +740,7 @@ export class FormSection extends CollapsibleSection {
       this._emitChanged();
     });
 
-    header.append(lbl, rmBtn);
+    header.append(lbl, renameBtn, rmBtn);
     container.appendChild(header);
 
     const listEl = document.createElement('div');

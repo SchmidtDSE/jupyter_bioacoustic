@@ -9,7 +9,7 @@ import { Widget } from '@lumino/widgets';
 
 import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles';
 import { KernelBridge } from '../kernel';
-import { escPy } from '../util';
+import { escPy, showDialog } from '../util';
 import { ConfigPanel } from './ConfigPanel';
 
 let _builderCounter = 0;
@@ -93,10 +93,17 @@ class ConfigBuilderWidget extends Widget {
     super.onAfterAttach(_msg);
   }
 
-  private _onDismiss(): void {
+  private async _onDismiss(): Promise<void> {
     if (this._panel.dirty) {
-      const ok = window.confirm('You have unsaved changes. Dismiss anyway?');
-      if (!ok) return;
+      const choice = await showDialog({
+        title: 'Unsaved Changes',
+        body: 'You have unsaved changes. Dismiss anyway?',
+        buttons: [
+          { label: 'Cancel' },
+          { label: 'Dismiss', primary: true },
+        ],
+      });
+      if (choice !== 'Dismiss') return;
     }
     this.dispose();
   }
@@ -169,7 +176,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
       execute: async () => {
         const kernel = getExistingKernel(tracker) ?? await startKernel(app);
         if (!kernel) {
-          window.alert('Failed to start a Python kernel.');
+          void showDialog({ title: 'Error', body: 'Failed to start a Python kernel.' });
           return;
         }
         const ownsKernel = !getExistingKernel(tracker);
@@ -189,7 +196,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
 
         if (error) {
           if (ownsKernel) kernel.shutdown().catch(() => {});
-          window.alert(`Config Builder error:\n${error}`);
+          void showDialog({ title: 'Config Builder Error', body: error });
           return;
         }
 
