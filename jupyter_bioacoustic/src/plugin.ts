@@ -848,6 +848,49 @@ async function showProjectFileDialog(
   });
 }
 
+function createLoadingWidget(): Widget {
+  const w = new Widget();
+  w.id = `jp-bioacoustic-loading-${_counter++}`;
+  w.title.label = 'Bioacoustic Annotator';
+  w.title.closable = true;
+  w.title.icon = bioacousticIcon;
+  w.node.style.cssText =
+    `display:flex;align-items:center;justify-content:center;` +
+    `width:100%;height:100%;background:${COLORS.bgBase};`;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `text-align:center;`;
+
+  const label = document.createElement('div');
+  label.textContent = 'Loading\u2026';
+  label.style.cssText =
+    `color:${COLORS.textSubtle};font-size:14px;letter-spacing:0.5px;margin-bottom:14px;` +
+    `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);`;
+
+  const track = document.createElement('div');
+  track.style.cssText =
+    `width:240px;height:3px;background:${COLORS.bgSurface0};` +
+    `border-radius:2px;overflow:hidden;margin:0 auto;`;
+
+  const bar = document.createElement('div');
+  bar.style.cssText =
+    `width:0%;height:100%;background:${COLORS.blue};border-radius:2px;` +
+    `animation:jba-fill 10s ease-out forwards;`;
+
+  if (!document.getElementById('jba-fill-style')) {
+    const style = document.createElement('style');
+    style.id = 'jba-fill-style';
+    style.textContent = '@keyframes jba-fill{to{width:100%}}';
+    document.head.appendChild(style);
+  }
+
+  track.appendChild(bar);
+  wrap.appendChild(label);
+  wrap.appendChild(track);
+  w.node.appendChild(wrap);
+  return w;
+}
+
 async function startKernel(app: JupyterFrontEnd): Promise<any | null> {
   try {
     const kernel = await app.serviceManager.kernels.startNew({ name: 'python3' });
@@ -923,8 +966,13 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
         const projectPath = await pickProjectFile(defaultBrowser, browserPath);
         if (!projectPath) return;
 
+        const placeholder = createLoadingWidget();
+        app.shell.add(placeholder, 'main');
+        app.shell.activateById(placeholder.id);
+
         const kernel = getExistingKernel(tracker) ?? await startKernel(app);
         if (!kernel) {
+          placeholder.dispose();
           window.alert('Failed to start a Python kernel.');
           return;
         }
@@ -941,29 +989,22 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
         const error = await execInKernel(kernel, [
           `import os as _os`,
           `_os.chdir(_os.path.expanduser('${escPy(workDir)}'))`,
-          `from jupyter_bioacoustic import BioacousticAnnotator`,
-          `_ba = BioacousticAnnotator(project='${escPy(relPath)}')`,
-          `_ba.setup()`,
-        ].join('\n'));
-
-        if (error) {
-          if (ownsKernel) kernel.shutdown().catch(() => {});
-          window.alert(`Bioacoustic Annotator error:\n${error}`);
-          return;
-        }
-
-        const valError = await execInKernel(kernel, [
+          `from jupyter_bioacoustic import BioacousticAnnotator as _BA`,
           `from jupyter_bioacoustic import ConfigBuilder as _CB`,
           `_cb = _CB()`,
           `_cb.load_config('${escPy(relPath)}')`,
           `_vr = _cb.validate()`,
           `if _vr['errors']:`,
-          `    raise ValueError('\\n'.join(_vr['errors']))`,
+          `    raise ValueError('Config validation failed:\\n' + '\\n'.join(_vr['errors']))`,
+          `_ba = _BA(project='${escPy(relPath)}')`,
+          `_ba.setup()`,
         ].join('\n'));
 
-        if (valError) {
+        placeholder.dispose();
+
+        if (error) {
           if (ownsKernel) kernel.shutdown().catch(() => {});
-          window.alert('Config validation failed:\n\n' + valError);
+          window.alert(`Bioacoustic Annotator error:\n${error}`);
           return;
         }
 
