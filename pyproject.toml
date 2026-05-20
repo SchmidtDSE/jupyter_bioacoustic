@@ -88,6 +88,9 @@ depends-on = ["jlpm-install"]
 cmd = "python -m ensurepip --upgrade && python -m pip install -e . && python develop.py"
 depends-on = ["build"]
 
+[tool.pixi.tasks.tests]
+cmd = "cd jupyter_bioacoustic && pnpm test && cd .. && pixi run -e test pytest tests/ -v"
+
 [tool.pixi.tasks.watch]
 cmd = "jlpm run watch:src"
 cwd = "jupyter_bioacoustic"
