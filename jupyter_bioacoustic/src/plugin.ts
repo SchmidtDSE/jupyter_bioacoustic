@@ -209,6 +209,7 @@ class BioacousticWidget extends Widget {
       project_path: string;
       config_path: string;
       form_path: string;
+      merged_config: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -310,8 +311,8 @@ class BioacousticWidget extends Widget {
 
     this._setStatus(`✓ ${rows.length} clips loaded`);
 
-    // Populate info panel with configuration details
-    this._populateInfoPanel(cfg, audioConfig, outputPath, syncConfig);
+    const mergedConfig = cfg.merged_config ? JSON.parse(cfg.merged_config) : {};
+    this._populateInfoPanel(cfg, audioConfig, outputPath, syncConfig, mergedConfig);
   }
 
   /** Orchestrator: update info card + form for the selected row. */
@@ -400,8 +401,9 @@ class BioacousticWidget extends Widget {
     }
   }
 
-  private _populateInfoPanel(cfg: any, audioConfig: any, outputPath: string, syncConfig: any): void {
-    // Helper function to format paths
+  private _populateInfoPanel(
+    cfg: any, audioConfig: any, outputPath: string, syncConfig: any, mergedConfig: any,
+  ): void {
     const formatPath = (path: string, type: string) => {
       if (!path) return `<span style="color:${COLORS.textSubtle};">Not specified</span>`;
       if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -413,26 +415,44 @@ class BioacousticWidget extends Widget {
       return `<span style="color:${COLORS.blue};">(${type})</span> ${path}`;
     };
 
-    // Data source info
+    const mcData = mergedConfig.data;
     const dataInfo = cfg.data ? JSON.parse(cfg.data) : [];
-    const dataSourceText = Array.isArray(dataInfo)
-      ? `<span style="color:${COLORS.blue};">(kernel)</span> ${dataInfo.length} rows loaded`
-      : `<span style="color:${COLORS.blue};">(kernel)</span> Data loaded`;
+    const rowCount = Array.isArray(dataInfo) ? dataInfo.length : 0;
+    let dataSourceText: string;
+    if (typeof mcData === 'object' && mcData !== null) {
+      const srcKey = ['path', 'url', 'uri', 'sql', 'api'].find(k => k in mcData);
+      const src = srcKey ? String(mcData[srcKey]) : '';
+      dataSourceText = src
+        ? `${formatPath(src, srcKey!)} — ${rowCount} rows`
+        : `<span style="color:${COLORS.blue};">(kernel)</span> ${rowCount} rows loaded`;
+    } else if (typeof mcData === 'string') {
+      dataSourceText = `${formatPath(mcData, 'path')} — ${rowCount} rows`;
+    } else {
+      dataSourceText = `<span style="color:${COLORS.blue};">(kernel)</span> ${rowCount} rows loaded`;
+    }
 
-    // Audio source info
     let audioSourceText = '';
     if (audioConfig.type === 'column') {
       audioSourceText = `<span style="color:${COLORS.blue};">(column)</span> ${audioConfig.value}`;
-    } else if (audioConfig.type === 'value') {
-      audioSourceText = formatPath(audioConfig.value, 'path');
+    } else if (audioConfig.type && audioConfig.value) {
+      audioSourceText = formatPath(audioConfig.value, audioConfig.type);
     } else {
       audioSourceText = `<span style="color:${COLORS.textSubtle};">Unknown audio source</span>`;
     }
 
-    // Output info
-    let outputText = formatPath(outputPath, 'local');
-    if (syncConfig && syncConfig.uri) {
-      outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${COLORS.blue};">(sync)</span> ${syncConfig.uri}`;
+    const mcOutput = mergedConfig.output;
+    let outputText: string;
+    if (typeof mcOutput === 'object' && mcOutput !== null) {
+      outputText = formatPath(mcOutput.path || outputPath, 'local');
+      const syncUri = mcOutput.uri || mcOutput.url || (syncConfig && syncConfig.uri) || '';
+      if (syncUri) {
+        outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${COLORS.blue};">(sync)</span> ${syncUri}`;
+      }
+    } else {
+      outputText = formatPath(outputPath, 'local');
+      if (syncConfig && syncConfig.uri) {
+        outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${COLORS.blue};">(sync)</span> ${syncConfig.uri}`;
+      }
     }
 
     // Configuration file paths
