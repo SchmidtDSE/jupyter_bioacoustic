@@ -2,7 +2,8 @@
 Tests for api.py
 
 Pure-logic unit tests for data type detection, secret
-resolution, and file reading.
+resolution, file reading, config merging, and the
+BioacousticAnnotator.config property.
 
 License: BSD 3-Clause
 """
@@ -19,6 +20,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jupyter_bioacoustic.api import (
+    BioacousticAnnotator,
     _detect_data_type,
     _detect_audio_type,
     _resolve_secrets,
@@ -199,3 +201,89 @@ class TestMergeProjectOverConfig:
         proj = {'default_buffer': 5}
         _merge_project_over_config(base, proj)
         assert base['default_buffer'] == 5
+
+
+#
+# BioacousticAnnotator.config
+#
+def _make_df() -> pd.DataFrame:
+    """Create a minimal DataFrame for annotator tests."""
+    return pd.DataFrame({
+        'start_time': [0.0, 1.0],
+        'end_time': [1.0, 2.0],
+        'audio_path': ['a.wav', 'b.wav'],
+    })
+
+
+class TestAnnotatorConfig:
+
+    def test_config_returns_dict(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+        )
+        assert isinstance(ba.config, dict)
+
+    def test_config_is_copy(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+        )
+        cfg = ba.config
+        cfg['injected'] = True
+        assert 'injected' not in ba.config
+
+    def test_config_from_inline_args(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            ident_column='audio_path',
+        )
+        assert ba.config == {}
+
+    def test_config_from_config_file(self, tmp_path):
+        import yaml
+        cfg_data = {
+            'audio': {'column': 'audio_path'},
+            'ident_column': 'audio_path',
+            'default_buffer': 5,
+        }
+        cfg_file = tmp_path / 'config.yaml'
+        cfg_file.write_text(yaml.dump(cfg_data))
+
+        data_file = tmp_path / 'data.csv'
+        _make_df().to_csv(data_file, index=False)
+
+        ba = BioacousticAnnotator(
+            data=str(data_file), audio='audio_path',
+            config=str(cfg_file),
+        )
+        assert ba.config['ident_column'] == 'audio_path'
+        assert ba.config['default_buffer'] == 5
+        assert ba.config['audio'] == {'column': 'audio_path'}
+
+    def test_config_from_project_with_nested(self, tmp_path):
+        import yaml
+        nested_cfg = {
+            'audio': {'column': 'audio_path'},
+            'ident_column': 'audio_path',
+            'default_buffer': 5,
+        }
+        nested_file = tmp_path / 'base.yaml'
+        nested_file.write_text(yaml.dump(nested_cfg))
+
+        data_file = tmp_path / 'data.csv'
+        _make_df().to_csv(data_file, index=False)
+
+        proj_cfg = {
+            'config': str(nested_file),
+            'data': {'path': str(data_file)},
+            'output': {'path': 'out.csv'},
+            'default_buffer': 10,
+        }
+        proj_file = tmp_path / 'project.yaml'
+        proj_file.write_text(yaml.dump(proj_cfg))
+
+        ba = BioacousticAnnotator(project=str(proj_file))
+        cfg = ba.config
+        assert cfg['audio'] == {'column': 'audio_path'}
+        assert cfg['ident_column'] == 'audio_path'
+        assert cfg['default_buffer'] == 10
+        assert cfg['data']['path'] == str(data_file)
