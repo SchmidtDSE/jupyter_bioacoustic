@@ -53,6 +53,7 @@ export function readKernelVars(): string {
     `  'project_path': _BA_PROJECT_PATH,`,
     `  'config_path': _BA_CONFIG_PATH,`,
     `  'form_path': _BA_FORM_PATH,`,
+    `  'merged_config': _BA_MERGED_CONFIG,`,
     `}))`,
   ].join('\n');
 }
