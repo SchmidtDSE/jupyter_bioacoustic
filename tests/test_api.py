@@ -206,7 +206,7 @@ class TestMergeProjectOverConfig:
 #
 # BioacousticAnnotator.config
 #
-def _make_df() -> pd.DataFrame:
+def _make_df():
     """Create a minimal DataFrame for annotator tests."""
     return pd.DataFrame({
         'start_time': [0.0, 1.0],
