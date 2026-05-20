@@ -940,6 +940,8 @@ class BioacousticAnnotator:
         else:
             self._project_name = DEFAULT_PROJECT_NAME
 
+        self._merged_cfg = dict(cfg)
+
         _init_cfg = dict(cfg)
         _init_overrides = {}
         for _k in _CONFIG_PARAMS:
@@ -1660,6 +1662,11 @@ class BioacousticAnnotator:
         )
 
     @property
+    def config(self) -> dict[str, Any]:
+        """The fully merged configuration after all files and overrides."""
+        return dict(self._merged_cfg)
+
+    @property
     def source(self) -> Any:
         """The input DataFrame passed as ``data``."""
         return self._data
@@ -1780,6 +1787,9 @@ class BioacousticAnnotator:
         ns['_BA_PROJECT_PATH'] = self._project_file or ''
         ns['_BA_CONFIG_PATH'] = self._config_file or ''
         ns['_BA_FORM_PATH'] = self._form_file or ''
+        ns['_BA_MERGED_CONFIG'] = json.dumps(
+            self._merged_cfg, default=str,
+        )
         ns['_BA_INSTANCE'] = self
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
