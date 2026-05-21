@@ -11,7 +11,7 @@ import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles'
 import { KernelBridge } from '../kernel';
 import { escPy, showDialog } from '../util';
 import { ConfigPanel } from './ConfigPanel';
-import { openAnnotatorFromProject } from './python';
+import { setupAnnotatorFromProject } from './python';
 
 let _builderCounter = 0;
 
@@ -107,13 +107,15 @@ class ConfigBuilderWidget extends Widget {
     const savedPath = await this._panel.saveAndOpenAnnotator();
     if (!savedPath) return;
     try {
-      await this._panel.kernel.exec(openAnnotatorFromProject(savedPath));
+      await this._panel.kernel.exec(setupAnnotatorFromProject(savedPath));
     } catch (e: any) {
       void showDialog({ title: 'Annotator Error', body: String(e.message ?? e) });
       return;
     }
-    this._ownedKernel = null;
-    this.dispose();
+    const openFn = (window as any)._bioacousticOpenWithKernel;
+    if (openFn) {
+      openFn(this._kernelBridge.activeKernel);
+    }
   }
 
   private async _onDismiss(): Promise<void> {
