@@ -26,7 +26,40 @@ from jupyter_bioacoustic.api import (
     _resolve_secrets,
     _read_data,
     _merge_project_over_config,
+    _resolve_output_templates,
 )
+
+
+#
+# _resolve_output_templates
+#
+class TestResolveOutputTemplates:
+
+    def test_no_placeholders(self):
+        assert _resolve_output_templates('outputs/data.csv') == 'outputs/data.csv'
+
+    def test_year_placeholder(self):
+        from datetime import datetime
+        result = _resolve_output_templates('outputs/data-[[%Y]].csv')
+        assert result == f'outputs/data-{datetime.now().year}.csv'
+
+    def test_full_datetime(self):
+        from datetime import datetime
+        result = _resolve_output_templates('out-[[%Y%m%d-%H%M]].csv')
+        expected = f'out-{datetime.now().strftime("%Y%m%d-%H%M")}.csv'
+        assert result == expected
+
+    def test_multiple_placeholders(self):
+        from datetime import datetime
+        result = _resolve_output_templates('[[%Y]]/data-[[%m%d]].csv')
+        now = datetime.now()
+        assert result == f'{now.year}/data-{now.strftime("%m%d")}.csv'
+
+    def test_non_strftime_brackets_untouched(self):
+        assert _resolve_output_templates('[[column_name]].csv') == '[[column_name]].csv'
+
+    def test_empty_string(self):
+        assert _resolve_output_templates('') == ''
 
 
 #

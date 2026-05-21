@@ -28,6 +28,7 @@ import os
 import re
 import uuid
 import warnings
+from datetime import datetime
 from typing import Any, Optional
 
 from IPython import get_ipython
@@ -42,6 +43,7 @@ from ._validation import validate_config
 _log = logging.getLogger('jupyter_bioacoustic.api')
 
 _UNSET = object()
+_OUTPUT_TEMPLATE_RE = re.compile(r'\[\[([^\]]*%[^\]]*)\]\]')
 
 DEFAULT_OUTPUT_DIR = 'outputs'
 DEFAULT_OUTPUT_PREFIX = 'annotation_output'
@@ -62,6 +64,22 @@ DEFAULT_INFO_CARD_HEIGHT = 34
 DEFAULT_FORM_PANEL_HEIGHT = 140
 DEFAULT_DESCRIPTION_HEIGHT = 0
 _TOOLBAR_AND_PADDING_PX = 290
+
+
+#
+# Output path template resolution
+#
+def _resolve_output_templates(path: str) -> str:
+    """Replace ``[[strftime_format]]`` placeholders in an output path.
+
+    For example ``outputs/annotations-[[%Y%m%d-%H%M]].csv`` becomes
+    ``outputs/annotations-20260521-1430.csv`` (using the current time).
+    Only placeholders containing at least one ``%`` character are resolved.
+    """
+    now = datetime.now()
+    return _OUTPUT_TEMPLATE_RE.sub(
+        lambda m: now.strftime(m.group(1)), path,
+    )
 
 
 #
@@ -1134,7 +1152,6 @@ class BioacousticAnnotator:
             form_config, 'form_config', None,
         )
         if not self._output and raw_form_check is not None:
-            from datetime import datetime
             ts = datetime.now().strftime(
                 DEFAULT_OUTPUT_TS_FMT,
             )
@@ -1703,7 +1720,10 @@ class BioacousticAnnotator:
         ns['_BA_AUDIO'] = json.dumps(
             self._audio_config,
         )
-        ns['_BA_OUTPUT'] = self._output
+        output_path = _resolve_output_templates(
+            self._output,
+        ) if self._output else self._output
+        ns['_BA_OUTPUT'] = output_path
         ns['_BA_SYNC_CONFIG'] = json.dumps({
             'uri': self._sync_uri,
             'button': self._sync_button,

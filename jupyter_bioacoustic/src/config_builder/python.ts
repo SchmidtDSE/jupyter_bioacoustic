@@ -148,3 +148,10 @@ export function getSummary(): string {
     wp(`_j.dumps(_bsfb(_CB_INSTANCE))`),
   ].join('\n');
 }
+
+export function openAnnotatorFromProject(projectPath: string): string {
+  return [
+    `from jupyter_bioacoustic import BioacousticAnnotator as _BA`,
+    `_BA(project='${escPy(projectPath)}').open(inline=False)`,
+  ].join('\n');
+}

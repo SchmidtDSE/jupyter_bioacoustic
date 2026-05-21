@@ -349,8 +349,21 @@ export class ConfigPanel {
   }
 
   async saveToFile(): Promise<void> {
+    await this._validateAndSave(false);
+  }
+
+  async saveAndOpenAnnotator(): Promise<string | null> {
+    return this._validateAndSave(true);
+  }
+
+  get isProjectConfigured(): boolean {
+    const d = this._project.getData();
+    return !!(d.project_enabled && d.project_path);
+  }
+
+  private async _validateAndSave(blockOnErrors: boolean): Promise<string | null> {
     await this._readyPromise;
-    if (!this._ready) return;
+    if (!this._ready) return null;
 
     const projectData = this._project.getData();
     const enabled = [
@@ -361,7 +374,7 @@ export class ConfigPanel {
 
     if (enabled.length === 0) {
       this._setStatus('Enable at least one output file in Project section', true);
-      return;
+      return null;
     }
 
     this._setStatus('Validating…');
@@ -371,10 +384,14 @@ export class ConfigPanel {
       const msgs: string[] = [];
       if (vResult.errors?.length) msgs.push('Errors:\n• ' + vResult.errors.join('\n• '));
       if (vResult.warnings?.length) msgs.push('Warnings:\n• ' + vResult.warnings.join('\n• '));
-      if (msgs.length > 0) {
-        const title = vResult.valid ? 'Validation Warnings' : 'Validation Failed';
+      if (!vResult.valid) {
+        if (blockOnErrors) {
+          await showDialog({ title: 'Validation Failed', body: msgs.join('\n\n') });
+          this._setStatus('Save cancelled — validation errors', true);
+          return null;
+        }
         const choice = await showDialog({
-          title,
+          title: 'Validation Failed',
           body: msgs.join('\n\n'),
           buttons: [
             { label: 'Cancel' },
@@ -383,12 +400,25 @@ export class ConfigPanel {
         });
         if (choice !== 'Save Anyway') {
           this._setStatus('Save cancelled', false, true);
-          return;
+          return null;
+        }
+      } else if (msgs.length > 0) {
+        const choice = await showDialog({
+          title: 'Validation Warnings',
+          body: msgs.join('\n\n'),
+          buttons: [
+            { label: 'Cancel' },
+            { label: 'Save Anyway', primary: true },
+          ],
+        });
+        if (choice !== 'Save Anyway') {
+          this._setStatus('Save cancelled', false, true);
+          return null;
         }
       }
     } catch (e: any) {
       this._setStatus(`Validation error: ${String(e.message ?? e)}`, true);
-      return;
+      return null;
     }
 
     const checkPath = (projectData.project_enabled && projectData.project_path) ||
@@ -406,7 +436,7 @@ export class ConfigPanel {
               { label: 'Overwrite', primary: true },
             ],
           });
-          if (choice !== 'Overwrite') return;
+          if (choice !== 'Overwrite') return null;
         }
       } catch { /* proceed */ }
     }
@@ -422,8 +452,10 @@ export class ConfigPanel {
       const savedList = Object.values(paths).join(', ');
       this._savedPath = paths.project || paths.config || paths.form || '';
       this._setStatus(`Saved: ${savedList}`);
+      return this._savedPath;
     } catch (e: any) {
       this._setStatus(`Save failed: ${String(e.message ?? e)}`, true);
+      return null;
     }
   }
 
@@ -496,6 +528,15 @@ export class ConfigPanel {
 
   get dirty(): boolean {
     return this._dirty;
+  }
+
+  get kernel(): KernelBridge {
+    return this._kernel;
+  }
+
+  onProjectStateChanged(cb: () => void): void {
+    this._project.projectEnabledChanged.connect(() => cb());
+    this._project.changed.connect(() => cb());
   }
 
   private async _onLoadConfig(path: string, fileType?: string): Promise<void> {

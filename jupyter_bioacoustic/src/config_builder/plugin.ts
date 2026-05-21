@@ -11,6 +11,7 @@ import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles'
 import { KernelBridge } from '../kernel';
 import { escPy, showDialog } from '../util';
 import { ConfigPanel } from './ConfigPanel';
+import { openAnnotatorFromProject } from './python';
 
 let _builderCounter = 0;
 
@@ -79,18 +80,40 @@ class ConfigBuilderWidget extends Widget {
     const spacer = document.createElement('span');
     spacer.style.flex = '1';
 
+    const openBtn = document.createElement('button');
+    openBtn.textContent = 'Save & Open Annotator';
+    openBtn.style.cssText = btnStyle(true) + `font-size:11px;`;
+    openBtn.style.display = this._panel.isProjectConfigured ? '' : 'none';
+    openBtn.addEventListener('click', () => void this._onSaveAndOpen());
+    this._panel.onProjectStateChanged(() => {
+      openBtn.style.display = this._panel.isProjectConfigured ? '' : 'none';
+    });
+
     const dismissBtn = document.createElement('button');
     dismissBtn.textContent = 'Dismiss';
     dismissBtn.style.cssText = btnStyle() + `font-size:11px;`;
     dismissBtn.addEventListener('click', () => this._onDismiss());
 
-    bottomBar.append(validateBtn, saveBtn, spacer, dismissBtn);
+    bottomBar.append(validateBtn, saveBtn, spacer, openBtn, dismissBtn);
 
     this.node.append(header, this._panel.element, bottomBar);
   }
 
   protected onAfterAttach(_msg: Message): void {
     super.onAfterAttach(_msg);
+  }
+
+  private async _onSaveAndOpen(): Promise<void> {
+    const savedPath = await this._panel.saveAndOpenAnnotator();
+    if (!savedPath) return;
+    try {
+      await this._panel.kernel.exec(openAnnotatorFromProject(savedPath));
+    } catch (e: any) {
+      void showDialog({ title: 'Annotator Error', body: String(e.message ?? e) });
+      return;
+    }
+    this._ownedKernel = null;
+    this.dispose();
   }
 
   private async _onDismiss(): Promise<void> {
