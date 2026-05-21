@@ -19,7 +19,7 @@ export class AudioSection extends CollapsibleSection {
   constructor() {
     super('Audio', 'audio', false, true, ['split', 'project', 'config']);
 
-    this._sourceType = this._makeSelect(['path', 'url', 'column'], 'path');
+    this._sourceType = this._makeSelect(['path', 'url/uri', 'column'], 'path');
     this._sourceType.addEventListener('change', () => {
       this._updateValueUI();
       this._emitChanged();
@@ -77,17 +77,38 @@ export class AudioSection extends CollapsibleSection {
   }
 
   private _updateValueUI(): void {
-    const isCol = this._sourceType.value === 'column';
+    const sourceType = this._sourceType.value;
+    const isCol = sourceType === 'column';
     this._valueInput.style.display = isCol ? 'none' : '';
     this._colSelect.style.display = isCol ? '' : 'none';
-    this._browseBtn.style.display = (this._sourceType.value === 'path') ? '' : 'none';
+    this._browseBtn.style.display = (sourceType === 'path') ? '' : 'none';
   }
 
   getData(): Record<string, any> {
-    const sourceKey = this._sourceType.value;
+    const sourceType = this._sourceType.value;
     const result: Record<string, any> = {};
-    const val = sourceKey === 'column' ? this._colSelect.value : this._valueInput.value;
-    if (val) result[sourceKey] = val;
+    let val = sourceType === 'column' ? this._colSelect.value : this._valueInput.value;
+
+    if (val && sourceType === 'url/uri') {
+      // Auto-detect protocol and choose appropriate field
+      const hasProtocol = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(val);
+
+      if (!hasProtocol) {
+        // Default to https:// if no protocol specified
+        val = `https://${val}`;
+      }
+
+      // Determine field based on protocol
+      if (val.startsWith('https://') || val.startsWith('http://')) {
+        result.url = val;
+      } else {
+        // s3://, gs://, ftp://, etc.
+        result.uri = val;
+      }
+    } else if (val && sourceType !== 'url/uri') {
+      result[sourceType] = val;
+    }
+
     if (this._prefixInput.value) result.prefix = this._prefixInput.value;
     if (this._suffixInput.value) result.suffix = this._suffixInput.value;
     if (this._fallbackInput.value) result.fallback = this._fallbackInput.value;
@@ -98,7 +119,10 @@ export class AudioSection extends CollapsibleSection {
 
   setData(data: Record<string, any>): void {
     if (data.path) { this._sourceType.value = 'path'; this._valueInput.value = data.path; }
-    else if (data.url) { this._sourceType.value = 'url'; this._valueInput.value = data.url; }
+    else if (data.url || data.uri) {
+      this._sourceType.value = 'url/uri';
+      this._valueInput.value = data.url || data.uri;
+    }
     else if (data.column) { this._sourceType.value = 'column'; this._colSelect.value = data.column; }
     if (data.prefix) this._prefixInput.value = data.prefix;
     if (data.suffix) this._suffixInput.value = data.suffix;
