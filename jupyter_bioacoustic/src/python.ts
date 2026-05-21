@@ -47,7 +47,6 @@ export function readKernelVars(): string {
     `  'player_height': _BA_PLAYER_HEIGHT,`,
     `  'info_card_height': _BA_INFO_CARD_HEIGHT,`,
     `  'form_panel_height': _BA_FORM_PANEL_HEIGHT,`,
-    `  'project_save_btn': _BA_PROJECT_SAVE_BTN,`,
     `  'description': _BA_DESCRIPTION,`,
     `  'description_height': _BA_DESCRIPTION_HEIGHT,`,
     `  'project_path': _BA_PROJECT_PATH,`,
