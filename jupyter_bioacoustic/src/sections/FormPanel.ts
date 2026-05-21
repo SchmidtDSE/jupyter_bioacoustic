@@ -10,7 +10,7 @@
 import { Signal } from '@lumino/signaling';
 import { Detection, AnnotConfig, MultiboxEntry } from '../types';
 import { KernelBridge, KernelError } from '../kernel';
-import { escPy, AccuracyConfig, parseAccuracyConfig, isTruthyValue } from '../util';
+import { escPy, AccuracyConfig, parseAccuracyConfig, isTruthyValue, resolveTemplate, hasTemplatePlaceholders } from '../util';
 import {
   countOutputRows,
   readOutputRows,
@@ -85,6 +85,7 @@ export class FormPanel {
   private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
+  private _templateElements: Array<{ el: HTMLElement | Text; template: string }> = [];
 
   // Progress tracking
   private _sessionCount = 0;
@@ -190,6 +191,7 @@ export class FormPanel {
     this._inputRefs.clear();
     this._sourceValueFields = [];
     this._passValueDefs = [];
+    this._templateElements = [];
     this._annotConfig = null;
     this._activeTool = '';
     this._annotInputs.clear();
@@ -509,8 +511,12 @@ export class FormPanel {
         const d = document.createElement('div');
         d.style.cssText = mutedTextStyle({ width: '100%' });
         const textVal = config && typeof config === 'object' ? (config.value ?? '') : config;
-        d.textContent = String(textVal);
-        if (String(textVal).includes('\n')) d.style.whiteSpace = 'pre-wrap';
+        const textStr = String(textVal);
+        d.textContent = textStr;
+        if (textStr.includes('\n')) d.style.whiteSpace = 'pre-wrap';
+        if (hasTemplatePlaceholders(textStr)) {
+          this._templateElements.push({ el: d, template: textStr });
+        }
         container.appendChild(d);
       } else {
         await this._buildInputElement(type, config, container);
@@ -535,7 +541,11 @@ export class FormPanel {
 
     const lbl = document.createElement('label');
     lbl.style.cssText = formLabelStyle();
-    lbl.textContent = labelText;
+    const lblText = document.createTextNode(labelText);
+    lbl.appendChild(lblText);
+    if (hasTemplatePlaceholders(labelText)) {
+      this._templateElements.push({ el: lblText, template: labelText });
+    }
 
     let inputEl: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
     const pendingFormSections: string[] = [];
@@ -1314,6 +1324,11 @@ export class FormPanel {
     // Apply pass_value fields
     for (const { sourceCol, col } of this._passValueDefs) {
       this._formValues[col] = row[sourceCol] ?? null;
+    }
+
+    // Resolve [[column_name]] templates in text fields and labels
+    for (const { el, template } of this._templateElements) {
+      el.textContent = resolveTemplate(template, row);
     }
 
     // Annotation rendering on the canvas depends on these values
