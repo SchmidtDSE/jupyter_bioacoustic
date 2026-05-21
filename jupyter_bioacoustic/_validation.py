@@ -188,9 +188,7 @@ def _validate_forms_and_annotations(
                 elems if isinstance(elems, list) else [],
             )
 
-    missing_forms = referenced_forms - defined_forms
-    unreferenced_forms = defined_forms - referenced_forms
-
+    # Scan annotation forms before calculating missing/unreferenced
     annot_configs = []
     if 'annotation' in fc and isinstance(fc['annotation'], dict):
         annot_configs.append(fc['annotation'])
@@ -205,10 +203,13 @@ def _validate_forms_and_annotations(
         annot_form = annot.get('form')
         if annot_form:
             referenced_forms.add(annot_form)
-            if annot_form in unreferenced_forms:
-                unreferenced_forms.discard(annot_form)
-            if annot_form not in defined_forms:
-                missing_forms.add(annot_form)
+
+    missing_forms = referenced_forms - defined_forms
+    unreferenced_forms = defined_forms - referenced_forms
+
+    for annot in annot_configs:
+        if not isinstance(annot, dict):
+            continue
         tools = annot.get('tools', [])
         if isinstance(tools, str):
             tools = [tools]
