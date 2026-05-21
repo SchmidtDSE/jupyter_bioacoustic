@@ -1,7 +1,6 @@
 export const FIELD_HELP: Record<string, Record<string, string>> = {
   project: {
     project_name: '(optional) Widget header title. Auto-derived from project filename if not set.',
-    project_save_btn: "(optional) Show a save-project button. True for 'Save Project', or a string for custom label.",
   },
   data: {
     source_type: '(required) How data is loaded: path (local file), url, sql (DuckDB query), or api endpoint.',
