@@ -149,9 +149,10 @@ export function getSummary(): string {
   ].join('\n');
 }
 
-export function openAnnotatorFromProject(projectPath: string): string {
+export function setupAnnotatorFromProject(projectPath: string): string {
   return [
     `from jupyter_bioacoustic import BioacousticAnnotator as _BA`,
-    `_BA(project='${escPy(projectPath)}').open(inline=False)`,
+    `_ba = _BA(project='${escPy(projectPath)}')`,
+    `_ba.setup()`,
   ].join('\n');
 }
