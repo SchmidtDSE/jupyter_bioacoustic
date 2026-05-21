@@ -1,4 +1,4 @@
-import { fmtTime, escPy, parseAccuracyConfig, isTruthyValue } from '../util';
+import { fmtTime, escPy, parseAccuracyConfig, isTruthyValue, resolveTemplate, hasTemplatePlaceholders } from '../util';
 
 describe('fmtTime', () => {
   test('zero', () => expect(fmtTime(0)).toBe('0:00.00'));
@@ -63,4 +63,39 @@ describe('isTruthyValue', () => {
   test('"none"', () => expect(isTruthyValue('none')).toBe(false));
   test('"maybe"', () => expect(isTruthyValue('maybe')).toBe(false));
   test('"0"', () => expect(isTruthyValue('0')).toBe(false));
+});
+
+describe('hasTemplatePlaceholders', () => {
+  test('detects placeholder', () => expect(hasTemplatePlaceholders('Hello [[name]]')).toBe(true));
+  test('detects multiple', () => expect(hasTemplatePlaceholders('[[a]] and [[b]]')).toBe(true));
+  test('no placeholder', () => expect(hasTemplatePlaceholders('plain text')).toBe(false));
+  test('single brackets ignored', () => expect(hasTemplatePlaceholders('[not] a [placeholder]')).toBe(false));
+  test('empty string', () => expect(hasTemplatePlaceholders('')).toBe(false));
+});
+
+describe('resolveTemplate', () => {
+  const row = { common_name: 'Robin', species_id: 42, score: 0.95 };
+
+  test('replaces single placeholder', () => {
+    expect(resolveTemplate('Is [[common_name]] correct?', row)).toBe('Is Robin correct?');
+  });
+  test('replaces multiple placeholders', () => {
+    expect(resolveTemplate('[[common_name]] (id: [[species_id]])', row))
+      .toBe('Robin (id: 42)');
+  });
+  test('handles numeric values', () => {
+    expect(resolveTemplate('Score: [[score]]', row)).toBe('Score: 0.95');
+  });
+  test('preserves missing columns as-is', () => {
+    expect(resolveTemplate('Value: [[unknown_col]]', row)).toBe('Value: [[unknown_col]]');
+  });
+  test('trims whitespace in column name', () => {
+    expect(resolveTemplate('[[ common_name ]]', row)).toBe('Robin');
+  });
+  test('no placeholders returns string unchanged', () => {
+    expect(resolveTemplate('plain text', row)).toBe('plain text');
+  });
+  test('empty row preserves placeholders', () => {
+    expect(resolveTemplate('[[common_name]]', {})).toBe('[[common_name]]');
+  });
 });
