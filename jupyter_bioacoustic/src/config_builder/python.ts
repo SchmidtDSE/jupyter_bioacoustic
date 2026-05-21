@@ -82,8 +82,9 @@ export function saveSingleFile(configType: string): string {
 export function listFiles(directory: string, extensions?: string[]): string {
   const extArg = extensions ? `[${extensions.map(e => `'${escPy(e)}'`).join(',')}]` : 'None';
   return [
-    `import json as _j`,
-    wp(`_j.dumps({'files': _CB_INSTANCE.list_files('${escPy(directory)}', ${extArg})})`),
+    `import json as _j, os as _os`,
+    `_d = _os.path.realpath('${escPy(directory)}')`,
+    wp(`_j.dumps({'files': _CB_INSTANCE.list_files('${escPy(directory)}', ${extArg}), 'resolved': _d})`),
   ].join('\n');
 }
 
@@ -146,6 +147,14 @@ export function getSummary(): string {
     `import json as _j`,
     `from jupyter_bioacoustic.config_builder.summary import build_summary_from_builder as _bsfb`,
     wp(`_j.dumps(_bsfb(_CB_INSTANCE))`),
+  ].join('\n');
+}
+
+export function changeCwd(newDir: string): string {
+  return [
+    `import json as _j, os as _os`,
+    `_os.chdir(_os.path.expanduser('${escPy(newDir)}'))`,
+    wp(`_j.dumps({'cwd': _os.getcwd()})`),
   ].join('\n');
 }
 
