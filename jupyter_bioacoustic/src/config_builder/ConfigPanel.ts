@@ -371,9 +371,10 @@ export class ConfigPanel {
       const msgs: string[] = [];
       if (vResult.errors?.length) msgs.push('Errors:\n• ' + vResult.errors.join('\n• '));
       if (vResult.warnings?.length) msgs.push('Warnings:\n• ' + vResult.warnings.join('\n• '));
-      if (!vResult.valid) {
+      if (msgs.length > 0) {
+        const title = vResult.valid ? 'Validation Warnings' : 'Validation Failed';
         const choice = await showDialog({
-          title: 'Validation Failed',
+          title,
           body: msgs.join('\n\n'),
           buttons: [
             { label: 'Cancel' },
@@ -384,8 +385,6 @@ export class ConfigPanel {
           this._setStatus('Save cancelled', false, true);
           return;
         }
-      } else if (msgs.length > 0) {
-        this._setStatus('Validation passed with warnings');
       }
     } catch (e: any) {
       this._setStatus(`Validation error: ${String(e.message ?? e)}`, true);
