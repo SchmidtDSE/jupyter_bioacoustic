@@ -27,6 +27,10 @@ export class KernelBridge {
     this.cwd = cwd;
   }
 
+  get activeKernel(): any {
+    return this._kernel();
+  }
+
   private _kernel(): any {
     return this._directKernel
       ?? this._tracker?.currentWidget?.sessionContext.session?.kernel
