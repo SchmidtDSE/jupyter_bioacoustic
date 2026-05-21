@@ -14,6 +14,7 @@ import {
   loadConfig,
   setSectionTarget,
   getSummary,
+  changeCwd,
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
@@ -40,6 +41,8 @@ export class ConfigPanel {
   private _ready = false;
   private _debug = false;
   private _readyPromise: Promise<void>;
+  private _resolvedCwd = '';
+  private _cwdCallbacks: Array<(cwd: string) => void> = [];
 
   private _project: ProjectSection;
   private _data: DataSection;
@@ -204,9 +207,12 @@ export class ConfigPanel {
       const result = JSON.parse(extractJson(raw));
       this._ready = true;
       this._debug = !!result.debug;
+      this._resolvedCwd = result.cwd || '';
       if (this._debug) {
         console.debug('[JBA] ConfigPanel ready, cwd:', result.cwd);
       }
+      for (const cb of this._cwdCallbacks) cb(this._resolvedCwd);
+      this._cwdCallbacks = [];
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Init failed: ${String(e.message ?? e)}`, true);
@@ -537,6 +543,36 @@ export class ConfigPanel {
   onProjectStateChanged(cb: () => void): void {
     this._project.projectEnabledChanged.connect(() => cb());
     this._project.changed.connect(() => cb());
+  }
+
+  get cwd(): string {
+    return this._resolvedCwd || this._kernel.cwd || '.';
+  }
+
+  onCwdReady(cb: (cwd: string) => void): void {
+    if (this._resolvedCwd) {
+      cb(this._resolvedCwd);
+    } else {
+      this._cwdCallbacks.push(cb);
+    }
+  }
+
+  async setCwd(newDir: string): Promise<string | null> {
+    await this._readyPromise;
+    if (!this._ready) return null;
+    try {
+      const raw = await this._kernel.exec(changeCwd(newDir));
+      const result = JSON.parse(extractJson(raw));
+      this._resolvedCwd = result.cwd || '';
+      return result.cwd as string;
+    } catch (e: any) {
+      this._setStatus(`chdir failed: ${String(e.message ?? e)}`, true);
+      return null;
+    }
+  }
+
+  browseDirectory(startDir: string, onSelect: (path: string) => void): void {
+    this._openBrowser(startDir, [], onSelect, true);
   }
 
   private async _onLoadConfig(path: string, fileType?: string): Promise<void> {
