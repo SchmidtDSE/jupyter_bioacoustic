@@ -972,6 +972,12 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
       Widget.attach(widget, container);
     };
 
+    (window as any)._bioacousticOpenWithKernel = (directKernel: any) => {
+      const widget = new BioacousticWidget(tracker, directKernel);
+      app.shell.add(widget, 'main', { mode: 'split-right' });
+      app.shell.activateById(widget.id);
+    };
+
     app.commands.addCommand('bioacoustic:open', {
       label: 'Open Bioacoustic Reviewer',
       execute: () => {
