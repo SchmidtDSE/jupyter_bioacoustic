@@ -45,7 +45,7 @@ VALID_CONFIG_KEYS = frozenset({
     'info_card_height', 'form_panel_height',
     'description', 'description_title', 'description_text',
     'description_path', 'description_open', 'description_height',
-    'project_name', 'project_save_btn',
+    'project_name',
     'config', 'session_args',
 })
 
