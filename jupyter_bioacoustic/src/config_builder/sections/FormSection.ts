@@ -131,7 +131,7 @@ export class FormSection extends CollapsibleSection {
       case 'annotation': return { tools: ['start_end_time_select'] };
       case 'pass_value': return { source_column: '', column: '' };
       case 'fixed_value': return { column: '', value: '' };
-      case 'submission_buttons': return { submit: { label: 'Submit' }, next: { label: 'Skip' } };
+      case 'submission_buttons': return { show_icon: true, submit: true, next: false, previous: false };
       case 'break': return {};
       case 'line': return {};
       case 'text': return { value: '' };
@@ -233,9 +233,10 @@ export class FormSection extends CollapsibleSection {
         break;
       case 'submission_buttons': {
         this._addCheckboxField(card, cfg, 'line', 'line divider');
-        this._addCheckboxField(card, cfg, 'previous', 'previous btn');
-        this._addField(card, cfg, 'next_label', 'next label', '100px');
-        this._addField(card, cfg, 'submit_label', 'submit label', '100px');
+        this._addCheckboxField(card, cfg, 'show_icon', 'show icon');
+        this._addInlineButtonField(card, cfg, 'previous', 'previous btn');
+        this._addInlineButtonField(card, cfg, 'next', 'next btn');
+        this._addInlineButtonField(card, cfg, 'submit', 'submit btn');
         break;
       }
       case 'text': {
@@ -312,6 +313,61 @@ export class FormSection extends CollapsibleSection {
       cfg[key] = input.checked;
       this._emitChanged();
     });
+    card.appendChild(row);
+  }
+
+  private _addInlineButtonField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string): void {
+    const row = this._makeRow();
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.style.cssText = `accent-color:${COLORS.blue};margin-right:6px;`;
+
+    // Use existing value if defined, otherwise use defaults from _defaultConfig
+    if (cfg[key] === undefined) {
+      const defaults = this._defaultConfig('submission_buttons');
+      cfg[key] = defaults[key] ?? false;
+    }
+    checkbox.checked = !!cfg[key];
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+    labelSpan.style.cssText = `color:${COLORS.textSubtle};font-size:11px;margin-left:-7px;width:70px;`;
+
+    const textInput = this._makeInput(`custom ${label.replace(' btn', '')} label`, '140px');
+    textInput.style.fontSize = '11px';
+
+    const labelKey = `${key}_label`;
+    if (cfg[labelKey]) textInput.value = cfg[labelKey];
+
+    // Update text input enabled state
+    const updateTextInputState = () => {
+      textInput.disabled = !checkbox.checked;
+      textInput.style.opacity = checkbox.checked ? '1' : '0.5';
+      textInput.style.backgroundColor = checkbox.checked ? COLORS.bgSurface0 : COLORS.bgSurface1;
+    };
+    updateTextInputState();
+
+    // Checkbox change handler
+    checkbox.addEventListener('change', () => {
+      cfg[key] = checkbox.checked;
+      updateTextInputState();
+      this._emitChanged();
+    });
+
+    // Text input change handler
+    textInput.addEventListener('input', () => {
+      cfg[labelKey] = textInput.value;
+      // Auto-check checkbox if user types in text field
+      if (textInput.value && !checkbox.checked) {
+        checkbox.checked = true;
+        cfg[key] = true;
+        updateTextInputState();
+      }
+      this._emitChanged();
+    });
+
+    row.append(checkbox, labelSpan, textInput);
     card.appendChild(row);
   }
 
@@ -798,9 +854,32 @@ export class FormSection extends CollapsibleSection {
       if (elem.type === 'submission_buttons') {
         const sb: Record<string, any> = {};
         if (cfg.line) sb.line = true;
-        if (cfg.previous) sb.previous = true;
-        if (cfg.next_label) sb.next = { label: cfg.next_label };
-        if (cfg.submit_label) sb.submit = { label: cfg.submit_label };
+        if (cfg.previous) {
+          if (cfg.previous_label) {
+            sb.previous = {
+              label: cfg.previous_label,
+              icon: cfg.show_icon !== false
+            };
+          } else {
+            sb.previous = true;
+          }
+        }
+        if (cfg.next_label) {
+          sb.next = {
+            label: cfg.next_label,
+            icon: cfg.show_icon !== false
+          };
+        } else if (cfg.next) {
+          sb.next = true;
+        }
+        if (cfg.submit_label) {
+          sb.submit = {
+            label: cfg.submit_label,
+            icon: cfg.show_icon !== false
+          };
+        } else if (cfg.submit) {
+          sb.submit = true;
+        }
         submissionButtons = sb;
         continue;
       }
@@ -942,9 +1021,29 @@ export class FormSection extends CollapsibleSection {
       const sb = data.submission_buttons;
       const cfg: Record<string, any> = {};
       if (sb.line) cfg.line = true;
-      if (sb.previous) cfg.previous = true;
-      if (sb.next?.label) cfg.next_label = sb.next.label;
-      if (sb.submit?.label) cfg.submit_label = sb.submit.label;
+
+      // Handle icon setting from any button
+      const hasIcon = sb.previous?.icon !== false || sb.next?.icon !== false || sb.submit?.icon !== false;
+      cfg.show_icon = hasIcon;
+
+      if (sb.previous) {
+        cfg.previous = true;
+        if (typeof sb.previous === 'object' && sb.previous.label) {
+          cfg.previous_label = sb.previous.label;
+        }
+      }
+      if (sb.next) {
+        cfg.next = true;
+        if (typeof sb.next === 'object' && sb.next.label) {
+          cfg.next_label = sb.next.label;
+        }
+      }
+      if (sb.submit) {
+        cfg.submit = true;
+        if (typeof sb.submit === 'object' && sb.submit.label) {
+          cfg.submit_label = sb.submit.label;
+        }
+      }
       this._addElement('submission_buttons', cfg);
     }
 
