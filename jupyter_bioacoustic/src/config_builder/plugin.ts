@@ -60,7 +60,30 @@ class ConfigBuilderWidget extends Widget {
 
     this._panel = new ConfigPanel(this._kernelBridge);
 
-    header.append(this._titleEl, this._panel.statusEl);
+    const cwdLabel = document.createElement('span');
+    cwdLabel.textContent = this._kernelBridge.cwd || '.';
+    cwdLabel.title = 'Double-click to change working directory';
+    this._panel.onCwdReady((cwd) => { cwdLabel.textContent = cwd; });
+    cwdLabel.style.cssText =
+      `font-size:11px;color:${COLORS.textMuted};font-family:monospace;cursor:pointer;` +
+      `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:auto;` +
+      `padding:2px 6px;border-radius:3px;`;
+    cwdLabel.addEventListener('mouseenter', () => {
+      cwdLabel.style.background = COLORS.bgSurface1;
+    });
+    cwdLabel.addEventListener('mouseleave', () => {
+      cwdLabel.style.background = '';
+    });
+    cwdLabel.addEventListener('dblclick', () => {
+      this._panel.browseDirectory('.', (selectedDir) => {
+        void (async () => {
+          const newCwd = await this._panel.setCwd(selectedDir);
+          if (newCwd) cwdLabel.textContent = newCwd;
+        })();
+      });
+    });
+
+    header.append(this._titleEl, cwdLabel, this._panel.statusEl);
 
     const bottomBar = document.createElement('div');
     bottomBar.style.cssText =
