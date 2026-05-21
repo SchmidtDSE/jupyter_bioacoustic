@@ -204,7 +204,6 @@ class BioacousticWidget extends Widget {
       sync_config: string;
       clip_table_height: string; player_height: string;
       info_card_height: string; form_panel_height: string;
-      project_save_btn: string;
       description: string;
       description_height: string;
       project_path: string;
