@@ -43,6 +43,22 @@ export function parseAccuracyConfig(progressTracker: any): AccuracyConfig | null
   return null;
 }
 
+const TEMPLATE_RE = /\[\[([^\]]+)\]\]/g;
+
+/** Replace [[column_name]] placeholders with values from a row object. */
+export function resolveTemplate(template: string, row: Record<string, any>): string {
+  return template.replace(TEMPLATE_RE, (_, col: string) => {
+    const val = row[col.trim()];
+    return val !== undefined ? String(val) : `[[${col}]]`;
+  });
+}
+
+/** Return true if the string contains at least one [[...]] placeholder. */
+export function hasTemplatePlaceholders(text: string): boolean {
+  TEMPLATE_RE.lastIndex = 0;
+  return TEMPLATE_RE.test(text);
+}
+
 const _TRUTHY_WORDS = new Set(['yes', 'valid', 'true']);
 const _IS_PREFIXES = ['is', 'is ', 'is-', 'is_'];
 
