@@ -30,6 +30,8 @@ class ConfigPanel {
         this._suppressChanges = false;
         this._ready = false;
         this._debug = false;
+        this._resolvedCwd = '';
+        this._cwdCallbacks = [];
         this._kernel = kernel;
         this.element = document.createElement('div');
         this.element.style.cssText =
@@ -170,9 +172,13 @@ class ConfigPanel {
             const result = JSON.parse((0, python_1.extractJson)(raw));
             this._ready = true;
             this._debug = !!result.debug;
+            this._resolvedCwd = result.cwd || '';
             if (this._debug) {
                 console.debug('[JBA] ConfigPanel ready, cwd:', result.cwd);
             }
+            for (const cb of this._cwdCallbacks)
+                cb(this._resolvedCwd);
+            this._cwdCallbacks = [];
             this._setStatus('Ready');
         }
         catch (e) {
@@ -503,6 +509,36 @@ class ConfigPanel {
         this._project.projectEnabledChanged.connect(() => cb());
         this._project.changed.connect(() => cb());
     }
+    get cwd() {
+        return this._resolvedCwd || this._kernel.cwd || '.';
+    }
+    onCwdReady(cb) {
+        if (this._resolvedCwd) {
+            cb(this._resolvedCwd);
+        }
+        else {
+            this._cwdCallbacks.push(cb);
+        }
+    }
+    async setCwd(newDir) {
+        var _a;
+        await this._readyPromise;
+        if (!this._ready)
+            return null;
+        try {
+            const raw = await this._kernel.exec((0, python_1.changeCwd)(newDir));
+            const result = JSON.parse((0, python_1.extractJson)(raw));
+            this._resolvedCwd = result.cwd || '';
+            return result.cwd;
+        }
+        catch (e) {
+            this._setStatus(`chdir failed: ${String((_a = e.message) !== null && _a !== void 0 ? _a : e)}`, true);
+            return null;
+        }
+    }
+    browseDirectory(startDir, onSelect) {
+        this._openBrowser(startDir, [], onSelect, true);
+    }
     async _onLoadConfig(path, fileType) {
         var _a;
         await this._readyPromise;
@@ -669,6 +705,7 @@ class FileBrowser {
     constructor(kernel, startDir, extensions, dirOnly = false) {
         this.fileSelected = new signaling_1.Signal(this);
         this.dismissed = new signaling_1.Signal(this);
+        this._startDir = '';
         this._kernel = kernel;
         this._cwd = startDir || '.';
         this._extensions = extensions;
@@ -726,6 +763,12 @@ class FileBrowser {
             `padding:4px 12px;font-size:11px;color:${styles_1.COLORS.textMuted};flex-shrink:0;` +
                 `background:${styles_1.COLORS.bgMantle};`;
         this.element.append(header, this._pathBar, this._listEl, this._footerRow, this._statusEl);
+        this.element.tabIndex = 0;
+        this.element.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && this._dirOnly) {
+                this.fileSelected.emit(this._emitPath(this._cwd));
+            }
+        });
         void this._loadDir(this._cwd);
     }
     async _loadDir(dir) {
@@ -737,6 +780,12 @@ class FileBrowser {
         try {
             const raw = await this._kernel.exec((0, python_1.listFiles)(dir, this._extensions));
             const result = JSON.parse((0, python_1.extractJson)(raw));
+            if (result.resolved) {
+                this._cwd = result.resolved;
+                if (!this._startDir)
+                    this._startDir = result.resolved;
+                this._pathBar.textContent = this._displayPath();
+            }
             const entries = result.files;
             this._renderEntries(entries);
             this._statusEl.textContent = `${entries.length} items`;
@@ -753,9 +802,9 @@ class FileBrowser {
                 `display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;` +
                     `font-size:12px;color:${styles_1.COLORS.green};font-weight:700;` +
                     `border-bottom:1px solid ${styles_1.COLORS.bgSurface0};background:${styles_1.COLORS.bgSurface0};`;
-            selectRow.textContent = `\u2713 Select this folder: ${this._cwd}`;
+            selectRow.textContent = `\u2713 Select this folder: ${this._displayPath()}`;
             selectRow.addEventListener('click', () => {
-                this.fileSelected.emit(this._cwd);
+                this.fileSelected.emit(this._emitPath(this._cwd));
             });
             selectRow.addEventListener('mouseenter', () => { selectRow.style.background = styles_1.COLORS.bgHover; });
             selectRow.addEventListener('mouseleave', () => { selectRow.style.background = styles_1.COLORS.bgSurface0; });
@@ -796,15 +845,12 @@ class FileBrowser {
         }
         const upRow = this._makeEntryRow('📁', '..', true);
         upRow.addEventListener('click', () => {
-            if (this._cwd === '.' || this._cwd === '/' || this._cwd === '') {
-                void this._loadDir('..');
-            }
-            else {
-                const parts = this._cwd.replace(/\/$/, '').split('/');
-                parts.pop();
-                const parent = parts.length === 0 ? '.' : parts.join('/');
-                void this._loadDir(parent);
-            }
+            if (this._cwd === '/')
+                return;
+            const parts = this._cwd.replace(/\/$/, '').split('/');
+            parts.pop();
+            const parent = parts.length <= 1 ? (parts[0] || '/') : parts.join('/');
+            void this._loadDir(parent);
         });
         this._listEl.appendChild(upRow);
         for (const entry of entries) {
@@ -814,25 +860,40 @@ class FileBrowser {
             const row = this._makeEntryRow(icon, entry.name, entry.is_dir);
             if (entry.is_dir) {
                 row.addEventListener('click', () => {
-                    const newPath = this._cwd === '.' ? entry.name : `${this._cwd}/${entry.name}`;
-                    void this._loadDir(newPath);
+                    void this._loadDir(`${this._cwd}/${entry.name}`);
                 });
             }
             else {
                 row.addEventListener('click', () => {
-                    const filePath = this._cwd === '.' ? entry.name : `${this._cwd}/${entry.name}`;
-                    this.fileSelected.emit(filePath);
+                    this.fileSelected.emit(this._emitPath(`${this._cwd}/${entry.name}`));
                 });
             }
             this._listEl.appendChild(row);
         }
     }
+    _displayPath() {
+        if (!this._startDir || !this._cwd.startsWith(this._startDir)) {
+            return this._cwd;
+        }
+        const rel = this._cwd.substring(this._startDir.length);
+        if (!rel)
+            return '.';
+        return '.' + rel;
+    }
+    _emitPath(absPath) {
+        if (!this._startDir || !absPath.startsWith(this._startDir)) {
+            return absPath;
+        }
+        const rel = absPath.substring(this._startDir.length);
+        if (!rel)
+            return '.';
+        return rel.startsWith('/') ? rel.substring(1) : rel;
+    }
     _confirmFilename() {
         const name = this._filenameInput.value.trim();
         if (!name)
             return;
-        const filePath = this._cwd === '.' ? name : `${this._cwd}/${name}`;
-        this.fileSelected.emit(filePath);
+        this.fileSelected.emit(this._emitPath(`${this._cwd}/${name}`));
     }
     _makeEntryRow(icon, name, isDir) {
         const row = document.createElement('div');
@@ -1323,7 +1384,30 @@ class ConfigBuilderWidget extends widgets_1.Widget {
         this._titleEl.textContent = 'Config Builder';
         this._titleEl.style.cssText = `font-weight:700;font-size:13px;margin-right:6px;flex-shrink:0;`;
         this._panel = new ConfigPanel_1.ConfigPanel(this._kernelBridge);
-        header.append(this._titleEl, this._panel.statusEl);
+        const cwdLabel = document.createElement('span');
+        cwdLabel.textContent = this._kernelBridge.cwd || '.';
+        cwdLabel.title = 'Double-click to change working directory';
+        this._panel.onCwdReady((cwd) => { cwdLabel.textContent = cwd; });
+        cwdLabel.style.cssText =
+            `font-size:11px;color:${styles_1.COLORS.textMuted};font-family:monospace;cursor:pointer;` +
+                `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:auto;` +
+                `padding:2px 6px;border-radius:3px;`;
+        cwdLabel.addEventListener('mouseenter', () => {
+            cwdLabel.style.background = styles_1.COLORS.bgSurface1;
+        });
+        cwdLabel.addEventListener('mouseleave', () => {
+            cwdLabel.style.background = '';
+        });
+        cwdLabel.addEventListener('dblclick', () => {
+            this._panel.browseDirectory('.', (selectedDir) => {
+                void (async () => {
+                    const newCwd = await this._panel.setCwd(selectedDir);
+                    if (newCwd)
+                        cwdLabel.textContent = newCwd;
+                })();
+            });
+        });
+        header.append(this._titleEl, cwdLabel, this._panel.statusEl);
         const bottomBar = document.createElement('div');
         bottomBar.style.cssText =
             `display:flex;gap:8px;padding:6px 12px;` +
@@ -1491,7 +1575,7 @@ exports.configBuilderPlugin = {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.setupAnnotatorFromProject = exports.getSummary = exports.loadConfig = exports.validateConfig = exports.setSectionTarget = exports.checkFileExists = exports.readSampleData = exports.readColumns = exports.createDirectory = exports.listFiles = exports.saveSingleFile = exports.saveAll = exports.updateConfigFromYaml = exports.updateSection = exports.readState = exports.ensureSetup = exports.extractJson = void 0;
+exports.setupAnnotatorFromProject = exports.changeCwd = exports.getSummary = exports.loadConfig = exports.validateConfig = exports.setSectionTarget = exports.checkFileExists = exports.readSampleData = exports.readColumns = exports.createDirectory = exports.listFiles = exports.saveSingleFile = exports.saveAll = exports.updateConfigFromYaml = exports.updateSection = exports.readState = exports.ensureSetup = exports.extractJson = void 0;
 const util_1 = __webpack_require__(/*! ../util */ "./lib/util.js");
 const DELIM = '___CB_JSON___';
 function extractJson(raw) {
@@ -1567,8 +1651,9 @@ exports.saveSingleFile = saveSingleFile;
 function listFiles(directory, extensions) {
     const extArg = extensions ? `[${extensions.map(e => `'${(0, util_1.escPy)(e)}'`).join(',')}]` : 'None';
     return [
-        `import json as _j`,
-        wp(`_j.dumps({'files': _CB_INSTANCE.list_files('${(0, util_1.escPy)(directory)}', ${extArg})})`),
+        `import json as _j, os as _os`,
+        `_d = _os.path.realpath('${(0, util_1.escPy)(directory)}')`,
+        wp(`_j.dumps({'files': _CB_INSTANCE.list_files('${(0, util_1.escPy)(directory)}', ${extArg}), 'resolved': _d})`),
     ].join('\n');
 }
 exports.listFiles = listFiles;
@@ -1634,6 +1719,14 @@ function getSummary() {
     ].join('\n');
 }
 exports.getSummary = getSummary;
+function changeCwd(newDir) {
+    return [
+        `import json as _j, os as _os`,
+        `_os.chdir(_os.path.expanduser('${(0, util_1.escPy)(newDir)}'))`,
+        wp(`_j.dumps({'cwd': _os.getcwd()})`),
+    ].join('\n');
+}
+exports.changeCwd = changeCwd;
 function setupAnnotatorFromProject(projectPath) {
     return [
         `from jupyter_bioacoustic import BioacousticAnnotator as _BA`,
@@ -10308,4 +10401,4 @@ exports.showDialog = showDialog;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.d5d31387795354882398.js.map
+//# sourceMappingURL=lib_index_js.0c8a376bb8490d2fe5e3.js.map
