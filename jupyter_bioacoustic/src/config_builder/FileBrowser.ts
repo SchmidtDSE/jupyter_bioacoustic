@@ -15,6 +15,7 @@ export class FileBrowser {
 
   private _kernel: KernelBridge;
   private _cwd: string;
+  private _startDir = '';
   private _extensions: string[];
   private _dirOnly: boolean;
   private _pathBar: HTMLDivElement;
@@ -95,6 +96,12 @@ export class FileBrowser {
       `background:${COLORS.bgMantle};`;
 
     this.element.append(header, this._pathBar, this._listEl, this._footerRow, this._statusEl);
+    this.element.tabIndex = 0;
+    this.element.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && this._dirOnly) {
+        this.fileSelected.emit(this._emitPath(this._cwd));
+      }
+    });
     void this._loadDir(this._cwd);
   }
 
@@ -107,6 +114,11 @@ export class FileBrowser {
     try {
       const raw = await this._kernel.exec(listFiles(dir, this._extensions));
       const result = JSON.parse(extractJson(raw));
+      if (result.resolved) {
+        this._cwd = result.resolved;
+        if (!this._startDir) this._startDir = result.resolved;
+        this._pathBar.textContent = this._displayPath();
+      }
       const entries = result.files as FileEntry[];
       this._renderEntries(entries);
       this._statusEl.textContent = `${entries.length} items`;
@@ -124,9 +136,9 @@ export class FileBrowser {
         `display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;` +
         `font-size:12px;color:${COLORS.green};font-weight:700;` +
         `border-bottom:1px solid ${COLORS.bgSurface0};background:${COLORS.bgSurface0};`;
-      selectRow.textContent = `\u2713 Select this folder: ${this._cwd}`;
+      selectRow.textContent = `\u2713 Select this folder: ${this._displayPath()}`;
       selectRow.addEventListener('click', () => {
-        this.fileSelected.emit(this._cwd);
+        this.fileSelected.emit(this._emitPath(this._cwd));
       });
       selectRow.addEventListener('mouseenter', () => { selectRow.style.background = COLORS.bgHover; });
       selectRow.addEventListener('mouseleave', () => { selectRow.style.background = COLORS.bgSurface0; });
@@ -165,14 +177,11 @@ export class FileBrowser {
 
     const upRow = this._makeEntryRow('📁', '..', true);
     upRow.addEventListener('click', () => {
-      if (this._cwd === '.' || this._cwd === '/' || this._cwd === '') {
-        void this._loadDir('..');
-      } else {
-        const parts = this._cwd.replace(/\/$/, '').split('/');
-        parts.pop();
-        const parent = parts.length === 0 ? '.' : parts.join('/');
-        void this._loadDir(parent);
-      }
+      if (this._cwd === '/') return;
+      const parts = this._cwd.replace(/\/$/, '').split('/');
+      parts.pop();
+      const parent = parts.length <= 1 ? (parts[0] || '/') : parts.join('/');
+      void this._loadDir(parent);
     });
     this._listEl.appendChild(upRow);
 
@@ -183,13 +192,11 @@ export class FileBrowser {
 
       if (entry.is_dir) {
         row.addEventListener('click', () => {
-          const newPath = this._cwd === '.' ? entry.name : `${this._cwd}/${entry.name}`;
-          void this._loadDir(newPath);
+          void this._loadDir(`${this._cwd}/${entry.name}`);
         });
       } else {
         row.addEventListener('click', () => {
-          const filePath = this._cwd === '.' ? entry.name : `${this._cwd}/${entry.name}`;
-          this.fileSelected.emit(filePath);
+          this.fileSelected.emit(this._emitPath(`${this._cwd}/${entry.name}`));
         });
       }
 
@@ -197,11 +204,28 @@ export class FileBrowser {
     }
   }
 
+  private _displayPath(): string {
+    if (!this._startDir || !this._cwd.startsWith(this._startDir)) {
+      return this._cwd;
+    }
+    const rel = this._cwd.substring(this._startDir.length);
+    if (!rel) return '.';
+    return '.' + rel;
+  }
+
+  private _emitPath(absPath: string): string {
+    if (!this._startDir || !absPath.startsWith(this._startDir)) {
+      return absPath;
+    }
+    const rel = absPath.substring(this._startDir.length);
+    if (!rel) return '.';
+    return rel.startsWith('/') ? rel.substring(1) : rel;
+  }
+
   private _confirmFilename(): void {
     const name = this._filenameInput.value.trim();
     if (!name) return;
-    const filePath = this._cwd === '.' ? name : `${this._cwd}/${name}`;
-    this.fileSelected.emit(filePath);
+    this.fileSelected.emit(this._emitPath(`${this._cwd}/${name}`));
   }
 
   private _makeEntryRow(icon: string, name: string, isDir: boolean): HTMLDivElement {
