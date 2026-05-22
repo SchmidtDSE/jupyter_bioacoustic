@@ -5,7 +5,6 @@ export const FIELD_HELP: Record<string, Record<string, string>> = {
   data: {
     source_type: '(required) How data is loaded: path (local file), url, sql (DuckDB query), or api endpoint.',
     path: '(required) Path to a CSV, Parquet, or JSONL file containing detection rows.',
-    display_columns: '(optional) Subset of columns shown in the clip table. If empty, all columns are shown.',
     start_time_col: '(optional) Column name for segment start time. Default: start_time.',
     end_time_col: '(optional) Column name for segment end time. Default: end_time.',
     duration: '(optional) Column name or fixed number (seconds) to compute end_time from start_time.',
