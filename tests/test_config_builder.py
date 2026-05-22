@@ -88,9 +88,9 @@ class TestConfigBuilderGetConfig:
 
     def test_get_config(self):
         cb = ConfigBuilder()
-        cb._config = {'ident_column': 'species'}
+        cb._config = {'info_card_ident_column': 'species'}
         result = cb.get_config('config')
-        assert result['ident_column'] == 'species'
+        assert result['info_card_ident_column'] == 'species'
 
     def test_get_form_config(self):
         cb = ConfigBuilder()
@@ -105,11 +105,11 @@ class TestConfigBuilderGetConfig:
     def test_merged_config(self):
         cb = ConfigBuilder()
         cb._project = {'project_name': 'Test'}
-        cb._config = {'ident_column': 'species'}
+        cb._config = {'info_card_ident_column': 'species'}
         cb._form_config = {'select': {'label': 'x'}}
         merged = cb.get_merged_config()
         assert merged['project_name'] == 'Test'
-        assert merged['ident_column'] == 'species'
+        assert merged['info_card_ident_column'] == 'species'
         assert 'select' in merged['form_config']
 
     def test_project_includes_form_config(self):
@@ -272,9 +272,17 @@ class TestUpdateSection:
     def test_update_data_split(self):
         cb = ConfigBuilder()
         cb._section_targets['data'] = 'split'
-        cb.update_section('data', {'path': 'data.csv', 'columns': ['a', 'b']})
+        cb.update_section('data', {'path': 'data.csv', 'start_time': 'begin'})
         assert cb._project['data'] == {'path': 'data.csv'}
-        assert cb._config['data'] == {'columns': ['a', 'b']}
+        assert cb._config['data'] == {'start_time': 'begin'}
+
+    def test_update_data_display_columns_to_app(self):
+        cb = ConfigBuilder()
+        cb._section_targets['data'] = 'split'
+        cb._section_targets['app'] = 'config'
+        cb.update_section('data', {'path': 'data.csv', 'display_columns': ['a', 'b']})
+        assert cb._config.get('display_columns') == ['a', 'b']
+        assert 'display_columns' not in cb._project.get('data', {})
 
     def test_update_form(self):
         cb = ConfigBuilder()
@@ -285,8 +293,8 @@ class TestUpdateSection:
     def test_update_app_to_config(self):
         cb = ConfigBuilder()
         cb._section_targets['app'] = 'config'
-        cb.update_section('app', {'ident_column': 'species', 'width': 800})
-        assert cb._config['ident_column'] == 'species'
+        cb.update_section('app', {'info_card_ident_column': 'species', 'width': 800})
+        assert cb._config['info_card_ident_column'] == 'species'
         assert cb._config['width'] == 800
 
     def test_sets_dirty_flag(self):
@@ -298,7 +306,7 @@ class TestUpdateSection:
     def test_empty_values_removed(self):
         cb = ConfigBuilder()
         cb._section_targets['app'] = 'project'
-        cb.update_section('app', {'ident_column': 'species', 'width': ''})
+        cb.update_section('app', {'info_card_ident_column': 'species', 'width': ''})
         assert 'width' not in cb._project
 
 
@@ -331,10 +339,10 @@ class TestBuildFileContents:
     def test_config_disabled(self):
         cb = ConfigBuilder()
         cb._project = {'project_name': 'P', 'config_enabled': False}
-        cb._config = {'ident_column': 'species'}
+        cb._config = {'info_card_ident_column': 'species'}
         fc = cb._build_file_contents()
         assert fc['config_enabled'] is False
-        assert 'ident_column' in fc['project_cfg']
+        assert 'info_card_ident_column' in fc['project_cfg']
 
     def test_form_in_separate_file(self):
         cb = ConfigBuilder()
@@ -352,11 +360,11 @@ class TestUpdateConfigFromYaml:
 
     def test_update_project_yaml(self):
         cb = ConfigBuilder()
-        yaml_str = "project_name: Updated\nident_column: species\n"
+        yaml_str = "project_name: Updated\ninfo_card_ident_column: species\n"
         result = cb.update_config_from_yaml(yaml_str, 'project')
         assert result is True
         assert cb._project['project_name'] == 'Updated'
-        assert cb._project['ident_column'] == 'species'
+        assert cb._project['info_card_ident_column'] == 'species'
 
     def test_update_form_yaml(self):
         cb = ConfigBuilder()
