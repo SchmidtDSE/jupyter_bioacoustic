@@ -7,6 +7,7 @@ export class AppSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, string>(this);
 
   private _identColSelect: HTMLSelectElement;
+  private _dispCols: string[] = [];
   private _displayCols: string[] = [];
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
@@ -20,12 +21,20 @@ export class AppSection extends CollapsibleSection {
   private _captureHeightInput: HTMLInputElement;
 
   private _availableCols: string[] = [];
+  private _dispChipsArea: HTMLDivElement;
+  private _dispPickerArea: HTMLDivElement;
   private _displayChipsArea: HTMLDivElement;
   private _displayPickerArea: HTMLDivElement;
   private _secrets: SecretsEditor;
 
   constructor() {
     super('Application', 'app', false, true);
+
+    this._dispChipsArea = this._makeChipsArea();
+    this._dispPickerArea = this._makePickerArea();
+    const dispWrap = this._makeColumnGroupWrapper();
+    dispWrap.append(this._makeSectionLabel('display_columns', 'display columns'), this._dispChipsArea, this._dispPickerArea);
+    this._body.appendChild(dispWrap);
 
     this._identColSelect = this._makeSelect(['(none)'], '(none)');
     this._identColSelect.addEventListener('change', () => this._emitChanged());
@@ -134,14 +143,14 @@ export class AppSection extends CollapsibleSection {
     return wrap;
   }
 
-  private _makeSectionLabel(text: string): HTMLDivElement {
+  private _makeSectionLabel(fieldKey: string, displayText?: string): HTMLDivElement {
     const row = document.createElement('div');
     row.style.cssText = `display:flex;align-items:center;gap:6px;cursor:pointer;`;
     const lbl = document.createElement('span');
-    lbl.textContent = text;
+    lbl.textContent = displayText || fieldKey;
     lbl.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
     row.append(lbl);
-    row.addEventListener('click', () => this.fieldFocused.emit(text));
+    row.addEventListener('click', () => this.fieldFocused.emit(fieldKey));
     return row;
   }
 
@@ -153,6 +162,7 @@ export class AppSection extends CollapsibleSection {
   setColumnOptions(cols: string[]): void {
     this._availableCols = cols;
     this._rebuildIdentSelect();
+    this._rebuildPicker(this._dispPickerArea, this._dispCols, 'disp');
     this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
   }
 
@@ -191,12 +201,17 @@ export class AppSection extends CollapsibleSection {
         `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
       chip.addEventListener('click', () => {
         selected.push(col);
-        this._rebuildChips(this._displayChipsArea, selected, which);
+        const chipsArea = which === 'disp' ? this._dispChipsArea : this._displayChipsArea;
+        this._rebuildChips(chipsArea, selected, which);
         this._rebuildPicker(area, selected, which);
         this._emitChanged();
       });
       area.appendChild(chip);
     }
+  }
+
+  private _getColsForWhich(which: string): string[] {
+    return which === 'disp' ? this._dispCols : this._displayCols;
   }
 
   private _rebuildChips(area: HTMLDivElement, selected: string[], which: string): void {
@@ -227,10 +242,11 @@ export class AppSection extends CollapsibleSection {
       chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer!.dropEffect = 'move'; });
       chip.addEventListener('drop', (e) => {
         e.preventDefault();
+        const cols = this._getColsForWhich(which);
         if (dragIdx < 0 || dragIdx === i) return;
-        const [moved] = selected.splice(dragIdx, 1);
-        selected.splice(i, 0, moved);
-        this._rebuildChips(area, selected, which);
+        const [moved] = cols.splice(dragIdx, 1);
+        cols.splice(i, 0, moved);
+        this._rebuildChips(area, cols, which);
         this._emitChanged();
       });
 
@@ -243,10 +259,12 @@ export class AppSection extends CollapsibleSection {
         `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
         `font-size:12px;padding:0 2px;line-height:1;`;
       rm.addEventListener('click', () => {
-        const idx = selected.indexOf(col);
-        if (idx >= 0) selected.splice(idx, 1);
-        this._rebuildChips(area, selected, which);
-        this._rebuildPicker(this._displayPickerArea, selected, which);
+        const cols = this._getColsForWhich(which);
+        const idx = cols.indexOf(col);
+        if (idx >= 0) cols.splice(idx, 1);
+        this._rebuildChips(area, cols, which);
+        const pickerArea = which === 'disp' ? this._dispPickerArea : this._displayPickerArea;
+        this._rebuildPicker(pickerArea, cols, which);
         this._emitChanged();
       });
 
@@ -257,6 +275,8 @@ export class AppSection extends CollapsibleSection {
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
+    if (this._dispCols.length > 0) result.display_columns = [...this._dispCols];
+
     const ident = this._identColSelect.value;
     if (ident) result.info_card_ident_column = ident;
 
@@ -292,6 +312,11 @@ export class AppSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
+    if (data.display_columns && Array.isArray(data.display_columns)) {
+      this._dispCols = [...data.display_columns];
+      this._rebuildChips(this._dispChipsArea, this._dispCols, 'disp');
+      this._rebuildPicker(this._dispPickerArea, this._dispCols, 'disp');
+    }
     if (data.info_card_ident_column) this._identColSelect.value = data.info_card_ident_column;
     if (data.info_card_display_columns && Array.isArray(data.info_card_display_columns)) {
       this._displayCols = [...data.info_card_display_columns];
