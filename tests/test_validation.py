@@ -92,3 +92,55 @@ class TestConfigKeys:
     def test_session_args_is_valid_key(self):
         result = validate_config(config={'session_args': True})
         assert result['valid']
+
+
+#
+# annotation tool validation
+#
+class TestAnnotationTools:
+    """Tests for annotation tool validation including fixed_duration."""
+
+    def test_valid_string_tool(self):
+        fc = {'annotation': {'tools': ['time_select']}}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_unknown_string_tool(self):
+        fc = {'annotation': {'tools': ['bogus_tool']}}
+        result = validate_config(form_config=fc)
+        assert not result['valid']
+        assert any('bogus_tool' in e for e in result['errors'])
+
+    def test_fixed_duration_as_string(self):
+        fc = {'annotation': {'tools': ['fixed_duration']}}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_fixed_duration_as_dict(self):
+        fc = {'annotation': {'tools': [{'fixed_duration': {'window': 3}}]}}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_dict_tool_unknown_key(self):
+        fc = {'annotation': {'tools': [{'bogus_tool': 3}]}}
+        result = validate_config(form_config=fc)
+        assert not result['valid']
+        assert any('bogus_tool' in e for e in result['errors'])
+
+    def test_mixed_string_and_dict_tools(self):
+        fc = {'annotation': {'tools': ['bounding_box', {'fixed_duration': 3}]}}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_fixed_duration_initial_window(self):
+        fc = {'annotation': {'tools': [{'fixed_duration': {'initial_window': 3}}]}}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_fixed_duration_window_and_initial_window_error(self):
+        fc = {'annotation': {'tools': [
+            {'fixed_duration': {'window': 3, 'initial_window': 5}},
+        ]}}
+        result = validate_config(form_config=fc)
+        assert not result['valid']
+        assert any('not both' in e for e in result['errors'])
