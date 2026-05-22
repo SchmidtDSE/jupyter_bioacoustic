@@ -89,7 +89,8 @@ cmd = "python -m ensurepip --upgrade && python -m pip install -e . && python dev
 depends-on = ["build"]
 
 [tool.pixi.tasks.tests]
-cmd = "cd jupyter_bioacoustic && pnpm test && cd .. && pixi run -e test pytest tests/ -v"
+cmd = "cd jupyter_bioacoustic && pnpm test && cd .. && pytest tests/ -v"
+default-environment = "test"
 
 [tool.pixi.tasks.watch]
 cmd = "jlpm run watch:src"
@@ -105,6 +106,7 @@ test = { features = ["test"] }
 
 [tool.pixi.feature.test.dependencies]
 pytest = ">=9.0.3,<10"
+pnpm = ">=10.12.4,<11"
 
 [tool.pixi.feature.dev.dependencies]
 twine = "*"
