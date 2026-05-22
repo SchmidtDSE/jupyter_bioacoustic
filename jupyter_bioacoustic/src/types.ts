@@ -37,12 +37,22 @@ export interface TableCol {
  * Parsed `annotation` element config — the subset of fields used by
  * FormPanel and Player to coordinate spectrogram annotation tools.
  */
+export interface FixedDurationConfig {
+  value: number;
+  editable: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+
 export interface AnnotConfig {
   startTime?: { col: string; sourceValue?: string };
   endTime?: { col: string; sourceValue?: string };
   minFreq?: { col: string };
   maxFreq?: { col: string };
   tools: string[];
+  fixedDuration?: FixedDurationConfig;
   form?: string | null;
 }
 
