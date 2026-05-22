@@ -265,11 +265,10 @@ def _output_section(d: dict[str, Any]) -> dict[str, Any]:
 def _app_section(d: dict[str, Any]) -> dict[str, Any]:
     """Build the Application section."""
     rows: list[dict[str, Any]] = []
-    if d.get('info_card_ident_column'):
-        rows.append(_row('ident', d['info_card_ident_column']))
-    display_cols = d.get('info_card_display_columns', [])
-    if display_cols:
-        rows.append(_row('display', ', '.join(str(c) for c in display_cols)))
+    if d.get('info_card_title'):
+        rows.append(_row('title', d['info_card_title']))
+    if d.get('info_card_text'):
+        rows.append(_row('text', d['info_card_text']))
     if d.get('duplicate_entries'):
         rows.append(_row('duplicates', 'allowed'))
     buf = d.get('default_buffer')
