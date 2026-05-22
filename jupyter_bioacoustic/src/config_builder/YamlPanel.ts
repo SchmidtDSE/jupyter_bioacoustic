@@ -252,7 +252,7 @@ export class YamlPanel {
       return;
     }
 
-    const sectionTitles: Record<string, string> = { project: 'Setup' };
+    const sectionTitles: Record<string, string> = { project: 'Setup',  app: 'Application' };
     const title = document.createElement('h3');
     title.textContent = sectionTitles[section] || section;
     title.style.cssText =
