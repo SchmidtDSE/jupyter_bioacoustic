@@ -44,7 +44,7 @@ AUDIO_PROJECT_KEYS = frozenset({
 AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
 SECTION_KEYS = frozenset({'data', 'audio', 'output'})
 APP_KEYS = frozenset({
-    'project_save_btn', 'info_card_ident_column', 'info_card_display_columns',
+    'project_save_btn', 'info_card_title', 'info_card_text',
     'display_columns',
     'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
     'spectrogram_resolution', 'visualizations', 'partial_download',
