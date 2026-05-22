@@ -1,10 +1,10 @@
-data_columns:
+display_columns:
     - 'common_name'
     - 'confidence'
     - 'rank'
     - 'county'
-ident_column: 'common_name'
-display_columns: ['scientific_name']
+info_card_ident_column: 'common_name'
+info_card_display_columns: ['scientific_name']
 capture: 'Save Spectrogram'
 capture_dir: 'spectrograms'
 form_config: 'config/forms/simple-examples-3c2.yaml'

@@ -11,7 +11,7 @@ form:
       not_available: Unknown Species
 audio:
   path: audio/test1.flac
-ident_column: common_name
+info_card_ident_column: common_name
 capture: false
 data:
   path: data/annotate-data.csv
