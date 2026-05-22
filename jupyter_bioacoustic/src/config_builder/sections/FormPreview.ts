@@ -48,7 +48,6 @@ export class FormPreview {
     this._formPanel.setContext({
       formConfig: formData,
       rows: [],
-      identCol: '',
       duplicateEntries: true,
       outputPath: '',
     });
