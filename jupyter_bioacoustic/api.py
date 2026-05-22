@@ -330,13 +330,11 @@ def _read_data_from_sql(
 def _resolve_data_config(
     data: Any,
     data_secrets: Any,
-    data_columns: Any,
-) -> tuple[Any, Optional[str], dict, list]:
+) -> tuple[Any, Optional[str], dict]:
     """Normalize the data parameter.
 
     Returns:
-        (data_value, dtype_or_none, resolved_secrets,
-         columns_list)
+        (data_value, dtype_or_none, resolved_secrets)
     """
     import pandas as pd
 
@@ -344,7 +342,6 @@ def _resolve_data_config(
         return (
             data, None,
             _resolve_secrets(data_secrets),
-            data_columns or [],
         )
 
     if isinstance(data, dict):
@@ -365,22 +362,16 @@ def _resolve_data_config(
         )
         secrets = _resolve_secrets(secrets_raw)
 
-        columns = (
-            data_columns
-            if data_columns is not None
-            else data.get('columns') or []
-        )
-
         dtype_map = {
             'path': 'path', 'url': 'url', 'uri': 'url',
             'api': 'api', 'sql': 'sql',
         }
-        return source, dtype_map[key], secrets, columns
+        return source, dtype_map[key], secrets
 
     if isinstance(data, str):
         secrets = _resolve_secrets(data_secrets)
         dtype = _detect_data_type(data)
-        return data, dtype, secrets, data_columns or []
+        return data, dtype, secrets
 
     raise ValueError(
         f"'data' must be a DataFrame, str, or dict. "
@@ -776,7 +767,7 @@ _CONFIG_PARAMS = {
     'output', 'output_path', 'output_url', 'output_uri',
     'output_sync_button', 'output_recursive',
     'output_secrets',
-    'ident_column', 'display_columns', 'data_columns',
+    'info_card_ident_column', 'info_card_display_columns', 'display_columns',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
     'visualizations', 'partial_download',
@@ -831,11 +822,11 @@ class BioacousticAnnotator:
         output_sync_button=_UNSET,
         output_recursive=_UNSET,
         output_secrets=_UNSET,
-        ident_column=_UNSET,
+        info_card_ident_column=_UNSET,
         project_name=_UNSET,
         project_save_btn=_UNSET,
+        info_card_display_columns=_UNSET,
         display_columns=_UNSET,
-        data_columns=_UNSET,
         form_config=_UNSET,
         duplicate_entries=_UNSET,
         default_buffer=_UNSET,
@@ -1035,15 +1026,14 @@ class BioacousticAnnotator:
             raw_data_secrets = raw_global_secrets
         elif raw_data_secrets is False:
             raw_data_secrets = None
-        raw_data_columns = resolve(
-            data_columns, 'data_columns', None,
+        raw_display_columns = resolve(
+            display_columns, 'display_columns', None,
         )
 
         (
             source, dtype, resolved_secrets,
-            resolved_columns,
         ) = _resolve_data_config(
-            raw_data, raw_data_secrets, raw_data_columns,
+            raw_data, raw_data_secrets,
         )
         if _top_dtype and isinstance(source, str):
             dtype = _top_dtype
@@ -1145,7 +1135,7 @@ class BioacousticAnnotator:
         )
 
         self._ident_column = resolve(
-            ident_column, 'ident_column', '',
+            info_card_ident_column, 'info_card_ident_column', '',
         )
 
         raw_form_check = resolve(
@@ -1162,9 +1152,9 @@ class BioacousticAnnotator:
             )
 
         self._display_columns = resolve(
-            display_columns, 'display_columns', None,
+            info_card_display_columns, 'info_card_display_columns', None,
         ) or []
-        self._data_columns = resolved_columns
+        self._data_columns = raw_display_columns or []
 
         raw_form = resolve(
             form_config, 'form_config', None,
