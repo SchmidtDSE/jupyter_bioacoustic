@@ -59,6 +59,19 @@ export function readKernelVars(): string {
 
 
 //
+// Validation
+//
+export function validateFormConfig(formConfigJson: string): string {
+  return [
+    `import json as _j`,
+    `from jupyter_bioacoustic._validation import validate_config as _vc`,
+    `_r = _vc(form_config=_j.loads('${escPy(formConfigJson)}'))`,
+    `print(_j.dumps(_r['errors']))`,
+  ].join('\n');
+}
+
+
+//
 // Spectrogram + WAV generation (Player)
 //
 export function readAudio(
