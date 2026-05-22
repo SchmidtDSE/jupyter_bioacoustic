@@ -2,7 +2,7 @@
 data: 'data/annotate-data.csv'
 audio: audio_path
 display_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
-info_card_ident_column: common_name
+info_card_title: '[[common_name]]'
 capture: false
 project_save_btn: 'BIG_BOY'
 

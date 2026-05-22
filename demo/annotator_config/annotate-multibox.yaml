@@ -11,11 +11,11 @@ form:
       not_available: Unknown Species
 audio:
   path: audio/test1.flac
-info_card_ident_column: common_name
+info_card_title: '[[common_name]]'
 capture: false
 data:
   path: data/annotate-data.csv
-  columns:
+display_columns:
   - common_name
   - confidence
   - start_time

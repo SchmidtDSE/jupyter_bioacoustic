@@ -59,8 +59,8 @@ export const DOCS: Record<string, SectionDocs> = {
   },
   app: {
     _intro: `Application settings control the widget layout, visible columns, and interaction features like capture and buffering.`,
-    info_card_ident_column: `(optional) Column shown prominently in the info card (no label prefix) and used for naming captured audio files.\nExample: "common_name" or "species_id"`,
-    info_card_display_columns: `(optional) Extra columns shown in the info card below the ident.\nThese provide context about the current clip.`,
+    info_card_title: `(optional) Template string for the info card title.\nUse [[column_name]] to interpolate values from the selected row.\nExample: "[[common_name]]"`,
+    info_card_text: `(optional) Template string for the info card text.\nUse [[column_name]] to interpolate values from the selected row.\nExample: "scientific_name: [[scientific_name]] | confidence: [[confidence]]"`,
     display_columns: `(optional) Columns visible in the clip table.\nControls which columns appear as sortable table headers.`,
     duplicate_entries: `(optional) Allow multiple submissions per row. Default: false.\nEnable for tasks where the same clip needs multiple annotations.`,
     default_buffer: `(optional) Buffer time in seconds added before/after the audio segment.\nDefault: 3. Increase for more context around short clips.`,

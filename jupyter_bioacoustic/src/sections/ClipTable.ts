@@ -120,8 +120,6 @@ export class ClipTable {
 
   setData(opts: {
     rows: Detection[];
-    identCol: string;
-    displayCols: string[];
     dataCols: string[];
     duplicateEntries: boolean;
     height?: number;
@@ -608,8 +606,6 @@ export class ClipTable {
 
   private _configureColumns(opts: {
     rows: Detection[];
-    identCol: string;
-    displayCols: string[];
     dataCols: string[];
   }): void {
     const prettify = (k: string) =>
@@ -618,18 +614,11 @@ export class ClipTable {
     if (opts.dataCols.length > 0) {
       // Explicit column list — use as-is
       this._tableCols = opts.dataCols.map(k => ({ key: k, label: prettify(k) }));
-    } else if (opts.rows.length > 0 && opts.displayCols.length === 0) {
-      // No explicit columns — show all data columns
-      this._tableCols = Object.keys(opts.rows[0]).map(k => ({ key: k, label: prettify(k) }));
     } else {
-      // Fallback: base cols + display cols
-      const baseCols = [
-        { key: 'id', label: 'ID' },
-        { key: 'start_time', label: 'Start (s)' },
-        { key: 'end_time', label: 'End (s)' },
-      ];
-      const extraCols = opts.displayCols.map(k => ({ key: k, label: prettify(k) }));
-      this._tableCols = [...baseCols, ...extraCols];
+      // No explicit columns — show all data columns
+      this._tableCols = opts.rows.length > 0
+        ? Object.keys(opts.rows[0]).map(k => ({ key: k, label: prettify(k) }))
+        : [];
     }
     this._rebuildTableHeader();
   }

@@ -35,8 +35,8 @@ class BioacousticWidget extends Widget {
   private _ownedKernel: any;
 
   // ── Config (from kernel vars) ────────────────────────────────
-  private _identCol = '';
-  private _displayCols: string[] = [];
+  private _infoCardTitle = '';
+  private _infoCardText = '';
 
   // ── DOM refs ────────────────────────────────────────────────
   private _titleEl!: HTMLSpanElement;
@@ -195,7 +195,7 @@ class BioacousticWidget extends Widget {
 
     let cfg: {
       data: string; audio: string; output: string;
-      ident_col: string; app_title: string; display_cols: string; data_cols: string;
+      info_card_title: string; app_title: string; info_card_text: string; data_cols: string;
       form_config: string; capture: string; capture_dir: string; capture_height: string; duplicate_entries: string;
       default_buffer: string; spec_resolutions: string; viz_meta: string;
       sync_config: string;
@@ -215,8 +215,8 @@ class BioacousticWidget extends Widget {
       return;
     }
 
-    this._identCol  = cfg.ident_col;
-    this._displayCols    = JSON.parse(cfg.display_cols) as string[];
+    this._infoCardTitle  = cfg.info_card_title;
+    this._infoCardText    = cfg.info_card_text;
     const dataCols       = JSON.parse(cfg.data_cols) as string[];
     const formConfig     = JSON.parse(cfg.form_config);
     const duplicateEntries = !!cfg.duplicate_entries;
@@ -269,7 +269,6 @@ class BioacousticWidget extends Widget {
     this._form.setContext({
       formConfig,
       rows,
-      identCol: this._identCol,
       duplicateEntries,
       outputPath,
       syncConfig,
@@ -290,8 +289,6 @@ class BioacousticWidget extends Widget {
       captureLabel: cfg.capture ?? '',
       captureDir: cfg.capture_dir ?? '',
       captureHeight: parseInt(cfg.capture_height) || undefined,
-      identCol: this._identCol,
-      displayCols: this._displayCols,
       defaultBuffer: parseFloat(cfg.default_buffer) || 3,
       specResolutions,
       vizMeta,
@@ -302,8 +299,6 @@ class BioacousticWidget extends Widget {
     // Initialize table
     this._table.setData({
       rows,
-      identCol: this._identCol,
-      displayCols: this._displayCols,
       dataCols,
       duplicateEntries,
       height: parseInt(cfg.clip_table_height) || undefined,
@@ -330,8 +325,8 @@ class BioacousticWidget extends Widget {
     if (!row) return;
 
     this._infoCard.render(row, {
-      identCol: this._identCol,
-      displayCols: this._displayCols,
+      infoCardTitle: this._infoCardTitle,
+      infoCardText: this._infoCardText,
       filteredIdx,
       filteredLength: this._table.filtered.length,
     });

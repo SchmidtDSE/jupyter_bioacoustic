@@ -6,8 +6,8 @@ import { SecretsEditor } from './SecretsEditor';
 export class AppSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, string>(this);
 
-  private _identColSelect: HTMLSelectElement;
-  private _displayCols: string[] = [];
+  private _infoCardTitleInput: HTMLInputElement;
+  private _infoCardTextInput: HTMLInputElement;
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
   private _captureCb: HTMLInputElement;
@@ -19,23 +19,20 @@ export class AppSection extends CollapsibleSection {
   private _formPanelHeightInput: HTMLInputElement;
   private _captureHeightInput: HTMLInputElement;
 
-  private _availableCols: string[] = [];
-  private _displayChipsArea: HTMLDivElement;
-  private _displayPickerArea: HTMLDivElement;
   private _secrets: SecretsEditor;
 
   constructor() {
     super('Application', 'app', false, true);
 
-    this._identColSelect = this._makeSelect(['(none)'], '(none)');
-    this._identColSelect.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('info_card_ident_column', this._identColSelect));
+    this._infoCardTitleInput = this._makeInput('', '220px');
+    this._infoCardTitleInput.placeholder = '[[column_name]]';
+    this._infoCardTitleInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('info_card_title', this._infoCardTitleInput));
 
-    this._displayChipsArea = this._makeChipsArea();
-    this._displayPickerArea = this._makePickerArea();
-    const displayWrap = this._makeColumnGroupWrapper();
-    displayWrap.append(this._makeSectionLabel('info_card_display_columns'), this._displayChipsArea, this._displayPickerArea);
-    this._body.appendChild(displayWrap);
+    this._infoCardTextInput = this._makeInput('', '220px');
+    this._infoCardTextInput.placeholder = 'label: [[col]] | label: [[col]]';
+    this._infoCardTextInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('info_card_text', this._infoCardTextInput));
 
 
     const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
@@ -112,37 +109,8 @@ export class AppSection extends CollapsibleSection {
     this._body.appendChild(this._secrets.element);
   }
 
-  private _makeChipsArea(): HTMLDivElement {
-    const area = document.createElement('div');
-    area.style.cssText = `display:flex;flex-wrap:wrap;gap:4px;min-height:22px;padding:2px 0;`;
-    return area;
-  }
-
-  private _makePickerArea(): HTMLDivElement {
-    const area = document.createElement('div');
-    area.style.cssText =
-      `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;` +
-      `border-top:1px solid ${COLORS.bgSurface0};margin-top:2px;`;
-    return area;
-  }
-
-  private _makeColumnGroupWrapper(): HTMLDivElement {
-    const wrap = document.createElement('div');
-    wrap.style.cssText =
-      `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
-      `background:${COLORS.bgSurface0};border-radius:6px;`;
-    return wrap;
-  }
-
-  private _makeSectionLabel(text: string): HTMLDivElement {
-    const row = document.createElement('div');
-    row.style.cssText = `display:flex;align-items:center;gap:6px;cursor:pointer;`;
-    const lbl = document.createElement('span');
-    lbl.textContent = text;
-    lbl.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
-    row.append(lbl);
-    row.addEventListener('click', () => this.fieldFocused.emit(text));
-    return row;
+  setColumnOptions(_cols: string[]): void {
+    // no-op: info_card_title/info_card_text are free-text templates
   }
 
   setCaptureDir(path: string): void {
@@ -150,117 +118,13 @@ export class AppSection extends CollapsibleSection {
     this._emitChanged();
   }
 
-  setColumnOptions(cols: string[]): void {
-    this._availableCols = cols;
-    this._rebuildIdentSelect();
-    this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
-  }
-
-  private _rebuildIdentSelect(): void {
-    const current = this._identColSelect.value;
-    this._identColSelect.innerHTML = '';
-    const none = document.createElement('option');
-    none.value = ''; none.textContent = '(none)';
-    this._identColSelect.appendChild(none);
-    for (const col of this._availableCols) {
-      const o = document.createElement('option');
-      o.value = col; o.textContent = col;
-      this._identColSelect.appendChild(o);
-    }
-    if (this._availableCols.includes(current)) this._identColSelect.value = current;
-  }
-
-  private _rebuildPicker(area: HTMLDivElement, selected: string[], which: string): void {
-    area.innerHTML = '';
-    if (this._availableCols.length === 0) {
-      area.style.display = 'none';
-      return;
-    }
-    area.style.display = 'flex';
-    const hint = document.createElement('span');
-    hint.textContent = 'Click to add:';
-    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:100%;`;
-    area.appendChild(hint);
-
-    for (const col of this._availableCols) {
-      if (selected.includes(col)) continue;
-      const chip = document.createElement('button');
-      chip.textContent = `+ ${col}`;
-      chip.style.cssText =
-        `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:12px;` +
-        `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
-      chip.addEventListener('click', () => {
-        selected.push(col);
-        this._rebuildChips(this._displayChipsArea, selected, which);
-        this._rebuildPicker(area, selected, which);
-        this._emitChanged();
-      });
-      area.appendChild(chip);
-    }
-  }
-
-  private _rebuildChips(area: HTMLDivElement, selected: string[], which: string): void {
-    area.innerHTML = '';
-    if (selected.length === 0) {
-      const hint = document.createElement('span');
-      hint.textContent = '(none)';
-      hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;`;
-      area.appendChild(hint);
-      return;
-    }
-    let dragIdx = -1;
-    for (let i = 0; i < selected.length; i++) {
-      const col = selected[i];
-      const chip = document.createElement('span');
-      chip.draggable = true;
-      chip.style.cssText =
-        `display:inline-flex;align-items:center;gap:4px;` +
-        `background:${COLORS.bgSurface1};border-radius:12px;` +
-        `color:${COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;cursor:grab;`;
-
-      chip.addEventListener('dragstart', (e) => {
-        dragIdx = i;
-        chip.style.opacity = '0.4';
-        e.dataTransfer!.effectAllowed = 'move';
-      });
-      chip.addEventListener('dragend', () => { chip.style.opacity = '1'; });
-      chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer!.dropEffect = 'move'; });
-      chip.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (dragIdx < 0 || dragIdx === i) return;
-        const [moved] = selected.splice(dragIdx, 1);
-        selected.splice(i, 0, moved);
-        this._rebuildChips(area, selected, which);
-        this._emitChanged();
-      });
-
-      const name = document.createElement('span');
-      name.textContent = col;
-
-      const rm = document.createElement('button');
-      rm.textContent = '✕';
-      rm.style.cssText =
-        `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
-        `font-size:12px;padding:0 2px;line-height:1;`;
-      rm.addEventListener('click', () => {
-        const idx = selected.indexOf(col);
-        if (idx >= 0) selected.splice(idx, 1);
-        this._rebuildChips(area, selected, which);
-        this._rebuildPicker(this._displayPickerArea, selected, which);
-        this._emitChanged();
-      });
-
-      chip.append(name, rm);
-      area.appendChild(chip);
-    }
-  }
-
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
-    const ident = this._identColSelect.value;
-    if (ident) result.info_card_ident_column = ident;
+    const title = this._infoCardTitleInput.value;
+    if (title) result.info_card_title = title;
 
-    if (this._displayCols.length > 0) result.info_card_display_columns = [...this._displayCols];
+    const text = this._infoCardTextInput.value;
+    if (text) result.info_card_text = text;
 
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
@@ -292,12 +156,8 @@ export class AppSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
-    if (data.info_card_ident_column) this._identColSelect.value = data.info_card_ident_column;
-    if (data.info_card_display_columns && Array.isArray(data.info_card_display_columns)) {
-      this._displayCols = [...data.info_card_display_columns];
-      this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
-      this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
-    }
+    if (data.info_card_title) this._infoCardTitleInput.value = data.info_card_title;
+    if (data.info_card_text) this._infoCardTextInput.value = data.info_card_text;
     if (data.duplicate_entries) this._duplicateCb.checked = true;
     if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
     if (data.capture === false) this._captureCb.checked = false;

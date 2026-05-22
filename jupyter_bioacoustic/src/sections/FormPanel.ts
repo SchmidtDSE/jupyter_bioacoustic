@@ -117,7 +117,6 @@ export class FormPanel {
 
   // Context provided by the orchestrator
   private _rows: Detection[] = [];
-  private _identCol = '';
   private _duplicateEntries = false;
   private _outputPath = '';
   private _syncConfig: { uri?: string; button?: string; recursive?: boolean } = {};
@@ -159,7 +158,6 @@ export class FormPanel {
   setContext(opts: {
     formConfig: any;
     rows: Detection[];
-    identCol: string;
     duplicateEntries: boolean;
     outputPath: string;
     syncConfig?: { uri?: string; button?: string; recursive?: boolean };
@@ -171,7 +169,6 @@ export class FormPanel {
     }
     this._formConfig = opts.formConfig;
     this._rows = opts.rows;
-    this._identCol = opts.identCol;
     this._duplicateEntries = opts.duplicateEntries;
     this._outputPath = opts.outputPath;
     this._syncConfig = opts.syncConfig ?? {};

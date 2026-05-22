@@ -25,8 +25,8 @@ export const FIELD_HELP: Record<string, Record<string, string>> = {
     recursive: '(optional) Scan output directory recursively for existing submissions.',
   },
   app: {
-    info_card_ident_column: '(optional) Column shown first in info card (no label). Also used in capture filenames.',
-    info_card_display_columns: '(optional) Extra columns shown in the info card below the spectrogram.',
+    info_card_title: '(optional) Template for info card title. Use [[column_name]] syntax.',
+    info_card_text: '(optional) Template for info card text. Use [[column_name]] syntax.',
     display_columns: '(optional) Columns shown in the clip table. Click column chips to add.',
     duplicate_entries: '(optional) Allow multiple submissions per row. Default: false.',
     default_buffer: '(optional) Buffer time in seconds added around segments. Default: 3.',

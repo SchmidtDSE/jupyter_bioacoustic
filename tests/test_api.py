@@ -195,11 +195,11 @@ class TestDetectAudioType:
 class TestMergeProjectOverConfig:
 
     def test_simple_override(self):
-        base = {'info_card_ident_column': 'species', 'width': 800}
+        base = {'info_card_title': '[[species]]', 'width': 800}
         proj = {'width': 1200}
         _merge_project_over_config(base, proj)
         assert base['width'] == 1200
-        assert base['info_card_ident_column'] == 'species'
+        assert base['info_card_title'] == '[[species]]'
 
     def test_dict_merge_data(self):
         base = {'data': {'path': 'old.csv', 'secrets': {'k': 'v'}}}
@@ -230,7 +230,7 @@ class TestMergeProjectOverConfig:
         assert base['capture'] is False
 
     def test_new_key_added(self):
-        base = {'info_card_ident_column': 'species'}
+        base = {'info_card_title': '[[species]]'}
         proj = {'default_buffer': 5}
         _merge_project_over_config(base, proj)
         assert base['default_buffer'] == 5
@@ -267,7 +267,7 @@ class TestAnnotatorConfig:
     def test_config_from_inline_args(self):
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
-            info_card_ident_column='audio_path',
+            info_card_title='[[audio_path]]',
         )
         assert ba.config == {}
 
@@ -275,7 +275,7 @@ class TestAnnotatorConfig:
         import yaml
         cfg_data = {
             'audio': {'column': 'audio_path'},
-            'info_card_ident_column': 'audio_path',
+            'info_card_title': '[[audio_path]]',
             'default_buffer': 5,
         }
         cfg_file = tmp_path / 'config.yaml'
@@ -288,7 +288,7 @@ class TestAnnotatorConfig:
             data=str(data_file), audio='audio_path',
             config=str(cfg_file),
         )
-        assert ba.config['info_card_ident_column'] == 'audio_path'
+        assert ba.config['info_card_title'] == '[[audio_path]]'
         assert ba.config['default_buffer'] == 5
         assert ba.config['audio'] == {'column': 'audio_path'}
 
@@ -296,7 +296,7 @@ class TestAnnotatorConfig:
         import yaml
         nested_cfg = {
             'audio': {'column': 'audio_path'},
-            'info_card_ident_column': 'audio_path',
+            'info_card_title': '[[audio_path]]',
             'default_buffer': 5,
         }
         nested_file = tmp_path / 'base.yaml'
@@ -317,7 +317,7 @@ class TestAnnotatorConfig:
         ba = BioacousticAnnotator(project=str(proj_file))
         cfg = ba.config
         assert cfg['audio'] == {'column': 'audio_path'}
-        assert cfg['info_card_ident_column'] == 'audio_path'
+        assert cfg['info_card_title'] == '[[audio_path]]'
         assert cfg['default_buffer'] == 10
         assert cfg['data']['path'] == str(data_file)
 

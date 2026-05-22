@@ -767,7 +767,7 @@ _CONFIG_PARAMS = {
     'output', 'output_path', 'output_url', 'output_uri',
     'output_sync_button', 'output_recursive',
     'output_secrets',
-    'info_card_ident_column', 'info_card_display_columns', 'display_columns',
+    'info_card_title', 'info_card_text', 'display_columns',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
     'visualizations', 'partial_download',
@@ -822,10 +822,10 @@ class BioacousticAnnotator:
         output_sync_button=_UNSET,
         output_recursive=_UNSET,
         output_secrets=_UNSET,
-        info_card_ident_column=_UNSET,
+        info_card_title=_UNSET,
         project_name=_UNSET,
         project_save_btn=_UNSET,
-        info_card_display_columns=_UNSET,
+        info_card_text=_UNSET,
         display_columns=_UNSET,
         form_config=_UNSET,
         duplicate_entries=_UNSET,
@@ -1134,8 +1134,8 @@ class BioacousticAnnotator:
             raw_global_secrets,
         )
 
-        self._ident_column = resolve(
-            info_card_ident_column, 'info_card_ident_column', '',
+        self._info_card_title = resolve(
+            info_card_title, 'info_card_title', '',
         )
 
         raw_form_check = resolve(
@@ -1151,9 +1151,9 @@ class BioacousticAnnotator:
                 f'{DEFAULT_OUTPUT_EXT}',
             )
 
-        self._display_columns = resolve(
-            info_card_display_columns, 'info_card_display_columns', None,
-        ) or []
+        self._info_card_text = resolve(
+            info_card_text, 'info_card_text', '',
+        )
         self._data_columns = raw_display_columns or []
 
         raw_form = resolve(
@@ -1719,11 +1719,9 @@ class BioacousticAnnotator:
             'button': self._sync_button,
             'recursive': self._sync_recursive,
         })
-        ns['_BA_IDENT_COL'] = self._ident_column
+        ns['_BA_INFO_CARD_TITLE'] = self._info_card_title
         ns['_BA_APP_TITLE'] = self._project_name
-        ns['_BA_DISPLAY_COLS'] = json.dumps(
-            self._display_columns,
-        )
+        ns['_BA_INFO_CARD_TEXT'] = self._info_card_text
         ns['_BA_DATA_COLS'] = json.dumps(
             self._data_columns,
         )

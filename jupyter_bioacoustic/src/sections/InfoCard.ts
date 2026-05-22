@@ -6,8 +6,8 @@
  */
 import { Signal } from '@lumino/signaling';
 import { Detection } from '../types';
-import { fmtTime } from '../util';
-import { COLORS, DISPLAY_CHIP_COLORS, btnStyle } from '../styles';
+import { fmtTime, resolveTemplate } from '../util';
+import { COLORS, btnStyle } from '../styles';
 
 // ─── Constants ────────────────────────────────────────────────
 
@@ -36,8 +36,8 @@ export class InfoCard {
 
   /** Render the info card for the given row. */
   render(row: Detection, opts: {
-    identCol: string;
-    displayCols: string[];
+    infoCardTitle: string;
+    infoCardText: string;
     filteredIdx: number;
     filteredLength: number;
   }): void {
@@ -50,35 +50,28 @@ export class InfoCard {
       return s;
     };
 
-    const mkChip = (text: string, color: string) => {
-      const s = document.createElement('span');
-      s.style.cssText = `font-size:12px;color:${color};flex-shrink:0;`;
-      s.textContent = text;
-      return s;
-    };
-
     const items: HTMLElement[] = [];
 
-    items.push(mkChip(
-      `${fmtTime(row.start_time)} – ${fmtTime(row.end_time)}`,
-      COLORS.textSubtle
-    ));
+    items.push((() => {
+      const s = document.createElement('span');
+      s.style.cssText = `font-size:12px;color:${COLORS.textSubtle};flex-shrink:0;`;
+      s.textContent = `${fmtTime(row.start_time)} – ${fmtTime(row.end_time)}`;
+      return s;
+    })());
 
-    if (opts.identCol && row[opts.identCol] !== undefined) {
+    if (opts.infoCardTitle) {
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = `font-size:13px;font-weight:600;color:${COLORS.textPrimary};flex-shrink:0;`;
-      nameSpan.textContent = String(row[opts.identCol]);
+      nameSpan.textContent = resolveTemplate(opts.infoCardTitle, row);
       items.unshift(nameSpan);
     }
 
-    const colColors = DISPLAY_CHIP_COLORS;
-    opts.displayCols.forEach((col, i) => {
-      if (row[col] === undefined) return;
-      const val = typeof row[col] === 'number' && !Number.isInteger(row[col])
-        ? (row[col] as number).toFixed(3)
-        : String(row[col]);
-      items.push(mkChip(`${col}: ${val}`, colColors[i % colColors.length]));
-    });
+    if (opts.infoCardText) {
+      const textSpan = document.createElement('span');
+      textSpan.style.cssText = `font-size:12px;color:${COLORS.textSubtle};flex-shrink:0;`;
+      textSpan.textContent = resolveTemplate(opts.infoCardText, row);
+      items.push(textSpan);
+    }
 
     const spacer = document.createElement('span');
     spacer.style.flex = '1';

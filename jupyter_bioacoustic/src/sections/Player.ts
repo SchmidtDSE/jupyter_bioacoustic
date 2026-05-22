@@ -106,8 +106,6 @@ export class Player {
   private _captureLabel = '';
   private _captureDir = '';
   private _captureHeight: number | undefined;
-  private _identCol = '';
-  private _displayCols: string[] = [];
   private _currentRow: Detection | null = null;
   private _rows: Detection[] = [];
   private _selectedIdx = -1;
@@ -129,8 +127,6 @@ export class Player {
     captureLabel: string;
     captureDir: string;
     captureHeight?: number;
-    identCol: string;
-    displayCols: string[];
     defaultBuffer: number;
     specResolutions: string[];
     vizMeta: Array<{type: string; key?: string; label: string; freq_scale?: string; index: number}>;
@@ -145,8 +141,6 @@ export class Player {
     this._captureLabel = opts.captureLabel;
     this._captureDir = opts.captureDir;
     this._captureHeight = opts.captureHeight;
-    this._identCol = opts.identCol;
-    this._displayCols = opts.displayCols;
     this._rows = opts.rows;
     this._bufferInput.value = String(opts.defaultBuffer);
     this._specResolutions = opts.specResolutions;
@@ -1522,25 +1516,7 @@ export class Player {
   // ─── Private: capture ──────────────────────────────────────
 
   private _buildCaptureFilename(): string {
-    const row = this._currentRow;
-    if (!row) return 'spectrogram.png';
-    const parts: string[] = [];
-    if (this._identCol && row[this._identCol] !== undefined) {
-      parts.push(String(row[this._identCol]));
-    }
-    for (const col of this._displayCols) {
-      if (row[col] !== undefined) {
-        const v = typeof row[col] === 'number' && !Number.isInteger(row[col])
-          ? (row[col] as number).toFixed(3) : String(row[col]);
-        parts.push(`${col}_${v}`);
-      }
-    }
-    if (!parts.length) parts.push(`clip_${row.id}`);
-    return parts.join('.')
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[:.]+/g, '_')
-      .replace(/[^a-z0-9._-]/g, '') + '.png';
+    return 'TODO_FIX_CAPTURE_DEFAULT_NAMEING.png';
   }
 
   private async _onCapture(): Promise<void> {
