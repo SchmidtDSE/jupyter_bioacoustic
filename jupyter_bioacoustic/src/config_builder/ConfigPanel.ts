@@ -584,6 +584,10 @@ export class ConfigPanel {
       const raw = await this._kernel.exec(loadConfig(path, fileType));
       const state = JSON.parse(extractJson(raw));
       this._applyState(state);
+      const dataPath = this._data.getPath();
+      if (dataPath && /\.(csv|parquet|json|jsonl|tsv)$/i.test(dataPath)) {
+        void this._onLoadColumns(dataPath);
+      }
       const detected = state.detected_type || 'config';
       const paths = state.loaded_paths || {};
       const loaded = Object.values(paths).filter(Boolean);
