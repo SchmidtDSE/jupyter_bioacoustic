@@ -2,6 +2,10 @@ import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 
+const ALL_ANNOTATION_TOOLS = [
+  'time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration',
+];
+
 type ElementType = 'title' | 'select' | 'textbox' | 'checkbox' | 'number' |
   'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' |
   'break' | 'line' | 'text';
@@ -201,21 +205,7 @@ export class FormSection extends CollapsibleSection {
         this._addNumField(card, cfg, 'step', 'step', '60px');
         break;
       case 'annotation': {
-        const existingTools: string[] = Array.isArray(cfg.tools) ? cfg.tools : ['start_end_time_select'];
-        const toolsSel = this._makeSelect(
-          ['time_select', 'start_end_time_select', 'bounding_box', 'multibox'],
-        );
-        toolsSel.multiple = true;
-        toolsSel.style.width = '140px';
-        toolsSel.style.height = '75px';
-        for (const opt of toolsSel.options) {
-          opt.selected = existingTools.includes(opt.value);
-        }
-        toolsSel.addEventListener('change', () => {
-          cfg.tools = Array.from(toolsSel.selectedOptions).map(o => o.value);
-          this._emitChanged();
-        });
-        card.appendChild(this._makeFieldRow('tools', toolsSel));
+        this._buildAnnotationToolList(card, cfg);
         this._addField(card, cfg, 'start_time_col', 'start_time col', '120px');
         this._addField(card, cfg, 'end_time_col', 'end_time col', '120px');
         this._addField(card, cfg, 'min_freq_col', 'min_freq col', '120px');
@@ -282,6 +272,192 @@ export class FormSection extends CollapsibleSection {
     });
     card.appendChild(this._makeFieldRow('label', labelInp));
     card.appendChild(this._makeFieldRow('column', colInp));
+  }
+
+  private _buildAnnotationToolList(card: HTMLDivElement, cfg: Record<string, any>): void {
+    if (!Array.isArray(cfg.tools)) cfg.tools = ['start_end_time_select'];
+
+    const TOOL_ROW_W = '400px';
+    const FD_INPUT_W = '60px';
+
+    const toolName = (t: any): string =>
+      typeof t === 'string' ? t : (typeof t === 'object' && t ? Object.keys(t)[0] : '');
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = `display:flex;flex-direction:column;gap:3px;width:${TOOL_ROW_W};`;
+
+    let dragSrcIdx: number | null = null;
+
+    const rebuild = () => {
+      listEl.innerHTML = '';
+      const currentEnabled = new Set((cfg.tools as any[]).map(toolName));
+      const currentDisabled = ALL_ANNOTATION_TOOLS.filter(t => !currentEnabled.has(t));
+
+      (cfg.tools as any[]).forEach((tool: any, idx: number) => {
+        const name = toolName(tool);
+        const row = document.createElement('div');
+        row.draggable = true;
+        row.style.cssText =
+          `display:flex;align-items:center;gap:6px;padding:3px 6px;` +
+          `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+          `border-radius:4px;font-size:12px;color:${COLORS.textPrimary};cursor:grab;`;
+
+        row.addEventListener('dragstart', (e) => {
+          dragSrcIdx = idx;
+          row.style.opacity = '0.4';
+          e.dataTransfer!.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend', () => {
+          row.style.opacity = '1';
+          dragSrcIdx = null;
+        });
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = 'move';
+          row.style.borderColor = COLORS.blue;
+        });
+        row.addEventListener('dragleave', () => {
+          row.style.borderColor = COLORS.bgSurface1;
+        });
+        row.addEventListener('drop', (e) => {
+          e.preventDefault();
+          row.style.borderColor = COLORS.bgSurface1;
+          if (dragSrcIdx == null || dragSrcIdx === idx) return;
+          const [moved] = cfg.tools.splice(dragSrcIdx, 1);
+          cfg.tools.splice(idx, 0, moved);
+          dragSrcIdx = null;
+          this._emitChanged();
+          rebuild();
+        });
+
+        const label = document.createElement('span');
+        label.textContent = name.replace(/_/g, ' ');
+        label.style.cssText = `flex:1;`;
+        row.appendChild(label);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Disable tool';
+        removeBtn.style.cssText =
+          `background:none;border:none;color:${COLORS.red};cursor:pointer;` +
+          `font-size:14px;padding:0 2px;line-height:1;`;
+        removeBtn.addEventListener('click', () => {
+          cfg.tools.splice(idx, 1);
+          this._emitChanged();
+          rebuild();
+        });
+        row.appendChild(removeBtn);
+
+        listEl.appendChild(row);
+
+        if (name === 'fixed_duration') {
+          let fdCfg: Record<string, any>;
+          if (typeof tool === 'object' && tool.fixed_duration != null) {
+            fdCfg = typeof tool.fixed_duration === 'object'
+              ? tool.fixed_duration : { window: tool.fixed_duration };
+          } else {
+            fdCfg = { window: 3 };
+            cfg.tools[idx] = { fixed_duration: fdCfg };
+          }
+
+          const isInitial = fdCfg.initial_window != null;
+
+          const detail = document.createElement('div');
+          detail.style.cssText =
+            `display:flex;gap:6px;flex-wrap:wrap;padding:2px 0 2px 12px;`;
+
+          const mkNum = (
+            key: string, placeholder: string, disabled = false,
+          ): HTMLInputElement => {
+            const inp = this._makeInput(placeholder, FD_INPUT_W);
+            inp.type = 'number';
+            inp.step = 'any';
+            if (fdCfg[key] != null) inp.value = String(fdCfg[key]);
+            inp.disabled = disabled;
+            inp.style.opacity = disabled ? '0.35' : '1';
+            inp.addEventListener('input', () => {
+              const v = parseFloat(inp.value);
+              if (inp.value === '') { delete fdCfg[key]; }
+              else if (!isNaN(v)) { fdCfg[key] = v; }
+              this._emitChanged();
+            });
+            return inp;
+          };
+
+          const valKey = isInitial ? 'initial_window' : 'window';
+          const modeSel = this._makeSelect(['window', 'initial_window'], valKey);
+          modeSel.style.cssText += `width:120px;font-size:11px;`;
+          modeSel.addEventListener('change', () => {
+            const v = fdCfg.window ?? fdCfg.initial_window ?? 3;
+            delete fdCfg.window;
+            delete fdCfg.initial_window;
+            fdCfg[modeSel.value] = v;
+            if (modeSel.value === 'initial_window') {
+              if (fdCfg.step == null) fdCfg.step = 1;
+            } else {
+              delete fdCfg.min;
+              delete fdCfg.max;
+              delete fdCfg.step;
+            }
+            this._emitChanged();
+            rebuild();
+          });
+          detail.appendChild(modeSel);
+          detail.appendChild(mkNum(valKey, valKey));
+          detail.appendChild(mkNum('min', 'min', !isInitial));
+          detail.appendChild(mkNum('max', 'max', !isInitial));
+          detail.appendChild(mkNum('step', 'step', !isInitial));
+
+          listEl.appendChild(detail);
+        }
+      });
+
+      if (currentDisabled.length > 0) {
+        const divider = document.createElement('div');
+        divider.style.cssText =
+          `border-top:1px solid ${COLORS.bgSurface1};margin:4px 0 2px;`;
+        listEl.appendChild(divider);
+
+        for (const name of currentDisabled) {
+          const row = document.createElement('div');
+          row.style.cssText =
+            `display:flex;align-items:center;gap:6px;padding:3px 6px;` +
+            `background:${COLORS.bgCrust};border:1px solid ${COLORS.bgSurface0};` +
+            `border-radius:4px;font-size:12px;color:${COLORS.textMuted};opacity:0.6;`;
+
+          const label = document.createElement('span');
+          label.textContent = name.replace(/_/g, ' ');
+          label.style.cssText = `flex:1;`;
+          row.appendChild(label);
+
+          const addBtn = document.createElement('button');
+          addBtn.textContent = '+';
+          addBtn.title = 'Enable tool';
+          addBtn.style.cssText =
+            `background:none;border:none;color:${COLORS.green};cursor:pointer;` +
+            `font-size:16px;padding:0 2px;line-height:1;font-weight:bold;`;
+          addBtn.addEventListener('click', () => {
+            if (name === 'fixed_duration') {
+              cfg.tools.push({ fixed_duration: { window: 3 } });
+            } else {
+              cfg.tools.push(name);
+            }
+            this._emitChanged();
+            rebuild();
+          });
+          row.appendChild(addBtn);
+
+          listEl.appendChild(row);
+        }
+      }
+    };
+
+    rebuild();
+
+    const container = document.createElement('div');
+    container.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
+    container.appendChild(listEl);
+    card.appendChild(this._makeFieldRow('tools', container));
   }
 
   private _addField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string, width: string): void {
