@@ -202,8 +202,8 @@ class TestConfigKeyHeights:
         result = validate_config(config={'capture_height': 300})
         assert result['valid']
 
-    def test_data_columns_valid(self):
-        result = validate_config(config={'data_columns': ['a', 'b']})
+    def test_display_columns_valid(self):
+        result = validate_config(config={'display_columns': ['a', 'b']})
         assert result['valid']
 
     def test_description_keys_valid(self):
