@@ -25,6 +25,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────
 
 const DEFAULT_CANVAS_HEIGHT = 260;
+const FIXED_DURATION_NUDGE_SEC = 0.05;
 
 export class Player {
   /** The root element — contains player controls, canvas, playback bar, audio. */
@@ -810,6 +811,31 @@ export class Player {
       this._form.setAnnotValue('minFreq', f);
       this._form.setAnnotValue('maxFreq', f);
       this._annotDrag = { target: 'box-corner', anchorTime: t, anchorFreq: f };
+    } else if (tool === 'fixed_duration') {
+      const dur = this._form.getFixedDuration();
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
+      if (st != null && et != null) {
+        const sx = this._timeToX(st), ex = this._timeToX(et);
+        if (cx >= sx - GRAB && cx <= ex + GRAB) {
+          this._annotDrag = { target: 'fixed-move', anchorTime: this._xToTime(cx) - (st + et) / 2 };
+          this._renderFrame();
+          this._updateAnnotDisplay();
+          return;
+        }
+        this._form.setAnnotValue('startTime', null);
+        this._form.setAnnotValue('endTime', null);
+      } else {
+        const t = this._xToTime(cx);
+        const half = dur / 2;
+        const lo = this._segLoadStart;
+        const hi = this._segLoadStart + this._segDuration;
+        let s = t - half, en = t + half;
+        if (s < lo) { s = lo; en = lo + dur; }
+        if (en > hi) { en = hi; s = hi - dur; }
+        this._form.setAnnotValue('startTime', s);
+        this._form.setAnnotValue('endTime', en);
+      }
     } else if (tool === 'multibox') {
       const entries = this._form.getMultiboxEntries();
       // Hit test existing boxes (edges first, then interior)
@@ -947,6 +973,18 @@ export class Player {
       const hiCol = ac.maxFreq?.col;
       const hiVal = hiCol ? this._form.getFormValue(hiCol) : Infinity;
       if (hiVal != null) this._form.setAnnotValue('minFreq', Math.min(f, hiVal));
+    } else if (tgt === 'fixed-move') {
+      const offset = this._annotDrag.anchorTime ?? 0;
+      const dur = this._form.getFixedDuration();
+      const center = t - offset;
+      const half = dur / 2;
+      const lo = this._segLoadStart;
+      const hi = this._segLoadStart + this._segDuration;
+      let s = center - half, en = center + half;
+      if (s < lo) { s = lo; en = lo + dur; }
+      if (en > hi) { en = hi; s = hi - dur; }
+      this._form.setAnnotValue('startTime', s);
+      this._form.setAnnotValue('endTime', en);
     } else if (tgt === 'multibox-new') {
       // Drawing a new multibox — render preview
       // (committed on mouseup)
@@ -1060,6 +1098,15 @@ export class Player {
           this._canvasContainer.style.cursor = 'ns-resize'; return;
         }
       }
+    } else if (tool === 'fixed_duration') {
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
+      if (st != null && et != null) {
+        const sx = this._timeToX(st), ex = this._timeToX(et);
+        if (cx >= sx && cx <= ex) {
+          this._canvasContainer.style.cursor = 'grab'; return;
+        }
+      }
     }
     this._canvasContainer.style.cursor = 'crosshair';
   }
@@ -1134,6 +1181,22 @@ export class Player {
       ctx.fillStyle = COLORS.blue;
       for (const [px, py] of [[sx, yhi], [ex, yhi], [sx, ylo], [ex, ylo]]) {
         ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (tool === 'fixed_duration') {
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
+      if (st != null && et != null) {
+        const sx = tx(st), ex = tx(et);
+        ctx.fillStyle = 'rgba(249,226,175,0.12)';
+        ctx.fillRect(sx, 0, ex - sx, H);
+        ctx.strokeStyle = 'rgba(249,226,175,0.85)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex, 0); ctx.lineTo(ex, H); ctx.stroke();
+        ctx.fillStyle = COLORS.yellow;
+        ctx.beginPath(); ctx.moveTo(sx - 6, 0); ctx.lineTo(sx + 6, 0); ctx.lineTo(sx, 10);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(ex - 6, 0); ctx.lineTo(ex + 6, 0); ctx.lineTo(ex, 10);
+        ctx.closePath(); ctx.fill();
       }
     } else if (tool === 'multibox') {
       const entries = reviewed ? this._form.getReviewedMultiboxEntries() : this._form.getMultiboxEntries();
@@ -1307,6 +1370,23 @@ export class Player {
       } else {
         this._togglePlay();
       }
+    } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && this._form.getActiveTool() === 'fixed_duration') {
+      const ac2 = this._form.getAnnotConfig();
+      const st2 = ac2?.startTime?.col ? this._form.getFormValue(ac2.startTime.col) : null;
+      const et2 = ac2?.endTime?.col ? this._form.getFormValue(ac2.endTime.col) : null;
+      if (st2 != null && et2 != null) {
+        e.preventDefault();
+        const nudge = e.key === 'ArrowLeft' ? -FIXED_DURATION_NUDGE_SEC : FIXED_DURATION_NUDGE_SEC;
+        const lo = this._segLoadStart;
+        const hi = this._segLoadStart + this._segDuration;
+        const dur = et2 - st2;
+        let ns = st2 + nudge;
+        if (ns < lo) ns = lo;
+        if (ns + dur > hi) ns = hi - dur;
+        this._form.setAnnotValue('startTime', ns);
+        this._form.setAnnotValue('endTime', ns + dur);
+        this._renderFrame();
+      }
     } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       const isZoomed = this._viewXMin > 0 || this._viewXMax < 1 || this._viewYMin > 0 || this._viewYMax < 1;
       if (isZoomed) {
@@ -1328,6 +1408,11 @@ export class Player {
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && this._form.isMultiboxMode()) {
       e.preventDefault();
       this._form.removeActiveMultiboxEntry();
+      this._renderFrame();
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && this._form.getActiveTool() === 'fixed_duration') {
+      e.preventDefault();
+      this._form.setAnnotValue('startTime', null);
+      this._form.setAnnotValue('endTime', null);
       this._renderFrame();
     }
   }
