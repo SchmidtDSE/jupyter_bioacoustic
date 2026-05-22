@@ -41,8 +41,8 @@ def config_dir(tmp_path):
     config = tmp_path / 'config'
     config.mkdir()
     (config / 'my_project.yaml').write_text(
-        'audio: audio_path\nident_column: species\n'
-        'display_columns: [confidence]\n'
+        'audio: audio_path\ninfo_card_ident_column: species\n'
+        'info_card_display_columns: [confidence]\n'
         'form_config:\n  title:\n    value: REVIEW\n'
         '  submission_buttons:\n    submit:\n      label: Submit\n'
     )
