@@ -5,7 +5,7 @@ export const FIELD_HELP: Record<string, Record<string, string>> = {
   data: {
     source_type: '(required) How data is loaded: path (local file), url, sql (DuckDB query), or api endpoint.',
     path: '(required) Path to a CSV, Parquet, or JSONL file containing detection rows.',
-    data_columns: '(optional) Subset of columns to load. If empty, all columns are loaded.',
+    display_columns: '(optional) Subset of columns shown in the clip table. If empty, all columns are shown.',
     start_time_col: '(optional) Column name for segment start time. Default: start_time.',
     end_time_col: '(optional) Column name for segment end time. Default: end_time.',
     duration: '(optional) Column name or fixed number (seconds) to compute end_time from start_time.',
@@ -25,9 +25,9 @@ export const FIELD_HELP: Record<string, Record<string, string>> = {
     recursive: '(optional) Scan output directory recursively for existing submissions.',
   },
   app: {
-    ident_column: '(optional) Column shown first in info card (no label). Also used in capture filenames.',
-    display_columns: '(optional) Extra columns shown in the info card below the spectrogram.',
-    data_columns: '(optional) Columns shown in the clip table. Click column chips to add.',
+    info_card_ident_column: '(optional) Column shown first in info card (no label). Also used in capture filenames.',
+    info_card_display_columns: '(optional) Extra columns shown in the info card below the spectrogram.',
+    display_columns: '(optional) Columns shown in the clip table. Click column chips to add.',
     duplicate_entries: '(optional) Allow multiple submissions per row. Default: false.',
     default_buffer: '(optional) Buffer time in seconds added around segments. Default: 3.',
     capture: "(optional) Show capture/screenshot button. False to hide, string for custom label.",
