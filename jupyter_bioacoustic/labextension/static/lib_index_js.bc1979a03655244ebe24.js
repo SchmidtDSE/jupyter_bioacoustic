@@ -1271,7 +1271,7 @@ exports.DOCS = {
             sql: `DuckDB SQL query. Requires duckdb.\nExample: SELECT * FROM 'data.parquet' WHERE confidence > 0.5`,
             api: `REST API endpoint. Response parsed as JSON.\nExample: https://api.example.com/v1/detections`,
         },
-        data_columns: `(optional) Subset of columns to load from the file.\nIf empty, all columns are included. Use this to limit what's shown in the clip table and reduce memory for large files.`,
+        display_columns: `(optional) Subset of columns shown in the clip table.\nIf empty, all columns are included. Use this to limit what's visible and reduce memory for large files.`,
         start_time_col: `(optional) Column name containing the segment start time in seconds.\nDefault: "start_time". Remap if your file uses a different name.`,
         end_time_col: `(optional) Column name containing the segment end time in seconds.\nDefault: "end_time". Remap if your file uses a different name.`,
         duration: `(optional) Column name or fixed number (seconds) to compute end_time from start_time.\nUse this if your data has duration instead of end_time.\nExample: "duration" (column) or 5.0 (fixed seconds).`,
@@ -1302,9 +1302,9 @@ exports.DOCS = {
     },
     app: {
         _intro: `Application settings control the widget layout, visible columns, and interaction features like capture and buffering.`,
-        ident_column: `(optional) Column shown prominently in the info card (no label prefix) and used for naming captured audio files.\nExample: "common_name" or "species_id"`,
-        display_columns: `(optional) Extra columns shown in the info card below the ident.\nThese provide context about the current clip.`,
-        data_columns: `(optional) Columns visible in the clip table.\nControls which columns appear as sortable table headers.`,
+        info_card_ident_column: `(optional) Column shown prominently in the info card (no label prefix) and used for naming captured audio files.\nExample: "common_name" or "species_id"`,
+        info_card_display_columns: `(optional) Extra columns shown in the info card below the ident.\nThese provide context about the current clip.`,
+        display_columns: `(optional) Columns visible in the clip table.\nControls which columns appear as sortable table headers.`,
         duplicate_entries: `(optional) Allow multiple submissions per row. Default: false.\nEnable for tasks where the same clip needs multiple annotations.`,
         default_buffer: `(optional) Buffer time in seconds added before/after the audio segment.\nDefault: 3. Increase for more context around short clips.`,
         capture: `(optional) Capture button lets users save audio clips.\nSet to false to hide, true for default label, or a string for custom label.`,
@@ -1791,11 +1791,11 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         this._availableCols = [];
         this._identColSelect = this._makeSelect(['(none)'], '(none)');
         this._identColSelect.addEventListener('change', () => this._emitChanged());
-        this._body.appendChild(this._makeFieldRow('ident_column', this._identColSelect));
+        this._body.appendChild(this._makeFieldRow('info_card_ident_column', this._identColSelect));
         this._displayChipsArea = this._makeChipsArea();
         this._displayPickerArea = this._makePickerArea();
         const displayWrap = this._makeColumnGroupWrapper();
-        displayWrap.append(this._makeSectionLabel('display_columns'), this._displayChipsArea, this._displayPickerArea);
+        displayWrap.append(this._makeSectionLabel('info_card_display_columns'), this._displayChipsArea, this._displayPickerArea);
         this._body.appendChild(displayWrap);
         const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
         this._duplicateCb = dupCb;
@@ -1998,9 +1998,9 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         const result = {};
         const ident = this._identColSelect.value;
         if (ident)
-            result.ident_column = ident;
+            result.info_card_ident_column = ident;
         if (this._displayCols.length > 0)
-            result.display_columns = [...this._displayCols];
+            result.info_card_display_columns = [...this._displayCols];
         if (this._duplicateCb.checked)
             result.duplicate_entries = true;
         const buf = parseFloat(this._bufferInput.value);
@@ -2036,10 +2036,10 @@ class AppSection extends CollapsibleSection_1.CollapsibleSection {
         return result;
     }
     setData(data) {
-        if (data.ident_column)
-            this._identColSelect.value = data.ident_column;
-        if (data.display_columns && Array.isArray(data.display_columns)) {
-            this._displayCols = [...data.display_columns];
+        if (data.info_card_ident_column)
+            this._identColSelect.value = data.info_card_ident_column;
+        if (data.info_card_display_columns && Array.isArray(data.info_card_display_columns)) {
+            this._displayCols = [...data.info_card_display_columns];
             this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
             this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
         }
@@ -2619,7 +2619,7 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         colLabelText.textContent = 'columns';
         colLabelText.style.cssText = `color:${styles_1.COLORS.textSubtle};font-size:12px;font-weight:600;`;
         colLabel.append(colLabelText);
-        colLabel.addEventListener('click', () => this.fieldFocused.emit('data_columns'));
+        colLabel.addEventListener('click', () => this.fieldFocused.emit('display_columns'));
         this._selectedChipsArea = document.createElement('div');
         this._selectedChipsArea.style.cssText =
             `display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:2px 0;`;
@@ -2789,7 +2789,7 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
         const result = {};
         result[sourceKey] = this._pathInput.value || undefined;
         if (this._selectedCols.length > 0)
-            result.columns = [...this._selectedCols];
+            result.display_columns = [...this._selectedCols];
         const st = this._startTimeSelect.value;
         const et = this._endTimeSelect.value;
         const dur = this._durationInput.value.trim();
@@ -2823,8 +2823,8 @@ class DataSection extends CollapsibleSection_1.CollapsibleSection {
             this._sourceType.value = 'api';
             this._pathInput.value = data.api;
         }
-        if (data.columns && Array.isArray(data.columns)) {
-            this._selectedCols = [...data.columns];
+        if (data.display_columns && Array.isArray(data.display_columns)) {
+            this._selectedCols = [...data.display_columns];
             this._rebuildSelectedChips();
             this._rebuildColPicker();
         }
@@ -10849,4 +10849,4 @@ exports.showDialog = showDialog;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.8ffdf7e21cf4869d4a31.js.map
+//# sourceMappingURL=lib_index_js.bc1979a03655244ebe24.js.map
