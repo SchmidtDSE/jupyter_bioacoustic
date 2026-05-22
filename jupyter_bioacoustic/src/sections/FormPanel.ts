@@ -1095,7 +1095,11 @@ export class FormPanel {
       inp.addEventListener('blur', commitValue);
       inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          requestAnimationFrame(commitValue);
+        }
       });
+      inp.addEventListener('pointerup', () => requestAnimationFrame(commitValue));
       const u = document.createElement('span');
       u.textContent = 's';
       u.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
