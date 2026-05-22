@@ -2824,6 +2824,9 @@ exports.FormSection = void 0;
 const signaling_1 = __webpack_require__(/*! @lumino/signaling */ "webpack/sharing/consume/default/@lumino/signaling");
 const styles_1 = __webpack_require__(/*! ../../styles */ "./lib/styles.js");
 const CollapsibleSection_1 = __webpack_require__(/*! ./CollapsibleSection */ "./lib/config_builder/sections/CollapsibleSection.js");
+const ALL_ANNOTATION_TOOLS = [
+    'time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration',
+];
 class FormSection extends CollapsibleSection_1.CollapsibleSection {
     constructor() {
         super('Form', 'form', false, true, ['project', 'config', 'form']);
@@ -2990,19 +2993,7 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
                 this._addNumField(card, cfg, 'step', 'step', '60px');
                 break;
             case 'annotation': {
-                const existingTools = Array.isArray(cfg.tools) ? cfg.tools : ['start_end_time_select'];
-                const toolsSel = this._makeSelect(['time_select', 'start_end_time_select', 'bounding_box', 'multibox']);
-                toolsSel.multiple = true;
-                toolsSel.style.width = '140px';
-                toolsSel.style.height = '75px';
-                for (const opt of toolsSel.options) {
-                    opt.selected = existingTools.includes(opt.value);
-                }
-                toolsSel.addEventListener('change', () => {
-                    cfg.tools = Array.from(toolsSel.selectedOptions).map(o => o.value);
-                    this._emitChanged();
-                });
-                card.appendChild(this._makeFieldRow('tools', toolsSel));
+                this._buildAnnotationToolList(card, cfg);
                 this._addField(card, cfg, 'start_time_col', 'start_time col', '120px');
                 this._addField(card, cfg, 'end_time_col', 'end_time col', '120px');
                 this._addField(card, cfg, 'min_freq_col', 'min_freq col', '120px');
@@ -3071,6 +3062,177 @@ class FormSection extends CollapsibleSection_1.CollapsibleSection {
         });
         card.appendChild(this._makeFieldRow('label', labelInp));
         card.appendChild(this._makeFieldRow('column', colInp));
+    }
+    _buildAnnotationToolList(card, cfg) {
+        if (!Array.isArray(cfg.tools))
+            cfg.tools = ['start_end_time_select'];
+        const TOOL_ROW_W = '400px';
+        const FD_INPUT_W = '60px';
+        const toolName = (t) => typeof t === 'string' ? t : (typeof t === 'object' && t ? Object.keys(t)[0] : '');
+        const listEl = document.createElement('div');
+        listEl.style.cssText = `display:flex;flex-direction:column;gap:3px;width:${TOOL_ROW_W};`;
+        let dragSrcIdx = null;
+        const rebuild = () => {
+            listEl.innerHTML = '';
+            const currentEnabled = new Set(cfg.tools.map(toolName));
+            const currentDisabled = ALL_ANNOTATION_TOOLS.filter(t => !currentEnabled.has(t));
+            cfg.tools.forEach((tool, idx) => {
+                const name = toolName(tool);
+                const row = document.createElement('div');
+                row.draggable = true;
+                row.style.cssText =
+                    `display:flex;align-items:center;gap:6px;padding:3px 6px;` +
+                        `background:${styles_1.COLORS.bgSurface0};border:1px solid ${styles_1.COLORS.bgSurface1};` +
+                        `border-radius:4px;font-size:12px;color:${styles_1.COLORS.textPrimary};cursor:grab;`;
+                row.addEventListener('dragstart', (e) => {
+                    dragSrcIdx = idx;
+                    row.style.opacity = '0.4';
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                row.addEventListener('dragend', () => {
+                    row.style.opacity = '1';
+                    dragSrcIdx = null;
+                });
+                row.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    row.style.borderColor = styles_1.COLORS.blue;
+                });
+                row.addEventListener('dragleave', () => {
+                    row.style.borderColor = styles_1.COLORS.bgSurface1;
+                });
+                row.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    row.style.borderColor = styles_1.COLORS.bgSurface1;
+                    if (dragSrcIdx == null || dragSrcIdx === idx)
+                        return;
+                    const [moved] = cfg.tools.splice(dragSrcIdx, 1);
+                    cfg.tools.splice(idx, 0, moved);
+                    dragSrcIdx = null;
+                    this._emitChanged();
+                    rebuild();
+                });
+                const label = document.createElement('span');
+                label.textContent = name.replace(/_/g, ' ');
+                label.style.cssText = `flex:1;`;
+                row.appendChild(label);
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = '×';
+                removeBtn.title = 'Disable tool';
+                removeBtn.style.cssText =
+                    `background:none;border:none;color:${styles_1.COLORS.red};cursor:pointer;` +
+                        `font-size:14px;padding:0 2px;line-height:1;`;
+                removeBtn.addEventListener('click', () => {
+                    cfg.tools.splice(idx, 1);
+                    this._emitChanged();
+                    rebuild();
+                });
+                row.appendChild(removeBtn);
+                listEl.appendChild(row);
+                if (name === 'fixed_duration') {
+                    let fdCfg;
+                    if (typeof tool === 'object' && tool.fixed_duration != null) {
+                        fdCfg = typeof tool.fixed_duration === 'object'
+                            ? tool.fixed_duration : { window: tool.fixed_duration };
+                    }
+                    else {
+                        fdCfg = { window: 3 };
+                        cfg.tools[idx] = { fixed_duration: fdCfg };
+                    }
+                    const isInitial = fdCfg.initial_window != null;
+                    const detail = document.createElement('div');
+                    detail.style.cssText =
+                        `display:flex;gap:6px;flex-wrap:wrap;padding:2px 0 2px 12px;`;
+                    const mkNum = (key, placeholder, disabled = false) => {
+                        const inp = this._makeInput(placeholder, FD_INPUT_W);
+                        inp.type = 'number';
+                        inp.step = 'any';
+                        if (fdCfg[key] != null)
+                            inp.value = String(fdCfg[key]);
+                        inp.disabled = disabled;
+                        inp.style.opacity = disabled ? '0.35' : '1';
+                        inp.addEventListener('input', () => {
+                            const v = parseFloat(inp.value);
+                            if (inp.value === '') {
+                                delete fdCfg[key];
+                            }
+                            else if (!isNaN(v)) {
+                                fdCfg[key] = v;
+                            }
+                            this._emitChanged();
+                        });
+                        return inp;
+                    };
+                    const valKey = isInitial ? 'initial_window' : 'window';
+                    const modeSel = this._makeSelect(['window', 'initial_window'], valKey);
+                    modeSel.style.cssText += `width:120px;font-size:11px;`;
+                    modeSel.addEventListener('change', () => {
+                        var _a, _b;
+                        const v = (_b = (_a = fdCfg.window) !== null && _a !== void 0 ? _a : fdCfg.initial_window) !== null && _b !== void 0 ? _b : 3;
+                        delete fdCfg.window;
+                        delete fdCfg.initial_window;
+                        fdCfg[modeSel.value] = v;
+                        if (modeSel.value === 'initial_window') {
+                            if (fdCfg.step == null)
+                                fdCfg.step = 1;
+                        }
+                        else {
+                            delete fdCfg.min;
+                            delete fdCfg.max;
+                            delete fdCfg.step;
+                        }
+                        this._emitChanged();
+                        rebuild();
+                    });
+                    detail.appendChild(modeSel);
+                    detail.appendChild(mkNum(valKey, valKey));
+                    detail.appendChild(mkNum('min', 'min', !isInitial));
+                    detail.appendChild(mkNum('max', 'max', !isInitial));
+                    detail.appendChild(mkNum('step', 'step', !isInitial));
+                    listEl.appendChild(detail);
+                }
+            });
+            if (currentDisabled.length > 0) {
+                const divider = document.createElement('div');
+                divider.style.cssText =
+                    `border-top:1px solid ${styles_1.COLORS.bgSurface1};margin:4px 0 2px;`;
+                listEl.appendChild(divider);
+                for (const name of currentDisabled) {
+                    const row = document.createElement('div');
+                    row.style.cssText =
+                        `display:flex;align-items:center;gap:6px;padding:3px 6px;` +
+                            `background:${styles_1.COLORS.bgCrust};border:1px solid ${styles_1.COLORS.bgSurface0};` +
+                            `border-radius:4px;font-size:12px;color:${styles_1.COLORS.textMuted};opacity:0.6;`;
+                    const label = document.createElement('span');
+                    label.textContent = name.replace(/_/g, ' ');
+                    label.style.cssText = `flex:1;`;
+                    row.appendChild(label);
+                    const addBtn = document.createElement('button');
+                    addBtn.textContent = '+';
+                    addBtn.title = 'Enable tool';
+                    addBtn.style.cssText =
+                        `background:none;border:none;color:${styles_1.COLORS.green};cursor:pointer;` +
+                            `font-size:16px;padding:0 2px;line-height:1;font-weight:bold;`;
+                    addBtn.addEventListener('click', () => {
+                        if (name === 'fixed_duration') {
+                            cfg.tools.push({ fixed_duration: { window: 3 } });
+                        }
+                        else {
+                            cfg.tools.push(name);
+                        }
+                        this._emitChanged();
+                        rebuild();
+                    });
+                    row.appendChild(addBtn);
+                    listEl.appendChild(row);
+                }
+            }
+        };
+        rebuild();
+        const container = document.createElement('div');
+        container.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
+        container.appendChild(listEl);
+        card.appendChild(this._makeFieldRow('tools', container));
     }
     _addField(card, cfg, key, label, width) {
         const inp = this._makeInput(label, width);
@@ -4511,9 +4673,6 @@ const DescriptionPanel_1 = __webpack_require__(/*! ./sections/DescriptionPanel *
 // BioacousticWidget
 // ═══════════════════════════════════════════════════════════════
 const DEFAULT_TITLE = 'Jupyter Bioacoustic';
-const VALID_ANNOTATION_TOOLS = new Set([
-    'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
-]);
 let _counter = 0;
 class BioacousticWidget extends widgets_1.Widget {
     constructor(tracker, directKernel) {
@@ -4620,7 +4779,7 @@ class BioacousticWidget extends widgets_1.Widget {
     }
     // ─── Initialization ──────────────────────────────────────────
     async _init() {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         this._setStatus('Reading kernel variables…');
         let raw;
         try {
@@ -4634,7 +4793,7 @@ class BioacousticWidget extends widgets_1.Widget {
         try {
             cfg = JSON.parse(raw);
         }
-        catch (_d) {
+        catch (_e) {
             this._setStatus('❌ Failed to parse kernel config', true);
             return;
         }
@@ -4644,20 +4803,27 @@ class BioacousticWidget extends widgets_1.Widget {
         const formConfig = JSON.parse(cfg.form_config);
         const duplicateEntries = !!cfg.duplicate_entries;
         const outputPath = cfg.output;
-        const configErrors = _validateFormConfig(formConfig);
-        if (configErrors.length > 0) {
-            this._setStatus('❌ Config validation failed', true);
-            await (0, util_1.showDialog)({
-                title: 'Config Validation Failed',
-                body: '• ' + configErrors.join('\n• '),
-            });
+        try {
+            const valRaw = await this._kernelBridge.exec((0, python_1.validateFormConfig)(JSON.stringify(formConfig)));
+            const configErrors = JSON.parse(valRaw);
+            if (configErrors.length > 0) {
+                this._setStatus('❌ Config validation failed', true);
+                await (0, util_1.showDialog)({
+                    title: 'Config Validation Failed',
+                    body: '• ' + configErrors.join('\n• '),
+                });
+                return;
+            }
+        }
+        catch (e) {
+            this._setStatus(`❌ Validation error: ${String((_b = e.message) !== null && _b !== void 0 ? _b : e)}`, true);
             return;
         }
         let rows;
         try {
             rows = JSON.parse(cfg.data);
         }
-        catch (_e) {
+        catch (_f) {
             this._setStatus('❌ Failed to parse detection data', true);
             return;
         }
@@ -4671,7 +4837,7 @@ class BioacousticWidget extends widgets_1.Widget {
                 const descHeight = parseInt(cfg.description_height) || undefined;
                 this._description.setConfig(descCfg, descHeight);
             }
-            catch ( /* no description */_f) { /* no description */ }
+            catch ( /* no description */_g) { /* no description */ }
         }
         // Initialize form panel
         const syncConfig = JSON.parse(cfg.sync_config || '{}');
@@ -4693,8 +4859,8 @@ class BioacousticWidget extends widgets_1.Widget {
         const vizMeta = JSON.parse(cfg.viz_meta || '[]');
         this._player.setContext({
             audioConfig,
-            captureLabel: (_b = cfg.capture) !== null && _b !== void 0 ? _b : '',
-            captureDir: (_c = cfg.capture_dir) !== null && _c !== void 0 ? _c : '',
+            captureLabel: (_c = cfg.capture) !== null && _c !== void 0 ? _c : '',
+            captureDir: (_d = cfg.capture_dir) !== null && _d !== void 0 ? _d : '',
             captureHeight: parseInt(cfg.capture_height) || undefined,
             identCol: this._identCol,
             displayCols: this._displayCols,
@@ -4892,36 +5058,6 @@ class BioacousticWidget extends widgets_1.Widget {
 // ═══════════════════════════════════════════════════════════════
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
-function _validateFormConfig(fc) {
-    if (!fc || typeof fc !== 'object')
-        return [];
-    const errors = [];
-    const checkAnnotTools = (annot) => {
-        if (!annot || typeof annot !== 'object')
-            return;
-        let tools = [];
-        if (typeof annot.tools === 'string')
-            tools = [annot.tools];
-        else if (Array.isArray(annot.tools))
-            tools = annot.tools;
-        for (const t of tools) {
-            if (typeof t === 'string' && !VALID_ANNOTATION_TOOLS.has(t)) {
-                errors.push(`Unknown annotation tool "${t}". ` +
-                    `Valid tools: ${[...VALID_ANNOTATION_TOOLS].sort().join(', ')}`);
-            }
-        }
-    };
-    if (fc.annotation)
-        checkAnnotTools(fc.annotation);
-    if (Array.isArray(fc.form)) {
-        for (const el of fc.form) {
-            if (el && typeof el === 'object' && el.annotation) {
-                checkAnnotTools(el.annotation);
-            }
-        }
-    }
-    return errors;
-}
 function escPy(s) {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
@@ -5550,7 +5686,7 @@ exports["default"] = exports.bioacousticPlugin;
  * License: BSD 3-Clause
  */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.checkFileExists = exports.saveProject = exports.getDefaultProjectPath = exports.syncOutput = exports.INVALIDATE_OUTPUT_CACHE = exports.savePng = exports.deleteOutputRow = exports.writeOutputRow = exports.readOutputRows = exports.countOutputRows = exports.loadSelectItems = exports.spectrogramPipeline = exports.buildSpectrogram = exports.readAudio = exports.readKernelVars = void 0;
+exports.checkFileExists = exports.saveProject = exports.getDefaultProjectPath = exports.syncOutput = exports.INVALIDATE_OUTPUT_CACHE = exports.savePng = exports.deleteOutputRow = exports.writeOutputRow = exports.readOutputRows = exports.countOutputRows = exports.loadSelectItems = exports.spectrogramPipeline = exports.buildSpectrogram = exports.readAudio = exports.validateFormConfig = exports.readKernelVars = void 0;
 const util_1 = __webpack_require__(/*! ./util */ "./lib/util.js");
 //
 // Constants
@@ -5594,6 +5730,18 @@ function readKernelVars() {
     ].join('\n');
 }
 exports.readKernelVars = readKernelVars;
+//
+// Validation
+//
+function validateFormConfig(formConfigJson) {
+    return [
+        `import json as _j`,
+        `from jupyter_bioacoustic._validation import validate_config as _vc`,
+        `_r = _vc(form_config=_j.loads('${(0, util_1.escPy)(formConfigJson)}'))`,
+        `print(_j.dumps(_r['errors']))`,
+    ].join('\n');
+}
+exports.validateFormConfig = validateFormConfig;
 //
 // Spectrogram + WAV generation (Player)
 //
@@ -6758,6 +6906,9 @@ class FormPanel {
         this._annotConfig = null;
         this._activeTool = '';
         this._annotInputs = new Map();
+        this._fixedDurationValue = 0;
+        this._fixedDurationInput = null;
+        this._fixedDurationLabel = null;
         // Multibox state
         this._multiboxEntries = [];
         this._activeBoxIndex = -1;
@@ -6944,6 +7095,10 @@ class FormPanel {
     /** The currently active annotation tool (for Player mouse handling). */
     getActiveTool() {
         return this._activeTool;
+    }
+    /** Current fixed_duration value in seconds. */
+    getFixedDuration() {
+        return this._fixedDurationValue;
     }
     /** Read a single form value (for Player to read start_time/end_time/etc.). */
     getFormValue(col) {
@@ -7617,7 +7772,7 @@ class FormPanel {
         this._syncBtn.style.opacity = '1';
     }
     async _buildAnnotationElement(config, container) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
         if (!config || typeof config !== 'object')
             return;
         const ac = { tools: [] };
@@ -7650,13 +7805,37 @@ class FormPanel {
             ac.tools = [rawTools];
         }
         else if (Array.isArray(rawTools)) {
-            ac.tools = rawTools.filter((t) => typeof t === 'string');
+            ac.tools = [];
+            for (const t of rawTools) {
+                if (typeof t === 'string') {
+                    ac.tools.push(t);
+                }
+                else if (typeof t === 'object' && t !== null) {
+                    if ('fixed_duration' in t) {
+                        ac.tools.push('fixed_duration');
+                        const raw = t.fixed_duration;
+                        if (typeof raw === 'number') {
+                            ac.fixedDuration = { value: raw, editable: false };
+                        }
+                        else if (typeof raw === 'object' && raw !== null) {
+                            const hasInitial = raw.initial_window != null;
+                            ac.fixedDuration = {
+                                value: hasInitial ? raw.initial_window : ((_j = raw.window) !== null && _j !== void 0 ? _j : 1),
+                                editable: hasInitial,
+                                min: raw.min,
+                                max: raw.max,
+                                step: raw.step,
+                            };
+                        }
+                    }
+                }
+            }
         }
         else {
             ac.tools = ['time_select'];
         }
-        const needsTime = ac.tools.some(t => ['time_select', 'start_end_time_select', 'bounding_box', 'multibox'].includes(t));
-        const needsEndTime = ac.tools.some(t => ['start_end_time_select', 'bounding_box', 'multibox'].includes(t));
+        const needsTime = ac.tools.some(t => ['time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration'].includes(t));
+        const needsEndTime = ac.tools.some(t => ['start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration'].includes(t));
         const needsFreq = ac.tools.some(t => ['bounding_box', 'multibox'].includes(t));
         if (needsTime && !ac.startTime) {
             ac.startTime = { col: 'start_time', sourceValue: 'start_time' };
@@ -7680,7 +7859,7 @@ class FormPanel {
             this._multiboxFormName = ac.form;
         }
         this._annotConfig = ac;
-        this._activeTool = (_j = ac.tools[0]) !== null && _j !== void 0 ? _j : '';
+        this._activeTool = (_k = ac.tools[0]) !== null && _k !== void 0 ? _k : '';
         const wrapper = document.createElement('div');
         wrapper.style.cssText = `display:flex;align-items:center;gap:12px;flex-wrap:wrap;`;
         if (ac.tools.length > 1) {
@@ -7697,6 +7876,7 @@ class FormPanel {
             });
             sel.addEventListener('change', () => {
                 this._activeTool = sel.value;
+                this._updateFixedDurationState();
                 if (this._currentRow)
                     this._applyAnnotValues(this._currentRow);
                 void this._rebuildAnnotFormUI();
@@ -7704,6 +7884,47 @@ class FormPanel {
                 this.annotationChanged.emit(void 0);
             });
             lbl.appendChild(sel);
+            wrapper.appendChild(lbl);
+        }
+        if (ac.fixedDuration) {
+            this._fixedDurationValue = ac.fixedDuration.value;
+            const lbl = document.createElement('label');
+            lbl.style.cssText = (0, styles_1.labelStyle)() + `font-size:12px;gap:5px;`;
+            lbl.textContent = 'window';
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.value = String(ac.fixedDuration.value);
+            inp.disabled = !ac.fixedDuration.editable;
+            inp.style.cssText = (0, styles_1.inputStyle)('70px') + `font-size:12px;`;
+            if (ac.fixedDuration.step)
+                inp.step = String(ac.fixedDuration.step);
+            if (ac.fixedDuration.min != null)
+                inp.min = String(ac.fixedDuration.min);
+            if (ac.fixedDuration.max != null)
+                inp.max = String(ac.fixedDuration.max);
+            inp.addEventListener('input', () => {
+                let v = parseFloat(inp.value);
+                if (isNaN(v) || v <= 0)
+                    return;
+                const fd = ac.fixedDuration;
+                if (fd.min != null)
+                    v = Math.max(fd.min, v);
+                if (fd.max != null)
+                    v = Math.min(fd.max, v);
+                this._fixedDurationValue = v;
+                this._resizeFixedDuration();
+            });
+            const u = document.createElement('span');
+            u.textContent = 's';
+            u.style.cssText = `color:${styles_1.COLORS.textMuted};font-size:10px;`;
+            lbl.append(inp, u);
+            this._fixedDurationInput = inp;
+            this._fixedDurationLabel = lbl;
+            const isActive = this._activeTool === 'fixed_duration';
+            const canEdit = ac.fixedDuration.editable && isActive;
+            inp.disabled = !canEdit;
+            inp.style.opacity = canEdit ? '1' : '0.5';
+            lbl.style.opacity = isActive ? '1' : '0.35';
             wrapper.appendChild(lbl);
         }
         const mkInput = (field, label, unit = '') => {
@@ -7731,13 +7952,13 @@ class FormPanel {
             wrapper.appendChild(lbl);
         };
         if (ac.startTime)
-            mkInput('startTime', (_l = (_k = config.start_time) === null || _k === void 0 ? void 0 : _k.label) !== null && _l !== void 0 ? _l : 'start_time', 's');
+            mkInput('startTime', (_m = (_l = config.start_time) === null || _l === void 0 ? void 0 : _l.label) !== null && _m !== void 0 ? _m : 'start_time', 's');
         if (ac.endTime)
-            mkInput('endTime', (_o = (_m = config.end_time) === null || _m === void 0 ? void 0 : _m.label) !== null && _o !== void 0 ? _o : 'end_time', 's');
+            mkInput('endTime', (_p = (_o = config.end_time) === null || _o === void 0 ? void 0 : _o.label) !== null && _p !== void 0 ? _p : 'end_time', 's');
         if (ac.minFreq)
-            mkInput('minFreq', (_q = (_p = config.min_frequency) === null || _p === void 0 ? void 0 : _p.label) !== null && _q !== void 0 ? _q : 'min_frequency', 'Hz');
+            mkInput('minFreq', (_r = (_q = config.min_frequency) === null || _q === void 0 ? void 0 : _q.label) !== null && _r !== void 0 ? _r : 'min_frequency', 'Hz');
         if (ac.maxFreq)
-            mkInput('maxFreq', (_s = (_r = config.max_frequency) === null || _r === void 0 ? void 0 : _r.label) !== null && _s !== void 0 ? _s : 'max_frequency', 'Hz');
+            mkInput('maxFreq', (_t = (_s = config.max_frequency) === null || _s === void 0 ? void 0 : _s.label) !== null && _t !== void 0 ? _t : 'max_frequency', 'Hz');
         container.appendChild(wrapper);
         // Annotation form container — shows per-box forms in multibox mode,
         // or a single form instance for other annotation tools
@@ -8027,6 +8248,35 @@ class FormPanel {
             this._setAnnotValueInternal('minFreq', null, false);
         if (ac.maxFreq)
             this._setAnnotValueInternal('maxFreq', null, false);
+    }
+    _updateFixedDurationState() {
+        const ac = this._annotConfig;
+        if (!(ac === null || ac === void 0 ? void 0 : ac.fixedDuration) || !this._fixedDurationInput || !this._fixedDurationLabel)
+            return;
+        const isActive = this._activeTool === 'fixed_duration';
+        const canEdit = ac.fixedDuration.editable && isActive;
+        this._fixedDurationInput.disabled = !canEdit;
+        this._fixedDurationInput.style.opacity = canEdit ? '1' : '0.5';
+        this._fixedDurationLabel.style.opacity = isActive ? '1' : '0.35';
+    }
+    _resizeFixedDuration() {
+        var _a, _b;
+        const ac = this._annotConfig;
+        if (!ac)
+            return;
+        const stCol = (_a = ac.startTime) === null || _a === void 0 ? void 0 : _a.col;
+        const etCol = (_b = ac.endTime) === null || _b === void 0 ? void 0 : _b.col;
+        if (!stCol || !etCol)
+            return;
+        const st = this._formValues[stCol];
+        const et = this._formValues[etCol];
+        if (st == null || et == null)
+            return;
+        const center = (st + et) / 2;
+        const half = this._fixedDurationValue / 2;
+        this._setAnnotValueInternal('startTime', center - half, false);
+        this._setAnnotValueInternal('endTime', center + half, false);
+        this.annotationChanged.emit(void 0);
     }
     _setAnnotValueInternal(field, val, emit) {
         var _a, _b, _c, _d;
@@ -8588,6 +8838,7 @@ const python_1 = __webpack_require__(/*! ../python */ "./lib/python.js");
 const styles_1 = __webpack_require__(/*! ../styles */ "./lib/styles.js");
 // ─── Constants ────────────────────────────────────────────────
 const DEFAULT_CANVAS_HEIGHT = 260;
+const FIXED_DURATION_NUDGE_SEC = 0.05;
 class Player {
     constructor(_kernel, _form) {
         this._kernel = _kernel;
@@ -9204,7 +9455,7 @@ class Player {
         return this._fracToFreq(frac);
     }
     _onCanvasMouseDown(e) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         // Zoom-box mode: draw a selection rectangle (tracked at document level)
         if (this._zoomBoxActive && this._specBitmap) {
             const { cx, cy } = this._canvasXYClamped(e);
@@ -9314,6 +9565,39 @@ class Player {
             this._form.setAnnotValue('maxFreq', f);
             this._annotDrag = { target: 'box-corner', anchorTime: t, anchorFreq: f };
         }
+        else if (tool === 'fixed_duration') {
+            const dur = this._form.getFixedDuration();
+            const st = ((_g = ac.startTime) === null || _g === void 0 ? void 0 : _g.col) ? this._form.getFormValue(ac.startTime.col) : null;
+            const et = ((_h = ac.endTime) === null || _h === void 0 ? void 0 : _h.col) ? this._form.getFormValue(ac.endTime.col) : null;
+            if (st != null && et != null) {
+                const sx = this._timeToX(st), ex = this._timeToX(et);
+                if (cx >= sx - GRAB && cx <= ex + GRAB) {
+                    this._annotDrag = { target: 'fixed-move', anchorTime: this._xToTime(cx) - (st + et) / 2 };
+                    this._renderFrame();
+                    this._updateAnnotDisplay();
+                    return;
+                }
+                this._form.setAnnotValue('startTime', null);
+                this._form.setAnnotValue('endTime', null);
+            }
+            else {
+                const t = this._xToTime(cx);
+                const half = dur / 2;
+                const lo = this._segLoadStart;
+                const hi = this._segLoadStart + this._segDuration;
+                let s = t - half, en = t + half;
+                if (s < lo) {
+                    s = lo;
+                    en = lo + dur;
+                }
+                if (en > hi) {
+                    en = hi;
+                    s = hi - dur;
+                }
+                this._form.setAnnotValue('startTime', s);
+                this._form.setAnnotValue('endTime', en);
+            }
+        }
         else if (tool === 'multibox') {
             const entries = this._form.getMultiboxEntries();
             // Hit test existing boxes (edges first, then interior)
@@ -9368,7 +9652,7 @@ class Player {
         this._updateAnnotDisplay();
     }
     _onCanvasMouseMove(e) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         // Zoom-box is handled at document level — skip here
         if (this._zoomBoxDrag)
             return;
@@ -9480,6 +9764,25 @@ class Player {
             if (hiVal != null)
                 this._form.setAnnotValue('minFreq', Math.min(f, hiVal));
         }
+        else if (tgt === 'fixed-move') {
+            const offset = (_j = this._annotDrag.anchorTime) !== null && _j !== void 0 ? _j : 0;
+            const dur = this._form.getFixedDuration();
+            const center = t - offset;
+            const half = dur / 2;
+            const lo = this._segLoadStart;
+            const hi = this._segLoadStart + this._segDuration;
+            let s = center - half, en = center + half;
+            if (s < lo) {
+                s = lo;
+                en = lo + dur;
+            }
+            if (en > hi) {
+                en = hi;
+                s = hi - dur;
+            }
+            this._form.setAnnotValue('startTime', s);
+            this._form.setAnnotValue('endTime', en);
+        }
         else if (tgt === 'multibox-new') {
             // Drawing a new multibox — render preview
             // (committed on mouseup)
@@ -9561,7 +9864,7 @@ class Player {
         this._renderFrame();
     }
     _updateAnnotCursor(cx, cy) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const ac = this._form.getAnnotConfig();
         if (!ac)
             return;
@@ -9603,6 +9906,17 @@ class Player {
                 }
             }
         }
+        else if (tool === 'fixed_duration') {
+            const st = ((_h = ac.startTime) === null || _h === void 0 ? void 0 : _h.col) ? this._form.getFormValue(ac.startTime.col) : null;
+            const et = ((_j = ac.endTime) === null || _j === void 0 ? void 0 : _j.col) ? this._form.getFormValue(ac.endTime.col) : null;
+            if (st != null && et != null) {
+                const sx = this._timeToX(st), ex = this._timeToX(et);
+                if (cx >= sx && cx <= ex) {
+                    this._canvasContainer.style.cursor = 'grab';
+                    return;
+                }
+            }
+        }
         this._canvasContainer.style.cursor = 'crosshair';
     }
     _updateAnnotDisplay() {
@@ -9624,7 +9938,7 @@ class Player {
         this._signalTimeDisplay.textContent = parts.length ? `⏱ ${parts.join(' ')}` : '';
     }
     _renderAnnotation(ctx, W, H, axisW) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const ac = this._form.getAnnotConfig();
         if (!ac || this._segDuration === 0)
             return;
@@ -9710,6 +10024,38 @@ class Player {
             for (const [px, py] of [[sx, yhi], [ex, yhi], [sx, ylo], [ex, ylo]]) {
                 ctx.beginPath();
                 ctx.arc(px, py, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        else if (tool === 'fixed_duration') {
+            const st = ((_h = ac.startTime) === null || _h === void 0 ? void 0 : _h.col) ? this._form.getFormValue(ac.startTime.col) : null;
+            const et = ((_j = ac.endTime) === null || _j === void 0 ? void 0 : _j.col) ? this._form.getFormValue(ac.endTime.col) : null;
+            if (st != null && et != null) {
+                const sx = tx(st), ex = tx(et);
+                ctx.fillStyle = 'rgba(249,226,175,0.12)';
+                ctx.fillRect(sx, 0, ex - sx, H);
+                ctx.strokeStyle = 'rgba(249,226,175,0.85)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(sx, 0);
+                ctx.lineTo(sx, H);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(ex, 0);
+                ctx.lineTo(ex, H);
+                ctx.stroke();
+                ctx.fillStyle = styles_1.COLORS.yellow;
+                ctx.beginPath();
+                ctx.moveTo(sx - 6, 0);
+                ctx.lineTo(sx + 6, 0);
+                ctx.lineTo(sx, 10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(ex - 6, 0);
+                ctx.lineTo(ex + 6, 0);
+                ctx.lineTo(ex, 10);
+                ctx.closePath();
                 ctx.fill();
             }
         }
@@ -9859,6 +10205,7 @@ class Player {
     }
     // ─── Private: zoom + pan ────────────────────────────────────
     _onCanvasKeyDown(e) {
+        var _a, _b;
         if (e.key === '+' || e.key === '=') {
             e.preventDefault();
             this._zoomBy(0.8);
@@ -9882,6 +10229,26 @@ class Player {
             }
             else {
                 this._togglePlay();
+            }
+        }
+        else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && this._form.getActiveTool() === 'fixed_duration') {
+            const ac2 = this._form.getAnnotConfig();
+            const st2 = ((_a = ac2 === null || ac2 === void 0 ? void 0 : ac2.startTime) === null || _a === void 0 ? void 0 : _a.col) ? this._form.getFormValue(ac2.startTime.col) : null;
+            const et2 = ((_b = ac2 === null || ac2 === void 0 ? void 0 : ac2.endTime) === null || _b === void 0 ? void 0 : _b.col) ? this._form.getFormValue(ac2.endTime.col) : null;
+            if (st2 != null && et2 != null) {
+                e.preventDefault();
+                const nudge = e.key === 'ArrowLeft' ? -FIXED_DURATION_NUDGE_SEC : FIXED_DURATION_NUDGE_SEC;
+                const lo = this._segLoadStart;
+                const hi = this._segLoadStart + this._segDuration;
+                const dur = et2 - st2;
+                let ns = st2 + nudge;
+                if (ns < lo)
+                    ns = lo;
+                if (ns + dur > hi)
+                    ns = hi - dur;
+                this._form.setAnnotValue('startTime', ns);
+                this._form.setAnnotValue('endTime', ns + dur);
+                this._renderFrame();
             }
         }
         else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
@@ -9910,6 +10277,12 @@ class Player {
         else if ((e.key === 'Delete' || e.key === 'Backspace') && this._form.isMultiboxMode()) {
             e.preventDefault();
             this._form.removeActiveMultiboxEntry();
+            this._renderFrame();
+        }
+        else if ((e.key === 'Delete' || e.key === 'Backspace') && this._form.getActiveTool() === 'fixed_duration') {
+            e.preventDefault();
+            this._form.setAnnotValue('startTime', null);
+            this._form.setAnnotValue('endTime', null);
             this._renderFrame();
         }
     }
@@ -10401,4 +10774,4 @@ exports.showDialog = showDialog;
 /***/ }
 
 }]);
-//# sourceMappingURL=lib_index_js.0c8a376bb8490d2fe5e3.js.map
+//# sourceMappingURL=lib_index_js.28be0e85a20b06bd5b17.js.map
