@@ -51,7 +51,7 @@ export class DataSection extends CollapsibleSection {
     colLabelText.textContent = 'columns';
     colLabelText.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
     colLabel.append(colLabelText);
-    colLabel.addEventListener('click', () => this.fieldFocused.emit('data_columns'));
+    colLabel.addEventListener('click', () => this.fieldFocused.emit('display_columns'));
 
     this._selectedChipsArea = document.createElement('div');
     this._selectedChipsArea.style.cssText =
@@ -238,7 +238,8 @@ export class DataSection extends CollapsibleSection {
     const result: Record<string, any> = {};
     result[sourceKey] = this._pathInput.value || undefined;
 
-    if (this._selectedCols.length > 0) result.columns = [...this._selectedCols];
+
+    if (this._selectedCols.length > 0) result.display_columns = [...this._selectedCols];
 
     const st = this._startTimeSelect.value;
     const et = this._endTimeSelect.value;
@@ -261,8 +262,8 @@ export class DataSection extends CollapsibleSection {
     else if (data.url) { this._sourceType.value = 'url'; this._pathInput.value = data.url; }
     else if (data.sql) { this._sourceType.value = 'sql'; this._pathInput.value = data.sql; }
     else if (data.api) { this._sourceType.value = 'api'; this._pathInput.value = data.api; }
-    if (data.columns && Array.isArray(data.columns)) {
-      this._selectedCols = [...data.columns];
+    if (data.display_columns && Array.isArray(data.display_columns)) {
+      this._selectedCols = [...data.display_columns];
       this._rebuildSelectedChips();
       this._rebuildColPicker();
     }
