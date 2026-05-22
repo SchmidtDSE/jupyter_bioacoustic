@@ -105,6 +105,7 @@ test = { features = ["test"] }
 
 [tool.pixi.feature.test.dependencies]
 pytest = ">=9.0.3,<10"
+pnpm = ">=10.12.4,<11"
 
 [tool.pixi.feature.dev.dependencies]
 twine = "*"
