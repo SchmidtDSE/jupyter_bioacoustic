@@ -36,7 +36,7 @@ VALID_CONFIG_KEYS = frozenset({
     'secrets',
     'output', 'output_path', 'output_url', 'output_uri',
     'output_sync_button', 'output_recursive', 'output_secrets',
-    'info_card_ident_column', 'info_card_display_columns',
+    'info_card_title', 'info_card_text',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
     'visualizations', 'partial_download',
