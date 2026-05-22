@@ -25,11 +25,11 @@ ba2 = BioacousticAnnotator(
 ba3 = BioacousticAnnotator(
     audio='path/to/audio-3.flac',
     data='path/to/clip-meta-3.csv',
-    data_columns=['species', 'confidence', 'rank'],
+    display_columns=['species', 'confidence', 'rank'],
     config='path/to/config.yaml')
 ```
 
-Here `ba1` and `ba2` use a single configuration. `ba3` also uses the same configuration, however we have overwritten the `data_columns` contained in `path/to/config.yaml`.
+Here `ba1` and `ba2` use a single configuration. `ba3` also uses the same configuration, however we have overwritten the `display_columns` contained in `path/to/config.yaml`.
 
 Alternatively `projects` we could have done this:
 
@@ -51,7 +51,7 @@ config: 'path/to/config.yaml'
 # path/to/project-3
 audio: 'path/to/audio-3.flac'
 data: 'path/to/clip-meta-3.csv'
-data_columns: ['species', 'confidence', 'rank']
+display_columns: ['species', 'confidence', 'rank']
 config: 'path/to/config.yaml'
 ```
 
@@ -88,8 +88,8 @@ project_name: My Review
 data: data/detections.csv
 audio: audio_path
 audio_prefix: audio/
-ident_column: common_name
-data_columns: [common_name, confidence, start_time]
+info_card_ident_column: common_name
+display_columns: [common_name, confidence, start_time]
 output: outputs/my-reviews.csv
 project_save_btn: true
 

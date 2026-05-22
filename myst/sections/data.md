@@ -65,7 +65,7 @@ In a YAML config file this looks like:
 ```yaml
 data:
   path: data/annotate-data.csv
-  columns: [common_name, confidence, start_time, end_time]
+  display_columns: [common_name, confidence, start_time, end_time]
   secrets:
     - key: Authorization
       value: env:API_TOKEN

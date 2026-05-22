@@ -187,11 +187,11 @@ dynamic_forms:
 | Parameter | Default | Description |
 |---|---|---|
 | `project` | `None` | Project file path or dict. No other config params allowed when set. |
-| `ident_column` | `''` | Shown first in info card (no label) and capture filenames |
+| `info_card_ident_column` | `''` | Shown first in info card (no label) and capture filenames |
 | `project_name` | `None` | Widget header title. Auto-derived from project filename if not set. |
 | `project_save_btn` | `False` | *(deprecated — no longer rendered)* |
-| `display_columns` | `[]` | Extra columns in the info card |
-| `data_columns` | `[]` | Columns for the clip table |
+| `info_card_display_columns` | `[]` | Extra columns in the info card |
+| `display_columns` | `[]` | Columns for the clip table |
 | `duplicate_entries` | `False` | Allow multiple submissions per row |
 | `default_buffer` | `3` | Buffer time in seconds |
 | `capture` | `True` | Capture button (`False` to hide, string for label) |
