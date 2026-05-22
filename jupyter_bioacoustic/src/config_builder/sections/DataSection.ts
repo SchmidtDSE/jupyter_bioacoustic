@@ -1,5 +1,4 @@
 import { Signal } from '@lumino/signaling';
-import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
 
@@ -16,9 +15,6 @@ export class DataSection extends CollapsibleSection {
 
   private _browseBtn: HTMLButtonElement;
   private _detectedCols: string[] = [];
-  private _selectedCols: string[] = [];
-  private _colPickerArea: HTMLDivElement;
-  private _selectedChipsArea: HTMLDivElement;
   private _secrets: SecretsEditor;
   private _debounceTimer: any = null;
 
@@ -44,35 +40,6 @@ export class DataSection extends CollapsibleSection {
     });
     pathRow.append(this._pathInput, this._browseBtn);
     this._body.appendChild(pathRow);
-
-    const colLabel = document.createElement('div');
-    colLabel.style.cssText = `display:flex;align-items:center;gap:6px;cursor:pointer;`;
-    const colLabelText = document.createElement('span');
-    colLabelText.textContent = 'columns';
-    colLabelText.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
-    colLabel.append(colLabelText);
-    colLabel.addEventListener('click', () => this.fieldFocused.emit('display_columns'));
-
-    this._selectedChipsArea = document.createElement('div');
-    this._selectedChipsArea.style.cssText =
-      `display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:2px 0;`;
-
-    this._colPickerArea = document.createElement('div');
-    this._colPickerArea.style.cssText =
-      `display:none;flex-wrap:wrap;gap:4px;padding:4px 0;` +
-      `border-top:1px solid ${COLORS.bgSurface0};margin-top:2px;`;
-
-    const colWrap = document.createElement('div');
-    colWrap.style.cssText =
-      `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
-      `background:${COLORS.bgSurface0};border-radius:6px;`;
-    colWrap.append(colLabel, this._selectedChipsArea, this._colPickerArea);
-    this._body.appendChild(colWrap);
-
-    const colSeparator = document.createElement('div');
-    colSeparator.style.cssText =
-      `height:1px;background:${COLORS.bgSurface1};margin:6px 0;`;
-    this._body.appendChild(colSeparator);
 
     this._startTimeSelect = this._makeSelect(['start_time'], 'start_time');
     this._startTimeSelect.addEventListener('change', () => this._emitChanged());
@@ -105,7 +72,6 @@ export class DataSection extends CollapsibleSection {
   setDetectedColumns(cols: string[]): void {
     this._detectedCols = cols;
     this.columnsLoaded.emit(cols);
-    this._rebuildColPicker();
     this._rebuildTimeSelects();
   }
 
@@ -113,96 +79,15 @@ export class DataSection extends CollapsibleSection {
     return this._detectedCols;
   }
 
+  getPath(): string {
+    return this._pathInput.value.trim();
+  }
+
   setPath(path: string): void {
     this._pathInput.value = path;
     this._emitChanged();
     if (path && /\.(csv|parquet|json|jsonl|tsv)$/i.test(path)) {
       this.fileLoadRequested.emit(path);
-    }
-  }
-
-  private _rebuildColPicker(): void {
-    this._colPickerArea.innerHTML = '';
-    if (this._detectedCols.length === 0) {
-      this._colPickerArea.style.display = 'none';
-      return;
-    }
-    this._colPickerArea.style.display = 'flex';
-
-    const hint = document.createElement('span');
-    hint.textContent = 'Click to add:';
-    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:100%;`;
-    this._colPickerArea.appendChild(hint);
-
-    for (const col of this._detectedCols) {
-      if (this._selectedCols.includes(col)) continue;
-      const chip = document.createElement('button');
-      chip.textContent = `+ ${col}`;
-      chip.style.cssText =
-        `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:12px;` +
-        `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
-      chip.addEventListener('click', () => {
-        this._selectedCols.push(col);
-        this._rebuildColPicker();
-        this._rebuildSelectedChips();
-        this._emitChanged();
-      });
-      this._colPickerArea.appendChild(chip);
-    }
-  }
-
-  private _rebuildSelectedChips(): void {
-    this._selectedChipsArea.innerHTML = '';
-    if (this._selectedCols.length === 0) {
-      const hint = document.createElement('span');
-      hint.textContent = 'all columns (none selected)';
-      hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;`;
-      this._selectedChipsArea.appendChild(hint);
-      return;
-    }
-    let dragIdx = -1;
-    for (let i = 0; i < this._selectedCols.length; i++) {
-      const col = this._selectedCols[i];
-      const chip = document.createElement('span');
-      chip.draggable = true;
-      chip.style.cssText =
-        `display:inline-flex;align-items:center;gap:4px;` +
-        `background:${COLORS.bgSurface1};border-radius:12px;` +
-        `color:${COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;cursor:grab;`;
-
-      chip.addEventListener('dragstart', (e) => {
-        dragIdx = i;
-        chip.style.opacity = '0.4';
-        e.dataTransfer!.effectAllowed = 'move';
-      });
-      chip.addEventListener('dragend', () => { chip.style.opacity = '1'; });
-      chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer!.dropEffect = 'move'; });
-      chip.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (dragIdx < 0 || dragIdx === i) return;
-        const [moved] = this._selectedCols.splice(dragIdx, 1);
-        this._selectedCols.splice(i, 0, moved);
-        this._rebuildSelectedChips();
-        this._emitChanged();
-      });
-
-      const name = document.createElement('span');
-      name.textContent = col;
-
-      const rm = document.createElement('button');
-      rm.textContent = '✕';
-      rm.style.cssText =
-        `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
-        `font-size:12px;padding:0 2px;line-height:1;`;
-      rm.addEventListener('click', () => {
-        this._selectedCols = this._selectedCols.filter(c => c !== col);
-        this._rebuildColPicker();
-        this._rebuildSelectedChips();
-        this._emitChanged();
-      });
-
-      chip.append(name, rm);
-      this._selectedChipsArea.appendChild(chip);
     }
   }
 
@@ -238,9 +123,6 @@ export class DataSection extends CollapsibleSection {
     const result: Record<string, any> = {};
     result[sourceKey] = this._pathInput.value || undefined;
 
-
-    if (this._selectedCols.length > 0) result.display_columns = [...this._selectedCols];
-
     const st = this._startTimeSelect.value;
     const et = this._endTimeSelect.value;
     const dur = this._durationInput.value.trim();
@@ -262,11 +144,6 @@ export class DataSection extends CollapsibleSection {
     else if (data.url) { this._sourceType.value = 'url'; this._pathInput.value = data.url; }
     else if (data.sql) { this._sourceType.value = 'sql'; this._pathInput.value = data.sql; }
     else if (data.api) { this._sourceType.value = 'api'; this._pathInput.value = data.api; }
-    if (data.display_columns && Array.isArray(data.display_columns)) {
-      this._selectedCols = [...data.display_columns];
-      this._rebuildSelectedChips();
-      this._rebuildColPicker();
-    }
     if (data.start_time) this._startTimeSelect.value = data.start_time;
     if (data.end_time) this._endTimeSelect.value = data.end_time;
     if (data.duration !== undefined) this._durationInput.value = String(data.duration);
