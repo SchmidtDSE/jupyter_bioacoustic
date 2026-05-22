@@ -49,7 +49,7 @@ export const FIELD_HELP: Record<string, Record<string, string>> = {
     custom_value: '(optional) Allow user to type a value not in the dropdown list.',
     not_available: "(optional) Prepend a fallback 'N/A' option to select items.",
     multiline: '(optional) Use textarea instead of single-line input (textbox only).',
-    tools: '(required for annotation) Spectrogram tools: time_select, start_end_time_select, bounding_box, multibox.',
+    tools: '(required for annotation) Spectrogram tools: time_select, start_end_time_select, fixed_duration, bounding_box, multibox.',
     start_time: '(optional) Column for annotation start time.',
     end_time: '(optional) Column for annotation end time.',
     min_frequency: '(optional) Column for annotation minimum frequency.',
