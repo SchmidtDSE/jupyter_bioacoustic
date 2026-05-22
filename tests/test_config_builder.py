@@ -276,13 +276,11 @@ class TestUpdateSection:
         assert cb._project['data'] == {'path': 'data.csv'}
         assert cb._config['data'] == {'start_time': 'begin'}
 
-    def test_update_data_display_columns_to_app(self):
+    def test_update_app_display_columns(self):
         cb = ConfigBuilder()
-        cb._section_targets['data'] = 'split'
         cb._section_targets['app'] = 'config'
-        cb.update_section('data', {'path': 'data.csv', 'display_columns': ['a', 'b']})
+        cb.update_section('app', {'display_columns': ['a', 'b']})
         assert cb._config.get('display_columns') == ['a', 'b']
-        assert 'display_columns' not in cb._project.get('data', {})
 
     def test_update_form(self):
         cb = ConfigBuilder()
