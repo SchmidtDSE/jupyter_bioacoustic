@@ -37,7 +37,7 @@ from jupyter_bioacoustic import BioacousticAnnotator
 BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
-    ident_column='common_name',
+    info_card_ident_column='common_name',
     form_config='form-review.yaml',
     output='reviews.csv',
 ).open()
@@ -104,7 +104,7 @@ Consider the example above:
 BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
-    ident_column='common_name',
+    info_card_ident_column='common_name',
     form_config='form-review.yaml',
     output='reviews.csv',
 )
@@ -122,7 +122,7 @@ BioacousticAnnotator(
 ```yaml
 # config/review-configuration.yaml
 audio: 'test.flac'
-ident_column: 'common_name'
+info_card_ident_column: 'common_name'
 form_config: 'form-review.yaml'
 output: 'reviews.csv'
 ```
@@ -134,9 +134,9 @@ See [Configuration](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Confi
 ```yaml
 # BioacousticAnnotator Args
 audio: "audio_path"    # column name — auto-detected (no slashes or dots)
-data_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
-ident_column: 'common_name'
-display_columns: ["confidence", "county", "start_time", "audio_path"]
+display_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
+info_card_ident_column: 'common_name'
+info_card_display_columns: ["confidence", "county", "start_time", "audio_path"]
 capture: 'Save Spectrogram'
 capture_dir: 'spectrograms'
 
@@ -202,7 +202,7 @@ form_config:
 | `data_sql` | str | `None` | Explicit SQL query for data (overrides `data` source). |
 | `data_api` | str | `None` | Explicit API endpoint for data (overrides `data` source). |
 | `data_secrets` | dict, list, or `false` | `None` | Auth for data loading. `{key, value}` pairs. Value: `env:VAR`, `dialog`, or literal. Set to `false` to opt out of global `secrets` fallback. |
-| `data_columns` | list | `[]` | Columns for the clip table. |
+| `display_columns` | list | `[]` | Columns for the clip table. |
 | `audio` | str or dict | *required** | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{path\|url\|uri\|column\|sql\|api\|src, prefix, suffix, fallback, secrets, property, response_index}`. |
 | `audio_src` | str | `None` | Audio source string (auto-detected as path, URL, or column name). Same as passing a bare string to `audio`. |
 | `audio_path` | str | `None` | Explicit local file path for audio (overrides `audio` source). |
@@ -226,9 +226,9 @@ form_config:
 | `output_recursive` | bool | `None` | Passed to `io.write()` for uploading directories. |
 | `output_secrets` | dict, list, or `false` | `None` | Auth for sync uploads (same format as `data_secrets`). Set to `false` to opt out of global `secrets` fallback. |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
-| `ident_column` | str | `''` | Identifying column — shown first (without label) in the info card and capture filenames. |
+| `info_card_ident_column` | str | `''` | Identifying column — shown first (without label) in the info card and capture filenames. |
 | `app_title` | str | `'Jupyter Bioacoustic'` | Custom title shown in the widget header and tab. |
-| `display_columns` | list | `[]` | Extra columns in the info card. |
+| `info_card_display_columns` | list | `[]` | Extra columns in the info card. |
 | `duplicate_entries` | bool | `False` | Allow multiple submissions per row |
 | `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
