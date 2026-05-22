@@ -6,9 +6,9 @@ import { SecretsEditor } from './SecretsEditor';
 export class AppSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, string>(this);
 
-  private _identColSelect: HTMLSelectElement;
+  private _titleInput: HTMLInputElement;
+  private _textInput: HTMLInputElement;
   private _dispCols: string[] = [];
-  private _displayCols: string[] = [];
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
   private _captureCb: HTMLInputElement;
@@ -23,8 +23,6 @@ export class AppSection extends CollapsibleSection {
   private _availableCols: string[] = [];
   private _dispChipsArea: HTMLDivElement;
   private _dispPickerArea: HTMLDivElement;
-  private _displayChipsArea: HTMLDivElement;
-  private _displayPickerArea: HTMLDivElement;
   private _secrets: SecretsEditor;
 
   constructor() {
@@ -36,16 +34,13 @@ export class AppSection extends CollapsibleSection {
     dispWrap.append(this._makeSectionLabel('display_columns', 'display columns'), this._dispChipsArea, this._dispPickerArea);
     this._body.appendChild(dispWrap);
 
-    this._identColSelect = this._makeSelect(['(none)'], '(none)');
-    this._identColSelect.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('info_card_ident_column', this._identColSelect));
+    this._titleInput = this._makeInput('[[common_name]]', '220px');
+    this._titleInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('info_card_title', this._titleInput));
 
-    this._displayChipsArea = this._makeChipsArea();
-    this._displayPickerArea = this._makePickerArea();
-    const displayWrap = this._makeColumnGroupWrapper();
-    displayWrap.append(this._makeSectionLabel('info_card_display_columns'), this._displayChipsArea, this._displayPickerArea);
-    this._body.appendChild(displayWrap);
-
+    this._textInput = this._makeInput('species: [[species]] | confidence: [[confidence]]', '220px');
+    this._textInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('info_card_text', this._textInput));
 
     const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
     this._duplicateCb = dupCb;
@@ -161,26 +156,10 @@ export class AppSection extends CollapsibleSection {
 
   setColumnOptions(cols: string[]): void {
     this._availableCols = cols;
-    this._rebuildIdentSelect();
-    this._rebuildPicker(this._dispPickerArea, this._dispCols, 'disp');
-    this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
+    this._rebuildPicker(this._dispPickerArea, this._dispCols);
   }
 
-  private _rebuildIdentSelect(): void {
-    const current = this._identColSelect.value;
-    this._identColSelect.innerHTML = '';
-    const none = document.createElement('option');
-    none.value = ''; none.textContent = '(none)';
-    this._identColSelect.appendChild(none);
-    for (const col of this._availableCols) {
-      const o = document.createElement('option');
-      o.value = col; o.textContent = col;
-      this._identColSelect.appendChild(o);
-    }
-    if (this._availableCols.includes(current)) this._identColSelect.value = current;
-  }
-
-  private _rebuildPicker(area: HTMLDivElement, selected: string[], which: string): void {
+  private _rebuildPicker(area: HTMLDivElement, selected: string[]): void {
     area.innerHTML = '';
     if (this._availableCols.length === 0) {
       area.style.display = 'none';
@@ -201,20 +180,15 @@ export class AppSection extends CollapsibleSection {
         `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
       chip.addEventListener('click', () => {
         selected.push(col);
-        const chipsArea = which === 'disp' ? this._dispChipsArea : this._displayChipsArea;
-        this._rebuildChips(chipsArea, selected, which);
-        this._rebuildPicker(area, selected, which);
+        this._rebuildChips(this._dispChipsArea, selected);
+        this._rebuildPicker(area, selected);
         this._emitChanged();
       });
       area.appendChild(chip);
     }
   }
 
-  private _getColsForWhich(which: string): string[] {
-    return which === 'disp' ? this._dispCols : this._displayCols;
-  }
-
-  private _rebuildChips(area: HTMLDivElement, selected: string[], which: string): void {
+  private _rebuildChips(area: HTMLDivElement, selected: string[]): void {
     area.innerHTML = '';
     if (selected.length === 0) {
       const hint = document.createElement('span');
@@ -242,11 +216,10 @@ export class AppSection extends CollapsibleSection {
       chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer!.dropEffect = 'move'; });
       chip.addEventListener('drop', (e) => {
         e.preventDefault();
-        const cols = this._getColsForWhich(which);
         if (dragIdx < 0 || dragIdx === i) return;
-        const [moved] = cols.splice(dragIdx, 1);
-        cols.splice(i, 0, moved);
-        this._rebuildChips(area, cols, which);
+        const [moved] = this._dispCols.splice(dragIdx, 1);
+        this._dispCols.splice(i, 0, moved);
+        this._rebuildChips(area, this._dispCols);
         this._emitChanged();
       });
 
@@ -254,17 +227,15 @@ export class AppSection extends CollapsibleSection {
       name.textContent = col;
 
       const rm = document.createElement('button');
-      rm.textContent = '✕';
+      rm.textContent = '\u2715';
       rm.style.cssText =
         `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
         `font-size:12px;padding:0 2px;line-height:1;`;
       rm.addEventListener('click', () => {
-        const cols = this._getColsForWhich(which);
-        const idx = cols.indexOf(col);
-        if (idx >= 0) cols.splice(idx, 1);
-        this._rebuildChips(area, cols, which);
-        const pickerArea = which === 'disp' ? this._dispPickerArea : this._displayPickerArea;
-        this._rebuildPicker(pickerArea, cols, which);
+        const idx = this._dispCols.indexOf(col);
+        if (idx >= 0) this._dispCols.splice(idx, 1);
+        this._rebuildChips(area, this._dispCols);
+        this._rebuildPicker(this._dispPickerArea, this._dispCols);
         this._emitChanged();
       });
 
@@ -277,10 +248,11 @@ export class AppSection extends CollapsibleSection {
     const result: Record<string, any> = {};
     if (this._dispCols.length > 0) result.display_columns = [...this._dispCols];
 
-    const ident = this._identColSelect.value;
-    if (ident) result.info_card_ident_column = ident;
+    const title = this._titleInput.value.trim();
+    if (title) result.info_card_title = title;
 
-    if (this._displayCols.length > 0) result.info_card_display_columns = [...this._displayCols];
+    const text = this._textInput.value.trim();
+    if (text) result.info_card_text = text;
 
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
@@ -314,15 +286,11 @@ export class AppSection extends CollapsibleSection {
   setData(data: Record<string, any>): void {
     if (data.display_columns && Array.isArray(data.display_columns)) {
       this._dispCols = [...data.display_columns];
-      this._rebuildChips(this._dispChipsArea, this._dispCols, 'disp');
-      this._rebuildPicker(this._dispPickerArea, this._dispCols, 'disp');
+      this._rebuildChips(this._dispChipsArea, this._dispCols);
+      this._rebuildPicker(this._dispPickerArea, this._dispCols);
     }
-    if (data.info_card_ident_column) this._identColSelect.value = data.info_card_ident_column;
-    if (data.info_card_display_columns && Array.isArray(data.info_card_display_columns)) {
-      this._displayCols = [...data.info_card_display_columns];
-      this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
-      this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
-    }
+    if (data.info_card_title) this._titleInput.value = data.info_card_title;
+    if (data.info_card_text) this._textInput.value = data.info_card_text;
     if (data.duplicate_entries) this._duplicateCb.checked = true;
     if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
     if (data.capture === false) this._captureCb.checked = false;
