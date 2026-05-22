@@ -1,6 +1,6 @@
 export interface SectionDocs {
   _intro: string;
-  [field: string]: string;
+  [field: string]: string | Record<string, string>;
 }
 
 export const DOCS: Record<string, SectionDocs> = {
@@ -11,17 +11,23 @@ export const DOCS: Record<string, SectionDocs> = {
     'project file': `Project-specific configuration — data sources, audio paths, output locations, and anything unique to this particular review task. References the config file for shared app settings.\nLoad: populates all sections and cascades into config and form files if referenced.`,
     'config file': `Application setup shared across multiple projects — layout options, column visibility, capture settings, heights, and general widget behavior. Referenced by the project file; references the form file.\nLoad: populates app/layout sections and cascades into the form file if referenced. The project file is updated to point to this config.`,
     'form file': `Form definition only — the annotation interface controls (selects, textboxes, checkboxes, etc.) and dynamic forms. Kept separate so the same form can be reused across different project/config combinations.\nLoad: populates the form section only.`,
+    'output path': `(optional) Output file path for saved annotations.\nAuto-generated from project name if form is configured.\nExample: outputs/reviews.csv`,
     '_sub:Description Panel': `Add an optional collapsible section at the top of the annotator for project descriptions, reviewer instructions, or other guidance. Accepts inline markdown or a path to a markdown file.`,
-    title: `(optional) Title shown in the collapsible description bar.\nDefault: "Description".`,
-    text: `(optional) Markdown-formatted text displayed in the description panel.\nSupports headings, lists, bold, italic, code blocks, links, and horizontal rules.`,
-    path: `(optional) Path to a markdown file whose contents populate the description panel.\nOverridden by text if both are set.`,
-    open: `(optional) Whether the description panel starts expanded.\nDefault: true.`,
-    height: `(optional) Max height in pixels for the description body.\nLeave empty for auto height. Set to constrain long descriptions with scroll.`,
+    'description title': `(optional) Title shown in the collapsible description bar.\nDefault: "Description".`,
+    'description text': `(optional) Markdown-formatted text displayed in the description panel.\nSupports headings, lists, bold, italic, code blocks, links, and horizontal rules.`,
+    description_path: `(optional) Path to a markdown file whose contents populate the description panel.\nOverridden by text if both are set.`,
+    'description open': `(optional) Whether the description panel starts expanded.\nDefault: true.`,
+    'description height': `(optional) Max height in pixels for the description body.\nLeave empty for auto height. Set to constrain long descriptions with scroll.`,
   },
   data: {
     _intro: `Data is where you define your clip source — a table of detections or segments to review. Each row represents one clip. The table must have at minimum a start_time column (or you must map one). Supported formats: CSV, Parquet, JSON, JSONL.`,
-    source_type: `(required) How to load data:\n• path: local file (CSV, Parquet, JSON)\n• url: remote file URL\n• sql: DuckDB SQL query\n• api: REST endpoint`,
-    path: `(required) Path to the data file relative to the working directory.\nExample: data/detections.csv`,
+    source_type: `How to load the data table.`,
+    '_group:source_type': {
+      path: `Local file path (CSV, Parquet, JSON, JSONL) relative to the working directory.\nExample: data/detections.csv`,
+      url: `Remote file URL. Downloaded and read based on extension or content type.`,
+      sql: `DuckDB SQL query. Requires duckdb.\nExample: SELECT * FROM 'data.parquet' WHERE confidence > 0.5`,
+      api: `REST API endpoint. Response parsed as JSON.\nExample: https://api.example.com/v1/detections`,
+    },
     data_columns: `(optional) Subset of columns to load from the file.\nIf empty, all columns are included. Use this to limit what's shown in the clip table and reduce memory for large files.`,
     start_time_col: `(optional) Column name containing the segment start time in seconds.\nDefault: "start_time". Remap if your file uses a different name.`,
     end_time_col: `(optional) Column name containing the segment end time in seconds.\nDefault: "end_time". Remap if your file uses a different name.`,
@@ -30,7 +36,12 @@ export const DOCS: Record<string, SectionDocs> = {
   },
   audio: {
     _intro: `Audio defines where to find the sound files for each clip.\nYou can point to a single file, a URL, or a per-row column that holds the path for each detection.`,
-    source_type: `(required) Audio source mode:\n• path: single audio file for all clips\n• url: remote audio file URL\n• column: per-row column from the data table`,
+    source_type: `How to resolve the audio file for each clip.`,
+    '_group:source_type': {
+      path: `Single local audio file shared by all clips.\nExample: recordings/site-a.flac`,
+      url: `Remote audio file URL (HTTPS, S3, GCS). Supports partial byte-range downloads.`,
+      column: `Per-row audio — each row's value in the selected data column is used as the audio path.\nUse with prefix/suffix/fallback for flexible path resolution.`,
+    },
     value: `(required) The file path, URL, or column name depending on source type.\nFor "column" mode, select which data column holds the audio paths.`,
     prefix: `(optional) Prepended to the audio path with "/" separator.\nUseful for base directories or URL roots.\nExample: "audio/" turns "recording.flac" into "audio/recording.flac"`,
     suffix: `(optional) Appended to the audio path.\nUseful for adding file extensions when paths are stored without them.`,
@@ -71,7 +82,14 @@ export const DOCS: Record<string, SectionDocs> = {
     line: `Horizontal rule divider between form elements.`,
     break: `Visual spacer that adds vertical space between form elements.`,
     '_sub:User Input': `Interactive elements that collect user input and write to output columns.`,
-    annotation: `Spectrogram interaction tools for time/frequency selection.\nTools: time_select, start_end_time_select, bounding_box, multibox.\nMap outputs to columns via start_time_col, end_time_col, etc.`,
+    annotation: `Add spectrogram interaction tools for time and frequency selection.`,
+    '_group:annotation': {
+      time_select: `Single vertical line on the spectrogram. Click to position.\nWrites: start_time.`,
+      start_end_time_select: `Two vertical lines — green (start) and pink (end). Lines cannot cross each other. A shaded region appears between them.\nWrites: start_time, end_time.`,
+      fixed_duration: `Fixed-length time region centered on click position. Click to place, drag to reposition, arrow keys to nudge.\nConfigure with "window" (fixed) or "initial_window" (user-editable with optional min/max/step bounds).\nWrites: start_time, end_time.`,
+      bounding_box: `Click+drag rectangle with individually draggable edges for time and frequency bounds.\nWrites: start_time, end_time, min_frequency, max_frequency.`,
+      multibox: `Draw multiple bounding boxes, each with an optional per-box form. One output row per box on submit.\nUse annotation "form" field to reference a dynamic_forms section.\nWrites: start_time, end_time, min_frequency, max_frequency + per-box form values.`,
+    },
     select: `Dropdown selector. Requires "label", "column", and "items".\nItems can be inline (list of strings or label::value pairs), from a file (path + value column + optional label column), or a numeric range (min, max, step).`,
     textbox: `Free text input. Set "multiline: true" for a textarea.\nRequires "label" and "column".`,
     checkbox: `Boolean toggle. Optionally set "yes_value" and "no_value" for custom output values (default: true/false).`,
