@@ -32,6 +32,7 @@ export class FormSection extends CollapsibleSection {
   private _listEl: HTMLDivElement;
   private _addBar: HTMLDivElement;
   private _dynFormsContainer: HTMLDivElement;
+  private _dragSrcCard: HTMLDivElement | null = null;
 
   constructor() {
     super('Form', 'form', false, true, ['project', 'config', 'form']);
@@ -145,11 +146,44 @@ export class FormSection extends CollapsibleSection {
 
   private _buildElementCard(type: ElementType, cfg: Record<string, any>, target: { elements: FormElement[]; listEl: HTMLDivElement }): HTMLDivElement {
     const card = document.createElement('div');
+    card.draggable = true;
     card.style.cssText =
       `background:${COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
-      `display:flex;flex-direction:column;gap:5px;`;
+      `display:flex;flex-direction:column;gap:5px;cursor:grab;` +
+      `border:1px solid transparent;`;
     card.addEventListener('focusin', () => this.fieldFocused.emit(type));
     card.addEventListener('click', () => this.fieldFocused.emit(type));
+
+    card.addEventListener('dragstart', (e) => {
+      this._dragSrcCard = card;
+      card.style.opacity = '0.4';
+      e.dataTransfer!.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.style.opacity = '1';
+      this._dragSrcCard = null;
+    });
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+      card.style.borderColor = COLORS.blue;
+    });
+    card.addEventListener('dragleave', () => {
+      card.style.borderColor = 'transparent';
+    });
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.style.borderColor = 'transparent';
+      if (!this._dragSrcCard || this._dragSrcCard === card) return;
+      const srcIdx = target.elements.findIndex(el => el.el === this._dragSrcCard);
+      const dstIdx = target.elements.findIndex(el => el.el === card);
+      if (srcIdx < 0 || dstIdx < 0) return;
+      const [moved] = target.elements.splice(srcIdx, 1);
+      target.elements.splice(dstIdx, 0, moved);
+      target.listEl.innerHTML = '';
+      for (const el of target.elements) target.listEl.appendChild(el.el);
+      this._emitChanged();
+    });
 
     const header = this._makeRow();
     const typeLabel = document.createElement('span');
