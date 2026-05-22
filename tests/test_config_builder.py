@@ -88,9 +88,9 @@ class TestConfigBuilderGetConfig:
 
     def test_get_config(self):
         cb = ConfigBuilder()
-        cb._config = {'info_card_ident_column': 'species'}
+        cb._config = {'info_card_title': '[[species]]'}
         result = cb.get_config('config')
-        assert result['info_card_ident_column'] == 'species'
+        assert result['info_card_title'] == '[[species]]'
 
     def test_get_form_config(self):
         cb = ConfigBuilder()
@@ -105,11 +105,11 @@ class TestConfigBuilderGetConfig:
     def test_merged_config(self):
         cb = ConfigBuilder()
         cb._project = {'project_name': 'Test'}
-        cb._config = {'info_card_ident_column': 'species'}
+        cb._config = {'info_card_title': '[[species]]'}
         cb._form_config = {'select': {'label': 'x'}}
         merged = cb.get_merged_config()
         assert merged['project_name'] == 'Test'
-        assert merged['info_card_ident_column'] == 'species'
+        assert merged['info_card_title'] == '[[species]]'
         assert 'select' in merged['form_config']
 
     def test_project_includes_form_config(self):
@@ -291,8 +291,8 @@ class TestUpdateSection:
     def test_update_app_to_config(self):
         cb = ConfigBuilder()
         cb._section_targets['app'] = 'config'
-        cb.update_section('app', {'info_card_ident_column': 'species', 'width': 800})
-        assert cb._config['info_card_ident_column'] == 'species'
+        cb.update_section('app', {'info_card_title': '[[species]]', 'width': 800})
+        assert cb._config['info_card_title'] == '[[species]]'
         assert cb._config['width'] == 800
 
     def test_sets_dirty_flag(self):
@@ -304,7 +304,7 @@ class TestUpdateSection:
     def test_empty_values_removed(self):
         cb = ConfigBuilder()
         cb._section_targets['app'] = 'project'
-        cb.update_section('app', {'info_card_ident_column': 'species', 'width': ''})
+        cb.update_section('app', {'info_card_title': '[[species]]', 'width': ''})
         assert 'width' not in cb._project
 
 
@@ -337,10 +337,10 @@ class TestBuildFileContents:
     def test_config_disabled(self):
         cb = ConfigBuilder()
         cb._project = {'project_name': 'P', 'config_enabled': False}
-        cb._config = {'info_card_ident_column': 'species'}
+        cb._config = {'info_card_title': '[[species]]'}
         fc = cb._build_file_contents()
         assert fc['config_enabled'] is False
-        assert 'info_card_ident_column' in fc['project_cfg']
+        assert 'info_card_title' in fc['project_cfg']
 
     def test_form_in_separate_file(self):
         cb = ConfigBuilder()
@@ -358,11 +358,11 @@ class TestUpdateConfigFromYaml:
 
     def test_update_project_yaml(self):
         cb = ConfigBuilder()
-        yaml_str = "project_name: Updated\ninfo_card_ident_column: species\n"
+        yaml_str = "project_name: Updated\ninfo_card_title: '[[species]]'\n"
         result = cb.update_config_from_yaml(yaml_str, 'project')
         assert result is True
         assert cb._project['project_name'] == 'Updated'
-        assert cb._project['info_card_ident_column'] == 'species'
+        assert cb._project['info_card_title'] == '[[species]]'
 
     def test_update_form_yaml(self):
         cb = ConfigBuilder()
