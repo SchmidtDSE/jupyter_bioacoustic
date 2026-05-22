@@ -62,8 +62,8 @@ FULL_MERGED = {
         'recursive': True,
         'secrets': {'key': 'S3_KEY'},
     },
-    'info_card_ident_column': 'species',
-    'info_card_display_columns': ['confidence', 'county'],
+    'info_card_title': '[[species]]',
+    'info_card_text': '[[confidence]] | [[county]]',
     'duplicate_entries': True,
     'default_buffer': 5,
     'capture': False,
@@ -209,8 +209,8 @@ class TestBuildSummary:
     def test_app_section(self):
         sections = build_summary(project={}, config={}, form_config={}, merged=FULL_MERGED)
         app_rows = sections[4]['rows']
-        assert any(r['key'] == 'ident' and r['value'] == 'species' for r in app_rows)
-        assert any(r['key'] == 'display' for r in app_rows)
+        assert any(r['key'] == 'title' and r['value'] == '[[species]]' for r in app_rows)
+        assert any(r['key'] == 'text' for r in app_rows)
         assert any(r['key'] == 'duplicates' and r['value'] == 'allowed' for r in app_rows)
         assert any(r['key'] == 'buffer' and r['value'] == '5' for r in app_rows)
         assert any(r['key'] == 'capture' and r['value'] == 'off' for r in app_rows)
