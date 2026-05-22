@@ -283,32 +283,47 @@ export class YamlPanel {
         this._docsContent.appendChild(subTitle);
 
         const subIntro = document.createElement('p');
-        subIntro.textContent = text;
+        subIntro.textContent = text as string;
         subIntro.style.cssText =
           `margin:0 0 10px 0;color:${COLORS.textSubtle};font-size:11px;line-height:1.5;`;
         this._docsContent.appendChild(subIntro);
         continue;
       }
 
-      const fieldEl = document.createElement('div');
-      fieldEl.setAttribute('data-field', key);
-      fieldEl.style.cssText =
-        `margin-bottom:10px;padding:8px;background:${COLORS.bgSurface0};border-radius:4px;` +
-        `border-left:3px solid ${COLORS.bgSurface1};transition:border-color 0.15s ease;`;
+      if (key.startsWith('_group:') && typeof text === 'object') {
+        const group = document.createElement('div');
+        group.style.cssText =
+          `border-left:2px solid ${COLORS.lavender};margin:0 0 10px 3px;padding-left:8px;`;
+        for (const [childKey, childText] of Object.entries(text)) {
+          group.appendChild(this._makeFieldCard(childKey, childText));
+        }
+        this._docsContent.appendChild(group);
+        continue;
+      }
 
-      const nameEl = document.createElement('div');
-      nameEl.textContent = key;
-      nameEl.style.cssText =
-        `font-size:12px;font-weight:700;color:${COLORS.mauve};margin-bottom:4px;font-family:monospace;`;
-
-      const descEl = document.createElement('div');
-      descEl.style.cssText =
-        `font-size:11px;color:${COLORS.textSubtle};line-height:1.5;white-space:pre-wrap;`;
-      descEl.textContent = text;
-
-      fieldEl.append(nameEl, descEl);
-      this._docsContent.appendChild(fieldEl);
+      this._docsContent.appendChild(this._makeFieldCard(key, text as string));
     }
+  }
+
+  private _makeFieldCard(key: string, text: string): HTMLDivElement {
+    const fieldEl = document.createElement('div');
+    fieldEl.setAttribute('data-field', key);
+    fieldEl.style.cssText =
+      `margin-bottom:10px;padding:8px;background:${COLORS.bgSurface0};border-radius:4px;` +
+      `border-left:3px solid ${COLORS.bgSurface1};transition:border-color 0.15s ease;`;
+
+    const nameEl = document.createElement('div');
+    nameEl.textContent = key;
+    nameEl.style.cssText =
+      `font-size:12px;font-weight:700;color:${COLORS.mauve};margin-bottom:4px;font-family:monospace;`;
+
+    const descEl = document.createElement('div');
+    descEl.style.cssText =
+      `font-size:11px;color:${COLORS.textSubtle};line-height:1.5;white-space:pre-wrap;`;
+    descEl.textContent = text;
+
+    fieldEl.append(nameEl, descEl);
+    return fieldEl;
   }
 
   private _updateYamlDisplay(yamls: { project_yaml: string; config_yaml: string; form_yaml: string }): void {
