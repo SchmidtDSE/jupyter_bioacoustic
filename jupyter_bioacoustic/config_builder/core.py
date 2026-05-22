@@ -37,14 +37,15 @@ DEFAULT_PROJECT_DIR = 'projects'
 DEFAULT_CONFIG_DIR = 'config'
 DEFAULT_FORM_DIR = 'forms'
 DATA_PROJECT_KEYS = frozenset({'path', 'url', 'sql', 'api', 'secrets'})
-DATA_CONFIG_KEYS = frozenset({'columns', 'start_time', 'end_time', 'duration'})
+DATA_CONFIG_KEYS = frozenset({'start_time', 'end_time', 'duration'})
 AUDIO_PROJECT_KEYS = frozenset({
     'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'
 })
 AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
 SECTION_KEYS = frozenset({'data', 'audio', 'output'})
 APP_KEYS = frozenset({
-    'project_save_btn', 'ident_column', 'display_columns',
+    'project_save_btn', 'info_card_ident_column', 'info_card_display_columns',
+    'display_columns',
     'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
     'spectrogram_resolution', 'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
@@ -173,6 +174,15 @@ class ConfigBuilder:
             self._config.pop('description', None)
 
         elif section == 'data':
+            display_cols = data.pop('display_columns', None)
+            app_dest = (self._project
+                        if self._section_targets.get('app', 'project') == 'project'
+                        else self._config)
+            if display_cols:
+                app_dest['display_columns'] = display_cols
+            else:
+                app_dest.pop('display_columns', None)
+
             data_dict = {}
             for k, v in data.items():
                 if v is not None and v != '' and v != []:
