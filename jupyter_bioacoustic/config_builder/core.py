@@ -174,15 +174,6 @@ class ConfigBuilder:
             self._config.pop('description', None)
 
         elif section == 'data':
-            display_cols = data.pop('display_columns', None)
-            app_dest = (self._project
-                        if self._section_targets.get('app', 'project') == 'project'
-                        else self._config)
-            if display_cols:
-                app_dest['display_columns'] = display_cols
-            else:
-                app_dest.pop('display_columns', None)
-
             data_dict = {}
             for k, v in data.items():
                 if v is not None and v != '' and v != []:
