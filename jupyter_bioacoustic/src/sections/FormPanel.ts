@@ -1085,15 +1085,19 @@ export class FormPanel {
       if (ac.fixedDuration.step) inp.step = String(ac.fixedDuration.step);
       if (ac.fixedDuration.min != null) inp.min = String(ac.fixedDuration.min);
       if (ac.fixedDuration.max != null) inp.max = String(ac.fixedDuration.max);
-      inp.addEventListener('input', () => {
+      const commitValue = () => {
         let v = parseFloat(inp.value);
-        if (isNaN(v) || v <= 0) return;
+        if (isNaN(v) || v < 0) return;
         const fd = ac.fixedDuration!;
         if (fd.min != null) v = Math.max(fd.min, v);
         if (fd.max != null) v = Math.min(fd.max, v);
         this._fixedDurationValue = v;
         inp.value = String(v);
         this._resizeFixedDuration();
+      };
+      inp.addEventListener('blur', commitValue);
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
       });
       const u = document.createElement('span');
       u.textContent = 's';
