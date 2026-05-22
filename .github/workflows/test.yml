@@ -24,6 +24,10 @@ jobs:
       - uses: "prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e"  # v0.9.4
 
       - name: "Setup"
+        env:
+          # FIXME: This is not ideal; for immutable install to work correctly
+          # we need to commit yarn.lock.
+          YARN_ENABLE_IMMUTABLE_INSTALLS: false
         run: "pixi run setup"
 
       - name: "Test"
