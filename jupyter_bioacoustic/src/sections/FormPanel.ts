@@ -98,6 +98,9 @@ export class FormPanel {
   private _annotConfig: AnnotConfig | null = null;
   private _activeTool = '';
   private _annotInputs: Map<string, HTMLInputElement> = new Map();
+  private _fixedDurationValue = 0;
+  private _fixedDurationInput: HTMLInputElement | null = null;
+  private _fixedDurationLabel: HTMLLabelElement | null = null;
 
   // Multibox state
   private _multiboxEntries: MultiboxEntry[] = [];
@@ -296,6 +299,11 @@ export class FormPanel {
   /** The currently active annotation tool (for Player mouse handling). */
   getActiveTool(): string {
     return this._activeTool;
+  }
+
+  /** Current fixed_duration value in seconds. */
+  getFixedDuration(): number {
+    return this._fixedDurationValue;
   }
 
   /** Read a single form value (for Player to read start_time/end_time/etc.). */
@@ -978,15 +986,37 @@ export class FormPanel {
     if (typeof rawTools === 'string') {
       ac.tools = [rawTools];
     } else if (Array.isArray(rawTools)) {
-      ac.tools = rawTools.filter((t: any) => typeof t === 'string');
+      ac.tools = [];
+      for (const t of rawTools) {
+        if (typeof t === 'string') {
+          ac.tools.push(t);
+        } else if (typeof t === 'object' && t !== null) {
+          if ('fixed_duration' in t) {
+            ac.tools.push('fixed_duration');
+            const raw = t.fixed_duration;
+            if (typeof raw === 'number') {
+              ac.fixedDuration = { value: raw, editable: false };
+            } else if (typeof raw === 'object' && raw !== null) {
+              const hasInitial = raw.initial_window != null;
+              ac.fixedDuration = {
+                value: hasInitial ? raw.initial_window : (raw.window ?? 1),
+                editable: hasInitial,
+                min: raw.min,
+                max: raw.max,
+                step: raw.step,
+              };
+            }
+          }
+        }
+      }
     } else {
       ac.tools = ['time_select'];
     }
 
     const needsTime = ac.tools.some(t =>
-      ['time_select', 'start_end_time_select', 'bounding_box', 'multibox'].includes(t));
+      ['time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration'].includes(t));
     const needsEndTime = ac.tools.some(t =>
-      ['start_end_time_select', 'bounding_box', 'multibox'].includes(t));
+      ['start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration'].includes(t));
     const needsFreq = ac.tools.some(t =>
       ['bounding_box', 'multibox'].includes(t));
     if (needsTime && !ac.startTime) {
@@ -1032,12 +1062,49 @@ export class FormPanel {
       });
       sel.addEventListener('change', () => {
         this._activeTool = sel.value;
+        this._updateFixedDurationState();
         if (this._currentRow) this._applyAnnotValues(this._currentRow);
         void this._rebuildAnnotFormUI();
         this.activeToolChanged.emit(this._activeTool);
         this.annotationChanged.emit(void 0);
       });
       lbl.appendChild(sel);
+      wrapper.appendChild(lbl);
+    }
+
+    if (ac.fixedDuration) {
+      this._fixedDurationValue = ac.fixedDuration.value;
+      const lbl = document.createElement('label');
+      lbl.style.cssText = labelStyle() + `font-size:12px;gap:5px;`;
+      lbl.textContent = 'window';
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.value = String(ac.fixedDuration.value);
+      inp.disabled = !ac.fixedDuration.editable;
+      inp.style.cssText = inputStyle('70px') + `font-size:12px;`;
+      if (ac.fixedDuration.step) inp.step = String(ac.fixedDuration.step);
+      if (ac.fixedDuration.min != null) inp.min = String(ac.fixedDuration.min);
+      if (ac.fixedDuration.max != null) inp.max = String(ac.fixedDuration.max);
+      inp.addEventListener('input', () => {
+        let v = parseFloat(inp.value);
+        if (isNaN(v) || v <= 0) return;
+        const fd = ac.fixedDuration!;
+        if (fd.min != null) v = Math.max(fd.min, v);
+        if (fd.max != null) v = Math.min(fd.max, v);
+        this._fixedDurationValue = v;
+        this._resizeFixedDuration();
+      });
+      const u = document.createElement('span');
+      u.textContent = 's';
+      u.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
+      lbl.append(inp, u);
+      this._fixedDurationInput = inp;
+      this._fixedDurationLabel = lbl;
+      const isActive = this._activeTool === 'fixed_duration';
+      const canEdit = ac.fixedDuration.editable && isActive;
+      inp.disabled = !canEdit;
+      inp.style.opacity = canEdit ? '1' : '0.5';
+      lbl.style.opacity = isActive ? '1' : '0.35';
       wrapper.appendChild(lbl);
     }
 
@@ -1362,6 +1429,32 @@ export class FormPanel {
     }
     if (ac.minFreq) this._setAnnotValueInternal('minFreq', null, false);
     if (ac.maxFreq) this._setAnnotValueInternal('maxFreq', null, false);
+  }
+
+  private _updateFixedDurationState(): void {
+    const ac = this._annotConfig;
+    if (!ac?.fixedDuration || !this._fixedDurationInput || !this._fixedDurationLabel) return;
+    const isActive = this._activeTool === 'fixed_duration';
+    const canEdit = ac.fixedDuration.editable && isActive;
+    this._fixedDurationInput.disabled = !canEdit;
+    this._fixedDurationInput.style.opacity = canEdit ? '1' : '0.5';
+    this._fixedDurationLabel.style.opacity = isActive ? '1' : '0.35';
+  }
+
+  private _resizeFixedDuration(): void {
+    const ac = this._annotConfig;
+    if (!ac) return;
+    const stCol = ac.startTime?.col;
+    const etCol = ac.endTime?.col;
+    if (!stCol || !etCol) return;
+    const st = this._formValues[stCol];
+    const et = this._formValues[etCol];
+    if (st == null || et == null) return;
+    const center = (st + et) / 2;
+    const half = this._fixedDurationValue / 2;
+    this._setAnnotValueInternal('startTime', center - half, false);
+    this._setAnnotValueInternal('endTime', center + half, false);
+    this.annotationChanged.emit(void 0);
   }
 
   private _setAnnotValueInternal(field: string, val: number | null, emit: boolean): void {
