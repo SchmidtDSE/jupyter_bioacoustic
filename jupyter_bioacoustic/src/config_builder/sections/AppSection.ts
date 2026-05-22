@@ -29,12 +29,12 @@ export class AppSection extends CollapsibleSection {
 
     this._identColSelect = this._makeSelect(['(none)'], '(none)');
     this._identColSelect.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('ident_column', this._identColSelect));
+    this._body.appendChild(this._makeFieldRow('info_card_ident_column', this._identColSelect));
 
     this._displayChipsArea = this._makeChipsArea();
     this._displayPickerArea = this._makePickerArea();
     const displayWrap = this._makeColumnGroupWrapper();
-    displayWrap.append(this._makeSectionLabel('display_columns'), this._displayChipsArea, this._displayPickerArea);
+    displayWrap.append(this._makeSectionLabel('info_card_display_columns'), this._displayChipsArea, this._displayPickerArea);
     this._body.appendChild(displayWrap);
 
 
@@ -258,9 +258,9 @@ export class AppSection extends CollapsibleSection {
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
     const ident = this._identColSelect.value;
-    if (ident) result.ident_column = ident;
+    if (ident) result.info_card_ident_column = ident;
 
-    if (this._displayCols.length > 0) result.display_columns = [...this._displayCols];
+    if (this._displayCols.length > 0) result.info_card_display_columns = [...this._displayCols];
 
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
@@ -292,9 +292,9 @@ export class AppSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
-    if (data.ident_column) this._identColSelect.value = data.ident_column;
-    if (data.display_columns && Array.isArray(data.display_columns)) {
-      this._displayCols = [...data.display_columns];
+    if (data.info_card_ident_column) this._identColSelect.value = data.info_card_ident_column;
+    if (data.info_card_display_columns && Array.isArray(data.info_card_display_columns)) {
+      this._displayCols = [...data.info_card_display_columns];
       this._rebuildChips(this._displayChipsArea, this._displayCols, 'display');
       this._rebuildPicker(this._displayPickerArea, this._displayCols, 'display');
     }
