@@ -28,7 +28,7 @@ VALID_FORM_KEYS = frozenset({
 VALID_CONFIG_KEYS = frozenset({
     'data', 'data_path', 'data_url', 'data_sql', 'data_api',
     'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
-    'data_columns',
+    'display_columns',
     'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
     'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
     'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
@@ -36,7 +36,7 @@ VALID_CONFIG_KEYS = frozenset({
     'secrets',
     'output', 'output_path', 'output_url', 'output_uri',
     'output_sync_button', 'output_recursive', 'output_secrets',
-    'ident_column', 'display_columns',
+    'info_card_ident_column', 'info_card_display_columns',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
     'visualizations', 'partial_download',
