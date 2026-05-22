@@ -51,6 +51,7 @@ VALID_CONFIG_KEYS = frozenset({
 
 VALID_ANNOTATION_TOOLS = frozenset({
     'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
+    'fixed_duration',
 })
 
 SKIP_KEYS = frozenset({
@@ -215,7 +216,24 @@ def _validate_forms_and_annotations(
             tools = [tools]
         if isinstance(tools, list):
             for t in tools:
-                if t not in VALID_ANNOTATION_TOOLS:
+                if isinstance(t, dict):
+                    unknown = set(t.keys()) - VALID_ANNOTATION_TOOLS
+                    for u in sorted(unknown):
+                        errors.append(
+                            f'Unknown annotation tool "{u}". '
+                            f'Valid tools: '
+                            f'{", ".join(sorted(VALID_ANNOTATION_TOOLS))}'
+                        )
+                    fd = t.get('fixed_duration')
+                    if isinstance(fd, dict):
+                        has_window = 'window' in fd
+                        has_initial = 'initial_window' in fd
+                        if has_window and has_initial:
+                            errors.append(
+                                'fixed_duration: specify "window" or '
+                                '"initial_window", not both',
+                            )
+                elif t not in VALID_ANNOTATION_TOOLS:
                     errors.append(
                         f'Unknown annotation tool "{t}". '
                         f'Valid tools: '
