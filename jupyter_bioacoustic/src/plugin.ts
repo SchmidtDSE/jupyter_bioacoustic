@@ -16,7 +16,7 @@ import {
 import { Detection } from './types';
 import { showDialog } from './util';
 import { KernelBridge } from './kernel';
-import { readKernelVars, syncOutput } from './python';
+import { readKernelVars, syncOutput, validateFormConfig } from './python';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
 import { ClipTable } from './sections/ClipTable';
@@ -28,9 +28,6 @@ import { DescriptionPanel, DescriptionConfig } from './sections/DescriptionPanel
 // ═══════════════════════════════════════════════════════════════
 
 const DEFAULT_TITLE = 'Jupyter Bioacoustic';
-const VALID_ANNOTATION_TOOLS = new Set([
-  'time_select', 'start_end_time_select', 'bounding_box', 'multibox',
-]);
 let _counter = 0;
 
 class BioacousticWidget extends Widget {
@@ -225,13 +222,21 @@ class BioacousticWidget extends Widget {
     const duplicateEntries = !!cfg.duplicate_entries;
     const outputPath     = cfg.output;
 
-    const configErrors = _validateFormConfig(formConfig);
-    if (configErrors.length > 0) {
-      this._setStatus('❌ Config validation failed', true);
-      await showDialog({
-        title: 'Config Validation Failed',
-        body: '• ' + configErrors.join('\n• '),
-      });
+    try {
+      const valRaw = await this._kernelBridge.exec(
+        validateFormConfig(JSON.stringify(formConfig)),
+      );
+      const configErrors = JSON.parse(valRaw) as string[];
+      if (configErrors.length > 0) {
+        this._setStatus('❌ Config validation failed', true);
+        await showDialog({
+          title: 'Config Validation Failed',
+          body: '• ' + configErrors.join('\n• '),
+        });
+        return;
+      }
+    } catch (e: any) {
+      this._setStatus(`❌ Validation error: ${String(e.message ?? e)}`, true);
       return;
     }
 
@@ -503,35 +508,6 @@ class BioacousticWidget extends Widget {
 // Plugin registration
 // ═══════════════════════════════════════════════════════════════
 
-function _validateFormConfig(fc: any): string[] {
-  if (!fc || typeof fc !== 'object') return [];
-  const errors: string[] = [];
-
-  const checkAnnotTools = (annot: any) => {
-    if (!annot || typeof annot !== 'object') return;
-    let tools: any[] = [];
-    if (typeof annot.tools === 'string') tools = [annot.tools];
-    else if (Array.isArray(annot.tools)) tools = annot.tools;
-    for (const t of tools) {
-      if (typeof t === 'string' && !VALID_ANNOTATION_TOOLS.has(t)) {
-        errors.push(
-          `Unknown annotation tool "${t}". ` +
-          `Valid tools: ${[...VALID_ANNOTATION_TOOLS].sort().join(', ')}`,
-        );
-      }
-    }
-  };
-
-  if (fc.annotation) checkAnnotTools(fc.annotation);
-  if (Array.isArray(fc.form)) {
-    for (const el of fc.form) {
-      if (el && typeof el === 'object' && el.annotation) {
-        checkAnnotTools(el.annotation);
-      }
-    }
-  }
-  return errors;
-}
 
 function escPy(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
