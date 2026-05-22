@@ -195,9 +195,6 @@ def _data_section(d: dict[str, Any]) -> dict[str, Any]:
             rows.append(_row(source_key, str(data[source_key])))
         else:
             rows.append(_row('source', 'not set', muted=True))
-        cols = data.get('columns', [])
-        if cols:
-            rows.append(_row('columns', ', '.join(str(c) for c in cols)))
         for field in ('start_time', 'end_time'):
             val = data.get(field)
             if val is not None and str(val) != field:
@@ -209,8 +206,8 @@ def _data_section(d: dict[str, Any]) -> dict[str, Any]:
     else:
         rows.append(_row('source', str(data)))
 
-    top_cols = d.get('data_columns')
-    if top_cols and not (isinstance(data, dict) and data.get('columns')):
+    top_cols = d.get('display_columns')
+    if top_cols:
         rows.append(_row('columns', ', '.join(str(c) for c in top_cols)))
 
     return {'title': 'Data', 'rows': rows}
@@ -268,9 +265,9 @@ def _output_section(d: dict[str, Any]) -> dict[str, Any]:
 def _app_section(d: dict[str, Any]) -> dict[str, Any]:
     """Build the Application section."""
     rows: list[dict[str, Any]] = []
-    if d.get('ident_column'):
-        rows.append(_row('ident', d['ident_column']))
-    display_cols = d.get('display_columns', [])
+    if d.get('info_card_ident_column'):
+        rows.append(_row('ident', d['info_card_ident_column']))
+    display_cols = d.get('info_card_display_columns', [])
     if display_cols:
         rows.append(_row('display', ', '.join(str(c) for c in display_cols)))
     if d.get('duplicate_entries'):
