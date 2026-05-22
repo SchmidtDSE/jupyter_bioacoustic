@@ -1092,6 +1092,7 @@ export class FormPanel {
         if (fd.min != null) v = Math.max(fd.min, v);
         if (fd.max != null) v = Math.min(fd.max, v);
         this._fixedDurationValue = v;
+        inp.value = String(v);
         this._resizeFixedDuration();
       });
       const u = document.createElement('span');
