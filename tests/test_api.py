@@ -320,3 +320,216 @@ class TestAnnotatorConfig:
         assert cfg['ident_column'] == 'audio_path'
         assert cfg['default_buffer'] == 10
         assert cfg['data']['path'] == str(data_file)
+
+
+#
+# _detect_data_type / _detect_audio_type — source_type coverage
+#
+class TestDetectDataTypeSourceType:
+
+    def test_returns_path_for_local_file(self):
+        assert _detect_data_type('data.csv') == 'path'
+
+    def test_returns_url_for_https(self):
+        assert _detect_data_type('https://example.com/data.csv') == 'url'
+
+    def test_returns_sql_for_query(self):
+        assert _detect_data_type('SELECT * FROM t') == 'sql'
+
+    def test_returns_api_for_prefix(self):
+        assert _detect_data_type('api::https://example.com') == 'api'
+
+
+class TestDetectAudioTypeSourceType:
+
+    def test_returns_path_for_local(self):
+        assert _detect_audio_type('recordings/audio.flac') == 'path'
+
+    def test_returns_url_for_https(self):
+        assert _detect_audio_type('https://example.com/audio.flac') == 'url'
+
+    def test_returns_column_for_bare_name(self):
+        assert _detect_audio_type('audio_path') == 'column'
+
+
+#
+# BioacousticAnnotator — start_time_col / end_time_col remapping
+#
+class TestAnnotatorTimeColumns:
+
+    def test_custom_start_time_col(self):
+        df = pd.DataFrame({
+            'begin': [0.0, 1.0],
+            'end_time': [1.0, 2.0],
+            'audio_path': ['a.wav', 'b.wav'],
+        })
+        ba = BioacousticAnnotator(
+            data=df, audio='audio_path', data_start_time='begin',
+        )
+        assert 'start_time' in ba.source.columns
+
+    def test_custom_end_time_col(self):
+        df = pd.DataFrame({
+            'start_time': [0.0, 1.0],
+            'stop': [1.0, 2.0],
+            'audio_path': ['a.wav', 'b.wav'],
+        })
+        ba = BioacousticAnnotator(
+            data=df, audio='audio_path', data_end_time='stop',
+        )
+        assert 'end_time' in ba.source.columns
+
+    def test_both_time_cols_remapped(self):
+        df = pd.DataFrame({
+            'begin': [0.0, 1.0],
+            'stop': [1.0, 2.0],
+            'audio_path': ['a.wav', 'b.wav'],
+        })
+        ba = BioacousticAnnotator(
+            data=df, audio='audio_path',
+            data_start_time='begin', data_end_time='stop',
+        )
+        assert 'start_time' in ba.source.columns
+        assert 'end_time' in ba.source.columns
+        assert 'begin' not in ba.source.columns
+        assert 'stop' not in ba.source.columns
+
+
+#
+# BioacousticAnnotator — data_columns filtering
+#
+class TestAnnotatorDataColumns:
+
+    def test_data_columns_stored(self):
+        df = pd.DataFrame({
+            'start_time': [0.0], 'end_time': [1.0],
+            'species': ['owl'], 'confidence': [0.9],
+            'audio_path': ['a.wav'],
+        })
+        ba = BioacousticAnnotator(
+            data=df, audio='audio_path',
+            data_columns=['species', 'confidence'],
+        )
+        assert ba._data_columns == ['species', 'confidence']
+
+    def test_data_columns_default_empty(self):
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        assert ba._data_columns == []
+
+
+#
+# BioacousticAnnotator — height params
+#
+class TestAnnotatorHeightParams:
+
+    def test_clip_table_height_default(self):
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        assert ba._clip_table_height == 175
+
+    def test_clip_table_height_custom(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', clip_table_height=200,
+        )
+        assert ba._clip_table_height == 200
+
+    def test_player_height_default(self):
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        assert ba._player_height == 260
+
+    def test_player_height_custom(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', player_height=400,
+        )
+        assert ba._player_height == 400
+
+    def test_info_card_height_default(self):
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        assert ba._info_card_height == 34
+
+    def test_info_card_height_custom(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', info_card_height=50,
+        )
+        assert ba._info_card_height == 50
+
+    def test_form_panel_height_default(self):
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        assert ba._form_panel_height == 140
+
+    def test_form_panel_height_custom(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', form_panel_height=200,
+        )
+        assert ba._form_panel_height == 200
+
+    def test_capture_height_default_none(self):
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        assert ba._capture_height is None
+
+    def test_capture_height_custom(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', capture_height=300,
+        )
+        assert ba._capture_height == 300
+
+
+#
+# BioacousticAnnotator — sync params
+#
+class TestAnnotatorSyncParams:
+
+    def test_sync_uri_from_output_dict(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            output={'path': 'out.csv', 'uri': 's3://bucket/out.csv'},
+        )
+        assert ba._sync_uri == 's3://bucket/out.csv'
+
+    def test_sync_uri_from_top_level(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            output_uri='s3://bucket/out.csv',
+        )
+        assert ba._sync_uri == 's3://bucket/out.csv'
+
+    def test_sync_button_custom_string(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            output={'path': 'out.csv', 'sync_button': 'Upload'},
+        )
+        assert ba._sync_button == 'Upload'
+
+    def test_sync_button_auto_when_uri_present(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            output={'path': 'out.csv', 'uri': 's3://bucket/out.csv'},
+        )
+        assert ba._sync_button == 'Sync'
+
+    def test_sync_recursive_from_output_dict(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            output={'path': 'out.csv', 'recursive': True},
+        )
+        assert ba._sync_recursive is True
+
+    def test_sync_recursive_default_false(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            output='out.csv',
+        )
+        assert ba._sync_recursive is False
+
+
+#
+# BioacousticAnnotator — app secrets
+#
+class TestAnnotatorSecrets:
+
+    def test_global_secrets_cascade_to_data(self, monkeypatch):
+        monkeypatch.setenv('JBA_TEST_TOKEN', 'tok123')
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            secrets={'key': 'Authorization', 'value': 'env:JBA_TEST_TOKEN'},
+        )
+        assert ba._audio_config['secrets'] == {'Authorization': 'tok123'}

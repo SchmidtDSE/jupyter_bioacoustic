@@ -144,3 +144,74 @@ class TestAnnotationTools:
         result = validate_config(form_config=fc)
         assert not result['valid']
         assert any('not both' in e for e in result['errors'])
+
+    def test_fixed_duration_step(self):
+        fc = {'annotation': {'tools': [
+            {'fixed_duration': {'initial_window': 3, 'step': 0.5}},
+        ]}}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_fixed_duration_min_max(self):
+        fc = {'annotation': {'tools': [
+            {'fixed_duration': {'initial_window': 3, 'min': 1, 'max': 10}},
+        ]}}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_annotation_min_frequency_field(self):
+        fc = {'annotation': {
+            'tools': ['bounding_box'],
+            'min_frequency': {'column': 'min_freq'},
+        }}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+    def test_annotation_max_frequency_field(self):
+        fc = {'annotation': {
+            'tools': ['bounding_box'],
+            'max_frequency': {'column': 'max_freq'},
+        }}
+        result = validate_config(form_config=fc)
+        assert result['valid']
+
+
+#
+# config key validation — height and layout params
+#
+class TestConfigKeyHeights:
+    """Verify all height/layout config keys are accepted."""
+
+    def test_clip_table_height_valid(self):
+        result = validate_config(config={'clip_table_height': 200})
+        assert result['valid']
+
+    def test_player_height_valid(self):
+        result = validate_config(config={'player_height': 400})
+        assert result['valid']
+
+    def test_info_card_height_valid(self):
+        result = validate_config(config={'info_card_height': 50})
+        assert result['valid']
+
+    def test_form_panel_height_valid(self):
+        result = validate_config(config={'form_panel_height': 180})
+        assert result['valid']
+
+    def test_capture_height_valid(self):
+        result = validate_config(config={'capture_height': 300})
+        assert result['valid']
+
+    def test_data_columns_valid(self):
+        result = validate_config(config={'data_columns': ['a', 'b']})
+        assert result['valid']
+
+    def test_description_keys_valid(self):
+        result = validate_config(config={
+            'description_title': 'My Title',
+            'description_text': 'Some text',
+            'description_path': 'desc.md',
+            'description_open': True,
+            'description_height': 200,
+        })
+        assert result['valid']

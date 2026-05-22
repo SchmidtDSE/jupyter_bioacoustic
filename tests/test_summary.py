@@ -490,3 +490,109 @@ class TestParseDynamicForms:
         fc = {'dynamic_forms': {'form_c': {'textbox': {'label': 'x'}}}}
         result = _parse_dynamic_forms(fc)
         assert isinstance(result['form_c'], list)
+
+
+#
+# build_summary — sync_uri coverage
+#
+class TestSyncUriSummary:
+
+    def test_sync_uri_shown(self):
+        merged = {'output': {'path': 'out.csv', 'uri': 's3://bucket/out.csv'}}
+        sections = build_summary(project={}, config={}, form_config={}, merged=merged)
+        output_rows = sections[3]['rows']
+        assert any(r['key'] == 'sync uri' and 's3://' in r['value'] for r in output_rows)
+
+    def test_sync_uri_absent_when_missing(self):
+        merged = {'output': {'path': 'out.csv'}}
+        sections = build_summary(project={}, config={}, form_config={}, merged=merged)
+        output_rows = sections[3]['rows']
+        assert not any(r['key'] == 'sync uri' for r in output_rows)
+
+
+#
+# build_summary — data_columns from top-level
+#
+class TestDataColumnsSummary:
+
+    def test_top_level_data_columns(self):
+        merged = {'data_columns': ['species', 'site']}
+        sections = build_summary(project={}, config={}, form_config={}, merged=merged)
+        data_rows = sections[1]['rows']
+        assert any(r['key'] == 'columns' and 'species' in r['value'] for r in data_rows)
+
+    def test_data_columns_inside_data_dict(self):
+        merged = {'data': {'path': 'x.csv', 'columns': ['a', 'b']}}
+        sections = build_summary(project={}, config={}, form_config={}, merged=merged)
+        data_rows = sections[1]['rows']
+        assert any(r['key'] == 'columns' and 'a' in r['value'] for r in data_rows)
+
+
+#
+# _summarize_form_element — select with filter_box, custom_value, not_available
+#
+class TestSelectOptionsSummary:
+
+    def test_select_with_filter_box(self):
+        cfg = {
+            'label': 'Species', 'column': 'sp',
+            'items': [{'value': 'a'}], 'filter_box': True,
+        }
+        result = _summarize_form_element('select', cfg)
+        assert 'Species' in result
+
+    def test_select_with_custom_value(self):
+        cfg = {
+            'label': 'Species', 'column': 'sp',
+            'items': [{'value': 'a'}], 'custom_value': True,
+        }
+        result = _summarize_form_element('select', cfg)
+        assert 'Species' in result
+
+    def test_select_with_not_available(self):
+        cfg = {
+            'label': 'Species', 'column': 'sp',
+            'items': [{'value': 'a'}], 'not_available': True,
+        }
+        result = _summarize_form_element('select', cfg)
+        assert 'Species' in result
+
+
+#
+# build_summary — annotation min_frequency / max_frequency fields
+#
+class TestAnnotationFrequencyFields:
+
+    def test_min_frequency_in_annotation_summary(self):
+        fc = {
+            'annotation': {
+                'tools': ['bounding_box'],
+                'min_frequency': {'column': 'min_freq'},
+                'max_frequency': {'column': 'max_freq'},
+            },
+        }
+        sections = build_summary(project={}, config={}, form_config=fc, merged={})
+        form_rows = sections[5]['rows']
+        annot = next(r for r in form_rows if r['key'] == 'annotation')
+        children = annot.get('children', [])
+        assert any(
+            r['key'] == 'min_frequency' and 'min_freq' in r['value']
+            for r in children
+        )
+        assert any(
+            r['key'] == 'max_frequency' and 'max_freq' in r['value']
+            for r in children
+        )
+
+
+#
+# _summarize_form_element — number with step
+#
+class TestNumberStepSummary:
+
+    def test_number_with_min_max_step(self):
+        result = _summarize_form_element(
+            'number', {'label': 'count', 'min': 0, 'max': 100, 'step': 5},
+        )
+        assert 'count' in result
+        assert '[0..100]' in result
