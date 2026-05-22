@@ -44,7 +44,6 @@ FULL_PROJECT = {
 FULL_MERGED = {
     'data': {
         'path': 'data/input.csv',
-        'columns': ['species', 'confidence', 'start_time'],
         'start_time': 'begin',
         'duration': 12.0,
         'secrets': [{'key': 'DB_PASS'}],
@@ -63,8 +62,8 @@ FULL_MERGED = {
         'recursive': True,
         'secrets': {'key': 'S3_KEY'},
     },
-    'ident_column': 'species',
-    'display_columns': ['confidence', 'county'],
+    'info_card_ident_column': 'species',
+    'info_card_display_columns': ['confidence', 'county'],
     'duplicate_entries': True,
     'default_buffer': 5,
     'capture': False,
@@ -167,7 +166,6 @@ class TestBuildSummary:
         sections = build_summary(project={}, config={}, form_config={}, merged=FULL_MERGED)
         data_rows = sections[1]['rows']
         assert any(r['key'] == 'path' and 'input.csv' in r['value'] for r in data_rows)
-        assert any(r['key'] == 'columns' for r in data_rows)
         assert any(r['key'] == 'start_time' and r['value'] == 'begin' for r in data_rows)
         assert any(r['key'] == 'duration' and r['value'] == '12.0' for r in data_rows)
         assert any(r['key'] == 'secrets' for r in data_rows)
@@ -511,21 +509,21 @@ class TestSyncUriSummary:
 
 
 #
-# build_summary — data_columns from top-level
+# build_summary — display_columns from top-level
 #
-class TestDataColumnsSummary:
+class TestDisplayColumnsSummary:
 
-    def test_top_level_data_columns(self):
-        merged = {'data_columns': ['species', 'site']}
+    def test_top_level_display_columns(self):
+        merged = {'display_columns': ['species', 'site']}
         sections = build_summary(project={}, config={}, form_config={}, merged=merged)
         data_rows = sections[1]['rows']
         assert any(r['key'] == 'columns' and 'species' in r['value'] for r in data_rows)
 
-    def test_data_columns_inside_data_dict(self):
-        merged = {'data': {'path': 'x.csv', 'columns': ['a', 'b']}}
+    def test_display_columns_absent_when_empty(self):
+        merged = {'data': {'path': 'x.csv'}}
         sections = build_summary(project={}, config={}, form_config={}, merged=merged)
         data_rows = sections[1]['rows']
-        assert any(r['key'] == 'columns' and 'a' in r['value'] for r in data_rows)
+        assert not any(r['key'] == 'columns' for r in data_rows)
 
 
 #
