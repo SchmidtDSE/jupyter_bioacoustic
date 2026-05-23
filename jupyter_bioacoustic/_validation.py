@@ -54,7 +54,7 @@ VALID_ANNOTATION_TOOLS = frozenset({
     'fixed_duration',
 })
 
-# Required fields for each annotation tool
+# Required fields for each annotation tool (only validated when fields are present)
 ANNOTATION_TOOL_REQUIRED_FIELDS = {
     'time_select': frozenset({'start_time'}),
     'start_end_time_select': frozenset({'start_time', 'end_time'}),
@@ -264,30 +264,22 @@ def _validate_forms_and_annotations(
                     active_tools.add(t)
 
         # Check annotation-level fields based on active tools
-        if active_tools:
-            # Get union of all required fields for all active tools
-            all_required = set()
-            all_tools_required = set()
+        # Only validate if annotation-level fields are actually provided
+        provided_fields = set()
+        for field in ALL_ANNOTATION_FIELDS:
+            if field in annot:
+                provided_fields.add(field)
+
+        if active_tools and provided_fields:
+            # For each tool, check if its required fields are present (only if any fields provided)
             for tool in active_tools:
                 tool_required = ANNOTATION_TOOL_REQUIRED_FIELDS.get(tool, set())
-                all_required.update(tool_required)
-                if tool_required:
-                    all_tools_required.add(tool)
-
-            # Check which fields are provided at annotation level
-            provided_fields = set()
-            for field in ALL_ANNOTATION_FIELDS:
-                if field in annot:
-                    provided_fields.add(field)
-
-            # For each tool, check if its required fields are present
-            for tool in all_tools_required:
-                tool_required = ANNOTATION_TOOL_REQUIRED_FIELDS.get(tool, set())
-                missing = tool_required - provided_fields
-                for field in missing:
-                    errors.append(
-                        f'Annotation tool "{tool}" requires field "{field}" in annotation config'
-                    )
+                if tool_required:  # Only check tools that have requirements
+                    missing = tool_required - provided_fields
+                    for field in missing:
+                        errors.append(
+                            f'Annotation tool "{tool}" requires field "{field}" in annotation config'
+                        )
 
             # Warn about unnecessary fields
             # A field is unnecessary if no active tool requires it
