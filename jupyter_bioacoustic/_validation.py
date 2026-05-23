@@ -229,6 +229,11 @@ def _validate_forms_and_annotations(
         if isinstance(tools, str):
             tools = [tools]
 
+        # Check that annotation has at least one tool
+        if not tools or (isinstance(tools, list) and len(tools) == 0):
+            errors.append('Annotation config must specify at least one tool in "tools" field')
+            continue  # Skip further validation for this annotation
+
         # Determine which tools are being used
         active_tools = set()
         if isinstance(tools, list):
