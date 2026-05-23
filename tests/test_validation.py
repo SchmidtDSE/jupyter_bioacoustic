@@ -162,7 +162,10 @@ class TestAnnotationTools:
     def test_annotation_min_frequency_field(self):
         fc = {'annotation': {
             'tools': ['bounding_box'],
+            'start_time': {'column': 'start'},
+            'end_time': {'column': 'end'},
             'min_frequency': {'column': 'min_freq'},
+            'max_frequency': {'column': 'max_freq'},
         }}
         result = validate_config(form_config=fc)
         assert result['valid']
@@ -170,6 +173,9 @@ class TestAnnotationTools:
     def test_annotation_max_frequency_field(self):
         fc = {'annotation': {
             'tools': ['bounding_box'],
+            'start_time': {'column': 'start'},
+            'end_time': {'column': 'end'},
+            'min_frequency': {'column': 'min_freq'},
             'max_frequency': {'column': 'max_freq'},
         }}
         result = validate_config(form_config=fc)

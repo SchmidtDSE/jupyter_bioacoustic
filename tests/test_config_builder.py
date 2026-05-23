@@ -193,6 +193,8 @@ class TestConfigBuilderValidate:
             'annotation': {
                 'start_time': 'start_time',
                 'end_time': 'end_time',
+                'min_frequency': 'min_freq',
+                'max_frequency': 'max_freq',
                 'tools': ['time_select', 'start_end_time_select', 'multibox'],
             },
         }
