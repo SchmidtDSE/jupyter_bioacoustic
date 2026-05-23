@@ -3,6 +3,7 @@ import {
   spectrogramPipeline, loadSelectItems,
   countOutputRows, readOutputRows, writeOutputRow, deleteOutputRow,
   savePng, syncOutput, getDefaultProjectPath, saveProject,
+  resolveOutputTemplates,
 } from '../python';
 import {
   extractJson, ensureSetup, updateSection, listFiles, checkFileExists,
@@ -366,5 +367,29 @@ describe('getSummary', () => {
     const code = getSummary();
     expect(code).toContain('build_summary_from_builder');
     expect(code).toContain('_CB_INSTANCE');
+  });
+});
+
+describe('resolveOutputTemplates', () => {
+  test('includes template parameter', () => {
+    const code = resolveOutputTemplates('capture.[[%Y%m%d]].png');
+    expect(code).toContain('capture.[[%Y%m%d]].png');
+  });
+
+  test('imports _resolve_output_templates', () => {
+    const code = resolveOutputTemplates('test.[[%H%M]].png');
+    expect(code).toContain('from jupyter_bioacoustic.api import _resolve_output_templates');
+  });
+
+  test('returns JSON with resolved field', () => {
+    const code = resolveOutputTemplates('file.[[%Y]].txt');
+    expect(code).toContain('json.dumps({');
+    expect(code).toContain("'resolved':");
+    expect(code).toContain('_resolve_output_templates');
+  });
+
+  test('escapes single quotes in template', () => {
+    const code = resolveOutputTemplates("it's.[[%Y]].png");
+    expect(code).toContain("\\'s");
   });
 });
