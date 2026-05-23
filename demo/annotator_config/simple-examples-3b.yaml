@@ -1,22 +1,6 @@
-form_config:
-    form:
-        - select:
-              label: Is Valid
-              column: is_valid
-              required: true
-              items:
-                  - value: 'yes'
-                  - value: 'no'
-                    form: correction_form
-    dynamic_forms:
-        - correction_form:
-              - select:
-                    label: corrected species
-                    column: corrected_common_name
-                    required: true
-                    items:
-                        path: data/categories-small.csv
-                        value: common_name
-                        required: true
-                        filter_box: true
-                        not_available: 'Unknown Species'
+project_name: simple examples 3b
+config: annotator_config/config/simple_examples_3b.yaml
+data:
+  path: data/annotate-data.csv
+audio:
+  path: audio/test2.flac
