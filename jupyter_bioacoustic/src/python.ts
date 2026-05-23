@@ -251,6 +251,15 @@ export function checkFileExists(path: string): string {
   ].join('\n');
 }
 
+export function resolveOutputTemplates(template: string): string {
+  return [
+    `from jupyter_bioacoustic.api import _resolve_output_templates`,
+    `import json`,
+    `_result = _resolve_output_templates('${escPy(template)}')`,
+    `print(json.dumps({'resolved': _result}))`,
+  ].join('\n');
+}
+
 
 //
 // Internal
