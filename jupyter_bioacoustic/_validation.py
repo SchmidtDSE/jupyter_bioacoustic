@@ -54,6 +54,20 @@ VALID_ANNOTATION_TOOLS = frozenset({
     'fixed_duration',
 })
 
+# Required fields for each annotation tool
+ANNOTATION_TOOL_REQUIRED_FIELDS = {
+    'time_select': frozenset({'start_time'}),
+    'start_end_time_select': frozenset({'start_time', 'end_time'}),
+    'fixed_duration': frozenset({'start_time', 'end_time'}),
+    'bounding_box': frozenset({'start_time', 'end_time', 'min_frequency', 'max_frequency'}),
+    'multibox': frozenset({'start_time', 'end_time', 'min_frequency', 'max_frequency'}),
+}
+
+# All possible annotation tool fields
+ALL_ANNOTATION_FIELDS = frozenset({
+    'start_time', 'end_time', 'min_frequency', 'max_frequency'
+})
+
 SKIP_KEYS = frozenset({
     'project_name', 'project_path', 'config_path',
     'form_path', 'project_enabled', 'config_enabled', 'form_enabled',
@@ -214,6 +228,9 @@ def _validate_forms_and_annotations(
         tools = annot.get('tools', [])
         if isinstance(tools, str):
             tools = [tools]
+
+        # Determine which tools are being used
+        active_tools = set()
         if isinstance(tools, list):
             for t in tools:
                 if isinstance(t, dict):
@@ -224,6 +241,9 @@ def _validate_forms_and_annotations(
                             f'Valid tools: '
                             f'{", ".join(sorted(VALID_ANNOTATION_TOOLS))}'
                         )
+                    # Add dict-based tools to active set
+                    active_tools.update(t.keys() & VALID_ANNOTATION_TOOLS)
+
                     fd = t.get('fixed_duration')
                     if isinstance(fd, dict):
                         has_window = 'window' in fd
@@ -238,6 +258,48 @@ def _validate_forms_and_annotations(
                         f'Unknown annotation tool "{t}". '
                         f'Valid tools: '
                         f'{", ".join(sorted(VALID_ANNOTATION_TOOLS))}'
+                    )
+                else:
+                    # Add string-based tools to active set
+                    active_tools.add(t)
+
+        # Check annotation-level fields based on active tools
+        if active_tools:
+            # Get union of all required fields for all active tools
+            all_required = set()
+            all_tools_required = set()
+            for tool in active_tools:
+                tool_required = ANNOTATION_TOOL_REQUIRED_FIELDS.get(tool, set())
+                all_required.update(tool_required)
+                if tool_required:
+                    all_tools_required.add(tool)
+
+            # Check which fields are provided at annotation level
+            provided_fields = set()
+            for field in ALL_ANNOTATION_FIELDS:
+                if field in annot:
+                    provided_fields.add(field)
+
+            # For each tool, check if its required fields are present
+            for tool in all_tools_required:
+                tool_required = ANNOTATION_TOOL_REQUIRED_FIELDS.get(tool, set())
+                missing = tool_required - provided_fields
+                for field in missing:
+                    errors.append(
+                        f'Annotation tool "{tool}" requires field "{field}" in annotation config'
+                    )
+
+            # Warn about unnecessary fields
+            # A field is unnecessary if no active tool requires it
+            for field in provided_fields:
+                needed_by_any = False
+                for tool in active_tools:
+                    if field in ANNOTATION_TOOL_REQUIRED_FIELDS.get(tool, set()):
+                        needed_by_any = True
+                        break
+                if not needed_by_any:
+                    warnings.append(
+                        f'Annotation field "{field}" is not required by active tools: {", ".join(sorted(active_tools))}'
                     )
 
     for f in sorted(missing_forms):
