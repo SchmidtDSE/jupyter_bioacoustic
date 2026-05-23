@@ -83,6 +83,7 @@ def _ensure_ext(path: str, extensions: tuple = ('.yaml', '.yml'),
 
 
 def _resolve_path(ref: str, base_dir: str) -> str | None:
+    """Resolve a file reference relative to base_dir or cwd."""
     if os.path.isabs(ref):
         return ref if os.path.exists(ref) else None
     candidate = os.path.join(base_dir, ref)
@@ -93,6 +94,14 @@ def _resolve_path(ref: str, base_dir: str) -> str | None:
     _log.debug('_resolve_path failed: ref=%s base_dir=%s cwd=%s', ref, base_dir,
                os.getcwd())
     return None
+
+
+def _to_cwd_relative(resolved: str) -> str:
+    """Convert a resolved path to be relative to the current working directory."""
+    try:
+        return os.path.relpath(resolved)
+    except ValueError:
+        return resolved
 
 #
 # Public API
@@ -655,15 +664,17 @@ class ConfigBuilder:
 
         if detected == 'form':
             self._form_config = data
-            loaded_paths['form'] = path
+            rel_form = _to_cwd_relative(path)
+            loaded_paths['form'] = rel_form
 
         elif detected == 'project':
             for k in ('project_name',):
                 if k in data:
                     self._project[k] = data[k]
-            self._project['project_path'] = path
+            rel_project = _to_cwd_relative(path)
+            self._project['project_path'] = rel_project
             self._project['project_enabled'] = True
-            loaded_paths['project'] = path
+            loaded_paths['project'] = rel_project
 
             for k, v in data.items():
                 if k not in SKIP_KEYS and k != 'config' and k != 'form_config':
@@ -671,15 +682,16 @@ class ConfigBuilder:
 
             config_ref = data.get('config')
             if isinstance(config_ref, str):
-                self._project['config_path'] = config_ref
                 config_path = _resolve_path(config_ref, base_dir)
                 _log.debug('config ref=%s base_dir=%s resolved=%s',
                            config_ref, base_dir, config_path)
                 if config_path:
+                    rel_config = _to_cwd_relative(config_path)
+                    self._project['config_path'] = rel_config
                     with open(config_path) as f:
                         config_data = yaml.safe_load(f) or {}
                     self._project['config_enabled'] = True
-                    loaded_paths['config'] = config_ref
+                    loaded_paths['config'] = rel_config
 
                     form_ref = config_data.pop('form_config', None)
                     for k, v in config_data.items():
@@ -706,11 +718,12 @@ class ConfigBuilder:
                         if not form_path:
                             form_path = _resolve_path(form_ref, base_dir)
                         if form_path:
+                            rel_form = _to_cwd_relative(form_path)
                             with open(form_path) as f:
                                 self._form_config = yaml.safe_load(f) or {}
-                            self._project['form_path'] = form_ref
+                            self._project['form_path'] = rel_form
                             self._project['form_enabled'] = True
-                            loaded_paths['form'] = form_ref
+                            loaded_paths['form'] = rel_form
                         else:
                             self._project['form_enabled'] = False
                     elif isinstance(form_ref, dict):
@@ -719,6 +732,9 @@ class ConfigBuilder:
                     else:
                         self._project['form_enabled'] = False
                 else:
+                    self._project['config_path'] = _to_cwd_relative(
+                        os.path.normpath(os.path.join(base_dir, config_ref))
+                    )
                     _log.warning('config ref not found: %s (tried %s and cwd %s)',
                                  config_ref, os.path.join(base_dir, config_ref),
                                  os.getcwd())
@@ -734,11 +750,12 @@ class ConfigBuilder:
                 if isinstance(form_ref, str):
                     form_path = _resolve_path(form_ref, base_dir)
                     if form_path:
+                        rel_form = _to_cwd_relative(form_path)
                         with open(form_path) as f:
                             self._form_config = yaml.safe_load(f) or {}
-                        self._project['form_path'] = form_ref
+                        self._project['form_path'] = rel_form
                         self._project['form_enabled'] = True
-                        loaded_paths['form'] = form_ref
+                        loaded_paths['form'] = rel_form
                     else:
                         self._project['form_enabled'] = False
                 elif isinstance(form_ref, dict):
@@ -746,10 +763,11 @@ class ConfigBuilder:
                     self._project['form_enabled'] = False
 
         elif detected == 'config':
-            self._project['config_path'] = path
+            rel_config = _to_cwd_relative(path)
+            self._project['config_path'] = rel_config
             self._project['config_enabled'] = True
             self._project['project_enabled'] = False
-            loaded_paths['config'] = path
+            loaded_paths['config'] = rel_config
 
             for s in ('data', 'audio', 'output', 'app'):
                 self._section_targets[s] = 'config'
@@ -762,11 +780,12 @@ class ConfigBuilder:
             if isinstance(form_ref, str):
                 form_path = _resolve_path(form_ref, base_dir)
                 if form_path:
+                    rel_form = _to_cwd_relative(form_path)
                     with open(form_path) as f:
                         self._form_config = yaml.safe_load(f) or {}
-                    self._project['form_path'] = form_ref
+                    self._project['form_path'] = rel_form
                     self._project['form_enabled'] = True
-                    loaded_paths['form'] = form_ref
+                    loaded_paths['form'] = rel_form
                 else:
                     self._project['form_enabled'] = False
             elif isinstance(form_ref, dict):
