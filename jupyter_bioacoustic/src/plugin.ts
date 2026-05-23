@@ -946,7 +946,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
 
     (window as any)._bioacousticOpenWithKernel = (directKernel: any) => {
       const widget = new BioacousticWidget(tracker, directKernel);
-      app.shell.add(widget, 'main', { mode: 'split-right' });
+      app.shell.add(widget, 'main');
       app.shell.activateById(widget.id);
     };
 
