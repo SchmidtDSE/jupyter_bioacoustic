@@ -79,12 +79,16 @@ export function saveSingleFile(configType: string): string {
   ].join('\n');
 }
 
-export function listFiles(directory: string, extensions?: string[]): string {
+export function listFiles(directory: string, extensions?: string[], rootDir?: string): string {
   const extArg = extensions ? `[${extensions.map(e => `'${escPy(e)}'`).join(',')}]` : 'None';
+  const rootLine = rootDir
+    ? `_r = _os.path.realpath('${escPy(rootDir)}')`
+    : `_r = None`;
   return [
     `import json as _j, os as _os`,
     `_d = _os.path.realpath('${escPy(directory)}')`,
-    wp(`_j.dumps({'files': _CB_INSTANCE.list_files('${escPy(directory)}', ${extArg}), 'resolved': _d})`),
+    rootLine,
+    wp(`_j.dumps({'files': _CB_INSTANCE.list_files('${escPy(directory)}', ${extArg}), 'resolved': _d, 'root_resolved': _r})`),
   ].join('\n');
 }
 
