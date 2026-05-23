@@ -278,6 +278,7 @@ export class ConfigPanel {
       dir || '.',
       extensions,
       dirOnly,
+      '.',
     );
 
     browser.fileSelected.connect((_, path) => {
