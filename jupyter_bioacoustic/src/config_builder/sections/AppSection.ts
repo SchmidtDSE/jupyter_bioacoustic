@@ -9,6 +9,7 @@ export class AppSection extends CollapsibleSection {
   private _titleInput: HTMLInputElement;
   private _textInput: HTMLInputElement;
   private _dispCols: string[] = [];
+  private _dispColsSet = false; // Track if display_columns was explicitly set
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
   private _captureCb: HTMLInputElement;
@@ -167,7 +168,7 @@ export class AppSection extends CollapsibleSection {
     }
     area.style.display = 'flex';
     const hint = document.createElement('span');
-    hint.textContent = 'Click to add:';
+    hint.textContent = 'Click or drag to add:';
     hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:100%;`;
     area.appendChild(hint);
 
@@ -175,21 +176,57 @@ export class AppSection extends CollapsibleSection {
       if (selected.includes(col)) continue;
       const chip = document.createElement('button');
       chip.textContent = `+ ${col}`;
+      chip.draggable = true;
       chip.style.cssText =
         `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:12px;` +
         `color:${COLORS.textSubtle};padding:2px 8px;font-size:11px;cursor:pointer;`;
+
+      // Click functionality (existing)
       chip.addEventListener('click', () => {
         selected.push(col);
         this._rebuildChips(this._dispChipsArea, selected);
         this._rebuildPicker(area, selected);
         this._emitChanged();
       });
+
+      // Drag functionality (new)
+      chip.addEventListener('dragstart', (e) => {
+        chip.style.opacity = '0.4';
+        e.dataTransfer!.effectAllowed = 'copy';
+        e.dataTransfer!.setData('text/plain', col);
+      });
+      chip.addEventListener('dragend', () => {
+        chip.style.opacity = '1';
+      });
+
       area.appendChild(chip);
     }
   }
 
   private _rebuildChips(area: HTMLDivElement, selected: string[]): void {
     area.innerHTML = '';
+
+    // Add drop functionality to accept columns from picker
+    area.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'copy';
+      area.style.background = COLORS.bgSurface1;
+    });
+    area.addEventListener('dragleave', () => {
+      area.style.background = '';
+    });
+    area.addEventListener('drop', (e) => {
+      e.preventDefault();
+      area.style.background = '';
+      const col = e.dataTransfer!.getData('text/plain');
+      if (col && !selected.includes(col)) {
+        selected.push(col);
+        this._rebuildChips(area, selected);
+        this._rebuildPicker(this._dispPickerArea, selected);
+        this._emitChanged();
+      }
+    });
+
     if (selected.length === 0) {
       const hint = document.createElement('span');
       hint.textContent = '(none)';
@@ -246,7 +283,7 @@ export class AppSection extends CollapsibleSection {
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
-    if (this._dispCols.length > 0) result.display_columns = [...this._dispCols];
+    if (this._dispColsSet) result.display_columns = [...this._dispCols];
 
     const title = this._titleInput.value.trim();
     if (title) result.info_card_title = title;
@@ -284,8 +321,9 @@ export class AppSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
-    if (data.display_columns && Array.isArray(data.display_columns)) {
+    if ('display_columns' in data && Array.isArray(data.display_columns)) {
       this._dispCols = [...data.display_columns];
+      this._dispColsSet = true;
       this._rebuildChips(this._dispChipsArea, this._dispCols);
       this._rebuildPicker(this._dispPickerArea, this._dispCols);
     }
