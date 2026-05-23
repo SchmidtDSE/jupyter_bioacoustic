@@ -98,4 +98,14 @@ describe('resolveTemplate', () => {
   test('empty row preserves placeholders', () => {
     expect(resolveTemplate('[[common_name]]', {})).toBe('[[common_name]]');
   });
+
+  test('handles capture filename template pattern', () => {
+    const result = resolveTemplate('[[common_name]] - [[species]]',
+      { common_name: 'Robin', species: 'Turdus migratorius' });
+    expect(result).toBe('Robin - Turdus migratorius');
+
+    // Verify it can be processed into snake case (matches Player._buildCaptureFilename logic)
+    const slug = result.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    expect(slug).toBe('robin_turdus_migratorius');
+  });
 });
