@@ -10,7 +10,7 @@ import { Detection } from '../types';
 import { KernelBridge } from '../kernel';
 import { FormPanel } from './FormPanel';
 import { fmtTime, resolveTemplate } from '../util';
-import { spectrogramPipeline, savePng } from '../python';
+import { spectrogramPipeline, savePng, resolveOutputTemplates } from '../python';
 import {
   COLORS,
   inputStyle,
@@ -1518,7 +1518,7 @@ export class Player {
 
   // ─── Private: capture ──────────────────────────────────────
 
-  private _buildCaptureFilename(): string {
+  private async _buildCaptureFilename(): Promise<string> {
     const row = this._currentRow;
     if (!row) return 'spectrogram.png';
     if (this._titleTemplate) {
@@ -1528,7 +1528,18 @@ export class Player {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_|_$/g, '');
-        return `${slug}.png`;
+
+        // Create template with datetime placeholder
+        const template = `${slug}.[[%Y%m%d-%H%M]].png`;
+
+        try {
+          const result = await this._kernel.exec(resolveOutputTemplates(template));
+          const parsed = JSON.parse(result);
+          return parsed.resolved;
+        } catch (e) {
+          console.error('Failed to resolve capture filename template:', e);
+          return `${slug}.png`;
+        }
       }
     }
     return `clip_${row.id}.png`;
@@ -1536,7 +1547,7 @@ export class Player {
 
   private async _onCapture(): Promise<void> {
     if (!this._specBitmap) return;
-    const defaultName = this._buildCaptureFilename();
+    const defaultName = await this._buildCaptureFilename();
     const suggested = this._captureDir
       ? `${this._captureDir}/${defaultName}` : defaultName;
     const filename = prompt('Save spectrogram as:', suggested);
