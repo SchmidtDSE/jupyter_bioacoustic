@@ -24,12 +24,21 @@ export class FileBrowser {
   private _filenameInput: HTMLInputElement;
   private _confirmBtn: HTMLButtonElement;
   private _footerRow: HTMLDivElement;
+  private _rootDir?: string;
 
-  constructor(kernel: KernelBridge, startDir: string, extensions: string[], dirOnly = false) {
+  constructor(
+    kernel: KernelBridge,
+    startDir: string,
+    extensions: string[],
+    dirOnly = false,
+    rootDir?: string,
+  ) {
     this._kernel = kernel;
-    this._cwd = startDir || '.';
+    const hasExt = /\.[a-z0-9]+$/i.test(startDir);
+    this._cwd = hasExt ? (startDir.replace(/\/[^/]+$/, '') || '.') : (startDir || '.');
     this._extensions = extensions;
     this._dirOnly = dirOnly;
+    this._rootDir = rootDir;
 
     this.element = document.createElement('div');
     this.element.style.cssText =
@@ -112,11 +121,16 @@ export class FileBrowser {
     this._statusEl.textContent = 'Loading…';
 
     try {
-      const raw = await this._kernel.exec(listFiles(dir, this._extensions));
+      const raw = await this._kernel.exec(listFiles(dir, this._extensions, this._rootDir));
       const result = JSON.parse(extractJson(raw));
       if (result.resolved) {
         this._cwd = result.resolved;
-        if (!this._startDir) this._startDir = result.resolved;
+        if (!this._startDir) {
+          this._startDir = result.resolved;
+        }
+        if (result.root_resolved) {
+          this._startDir = result.root_resolved;
+        }
         this._pathBar.textContent = this._displayPath();
       }
       const entries = result.files as FileEntry[];
