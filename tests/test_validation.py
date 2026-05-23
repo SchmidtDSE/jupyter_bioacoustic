@@ -175,6 +175,104 @@ class TestAnnotationTools:
         result = validate_config(form_config=fc)
         assert result['valid']
 
+    def test_annotation_requires_tools(self):
+        """Test that annotation config must have at least one tool."""
+        fc = {'annotation': {}}
+        result = validate_config(form_config=fc)
+        assert not result['valid']
+        assert any('at least one tool' in e for e in result['errors'])
+
+    def test_annotation_empty_tools_list(self):
+        """Test that empty tools list is invalid."""
+        fc = {'annotation': {'tools': []}}
+        result = validate_config(form_config=fc)
+        assert not result['valid']
+        assert any('at least one tool' in e for e in result['errors'])
+
+    def test_annotation_field_validation_missing_required(self):
+        """Test validation errors for missing required fields."""
+        # bounding_box missing min/max frequency
+        fc = {
+            'annotation': {
+                'tools': ['bounding_box'],
+                'start_time': {'column': 'start'},
+                'end_time': {'column': 'end'}
+            }
+        }
+        result = validate_config(form_config=fc)
+        assert not result['valid']
+        assert any('min_frequency' in e for e in result['errors'])
+        assert any('max_frequency' in e for e in result['errors'])
+
+    def test_annotation_field_validation_extra_fields(self):
+        """Test validation warnings for unnecessary fields."""
+        # time_select with extra end_time field
+        fc = {
+            'annotation': {
+                'tools': ['time_select'],
+                'start_time': {'column': 'start'},
+                'end_time': {'column': 'end'}
+            }
+        }
+        result = validate_config(form_config=fc)
+        assert result['valid']  # Should be valid but with warnings
+        assert any('not required' in w for w in result['warnings'])
+
+    def test_annotation_field_validation_complete_config(self):
+        """Test that properly configured annotation tools validate successfully."""
+        fc = {
+            'annotation': {
+                'tools': ['multibox'],
+                'start_time': {'column': 'start'},
+                'end_time': {'column': 'end'},
+                'min_frequency': {'column': 'min_freq'},
+                'max_frequency': {'column': 'max_freq'}
+            }
+        }
+        result = validate_config(form_config=fc)
+        assert result['valid']
+        assert len(result['errors']) == 0
+
+    def test_annotation_field_validation_time_select_minimal(self):
+        """Test that time_select with only start_time is valid."""
+        fc = {
+            'annotation': {
+                'tools': ['time_select'],
+                'start_time': {'column': 'start'}
+            }
+        }
+        result = validate_config(form_config=fc)
+        assert result['valid']
+        assert len(result['errors']) == 0
+        assert len(result['warnings']) == 0
+
+    def test_annotation_field_validation_fixed_duration_missing_end(self):
+        """Test that fixed_duration missing end_time generates error."""
+        fc = {
+            'annotation': {
+                'tools': ['fixed_duration'],
+                'start_time': {'column': 'start'}
+            }
+        }
+        result = validate_config(form_config=fc)
+        assert not result['valid']
+        assert any('end_time' in e for e in result['errors'])
+
+    def test_annotation_field_validation_mixed_tools(self):
+        """Test field validation with multiple tools requiring different fields."""
+        fc = {
+            'annotation': {
+                'tools': ['time_select', 'bounding_box'],
+                'start_time': {'column': 'start'},
+                'end_time': {'column': 'end'},
+                'min_frequency': {'column': 'min_freq'},
+                'max_frequency': {'column': 'max_freq'}
+            }
+        }
+        result = validate_config(form_config=fc)
+        assert result['valid']
+        assert len(result['errors']) == 0
+
 
 #
 # config key validation — height and layout params
