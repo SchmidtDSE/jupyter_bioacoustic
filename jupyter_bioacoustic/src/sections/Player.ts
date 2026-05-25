@@ -255,6 +255,17 @@ export class Player {
     this._loadBtn.addEventListener('click', () => void this._loadAudio());
     playerCtrls.appendChild(this._loadBtn);
 
+    // Enable Update button when controls change
+    const onCtrlChange = () => this._setLoadBtnDirty();
+    for (const inp of [this._bufferInput, this._startInput, this._endInput]) {
+      inp.addEventListener('input', onCtrlChange);
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); void this._loadAudio(); }
+      });
+    }
+    this._spectTypeSelect.addEventListener('change', onCtrlChange);
+    this._resolutionSelect.addEventListener('change', onCtrlChange);
+
     this._captureBtn = document.createElement('button');
     this._captureBtn.textContent = 'Capture';
     this._captureBtn.style.cssText = btnStyle() + `display:none;margin-left:auto;`;
@@ -533,10 +544,17 @@ export class Player {
   }
 
   private _enableLoadBtn(): void {
-    this._loadBtn.disabled = false;
+    this._loadBtn.disabled = true;
     this._loadBtn.textContent = 'Update';
-    this._loadBtn.style.opacity = '1';
+    this._loadBtn.style.opacity = '0.5';
+    this._loadBtn.style.cursor = 'default';
     this._canvasContainer.style.opacity = '1';
+  }
+
+  private _setLoadBtnDirty(): void {
+    this._loadBtn.disabled = false;
+    this._loadBtn.style.opacity = '1';
+    this._loadBtn.style.cursor = 'pointer';
   }
 
   private _renderFrame(): void {
