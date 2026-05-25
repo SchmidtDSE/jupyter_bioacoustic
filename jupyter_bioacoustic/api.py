@@ -850,6 +850,96 @@ class BioacousticAnnotator:
         session_args=_UNSET,
         **kwargs,
     ):
+        """Create a BioacousticAnnotator instance.
+
+        All parameters (except ``project``) may also be set via a YAML/JSON
+        config file. Constructor arguments override config-file values.
+
+        Args:
+            project: Project file path (str) or dict. When set, no other
+                config parameters may be passed.
+            config: Path to a YAML/JSON config file.
+            form_config: Form layout — YAML file path, dict, or None.
+            data: Input data. DataFrame, file path, URL, ``api::url``,
+                or SQL query (``SELECT ...``). Dict form:
+                ``{path|url|uri|api|sql, secrets, columns}``.
+            data_path: Explicit file path (overrides ``data`` source).
+            data_url: Explicit URL (overrides ``data`` source).
+            data_sql: Explicit SQL query (overrides ``data`` source).
+            data_api: Explicit API endpoint (overrides ``data`` source).
+            data_start_time: Column name for clip start times.
+            data_end_time: Column name for clip end times.
+            data_duration: Column name or fixed number for clip duration.
+            data_secrets: Auth for data loading. ``{key, value}`` pairs
+                where value is ``env:VAR``, ``dialog``, or a literal.
+            audio: Audio source. String: local path, URL/URI, or column
+                name (auto-detected). Dict form:
+                ``{path|url|uri|column|sql|api|src, prefix, suffix,
+                fallback, secrets, property, response_index}``.
+            audio_src: Audio source string (auto-detected as path, URL,
+                or column name).
+            audio_path: Explicit local file path for audio.
+            audio_url: Explicit URL for audio.
+            audio_uri: Alias for ``audio_url``.
+            audio_column: Explicit column name for per-row audio.
+            audio_prefix: Prefix joined with ``/`` to audio paths.
+            audio_suffix: Suffix joined with ``/`` to audio paths.
+            audio_fallback: Fallback when ``audio`` is a column and the
+                row value is empty.
+            audio_secrets: Auth for audio loading (same format as
+                ``data_secrets``).
+            audio_sql: SQL query to resolve audio path.
+            audio_api: API URL to resolve audio path.
+            audio_property: Field/column to extract from SQL/API response
+                as the audio path.
+            audio_response_index: 1-based row index for SQL/API response.
+            output: Output file path or sync config dict.
+            output_path: Explicit local output file path.
+            output_url: Remote sync destination.
+            output_uri: Alias for ``output_url``.
+            output_sync_button: Show a sync button (True = "Sync",
+                string = custom label).
+            output_recursive: Passed to ``io.write()`` for uploading
+                directories.
+            output_secrets: Auth for sync uploads.
+            description: Description panel config — True, string (markdown
+                text), file path, or dict.
+            description_title: Description panel title.
+            description_text: Description panel markdown text.
+            description_path: Path to a ``.md`` file for description.
+            description_open: Whether the description panel starts open.
+            description_height: Description panel height in pixels.
+            secrets: Global auth — fallback for ``data_secrets``,
+                ``audio_secrets``, and ``output_secrets``.
+            project_name: Widget header title. Auto-derived from project
+                filename if not set.
+            display_columns: Columns shown in the clip table.
+            info_card_title: Info card title template — supports
+                ``[[column_name]]`` placeholders. Also used for capture
+                filenames.
+            info_card_text: Info card text template — supports
+                ``[[column_name]]`` placeholders.
+            info_card_height: Info card height in pixels.
+            visualizations: Visualization types for the dropdown.
+                Built-in strings (``'linear'``, ``'mel'``,
+                ``'log_frequency'``, ``'bandpass'``, ``'waveform'``)
+                or custom callables.
+            spectrogram_resolution: Spectrogram width in pixels. List for
+                a dropdown selector, single value for fixed.
+            default_buffer: Buffer time in seconds around each clip.
+            capture: Capture button (False to hide, string for label).
+            capture_dir: Directory prefix for captures.
+            capture_height: Capture image height in pixels.
+            clip_table_height: Clip table height in pixels.
+            player_height: Player/spectrogram height in pixels.
+            form_panel_height: Form panel height in pixels.
+            width: Widget width (pixels or percentage string).
+            partial_download: Use byte-range downloads for remote audio.
+            duplicate_entries: Allow multiple submissions per row.
+            session_args: List of allowed ``**kwargs`` keys, or True to
+                allow all.
+            **kwargs: Fixed columns included in every output row.
+        """
         # Initialize path tracking variables
         self._project_file = None
         self._config_file = None
