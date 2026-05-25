@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from jupyter_bioacoustic.audio import io
+from jupyter_bioacoustic.audio import io, _shared
 from jupyter_bioacoustic.audio._shared import cache_path, parse_flac_header
 from jupyter_bioacoustic.audio import io_local, io_aws, io_gcs, io_https
 
@@ -113,3 +113,21 @@ class TestParseFlacHeader:
     def test_truncated_header(self):
         with pytest.raises(ValueError):
             parse_flac_header(b'fLaC\x00')
+
+
+#
+# last_warning cleared by dispatcher
+#
+class TestLastWarningCleared:
+
+    def test_read_segment_clears_stale_warning(self, tmp_path):
+        import numpy as np
+        import soundfile as sf
+
+        wav = tmp_path / 'test.wav'
+        samples = np.zeros((4410, 1), dtype='float32')
+        sf.write(str(wav), samples, 44100)
+
+        _shared.last_warning = 'stale S3 error'
+        io.read_segment(str(wav), 0, 0.05)
+        assert _shared.last_warning is None
