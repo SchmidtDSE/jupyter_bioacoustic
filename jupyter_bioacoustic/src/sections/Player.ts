@@ -263,8 +263,12 @@ export class Player {
         if (e.key === 'Enter') { e.preventDefault(); void this._loadAudio(); }
       });
     }
-    this._spectTypeSelect.addEventListener('change', onCtrlChange);
-    this._resolutionSelect.addEventListener('change', onCtrlChange);
+    for (const sel of [this._spectTypeSelect, this._resolutionSelect]) {
+      sel.addEventListener('change', onCtrlChange);
+      sel.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); void this._loadAudio(); }
+      });
+    }
 
     this._captureBtn = document.createElement('button');
     this._captureBtn.textContent = 'Capture';
