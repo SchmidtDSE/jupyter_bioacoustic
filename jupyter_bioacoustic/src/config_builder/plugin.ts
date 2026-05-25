@@ -85,16 +85,27 @@ class ConfigBuilderWidget extends Widget {
     cwdLabel.addEventListener('mouseleave', () => {
       cwdLabel.style.background = '';
     });
-    cwdLabel.addEventListener('dblclick', () => {
+    const browseCwd = () => {
       this._panel.browseDirectory('.', (selectedDir) => {
         void (async () => {
           const newCwd = await this._panel.setCwd(selectedDir);
           if (newCwd) { cwdLabel.textContent = cwdRelative(newCwd); cwdLabel.title = newCwd; }
         })();
       });
-    });
+    };
+    cwdLabel.addEventListener('dblclick', browseCwd);
 
-    header.append(this._titleEl, cwdLabel, this._panel.statusEl);
+    const cwdBtn = document.createElement('button');
+    cwdBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+    cwdBtn.title = 'Change working directory';
+    cwdBtn.style.cssText =
+      `background:none;border:none;color:${COLORS.blue};opacity:0.6;cursor:pointer;` +
+      `padding:2px 4px;display:inline-flex;align-items:center;flex-shrink:0;border-radius:3px;`;
+    cwdBtn.addEventListener('mouseenter', () => { cwdBtn.style.opacity = '0.85'; });
+    cwdBtn.addEventListener('mouseleave', () => { cwdBtn.style.opacity = '0.6'; });
+    cwdBtn.addEventListener('click', browseCwd);
+
+    header.append(this._titleEl, cwdLabel, cwdBtn, this._panel.statusEl);
 
     const bottomBar = document.createElement('div');
     bottomBar.style.cssText =
