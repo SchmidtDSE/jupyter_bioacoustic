@@ -53,6 +53,7 @@ export class Player {
   private _freqMax = 0;
   private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number; boxIndex?: number } | null = null;
   private _playheadDrag = false;
+  private _playRegion: { start: number; end: number } | null = null;
 
   // ─── Zoom state (client-side crop) ────────────────────────
   // View fractions: 0..1 range over the full spectrogram image
@@ -350,6 +351,7 @@ export class Player {
     this._canvas.tabIndex = 0; // make focusable for keyboard events
     this._canvas.style.outline = 'none';
     this._canvas.addEventListener('mousedown', e => this._onCanvasMouseDown(e));
+    this._canvas.addEventListener('dblclick', e => this._onCanvasDblClick(e));
     this._canvas.addEventListener('mousemove', e => this._onCanvasMouseMove(e));
     this._canvas.addEventListener('mouseup', e => this._onCanvasMouseUp(e));
     this._canvas.addEventListener('mouseleave', () => this._onCanvasMouseLeave());
@@ -382,6 +384,7 @@ export class Player {
     this._audio.style.display = 'none';
     this._audio.addEventListener('ended', () => {
       this._playing = false;
+      this._playRegion = null;
       cancelAnimationFrame(this._rafId);
       this._playBtn.textContent = '▶';
       this._renderFrame();
@@ -621,18 +624,69 @@ export class Player {
     if (this._playing) {
       this._audio.pause();
       this._playing = false;
+      this._playRegion = null;
       cancelAnimationFrame(this._rafId);
       this._playBtn.textContent = '▶';
     } else {
+      const isZoomed = this._viewXMin > 0 || this._viewXMax < 1;
+      if (isZoomed && this._segDuration > 0) {
+        const regionStart = this._viewXMin * this._segDuration;
+        const regionEnd = this._viewXMax * this._segDuration;
+        this._playRegion = { start: regionStart, end: regionEnd };
+        if (this._audio.currentTime < regionStart || this._audio.currentTime >= regionEnd) {
+          this._audio.currentTime = regionStart;
+        }
+      } else {
+        this._playRegion = null;
+      }
       void this._audio.play();
       this._playing = true;
       this._playBtn.textContent = '⏸';
       const loop = () => {
+        if (this._playRegion && this._audio.currentTime >= this._playRegion.end) {
+          this._audio.pause();
+          this._audio.currentTime = this._playRegion.end;
+          this._playing = false;
+          this._playRegion = null;
+          this._playBtn.textContent = '▶';
+          this._renderFrame();
+          return;
+        }
         this._renderFrame();
         if (this._playing) this._rafId = requestAnimationFrame(loop);
       };
       this._rafId = requestAnimationFrame(loop);
     }
+  }
+
+  private _playRange(startSec: number, endSec: number): void {
+    if (!this._specBitmap || this._segDuration <= 0) return;
+    if (this._playing) {
+      this._audio.pause();
+      cancelAnimationFrame(this._rafId);
+    }
+    const regionStart = Math.max(0, startSec - this._segLoadStart);
+    const regionEnd = Math.min(this._segDuration, endSec - this._segLoadStart);
+    if (regionEnd <= regionStart) return;
+    this._playRegion = { start: regionStart, end: regionEnd };
+    this._audio.currentTime = regionStart;
+    void this._audio.play();
+    this._playing = true;
+    this._playBtn.textContent = '⏸';
+    const loop = () => {
+      if (this._playRegion && this._audio.currentTime >= this._playRegion.end) {
+        this._audio.pause();
+        this._audio.currentTime = this._playRegion.end;
+        this._playing = false;
+        this._playRegion = null;
+        this._playBtn.textContent = '▶';
+        this._renderFrame();
+        return;
+      }
+      this._renderFrame();
+      if (this._playing) this._rafId = requestAnimationFrame(loop);
+    };
+    this._rafId = requestAnimationFrame(loop);
   }
 
   // ─── Private: canvas mouse handlers ────────────────────────
@@ -816,6 +870,7 @@ export class Player {
         if (inY && Math.abs(cx - ex) <= GRAB) { this._annotDrag = { target: 'box-right' }; this._renderFrame(); this._updateAnnotDisplay(); return; }
         if (inX && Math.abs(cy - yhi) <= GRAB) { this._annotDrag = { target: 'box-top' }; this._renderFrame(); this._updateAnnotDisplay(); return; }
         if (inX && Math.abs(cy - ylo) <= GRAB) { this._annotDrag = { target: 'box-bottom' }; this._renderFrame(); this._updateAnnotDisplay(); return; }
+        if (cx >= sx && cx <= ex && cy >= yhi && cy <= ylo) return;
       }
       const t = this._xToTime(cx);
       const f = this._yToFreq(cy);
@@ -1074,6 +1129,46 @@ export class Player {
     }
     this._annotDrag = null;
     this._renderFrame();
+  }
+
+  private _onCanvasDblClick(e: MouseEvent): void {
+    if (!this._specBitmap || this._segDuration <= 0) return;
+    const ac = this._form.getAnnotConfig();
+    if (!ac) return;
+    const { cx, cy } = this._canvasXY(e);
+    const tool = this._form.getActiveTool();
+
+    if (tool === 'bounding_box' || tool === 'fixed_duration') {
+      const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
+      const et = ac.endTime?.col ? this._form.getFormValue(ac.endTime.col) : null;
+      if (st == null || et == null) return;
+      const sx = this._timeToX(st), ex = this._timeToX(et);
+      if (tool === 'fixed_duration') {
+        if (cx >= sx && cx <= ex) {
+          this._playRange(st, et);
+        }
+      } else {
+        const flo = ac.minFreq?.col ? this._form.getFormValue(ac.minFreq.col) : null;
+        const fhi = ac.maxFreq?.col ? this._form.getFormValue(ac.maxFreq.col) : null;
+        if (flo == null || fhi == null) return;
+        const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
+        if (cx >= sx && cx <= ex && cy >= yhi && cy <= ylo) {
+          this._playRange(st, et);
+        }
+      }
+    } else if (tool === 'multibox') {
+      const entries = this._form.getMultiboxEntries();
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        const sx = this._timeToX(entry.startTime), ex = this._timeToX(entry.endTime);
+        const yhi = this._freqToY(entry.maxFreq), ylo = this._freqToY(entry.minFreq);
+        if (cx >= sx && cx <= ex && cy >= yhi && cy <= ylo) {
+          this._form.setActiveBox(i);
+          this._playRange(entry.startTime, entry.endTime);
+          return;
+        }
+      }
+    }
   }
 
   private _updateAnnotCursor(cx: number, cy: number): void {
@@ -1376,8 +1471,9 @@ export class Player {
     } else if (e.key === ' ') {
       e.preventDefault();
       if (e.shiftKey) {
-        // Shift+Space: play from beginning
-        this._audio.currentTime = 0;
+        // Shift+Space: play from beginning of zoom region or full clip
+        const isZmd = this._viewXMin > 0 || this._viewXMax < 1;
+        this._audio.currentTime = isZmd ? this._viewXMin * this._segDuration : 0;
         if (!this._playing) this._togglePlay();
         this._renderFrame();
       } else {
