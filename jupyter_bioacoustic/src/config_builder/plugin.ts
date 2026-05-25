@@ -60,10 +60,11 @@ class ConfigBuilderWidget extends Widget {
 
     this._panel = new ConfigPanel(this._kernelBridge);
 
+    const cwdBasename = (p: string) => p.split('/').filter(Boolean).pop() || '.';
     const cwdLabel = document.createElement('span');
-    cwdLabel.textContent = this._kernelBridge.cwd || '.';
-    cwdLabel.title = 'Double-click to change working directory';
-    this._panel.onCwdReady((cwd) => { cwdLabel.textContent = cwd; });
+    cwdLabel.textContent = cwdBasename(this._kernelBridge.cwd || '.');
+    cwdLabel.title = this._kernelBridge.cwd || '.';
+    this._panel.onCwdReady((cwd) => { cwdLabel.textContent = cwdBasename(cwd); cwdLabel.title = cwd; });
     cwdLabel.style.cssText =
       `font-size:11px;color:${COLORS.textMuted};font-family:monospace;cursor:pointer;` +
       `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:auto;` +
@@ -78,7 +79,7 @@ class ConfigBuilderWidget extends Widget {
       this._panel.browseDirectory('.', (selectedDir) => {
         void (async () => {
           const newCwd = await this._panel.setCwd(selectedDir);
-          if (newCwd) cwdLabel.textContent = newCwd;
+          if (newCwd) { cwdLabel.textContent = cwdBasename(newCwd); cwdLabel.title = newCwd; }
         })();
       });
     });
