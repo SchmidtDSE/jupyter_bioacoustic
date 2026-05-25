@@ -102,8 +102,6 @@ def read_segment(
     import requests
 
     rk = _request_kwargs(kwargs)
-    _shared.last_warning = None
-
     if partial:
         _log.debug(
             'HTTPS partial read: %s  '
