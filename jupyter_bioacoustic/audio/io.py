@@ -77,6 +77,9 @@ def read_segment(
         (raw, sr): raw is 2-D float32 numpy array,
         sr is the sample rate.
     """
+    from . import _shared
+    _shared.last_warning = None
+
     platform = kwargs.pop('platform', None)
     handler = _handler(path, platform)
     _log.debug(
