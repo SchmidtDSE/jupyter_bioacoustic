@@ -154,6 +154,7 @@ export class ClipTable {
   get selectedIdx(): number { return this._selectedIdx; }
   get filtered(): Detection[] { return this._filtered; }
   get rows(): Detection[] { return this._rows; }
+  get viewMode(): 'all' | 'pending' | 'reviewed' { return this._viewMode; }
 
   ensurePageShowsSelected(): void {
     if (this._selectedIdx < 0) return;
@@ -162,6 +163,33 @@ export class ClipTable {
       this._page = newPage;
       this._renderTable();
     }
+  }
+
+  updateCurrentRowStyle(): void {
+    if (this._selectedIdx < 0 || this._selectedIdx >= this._filtered.length) return;
+
+    const pageStart = this._page * this._pageSize;
+    const pageEnd = Math.min(pageStart + this._pageSize, this._filtered.length);
+
+    // Check if selected row is on current page
+    if (this._selectedIdx < pageStart || this._selectedIdx >= pageEnd) return;
+
+    const rowIndexOnPage = this._selectedIdx - pageStart;
+    const tr = this._tableBody.children[rowIndexOnPage] as HTMLTableRowElement;
+    if (!tr) return;
+
+    const row = this._filtered[this._selectedIdx];
+    const reviewed = this._form.isReviewed(row);
+    const baseBg = rowIndexOnPage % 2 === 0 ? COLORS.bgBase : COLORS.bgAltRow;
+
+    // Update row background (selected rows keep selected background)
+    tr.style.background = COLORS.bgSelected; // Keep selected state
+
+    // Update cell text colors
+    const tds = tr.querySelectorAll('td');
+    tds.forEach(td => {
+      (td as HTMLElement).style.color = reviewed ? COLORS.textMuted : COLORS.textPrimary;
+    });
   }
 
   // ─── Private: column type detection ────────────────────────
