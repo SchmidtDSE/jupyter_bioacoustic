@@ -110,11 +110,24 @@ export class ConfigPanel {
       } else if (field === 'description_path') {
         this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
       } else {
-        this._openBrowser(current, ['.yaml', '.yml'], (p) => {
+        const configSubdirs: Record<string, string> = {
+          project: 'annotator_config/projects',
+          config: 'annotator_config/config',
+          form: 'annotator_config/forms',
+        };
+        const onSelect = (p: string) => {
           if (field === 'project') this._project.setProjectPath(p);
           else if (field === 'config') this._project.setConfigPath(p);
           else if (field === 'form') this._project.setFormPath(p);
-        });
+        };
+        const preferred = configSubdirs[field];
+        if (preferred) {
+          void this._resolveConfigDir(preferred).then(dir => {
+            this._openBrowser(dir, ['.yaml', '.yml'], onSelect);
+          });
+        } else {
+          this._openBrowser(current, ['.yaml', '.yml'], onSelect);
+        }
       }
     });
 
@@ -253,6 +266,15 @@ export class ConfigPanel {
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
     }
+  }
+
+  private async _resolveConfigDir(preferred: string): Promise<string> {
+    try {
+      const raw = await this._kernel.exec(checkFileExists(preferred));
+      const result = JSON.parse(extractJson(raw));
+      if (result.exists) return preferred;
+    } catch { /* ignore */ }
+    return '.';
   }
 
   private _openBrowser(
