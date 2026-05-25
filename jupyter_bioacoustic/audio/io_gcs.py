@@ -60,8 +60,6 @@ def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = Tr
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
 
-    _shared.last_warning = None
-
     if partial:
         _log.debug('GCS partial read: %s  start=%.1fs dur=%.1fs', path,
                    start_sec, dur_sec)
