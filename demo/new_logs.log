@@ -1,0 +1,101 @@
+2026-05-23 06:47:16,290 DEBUG jupyter_bioacoustic.config_builder: load_config(annotator_config/projects/simple_examples_3b.yaml, file_type=None) cwd=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo
+2026-05-23 06:47:16,293 DEBUG jupyter_bioacoustic.config_builder: config ref=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo/annotator_config/config/simple_examples_3b.yaml base_dir=annotator_config/projects resolved=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo/annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:47:16,302 DEBUG jupyter_bioacoustic.config_builder: load_config result: detected=project loaded_paths={'loaded': 'annotator_config/projects/simple_examples_3b.yaml', 'project': 'annotator_config/projects/simple_examples_3b.yaml', 'config': 'annotator_config/config/simple_examples_3b.yaml', 'form': 'annotator_config/forms/simple_examples-model_review.yaml'}
+2026-05-23 06:47:16,307 INFO jupyter_bioacoustic.validation: validation warnings: ['Annotation field "min_frequency" is not required by active tools: fixed_duration', 'Annotation field "max_frequency" is not required by active tools: fixed_duration']
+2026-05-23 06:47:16,307 INFO jupyter_bioacoustic.api: loading project file: annotator_config/projects/simple_examples_3b.yaml
+2026-05-23 06:47:16,308 INFO jupyter_bioacoustic.api: loading nested config: /Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo/annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:47:23,665 INFO jupyter_bioacoustic.api: loading data: dtype=path source=data/annotate-data.csv
+2026-05-23 06:47:23,669 INFO jupyter_bioacoustic.api: data loaded: 1500 rows, 13 columns
+2026-05-23 06:47:23,670 INFO jupyter_bioacoustic.api: audio config resolved: type=path value=audio/test2.flac
+2026-05-23 06:47:23,670 INFO jupyter_bioacoustic.api: loading form config: /Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo/annotator_config/forms/simple_examples-model_review.yaml
+2026-05-23 06:47:26,645 INFO jupyter_bioacoustic.validation: validation warnings: ['Annotation field "min_frequency" is not required by active tools: fixed_duration', 'Annotation field "max_frequency" is not required by active tools: fixed_duration']
+2026-05-23 06:47:26,990 DEBUG jupyter_bioacoustic.audio: read_segment: path=audio/test2.flac start=6466.6 dur=18.0 handler=jupyter_bioacoustic.audio.io_local
+2026-05-23 06:47:26,990 DEBUG jupyter_bioacoustic.audio: local read_segment: audio/test2.flac start=6466.6s dur=18.0s
+2026-05-23 06:47:27,024 DEBUG jupyter_bioacoustic.audio: local read_segment: 864000 samples, sr=48000
+2026-05-23 06:49:15,401 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:15,553 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:15,817 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:15,985 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:16,102 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:16,179 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:17,143 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:18,788 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:18,990 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:19,348 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:19,678 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:20,256 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:20,452 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:20,533 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:20,741 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:20,856 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:21,119 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:22,037 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:22,317 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:22,509 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:22,627 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:22,748 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:22,856 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:23,516 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:24,758 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:25,287 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:26,445 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:26,565 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:26,687 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:26,823 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:27,762 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:28,001 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:28,219 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:28,414 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:28,730 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:28,890 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:29,029 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:29,276 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:29,440 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:49:35,567 INFO jupyter_bioacoustic.validation: validation warnings: ['No form input elements configured']
+2026-05-23 06:49:37,820 INFO jupyter_bioacoustic.config_builder: save_all() cwd=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo
+2026-05-23 06:49:37,822 INFO jupyter_bioacoustic.config_builder: saved project: annotator_config/projects/simple_examples_3b_copy.yaml
+2026-05-23 06:49:37,823 INFO jupyter_bioacoustic.config_builder: saved config: annotator_config/config/simple_examples_3b_copy.yaml
+2026-05-23 06:49:37,823 INFO jupyter_bioacoustic.config_builder: saved form: annotator_config/forms/simple_examples_3b_copy.yaml
+2026-05-23 06:49:37,833 INFO jupyter_bioacoustic.api: loading project file: annotator_config/projects/simple_examples_3b_copy.yaml
+2026-05-23 06:49:37,834 INFO jupyter_bioacoustic.api: loading nested config: annotator_config/config/simple_examples_3b_copy.yaml
+2026-05-23 06:49:54,614 INFO jupyter_bioacoustic.validation: validation warnings: ['No form input elements configured']
+2026-05-23 06:50:00,794 DEBUG jupyter_bioacoustic.config_builder: update_section(project) target=project data_keys=['project_name', 'project_enabled', 'config_enabled', 'form_enabled', 'project_path', 'config_path', 'form_path', 'output_path']
+2026-05-23 06:50:02,105 DEBUG jupyter_bioacoustic.config_builder: load_config(annotator_config/projects/simple_examples_3b.yaml, file_type=project) cwd=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo
+2026-05-23 06:50:02,107 DEBUG jupyter_bioacoustic.config_builder: config ref=annotator_config/config/simple_examples_3b.yaml base_dir=annotator_config/projects resolved=annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:50:02,114 DEBUG jupyter_bioacoustic.config_builder: load_config result: detected=project loaded_paths={'loaded': 'annotator_config/projects/simple_examples_3b.yaml', 'project': 'annotator_config/projects/simple_examples_3b.yaml', 'config': 'annotator_config/config/simple_examples_3b.yaml', 'form': 'annotator_config/forms/simple_examples-model_review.yaml'}
+2026-05-23 06:50:02,175 DEBUG jupyter_bioacoustic.config_builder: read_columns: data/categories.csv
+2026-05-23 06:50:02,180 DEBUG jupyter_bioacoustic.config_builder: read_columns: data/annotate-data.csv
+2026-05-23 06:50:26,152 INFO jupyter_bioacoustic.validation: validation warnings: ['Annotation field "min_frequency" is not required by active tools: fixed_duration', 'Annotation field "max_frequency" is not required by active tools: fixed_duration']
+2026-05-23 06:50:38,049 INFO jupyter_bioacoustic.config_builder: save_all() cwd=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo
+2026-05-23 06:50:38,053 INFO jupyter_bioacoustic.config_builder: saved project: annotator_config/projects/simple_examples_3b.yaml
+2026-05-23 06:50:38,055 INFO jupyter_bioacoustic.config_builder: saved config: annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:50:38,058 INFO jupyter_bioacoustic.config_builder: saved form: annotator_config/forms/simple_examples-model_review.yaml
+2026-05-23 06:50:40,892 INFO jupyter_bioacoustic.validation: validation warnings: ['Annotation field "min_frequency" is not required by active tools: fixed_duration', 'Annotation field "max_frequency" is not required by active tools: fixed_duration']
+2026-05-23 06:50:43,818 INFO jupyter_bioacoustic.config_builder: save_all() cwd=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo
+2026-05-23 06:50:43,820 INFO jupyter_bioacoustic.config_builder: saved project: annotator_config/projects/simple_examples_3b.yaml
+2026-05-23 06:50:43,821 INFO jupyter_bioacoustic.config_builder: saved config: annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:50:43,824 INFO jupyter_bioacoustic.config_builder: saved form: annotator_config/forms/simple_examples-model_review.yaml
+2026-05-23 06:50:43,838 INFO jupyter_bioacoustic.api: loading project file: annotator_config/projects/simple_examples_3b.yaml
+2026-05-23 06:50:43,840 INFO jupyter_bioacoustic.api: loading nested config: annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:50:43,842 INFO jupyter_bioacoustic.api: loading data: dtype=path source=data/annotate-data.csv
+2026-05-23 06:50:43,846 INFO jupyter_bioacoustic.api: data loaded: 1500 rows, 13 columns
+2026-05-23 06:50:43,846 INFO jupyter_bioacoustic.api: audio config resolved: type=path value=audio/test2.flac
+2026-05-23 06:50:43,846 INFO jupyter_bioacoustic.api: loading form config: annotator_config/forms/simple_examples-model_review.yaml
+2026-05-23 06:50:43,889 INFO jupyter_bioacoustic.validation: validation warnings: ['Annotation field "min_frequency" is not required by active tools: fixed_duration', 'Annotation field "max_frequency" is not required by active tools: fixed_duration']
+2026-05-23 06:50:43,919 DEBUG jupyter_bioacoustic.audio: read_segment: path=audio/test2.flac start=4451.6 dur=18.0 handler=jupyter_bioacoustic.audio.io_local
+2026-05-23 06:50:43,919 DEBUG jupyter_bioacoustic.audio: local read_segment: audio/test2.flac start=4451.6s dur=18.0s
+2026-05-23 06:50:43,944 DEBUG jupyter_bioacoustic.audio: local read_segment: 864000 samples, sr=48000
+2026-05-23 06:52:01,191 DEBUG jupyter_bioacoustic.config_builder: load_config(annotator_config/projects/simple_examples_3b.yaml, file_type=None) cwd=/Users/brookie/code/dse/jupyter_bioacoustic/jupyter_bioacoustic/demo
+2026-05-23 06:52:01,208 DEBUG jupyter_bioacoustic.config_builder: config ref=annotator_config/config/simple_examples_3b.yaml base_dir=annotator_config/projects resolved=annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:52:01,210 DEBUG jupyter_bioacoustic.config_builder: load_config result: detected=project loaded_paths={'loaded': 'annotator_config/projects/simple_examples_3b.yaml', 'project': 'annotator_config/projects/simple_examples_3b.yaml', 'config': 'annotator_config/config/simple_examples_3b.yaml', 'form': 'annotator_config/forms/simple_examples-model_review.yaml'}
+2026-05-23 06:52:01,211 INFO jupyter_bioacoustic.validation: validation warnings: ['Annotation field "min_frequency" is not required by active tools: fixed_duration', 'Annotation field "max_frequency" is not required by active tools: fixed_duration']
+2026-05-23 06:52:01,211 INFO jupyter_bioacoustic.api: loading project file: annotator_config/projects/simple_examples_3b.yaml
+2026-05-23 06:52:01,212 INFO jupyter_bioacoustic.api: loading nested config: annotator_config/config/simple_examples_3b.yaml
+2026-05-23 06:52:01,560 INFO jupyter_bioacoustic.api: loading data: dtype=path source=data/annotate-data.csv
+2026-05-23 06:52:01,565 INFO jupyter_bioacoustic.api: data loaded: 1500 rows, 13 columns
+2026-05-23 06:52:01,565 INFO jupyter_bioacoustic.api: audio config resolved: type=path value=audio/test2.flac
+2026-05-23 06:52:01,565 INFO jupyter_bioacoustic.api: loading form config: annotator_config/forms/simple_examples-model_review.yaml
+2026-05-23 06:52:01,900 INFO jupyter_bioacoustic.validation: validation warnings: ['Annotation field "min_frequency" is not required by active tools: fixed_duration', 'Annotation field "max_frequency" is not required by active tools: fixed_duration']
+2026-05-23 06:52:01,953 DEBUG jupyter_bioacoustic.audio: read_segment: path=audio/test2.flac start=4451.6 dur=18.0 handler=jupyter_bioacoustic.audio.io_local
+2026-05-23 06:52:01,953 DEBUG jupyter_bioacoustic.audio: local read_segment: audio/test2.flac start=4451.6s dur=18.0s
+2026-05-23 06:52:01,970 DEBUG jupyter_bioacoustic.audio: local read_segment: 864000 samples, sr=48000
