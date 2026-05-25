@@ -144,7 +144,15 @@ class BioacousticWidget extends Widget {
     this._form.submitted.connect(() => this._onSkip());
     this._form.prevRequested.connect(() => this._onPrev());
     this._form.nextRequested.connect(() => this._onSkip());
-    this._form.reviewDeleted.connect(() => this._table.refresh());
+    this._form.reviewDeleted.connect(() => {
+      // In reviewed view, keep the deleted item visible (just un-grey it)
+      // Don't refresh immediately to avoid removing it from the list
+      if (this._table.viewMode === 'reviewed') {
+        this._table.updateCurrentRowStyle();
+      } else {
+        this._table.refresh();
+      }
+    });
     this._form.annotationChanged.connect(() => this._player.renderFrame());
     this._form.activeToolChanged.connect(() => {
       this._player.updateCursor();
@@ -290,7 +298,7 @@ class BioacousticWidget extends Widget {
       captureDir: cfg.capture_dir ?? '',
       captureHeight: parseInt(cfg.capture_height) || undefined,
       titleTemplate: this._titleTemplate,
-      defaultBuffer: parseFloat(cfg.default_buffer) || 3,
+      defaultBuffer: cfg.default_buffer !== undefined && cfg.default_buffer !== '' ? parseFloat(cfg.default_buffer) : 3,
       specResolutions,
       vizMeta,
       rows,
@@ -335,8 +343,7 @@ class BioacousticWidget extends Widget {
     this._form.setSelectionInfo(filteredIdx, this._table.filtered.length);
     this._form.updateFromRow(row);
 
-    this._player.signalTimeDisplay.textContent = this._form.getAnnotConfig()
-      ? 'drag on spectrogram to annotate' : '';
+    this._player.signalTimeDisplay.textContent = '';
   }
 
   private _onPrev(): void {
