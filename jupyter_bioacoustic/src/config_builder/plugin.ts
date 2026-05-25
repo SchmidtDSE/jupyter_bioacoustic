@@ -60,11 +60,21 @@ class ConfigBuilderWidget extends Widget {
 
     this._panel = new ConfigPanel(this._kernelBridge);
 
-    const cwdBasename = (p: string) => p.split('/').filter(Boolean).pop() || '.';
+    const initialCwd = this._kernelBridge.cwd || '.';
+    let baseCwd = initialCwd;
+    const cwdRelative = (p: string) => {
+      if (p.startsWith(baseCwd + '/')) return p.slice(baseCwd.length + 1);
+      if (p === baseCwd) return '.';
+      return p.split('/').filter(Boolean).pop() || '.';
+    };
     const cwdLabel = document.createElement('span');
-    cwdLabel.textContent = cwdBasename(this._kernelBridge.cwd || '.');
-    cwdLabel.title = this._kernelBridge.cwd || '.';
-    this._panel.onCwdReady((cwd) => { cwdLabel.textContent = cwdBasename(cwd); cwdLabel.title = cwd; });
+    cwdLabel.textContent = '.';
+    cwdLabel.title = initialCwd;
+    this._panel.onCwdReady((cwd) => {
+      baseCwd = cwd;
+      cwdLabel.textContent = '.';
+      cwdLabel.title = cwd;
+    });
     cwdLabel.style.cssText =
       `font-size:11px;color:${COLORS.textMuted};font-family:monospace;cursor:pointer;` +
       `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:auto;` +
@@ -79,7 +89,7 @@ class ConfigBuilderWidget extends Widget {
       this._panel.browseDirectory('.', (selectedDir) => {
         void (async () => {
           const newCwd = await this._panel.setCwd(selectedDir);
-          if (newCwd) { cwdLabel.textContent = cwdBasename(newCwd); cwdLabel.title = newCwd; }
+          if (newCwd) { cwdLabel.textContent = cwdRelative(newCwd); cwdLabel.title = newCwd; }
         })();
       });
     });
