@@ -87,8 +87,6 @@ def read_segment(
     """
     bucket, key = _parse_s3_uri(path)
     client = kwargs.get('client') or _get_client(**kwargs)
-    _shared.last_warning = None
-
     if partial:
         _log.debug('S3 partial read: %s  start=%.1fs dur=%.1fs', path, start_sec, dur_sec)
         try:
