@@ -83,8 +83,6 @@ export class Player {
   private _spectTypeSelect!: HTMLSelectElement;
   private _resolutionSelect!: HTMLSelectElement;
   private _bufferInput!: HTMLInputElement;
-  private _startInput!: HTMLInputElement;
-  private _endInput!: HTMLInputElement;
   private _viewFreqMinDisplay!: HTMLInputElement;
   private _viewFreqMaxDisplay!: HTMLInputElement;
   private _viewTimeMinDisplay!: HTMLInputElement;
@@ -163,8 +161,6 @@ export class Player {
   /** Load audio for a row (called when a row is selected). */
   async loadRow(row: Detection): Promise<void> {
     this._currentRow = row;
-    this._startInput.value = String(row.start_time);
-    this._endInput.value = String(row.end_time);
     this._resetZoom();
     await this._loadAudio();
   }
@@ -246,8 +242,6 @@ export class Player {
     playerCtrls.appendChild(resLbl);
 
     this._bufferInput = mkNumInput('Buffer (s)', '3', '50px');
-    this._startInput = mkNumInput('Start (s)', '0', '70px');
-    this._endInput = mkNumInput('End (s)', '12', '70px');
 
     this._loadBtn = document.createElement('button');
     this._loadBtn.textContent = 'Update';
@@ -257,7 +251,7 @@ export class Player {
 
     // Enable Update button when controls change
     const onCtrlChange = () => this._setLoadBtnDirty();
-    for (const inp of [this._bufferInput, this._startInput, this._endInput]) {
+    for (const inp of [this._bufferInput]) {
       inp.addEventListener('input', onCtrlChange);
       inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); void this._loadAudio(); }
@@ -467,8 +461,8 @@ export class Player {
 
     const bufVal = parseFloat(this._bufferInput.value);
     this._bufferSec = Math.max(0, isNaN(bufVal) ? 0 : bufVal);
-    const startTime = parseFloat(this._startInput.value) || 0;
-    const endTime = parseFloat(this._endInput.value) || startTime + 12;
+    const startTime = this._currentRow?.start_time ?? 0;
+    const endTime = this._currentRow?.end_time ?? startTime + 12;
     const loadStart = Math.max(0, startTime - this._bufferSec);
     const loadDur = (endTime + this._bufferSec) - loadStart;
 
