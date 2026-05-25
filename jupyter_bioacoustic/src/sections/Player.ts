@@ -387,6 +387,8 @@ export class Player {
       this._playRegion = null;
       cancelAnimationFrame(this._rafId);
       this._playBtn.textContent = '▶';
+      const isZoomed = this._viewXMin > 0 || this._viewXMax < 1;
+      this._audio.currentTime = isZoomed ? this._viewXMin * this._segDuration : 0;
       this._renderFrame();
     });
 
@@ -645,7 +647,7 @@ export class Player {
       const loop = () => {
         if (this._playRegion && this._audio.currentTime >= this._playRegion.end) {
           this._audio.pause();
-          this._audio.currentTime = this._playRegion.end;
+          this._audio.currentTime = this._playRegion.start;
           this._playing = false;
           this._playRegion = null;
           this._playBtn.textContent = '▶';
@@ -676,7 +678,7 @@ export class Player {
     const loop = () => {
       if (this._playRegion && this._audio.currentTime >= this._playRegion.end) {
         this._audio.pause();
-        this._audio.currentTime = this._playRegion.end;
+        this._audio.currentTime = this._playRegion.start;
         this._playing = false;
         this._playRegion = null;
         this._playBtn.textContent = '▶';
