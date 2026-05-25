@@ -3,13 +3,18 @@
  */
 import { COLORS, btnStyle } from './styles';
 
-/** Format a time in seconds as "m:ss.cc" (with leading - sign if negative). */
+/** Format a time in seconds as "m:ss.cc" or "h:mm:ss.cc" if >= 1 hour. */
 export function fmtTime(s: number): string {
   const sign = s < 0 ? '-' : '';
   const abs = Math.abs(s);
-  const m = Math.floor(abs / 60);
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
   const sec = Math.floor(abs % 60).toString().padStart(2, '0');
   const cs = Math.floor((abs % 1) * 100).toString().padStart(2, '0');
+  if (h > 0) {
+    const mm = m.toString().padStart(2, '0');
+    return `${sign}${h}:${mm}:${sec}.${cs}`;
+  }
   return `${sign}${m}:${sec}.${cs}`;
 }
 
