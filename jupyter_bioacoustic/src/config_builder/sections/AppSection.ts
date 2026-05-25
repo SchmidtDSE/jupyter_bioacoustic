@@ -246,7 +246,7 @@ export class AppSection extends CollapsibleSection {
       const zone = document.createElement('div');
       zone.style.cssText = isEnd
         ? 'flex:1;min-width:40px;min-height:20px;'
-        : 'width:4px;min-height:20px;transition:all 0.2s;';
+        : 'width:12px;min-height:20px;transition:all 0.2s;border-radius:4px;';
 
       zone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -254,21 +254,21 @@ export class AppSection extends CollapsibleSection {
         if (isEnd) {
           zone.style.background = COLORS.bgSurface1;
         } else {
-          zone.style.width = '20px';
+          zone.style.width = '28px';
           zone.style.background = COLORS.textPrimary;
         }
       });
 
       zone.addEventListener('dragleave', () => {
         zone.style.background = '';
-        if (!isEnd) zone.style.width = '4px';
+        if (!isEnd) zone.style.width = '12px';
       });
 
       zone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         zone.style.background = '';
-        if (!isEnd) zone.style.width = '4px';
+        if (!isEnd) zone.style.width = '12px';
 
         const isReorder = e.dataTransfer!.getData('reorder') === 'true';
         const newCol = e.dataTransfer!.getData('text/plain');
