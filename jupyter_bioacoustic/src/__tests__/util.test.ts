@@ -4,7 +4,10 @@ describe('fmtTime', () => {
   test('zero', () => expect(fmtTime(0)).toBe('0:00.00'));
   test('simple seconds', () => expect(fmtTime(5.25)).toBe('0:05.25'));
   test('over a minute', () => expect(fmtTime(65.75)).toBe('1:05.75'));
-  test('over an hour', () => expect(fmtTime(3661.5)).toBe('61:01.50'));
+  test('over an hour', () => expect(fmtTime(3661.5)).toBe('1:01:01.50'));
+  test('multi-hour', () => expect(fmtTime(11404.5)).toBe('3:10:04.50'));
+  test('exactly one hour', () => expect(fmtTime(3600)).toBe('1:00:00.00'));
+  test('negative over an hour', () => expect(fmtTime(-3661.5)).toBe('-1:01:01.50'));
   test('negative', () => expect(fmtTime(-30.5)).toBe('-0:30.50'));
   test('fractional centiseconds', () => expect(fmtTime(1.099)).toBe('0:01.09'));
 });
