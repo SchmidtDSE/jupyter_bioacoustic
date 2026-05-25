@@ -523,40 +523,15 @@ async function getOptimalProjectPath(
   if (!browser) return currentPath;
 
   const manager = browser.model.manager;
+  const projectsPath = currentPath
+    ? `${currentPath}/annotator_config/projects`
+    : 'annotator_config/projects';
 
-  // Helper function to check if a directory exists
-  const dirExists = async (path: string): Promise<boolean> => {
-    try {
-      const contents = await manager.services.contents.get(path);
-      return contents.type === 'directory';
-    } catch {
-      return false;
-    }
-  };
+  try {
+    const contents = await manager.services.contents.get(projectsPath);
+    if (contents.type === 'directory') return projectsPath;
+  } catch { /* directory doesn't exist */ }
 
-  // Check for annotator_config/projects in current directory first
-  const localProjectsPath = currentPath ? `${currentPath}/annotator_config/projects` : 'annotator_config/projects';
-  if (await dirExists(localProjectsPath)) {
-    return localProjectsPath;
-  }
-
-  // Check for annotator_config in current directory
-  const localConfigPath = currentPath ? `${currentPath}/annotator_config` : 'annotator_config';
-  if (await dirExists(localConfigPath)) {
-    return localConfigPath;
-  }
-
-  // Fallback to workspace root annotator_config/projects
-  if (await dirExists('annotator_config/projects')) {
-    return 'annotator_config/projects';
-  }
-
-  // Fallback to workspace root annotator_config
-  if (await dirExists('annotator_config')) {
-    return 'annotator_config';
-  }
-
-  // Use current directory as final fallback
   return currentPath;
 }
 
