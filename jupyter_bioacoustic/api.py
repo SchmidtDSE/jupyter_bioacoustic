@@ -777,7 +777,7 @@ _CONFIG_PARAMS = {
     'description', 'description_title',
     'description_text', 'description_path',
     'description_open', 'description_height',
-    'project_name', 'project_save_btn',
+    'project_name',
     'config', 'session_args',
 }
 
@@ -824,7 +824,6 @@ class BioacousticAnnotator:
         output_secrets=_UNSET,
         info_card_title=_UNSET,
         project_name=_UNSET,
-        project_save_btn=_UNSET,
         info_card_text=_UNSET,
         display_columns=_UNSET,
         form_config=_UNSET,
@@ -1236,16 +1235,6 @@ class BioacousticAnnotator:
             description_text, description_path,
             description_open, description_height,
         )
-
-        raw_save_btn = resolve(
-            project_save_btn, 'project_save_btn', False,
-        )
-        if raw_save_btn is True:
-            self._project_save_btn = 'Save Project'
-        elif isinstance(raw_save_btn, str):
-            self._project_save_btn = raw_save_btn
-        else:
-            self._project_save_btn = ''
 
         self._output_cache = None
 
@@ -1762,9 +1751,6 @@ class BioacousticAnnotator:
         )
         ns['_BA_FORM_PANEL_HEIGHT'] = str(
             self._form_panel_height,
-        )
-        ns['_BA_PROJECT_SAVE_BTN'] = (
-            self._project_save_btn
         )
         ns['_BA_DESCRIPTION'] = (
             json.dumps(self._description_config)
