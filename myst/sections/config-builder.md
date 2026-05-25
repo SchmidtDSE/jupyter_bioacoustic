@@ -103,8 +103,9 @@ Configure where annotation results are saved:
 
 Widget layout and behavior:
 
-- **Identity column** — primary column shown in the info card and used for capture filenames
-- **Display columns** — additional info-card columns (drag to reorder)
+- **Info card title** — template with `[[column_name]]` placeholders, shown in the info card and used for capture filenames
+- **Info card text** — template with `[[column_name]]` placeholders, shown below the title
+- **Display columns** — columns shown in the clip table (drag to reorder)
 - **Duplicate entries** — permit multiple submissions per row
 - **Buffer** — seconds of context before/after each audio clip
 - **Capture** — enable spectrogram PNG export

@@ -73,7 +73,7 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 - **Zoom** — `+`/`-`/`0` keys, zoom-to-selection box (⬚), click-and-drag to pan
 - **Playback** — play/pause with Space, restart with Shift+Space, drag the playhead to scrub
 - **Capture** — save the selected visualization as a PNG
-- **Customizable** - configure availabe configuration types, resolutions and default buffer. for the selected clip, specifiy which values to display 
+- **Customizable** - configure available visualization types, resolutions and default buffer. Use `[[column_name]]` templates to display clip info
 
 ---
 

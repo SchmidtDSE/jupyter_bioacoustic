@@ -25,7 +25,7 @@ ba2 = BioacousticAnnotator(
 ba3 = BioacousticAnnotator(
     audio='path/to/audio-3.flac',
     data='path/to/clip-meta-3.csv',
-    display_columns=['species', 'confidence', 'rank'],
+    info_card_title='[[species]]',
     config='path/to/config.yaml')
 ```
 
@@ -51,7 +51,7 @@ config: 'path/to/config.yaml'
 # path/to/project-3
 audio: 'path/to/audio-3.flac'
 data: 'path/to/clip-meta-3.csv'
-display_columns: ['species', 'confidence', 'rank']
+info_card_title: '[[species]]'
 config: 'path/to/config.yaml'
 ```
 
@@ -88,10 +88,9 @@ project_name: My Review
 data: data/detections.csv
 audio: audio_path
 audio_prefix: audio/
-info_card_ident_column: common_name
+info_card_title: '[[common_name]]'
 display_columns: [common_name, confidence, start_time]
 output: outputs/my-reviews.csv
-project_save_btn: true
 
 form_config:
     title:
@@ -185,22 +184,5 @@ ba.save_as_project(folder='configs', overwrite=True)    # custom folder
 
 The saved file contains the **original constructor arguments** — not processed internal state — so the output YAML is directly loadable as a project.
 
-**From the UI:** Enable the save button to allow saving from within the running widget:
-
-<img src='../../assets/save-project-btn.png' height='50px'>
-
-```python
-ba = BioacousticAnnotator(..., project_save_btn=True)
-ba.open()
-```
-
-Or with a custom label:
-
-```python
-ba = BioacousticAnnotator(..., project_save_btn='Export Config')
-ba.open()
-```
-
-Clicking the button shows a path prompt (pre-filled, editable) with overwrite confirmation if the file exists.
 
 

@@ -37,7 +37,7 @@ from jupyter_bioacoustic import BioacousticAnnotator
 BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
-    info_card_ident_column='common_name',
+    info_card_title='[[common_name]]',
     form_config='form-review.yaml',
     output='reviews.csv',
 ).open()
@@ -104,7 +104,7 @@ Consider the example above:
 BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
-    info_card_ident_column='common_name',
+    info_card_title='[[common_name]]',
     form_config='form-review.yaml',
     output='reviews.csv',
 )
@@ -122,7 +122,7 @@ BioacousticAnnotator(
 ```yaml
 # config/review-configuration.yaml
 audio: 'test.flac'
-info_card_ident_column: 'common_name'
+info_card_title: '[[common_name]]'
 form_config: 'form-review.yaml'
 output: 'reviews.csv'
 ```
@@ -135,8 +135,8 @@ See [Configuration](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Confi
 # BioacousticAnnotator Args
 audio: "audio_path"    # column name — auto-detected (no slashes or dots)
 display_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
-info_card_ident_column: 'common_name'
-info_card_display_columns: ["confidence", "county", "start_time", "audio_path"]
+info_card_title: '[[common_name]]'
+info_card_text: '[[confidence]] | [[county]] | [[start_time]]'
 capture: 'Save Spectrogram'
 capture_dir: 'spectrograms'
 
@@ -225,10 +225,11 @@ form_config:
 | `output_sync_button` | bool / str | `None` | Show a sync button (`true` = "Sync", string = custom label). |
 | `output_recursive` | bool | `None` | Passed to `io.write()` for uploading directories. |
 | `output_secrets` | dict, list, or `false` | `None` | Auth for sync uploads (same format as `data_secrets`). Set to `false` to opt out of global `secrets` fallback. |
+| `project` | str | `None` | Project file path. No other config params allowed when set. |
+| `project_name` | str | `None` | Widget header title. Auto-derived from project filename if not set. |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
-| `info_card_ident_column` | str | `''` | Identifying column — shown first (without label) in the info card and capture filenames. |
-| `app_title` | str | `'Jupyter Bioacoustic'` | Custom title shown in the widget header and tab. |
-| `info_card_display_columns` | list | `[]` | Extra columns in the info card. |
+| `info_card_title` | str | `''` | Info card title — supports `[[column_name]]` templates. Also used for capture filenames. |
+| `info_card_text` | str | `''` | Info card text — supports `[[column_name]]` templates. |
 | `duplicate_entries` | bool | `False` | Allow multiple submissions per row |
 | `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |

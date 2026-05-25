@@ -69,7 +69,7 @@ This reproduces the review example above using a config file:
 With a config file, more complex setups are straightforward. This example adds:
 
 1. `display_columns` to control which columns appear in the clip table
-2. `info_card_ident_column` and `info_card_display_columns` for the info card
+2. `info_card_title` and `info_card_text` templates for the info card
 3. Spectrogram capture with a custom button label and output directory
 4. A form title with a progress tracker
 5. Conditional sections on both "yes" and "no" selections
