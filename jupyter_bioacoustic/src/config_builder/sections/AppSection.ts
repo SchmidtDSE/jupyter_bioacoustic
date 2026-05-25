@@ -192,7 +192,7 @@ export class AppSection extends CollapsibleSection {
       // Drag functionality (new)
       chip.addEventListener('dragstart', (e) => {
         chip.style.opacity = '0.4';
-        e.dataTransfer!.effectAllowed = 'copy';
+        e.dataTransfer!.effectAllowed = 'copyMove';
         e.dataTransfer!.setData('text/plain', col);
       });
       chip.addEventListener('dragend', () => {
@@ -206,58 +206,128 @@ export class AppSection extends CollapsibleSection {
   private _rebuildChips(area: HTMLDivElement, selected: string[]): void {
     area.innerHTML = '';
 
-    // Add drop functionality to accept columns from picker
-    area.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.dataTransfer!.dropEffect = 'copy';
-      area.style.background = COLORS.bgSurface1;
-    });
-    area.addEventListener('dragleave', () => {
-      area.style.background = '';
-    });
-    area.addEventListener('drop', (e) => {
-      e.preventDefault();
-      area.style.background = '';
-      const col = e.dataTransfer!.getData('text/plain');
-      if (col && !selected.includes(col)) {
-        selected.push(col);
-        this._rebuildChips(area, selected);
-        this._rebuildPicker(this._dispPickerArea, selected);
-        this._emitChanged();
-      }
-    });
-
     if (selected.length === 0) {
       const hint = document.createElement('span');
       hint.textContent = '(none)';
       hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;`;
       area.appendChild(hint);
+
+      // Add drop zone for empty state
+      area.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'copy';
+        area.style.background = COLORS.bgSurface1;
+      });
+      area.addEventListener('dragleave', () => {
+        area.style.background = '';
+      });
+      area.addEventListener('drop', (e) => {
+        e.preventDefault();
+        area.style.background = '';
+        const col = e.dataTransfer!.getData('text/plain');
+        if (col && !selected.includes(col)) {
+          selected.push(col);
+          this._rebuildChips(area, selected);
+          this._rebuildPicker(this._dispPickerArea, selected);
+          this._emitChanged();
+        }
+      });
       return;
     }
-    let dragIdx = -1;
+
+    // Create container for chips with drop zones
+    const container = document.createElement('div');
+    container.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;';
+
+    let draggedIdx = -1;
+
+    // Helper to create drop zone
+    const createDropZone = (insertIdx: number, isEnd = false) => {
+      const zone = document.createElement('div');
+      zone.style.cssText = isEnd
+        ? 'flex:1;min-width:40px;min-height:20px;'
+        : 'width:4px;min-height:20px;transition:all 0.2s;';
+
+      zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'move';
+        if (isEnd) {
+          zone.style.background = COLORS.bgSurface1;
+        } else {
+          zone.style.width = '20px';
+          zone.style.background = COLORS.textPrimary;
+        }
+      });
+
+      zone.addEventListener('dragleave', () => {
+        zone.style.background = '';
+        if (!isEnd) zone.style.width = '4px';
+      });
+
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.style.background = '';
+        if (!isEnd) zone.style.width = '4px';
+
+        const isReorder = e.dataTransfer!.getData('reorder') === 'true';
+        const newCol = e.dataTransfer!.getData('text/plain');
+
+        if (isReorder && draggedIdx >= 0) {
+          // Reordering existing chips
+          if (draggedIdx !== insertIdx && draggedIdx !== insertIdx - 1) {
+            const [moved] = selected.splice(draggedIdx, 1);
+            const targetIdx = draggedIdx < insertIdx ? insertIdx - 1 : insertIdx;
+            selected.splice(targetIdx, 0, moved);
+            this._dispCols = [...selected];
+            this._rebuildChips(area, this._dispCols);
+            this._emitChanged();
+          }
+        } else if (!isReorder && newCol && !selected.includes(newCol)) {
+          // Adding new column at specific position
+          selected.splice(insertIdx, 0, newCol);
+          this._dispCols = [...selected];
+          this._rebuildChips(area, this._dispCols);
+          this._rebuildPicker(this._dispPickerArea, this._dispCols);
+          this._emitChanged();
+        }
+      });
+
+      return zone;
+    };
+
     for (let i = 0; i < selected.length; i++) {
+      // Add drop zone before each chip
+      if (i === 0) {
+        container.appendChild(createDropZone(0));
+      }
+
       const col = selected[i];
       const chip = document.createElement('span');
       chip.draggable = true;
+      chip.dataset.index = String(i);
       chip.style.cssText =
-        `display:inline-flex;align-items:center;gap:4px;` +
+        `display:inline-flex;align-items:center;gap:4px;margin:0 2px;` +
         `background:${COLORS.bgSurface1};border-radius:12px;` +
         `color:${COLORS.textPrimary};padding:2px 6px 2px 10px;font-size:11px;cursor:grab;`;
 
       chip.addEventListener('dragstart', (e) => {
-        dragIdx = i;
+        e.stopPropagation();
+        draggedIdx = i;
         chip.style.opacity = '0.4';
-        e.dataTransfer!.effectAllowed = 'move';
+        e.dataTransfer!.effectAllowed = 'copyMove';
+        e.dataTransfer!.setData('reorder', 'true');
+        e.dataTransfer!.setData('text/plain', col);
       });
-      chip.addEventListener('dragend', () => { chip.style.opacity = '1'; });
-      chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer!.dropEffect = 'move'; });
-      chip.addEventListener('drop', (e) => {
+
+      chip.addEventListener('dragend', () => {
+        chip.style.opacity = '1';
+      });
+
+      // Prevent chip from being a drop target
+      chip.addEventListener('dragover', (e) => {
         e.preventDefault();
-        if (dragIdx < 0 || dragIdx === i) return;
-        const [moved] = this._dispCols.splice(dragIdx, 1);
-        this._dispCols.splice(i, 0, moved);
-        this._rebuildChips(area, this._dispCols);
-        this._emitChanged();
+        e.stopPropagation();
       });
 
       const name = document.createElement('span');
@@ -269,16 +339,24 @@ export class AppSection extends CollapsibleSection {
         `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
         `font-size:12px;padding:0 2px;line-height:1;`;
       rm.addEventListener('click', () => {
-        const idx = this._dispCols.indexOf(col);
-        if (idx >= 0) this._dispCols.splice(idx, 1);
-        this._rebuildChips(area, this._dispCols);
-        this._rebuildPicker(this._dispPickerArea, this._dispCols);
-        this._emitChanged();
+        const idx = selected.indexOf(col);
+        if (idx >= 0) {
+          selected.splice(idx, 1);
+          this._dispCols = [...selected];
+          this._rebuildChips(area, this._dispCols);
+          this._rebuildPicker(this._dispPickerArea, this._dispCols);
+          this._emitChanged();
+        }
       });
 
       chip.append(name, rm);
-      area.appendChild(chip);
+      container.appendChild(chip);
+
+      // Add drop zone after each chip
+      container.appendChild(createDropZone(i + 1, i === selected.length - 1));
     }
+
+    area.appendChild(container);
   }
 
   getData(): Record<string, any> {
@@ -293,8 +371,11 @@ export class AppSection extends CollapsibleSection {
 
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
-    const buf = parseFloat(this._bufferInput.value);
-    if (!isNaN(buf) && buf !== 3) result.default_buffer = buf;
+    const bufStr = this._bufferInput.value.trim();
+    if (bufStr !== '') {
+      const buf = parseFloat(bufStr);
+      if (!isNaN(buf) && buf !== 3) result.default_buffer = buf;
+    }
 
     if (this._captureCb.checked) result.capture = true;
     else result.capture = false;
