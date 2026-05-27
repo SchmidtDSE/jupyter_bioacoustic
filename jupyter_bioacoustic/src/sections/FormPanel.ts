@@ -1262,7 +1262,19 @@ export class FormPanel {
       if (!item || typeof item !== 'object') continue;
       const [type] = Object.keys(item);
       const config = item[type];
-      if (type === 'select') {
+      if (type === 'text') {
+        const d = document.createElement('div');
+        d.style.cssText = mutedTextStyle({ width: '100%', fontSize: 11 });
+        const textVal = config && typeof config === 'object' ? (config.value ?? '') : config;
+        d.textContent = String(textVal);
+        container.appendChild(d);
+      } else if (type === 'break') {
+        container.appendChild(document.createElement('br'));
+      } else if (type === 'line') {
+        const d = document.createElement('div');
+        d.style.cssText = fullWidthDividerStyle();
+        container.appendChild(d);
+      } else if (type === 'select') {
         const cfg = config ?? {};
         const col = cfg.column ?? cfg.label ?? type;
         const sel = document.createElement('select');
@@ -1270,23 +1282,96 @@ export class FormPanel {
         const emptyOpt = document.createElement('option');
         emptyOpt.value = ''; emptyOpt.textContent = '— select —';
         sel.appendChild(emptyOpt);
+
+        const itemsCfg = cfg.items;
+        const hasFilterBox = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.filter_box;
+        const notAvailCfg = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) ? itemsCfg.not_available : undefined;
+
         const items = await this._loadSelectItems(cfg.items);
+
+        if (notAvailCfg) {
+          let naVal: string, naLabel: string;
+          if (notAvailCfg === true) {
+            naVal = naLabel = 'not-available';
+          } else if (typeof notAvailCfg === 'string') {
+            naVal = naLabel = notAvailCfg;
+          } else if (typeof notAvailCfg === 'object') {
+            naLabel = notAvailCfg.label ?? 'not-available';
+            naVal = notAvailCfg.value ?? naLabel;
+          } else {
+            naVal = naLabel = 'not-available';
+          }
+          items.unshift([naVal, naLabel]);
+        }
+
+        const allItems: Array<{ val: string; label: string; isDefault: boolean }> = [];
+        let selectedDefault = '';
         items.forEach(([v, l]) => {
           const isDefault = v.startsWith('selected::');
           const cleanVal = isDefault ? v.slice(10) : v;
           const cleanLabel = l.startsWith('selected::') ? l.slice(10) : l;
-          const o = document.createElement('option');
-          o.value = cleanVal; o.textContent = cleanLabel;
-          if (isDefault) o.selected = true;
-          sel.appendChild(o);
+          allItems.push({ val: cleanVal, label: cleanLabel, isDefault });
+          if (isDefault) selectedDefault = cleanVal;
         });
+
+        const rebuildOptions = (filter?: string) => {
+          while (sel.options.length > 1) sel.remove(1);
+          const f = (filter ?? '').toLowerCase();
+          allItems.forEach(item => {
+            if (f && !item.label.toLowerCase().includes(f) && !item.val.toLowerCase().includes(f)) return;
+            const o = document.createElement('option');
+            o.value = item.val; o.textContent = item.label;
+            if (item.isDefault && !f) o.selected = true;
+            sel.appendChild(o);
+          });
+        };
+        rebuildOptions();
+
         sel.addEventListener('change', () => { entry.formValues[col] = sel.value; this._validateForm(); });
-        entry.formValues[col] = entry.formValues[col] ?? '';
+        entry.formValues[col] = entry.formValues[col] ?? selectedDefault;
         if (entry.formValues[col]) sel.value = entry.formValues[col];
+
         const lbl = document.createElement('label');
         lbl.style.cssText = labelStyle() + `font-size:11px;`;
         lbl.textContent = cfg.label ?? col;
-        lbl.appendChild(sel);
+
+        if (hasFilterBox) {
+          const wrapper = document.createElement('div');
+          wrapper.style.cssText = `display:inline-flex;align-items:center;gap:4px;`;
+          const filterInput = document.createElement('input');
+          filterInput.type = 'text';
+          filterInput.placeholder = 'filter';
+          filterInput.style.cssText = inputStyle('80px') + `font-size:11px;`;
+          filterInput.addEventListener('input', () => {
+            const f = filterInput.value.trim();
+            rebuildOptions(f);
+            sel.size = Math.min(8, sel.options.length);
+            if (!f) sel.size = 0;
+          });
+          filterInput.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              sel.selectedIndex = Math.min(sel.selectedIndex + 1, sel.options.length - 1);
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              sel.selectedIndex = Math.max(sel.selectedIndex - 1, 0);
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              if (sel.value) {
+                sel.size = 0;
+                filterInput.value = '';
+                rebuildOptions();
+                entry.formValues[col] = sel.value;
+                this._validateForm();
+              }
+            }
+          });
+          sel.addEventListener('change', () => { sel.size = 0; });
+          wrapper.append(sel, filterInput);
+          lbl.appendChild(wrapper);
+        } else {
+          lbl.appendChild(sel);
+        }
         container.appendChild(lbl);
       } else if (type === 'textbox') {
         const cfg = config ?? {};
