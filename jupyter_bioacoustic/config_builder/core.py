@@ -155,6 +155,11 @@ class ConfigBuilder:
             for k in SKIP_KEYS:
                 if k in data:
                     self._project[k] = data[k]
+            pn = data.get('project_name', '')
+            if pn:
+                self._project['project_name'] = pn
+            else:
+                self._project.pop('project_name', None)
             if 'output_path' in data:
                 op = data['output_path']
                 if op:
@@ -665,6 +670,10 @@ class ConfigBuilder:
         if detected == 'form':
             self._form_config = data
             rel_form = _to_cwd_relative(path)
+            self._project['form_path'] = rel_form
+            self._project['form_enabled'] = True
+            self._project['project_enabled'] = False
+            self._project['config_enabled'] = False
             loaded_paths['form'] = rel_form
 
         elif detected == 'project':
