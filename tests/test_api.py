@@ -21,6 +21,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jupyter_bioacoustic.api import (
     BioacousticAnnotator,
+    DEFAULT_CLIP_TABLE_HEIGHT,
+    DEFAULT_FORM_PANEL_HEIGHT,
+    DEFAULT_INFO_CARD_HEIGHT,
+    DEFAULT_PLAYER_HEIGHT,
     _detect_data_type,
     _detect_audio_type,
     _resolve_secrets,
@@ -102,6 +106,54 @@ class TestResolveTemplates:
             kwargs={'reviewer_name': 'alice'},
         )
         assert result == '[[common_name]] by alice'
+
+    def test_default_resolves_when_no_match(self):
+        result = _resolve_templates(
+            '[[missing || fallback value]]',
+            kwargs={'other': 'x'},
+        )
+        assert result == 'fallback value'
+
+    def test_default_ignored_when_kwarg_matches(self):
+        result = _resolve_templates(
+            '[[name || default]]',
+            kwargs={'name': 'alice'},
+        )
+        assert result == 'alice'
+
+    def test_default_preserved_when_column_matches(self):
+        result = _resolve_templates(
+            '[[species || Unknown]]',
+            columns={'species', 'confidence'},
+        )
+        assert result == '[[species || Unknown]]'
+
+    def test_default_resolves_when_not_kwarg_and_not_column(self):
+        result = _resolve_templates(
+            '[[missing || N/A]]',
+            kwargs={'name': 'alice'},
+            columns={'species'},
+        )
+        assert result == 'N/A'
+
+    def test_default_whitespace_trimmed(self):
+        result = _resolve_templates('[[ key ||  the default  ]]')
+        assert result == 'the default'
+
+    def test_default_with_no_columns_and_no_kwargs(self):
+        result = _resolve_templates('[[x || none]]')
+        assert result == 'none'
+
+    def test_no_default_left_unresolved(self):
+        result = _resolve_templates('[[x]]')
+        assert result == '[[x]]'
+
+    def test_mixed_defaults_and_plain(self):
+        result = _resolve_templates(
+            '[[name]]: [[role || viewer]]',
+            kwargs={'name': 'bob'},
+        )
+        assert result == 'bob: viewer'
 
 
 class TestResolveTemplatesInStructure:
@@ -497,7 +549,7 @@ class TestAnnotatorHeightParams:
 
     def test_clip_table_height_default(self):
         ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
-        assert ba._clip_table_height == 175
+        assert ba._clip_table_height == DEFAULT_CLIP_TABLE_HEIGHT
 
     def test_clip_table_height_custom(self):
         ba = BioacousticAnnotator(
@@ -507,7 +559,7 @@ class TestAnnotatorHeightParams:
 
     def test_player_height_default(self):
         ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
-        assert ba._player_height == 260
+        assert ba._player_height == DEFAULT_PLAYER_HEIGHT
 
     def test_player_height_custom(self):
         ba = BioacousticAnnotator(
@@ -517,7 +569,7 @@ class TestAnnotatorHeightParams:
 
     def test_info_card_height_default(self):
         ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
-        assert ba._info_card_height == 34
+        assert ba._info_card_height == DEFAULT_INFO_CARD_HEIGHT
 
     def test_info_card_height_custom(self):
         ba = BioacousticAnnotator(
@@ -527,7 +579,7 @@ class TestAnnotatorHeightParams:
 
     def test_form_panel_height_default(self):
         ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
-        assert ba._form_panel_height == 140
+        assert ba._form_panel_height == DEFAULT_FORM_PANEL_HEIGHT
 
     def test_form_panel_height_custom(self):
         ba = BioacousticAnnotator(
