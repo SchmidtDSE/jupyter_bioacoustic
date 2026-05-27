@@ -72,7 +72,7 @@ if os.environ.get('JBA_DEBUG_MODE'):
     )
     sys.__stderr__.flush()
 
-from .api import BioacousticAnnotator
+from .api import BioacousticAnnotator, print_md
 from .config_builder import ConfigBuilder
 
-__all__ = ['BioacousticAnnotator', 'ConfigBuilder']
+__all__ = ['BioacousticAnnotator', 'ConfigBuilder', 'print_md']
