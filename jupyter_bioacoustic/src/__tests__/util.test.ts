@@ -111,4 +111,24 @@ describe('resolveTemplate', () => {
     const slug = result.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
     expect(slug).toBe('robin_turdus_migratorius');
   });
+
+  test('default value used when column missing', () => {
+    expect(resolveTemplate('[[missing || fallback]]', row)).toBe('fallback');
+  });
+  test('default value ignored when column present', () => {
+    expect(resolveTemplate('[[common_name || default]]', row)).toBe('Robin');
+  });
+  test('default value whitespace trimmed', () => {
+    expect(resolveTemplate('[[  missing  ||  the default  ]]', {})).toBe('the default');
+  });
+  test('default with empty row', () => {
+    expect(resolveTemplate('[[x || none]]', {})).toBe('none');
+  });
+  test('mixed defaults and plain placeholders', () => {
+    expect(resolveTemplate('[[common_name]]: [[role || viewer]]', row))
+      .toBe('Robin: viewer');
+  });
+  test('no default preserves placeholder when missing', () => {
+    expect(resolveTemplate('[[missing]]', row)).toBe('[[missing]]');
+  });
 });
