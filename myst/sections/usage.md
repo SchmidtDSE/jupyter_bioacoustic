@@ -6,8 +6,8 @@
 `BioacousticAnnotator` has a minimal interface:
 
 - **1 class** — `BioacousticAnnotator(...)`
-- **2 methods** — `.open(inline=True)` to launch the widget, `.output(force=False)` to read submitted data
-- **1 property** — `.source` to access the input DataFrame
+- **3 methods** — `.open(inline=True)` to launch the widget, `.output(force=False)` to read submitted data, `.describe()` to inspect configuration
+- **2 properties** — `.source` to access the input DataFrame, `.config` for the fully merged configuration
 
 All configuration is handled through constructor parameters or a YAML/JSON config file. For the full parameter reference see the [wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration).
 
