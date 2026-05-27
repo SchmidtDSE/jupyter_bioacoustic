@@ -195,6 +195,7 @@ export class FormPanel {
     this._annotConfig = null;
     this._activeTool = '';
     this._annotInputs.clear();
+    this._showingReviewedView = false;
     this._sessionCount = 0;
     this._accuracy = null;
     this._progressEls = [];
