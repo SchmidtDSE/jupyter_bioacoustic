@@ -376,16 +376,16 @@ describe('resolveOutputTemplates', () => {
     expect(code).toContain('capture.[[%Y%m%d]].png');
   });
 
-  test('imports _resolve_output_templates', () => {
+  test('imports _resolve_templates', () => {
     const code = resolveOutputTemplates('test.[[%H%M]].png');
-    expect(code).toContain('from jupyter_bioacoustic.api import _resolve_output_templates');
+    expect(code).toContain('from jupyter_bioacoustic.api import _resolve_templates');
   });
 
   test('returns JSON with resolved field', () => {
     const code = resolveOutputTemplates('file.[[%Y]].txt');
     expect(code).toContain('json.dumps({');
     expect(code).toContain("'resolved':");
-    expect(code).toContain('_resolve_output_templates');
+    expect(code).toContain('_resolve_templates');
   });
 
   test('escapes single quotes in template', () => {
