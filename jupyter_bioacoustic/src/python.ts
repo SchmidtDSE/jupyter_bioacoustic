@@ -253,9 +253,9 @@ export function checkFileExists(path: string): string {
 
 export function resolveOutputTemplates(template: string): string {
   return [
-    `from jupyter_bioacoustic.api import _resolve_output_templates`,
+    `from jupyter_bioacoustic.api import _resolve_templates`,
     `import json`,
-    `_result = _resolve_output_templates('${escPy(template)}')`,
+    `_result = _resolve_templates('${escPy(template)}')`,
     `print(json.dumps({'resolved': _result}))`,
   ].join('\n');
 }
