@@ -159,7 +159,7 @@ class ConfigBuilderWidget extends Widget {
     }
     const openFn = (window as any)._bioacousticOpenWithKernel;
     if (openFn) {
-      openFn(this._kernelBridge.activeKernel);
+      openFn(this._kernelBridge.activeKernel, false);
     }
   }
 
