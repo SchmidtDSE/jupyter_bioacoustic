@@ -17,6 +17,7 @@ License: BSD 3-Clause
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,6 +40,8 @@ CONFIG_SUBDIRS = ('projects', 'config', 'forms')
 FLAG_SCOPE_MAP = {'search_project': 'project', 'search_config': 'config', 'search_form': 'form'}
 SCOPE_SUBDIR = {'project': 'projects', 'config': 'config', 'form': 'forms'}
 SCOPE_LABEL = {'project': 'Project', 'config': 'Config', 'form': 'Form'}
+PIXI_CLEAN_CMD = ['pixi', 'clean', 'cache', '--pypi', '-y']
+PIXI_INSTALL_CMD = ['pixi', 'install']
 
 
 #
@@ -63,8 +66,16 @@ def main() -> None:
     default=None,
     help='Enable debug logging. Optionally pass a log file path.',
 )
-def lab(rate_limit: str, debug: str | None) -> None:
+@click.option(
+    '-c', '--clean',
+    is_flag=True,
+    default=False,
+    help='Clear pixi PyPI cache and reinstall before launching.',
+)
+def lab(rate_limit: str, debug: str | None, clean: bool) -> None:
     """Launch JupyterLab with the required IOPub rate limit."""
+    if clean:
+        _clean_pixi_cache()
     env = os.environ.copy()
     if debug is not None:
         env['JBA_DEBUG_MODE'] = '1'
@@ -232,6 +243,17 @@ def validate(
 #
 # INTERNAL
 #
+def _clean_pixi_cache() -> None:
+    """Clear the pixi PyPI cache and reinstall to pick up local changes."""
+    if shutil.which('pixi') is None:
+        click.echo('Warning: pixi not found, skipping cache clean.', err=True)
+        return
+    click.echo('Clearing pixi PyPI cache...')
+    subprocess.run(PIXI_CLEAN_CMD, check=True)
+    click.echo('Reinstalling...')
+    subprocess.run(PIXI_INSTALL_CMD, check=True)
+
+
 def _resolve_config_target(
     name: str | None,
     directory: str,
