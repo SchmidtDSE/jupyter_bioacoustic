@@ -30,9 +30,9 @@ import uuid
 import warnings
 from datetime import datetime
 from typing import Any, Optional
-
+from pprint import pprint
 from IPython import get_ipython
-from IPython.display import display, Javascript, HTML
+from IPython.display import display, Javascript, HTML, Markdown
 
 from ._validation import validate_config
 
@@ -785,6 +785,11 @@ _CONFIG_PARAMS = {
 #
 # Public API
 #
+def print_md(value):
+    """ print markdown utility """
+    display(Markdown(value))
+
+
 class BioacousticAnnotator:
     """Main entry point for the bioacoustic annotation widget."""
 
@@ -1327,7 +1332,244 @@ class BioacousticAnnotator:
         )
 
         self._output_cache = None
+        self._resolved_output = (
+            _resolve_output_templates(self._output)
+            if self._output else self._output
+        )
 
+
+    def setup(self) -> None:
+        """Serialize data into kernel variables."""
+        ip = get_ipython()
+        if ip is None:
+            raise RuntimeError(
+                'BioacousticAnnotator.setup() must be '
+                'called from inside a Jupyter kernel.'
+            )
+
+        ns = ip.user_ns
+        ns['_BA_DATA'] = self._data.to_json(
+            orient='records',
+        )
+        ns['_BA_AUDIO'] = json.dumps(
+            self._audio_config,
+        )
+        ns['_BA_OUTPUT'] = self._resolved_output
+        ns['_BA_SYNC_CONFIG'] = json.dumps({
+            'uri': self._sync_uri,
+            'button': self._sync_button,
+            'recursive': self._sync_recursive,
+        })
+        ns['_BA_INFO_CARD_TITLE'] = self._info_card_title
+        ns['_BA_APP_TITLE'] = self._project_name
+        ns['_BA_INFO_CARD_TEXT'] = self._info_card_text
+        ns['_BA_DATA_COLS'] = json.dumps(
+            self._data_columns,
+        )
+
+        ns['_BA_FORM_CONFIG'] = json.dumps(
+            self._form_config,
+        )
+        cap = self._capture
+        if cap is True:
+            cap = DEFAULT_CAPTURE_LABEL
+        elif cap is False:
+            cap = ''
+        ns['_BA_CAPTURE'] = cap
+        ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
+        ns['_BA_CAPTURE_HEIGHT'] = (
+            str(self._capture_height)
+            if self._capture_height
+            else ''
+        )
+        ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(
+            self._spec_resolutions,
+        )
+        ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
+        ns['_BA_DUPLICATE_ENTRIES'] = (
+            'true' if self._duplicate_entries else ''
+        )
+        ns['_BA_DEFAULT_BUFFER'] = str(
+            self._default_buffer,
+        )
+        ns['_BA_CLIP_TABLE_HEIGHT'] = str(
+            self._clip_table_height,
+        )
+        ns['_BA_PLAYER_HEIGHT'] = str(
+            self._player_height,
+        )
+        ns['_BA_INFO_CARD_HEIGHT'] = str(
+            self._info_card_height,
+        )
+        ns['_BA_FORM_PANEL_HEIGHT'] = str(
+            self._form_panel_height,
+        )
+        ns['_BA_DESCRIPTION'] = (
+            json.dumps(self._description_config)
+            if self._description_config
+            else ''
+        )
+        ns['_BA_DESCRIPTION_HEIGHT'] = str(
+            self._description_height,
+        )
+        ns['_BA_PROJECT_PATH'] = self._project_file or ''
+        ns['_BA_CONFIG_PATH'] = self._config_file or ''
+        ns['_BA_FORM_PATH'] = self._form_file or ''
+        ns['_BA_MERGED_CONFIG'] = json.dumps(
+            self._merged_cfg, default=str,
+        )
+        ns['_BA_INSTANCE'] = self
+
+    def open(self, inline: bool = DEFAULT_INLINE) -> None:
+        """Serialize data and open the widget."""
+        if self._stripped_args:
+            policy = self._session_args
+            if isinstance(policy, list):
+                permitted = sorted(policy)
+            else:
+                permitted = []
+            warnings.warn(
+                f'session_args not allowed: {self._stripped_args}. '
+                f'Stripped from input.'
+                + (f' Permitted: {permitted}' if permitted else ''),
+                stacklevel=2,
+            )
+        result = validate_config(
+            config=self._init_args or None,
+            form_config=self._form_config or None,
+        )
+        for msg in result['errors']:
+            warnings.warn(f'Config error: {msg}', stacklevel=2)
+        for msg in result['warnings']:
+            _log.info('Config warning: %s', msg)
+        self.setup()
+        if inline:
+            self._open_inline()
+        else:
+            display(Javascript(
+                "window._bioacousticApp?.commands"
+                ".execute('bioacoustic:open')"
+            ))
+
+    def sync(
+        self,
+        dest: Optional[str] = None,
+        recursive: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Upload the output file to the configured remote.
+
+        Args:
+            dest: Override the destination URI.
+            recursive: Override recursive setting.
+            **kwargs: Additional auth kwargs.
+        """
+        from jupyter_bioacoustic.audio import io
+        _log.info(
+            'sync requested: dest=%s recursive=%s',
+            dest, recursive,
+        )
+
+        src = self._resolved_output
+        if not src:
+            raise ValueError('No output path configured')
+        if not os.path.exists(src):
+            raise FileNotFoundError(
+                f'Output file not found: {src}',
+            )
+
+        target = dest or self._sync_uri
+        if not target:
+            raise ValueError(
+                'No sync destination configured. '
+                'Set output.uri/url in config or pass '
+                'dest= to sync().'
+            )
+
+        rec = (
+            recursive
+            if recursive is not None
+            else self._sync_recursive
+        )
+
+        merged_kwargs: dict[str, Any] = {}
+        if self._sync_secrets_raw:
+            merged_kwargs.update(
+                _resolve_secrets(self._sync_secrets_raw),
+            )
+        merged_kwargs.update(kwargs)
+
+        _log.info(
+            'syncing %s -> %s (recursive=%s)',
+            src, target, rec,
+        )
+        result = io.write(
+            src, target, recursive=rec, **merged_kwargs,
+        )
+        _log.info('sync complete: %s', result)
+        return result
+
+
+    def describe(self) -> None:
+        """ print description of instance """
+        print_md('---')
+        print_md('**Configuration Files**')
+        print(f'- Project: {self.project_path}')
+        print(f'- Config: {self.config_path}')
+        print(f'- Form: {self.form_path}')
+        print_md('---')
+        print_md('**Configuration:**')
+        pprint(self.config)
+        print_md('---')
+
+
+    #
+    # PROPERTIES
+    #
+    @property
+    def config(self) -> dict[str, Any]:
+        """The fully merged configuration after all files and overrides."""
+        return dict(self._merged_cfg)
+
+    @property
+    def source(self) -> Any:
+        """The input DataFrame passed as ``data``."""
+        return self._data
+
+    @property
+    def project_path(self) -> Optional[str]:
+        """Path to the project file, if loaded from a file."""
+        return self._project_file
+
+    @property
+    def config_path(self) -> Optional[str]:
+        """Path to the config file, if loaded from a file."""
+        return self._config_file
+
+    @property
+    def form_path(self) -> Optional[str]:
+        """Path to the form config file, if loaded from a file."""
+        return self._form_file
+
+    def output(self, force: bool = False) -> Any:
+        """Read and return the output file as a DataFrame.
+
+        Args:
+            force: Re-read even if a cached copy exists.
+        """
+        if self._output_cache is not None and not force:
+            return self._output_cache
+        if not self._resolved_output:
+            return None
+        if not os.path.exists(self._resolved_output):
+            return None
+        self._output_cache = _read_data(self._resolved_output)
+        return self._output_cache
+
+
+    #
+    # INTERNAL
+    #
     def _init_audio(
         self, resolve, cfg, audio, audio_src, audio_path,
         audio_url, audio_uri, audio_column, audio_prefix,
@@ -1729,277 +1971,11 @@ class BioacousticAnnotator:
             else None
         )
 
-    @property
-    def config(self) -> dict[str, Any]:
-        """The fully merged configuration after all files and overrides."""
-        return dict(self._merged_cfg)
-
-    @property
-    def source(self) -> Any:
-        """The input DataFrame passed as ``data``."""
-        return self._data
-
-    @property
-    def project_path(self) -> Optional[str]:
-        """Path to the project file, if loaded from a file."""
-        return self._project_file
-
-    @property
-    def config_path(self) -> Optional[str]:
-        """Path to the config file, if loaded from a file."""
-        return self._config_file
-
-    @property
-    def form_path(self) -> Optional[str]:
-        """Path to the form config file, if loaded from a file."""
-        return self._form_file
-
-    def output(self, force: bool = False) -> Any:
-        """Read and return the output file as a DataFrame.
-
-        Args:
-            force: Re-read even if a cached copy exists.
-        """
-        if self._output_cache is not None and not force:
-            return self._output_cache
-        if not self._output:
-            return None
-        if not os.path.exists(self._output):
-            return None
-        self._output_cache = _read_data(self._output)
-        return self._output_cache
 
     def _invalidate_output_cache(self) -> None:
         """Force a re-read on the next output() call."""
         self._output_cache = None
 
-    def setup(self) -> None:
-        """Serialize data into kernel variables."""
-        ip = get_ipython()
-        if ip is None:
-            raise RuntimeError(
-                'BioacousticAnnotator.setup() must be '
-                'called from inside a Jupyter kernel.'
-            )
-
-        ns = ip.user_ns
-        ns['_BA_DATA'] = self._data.to_json(
-            orient='records',
-        )
-        ns['_BA_AUDIO'] = json.dumps(
-            self._audio_config,
-        )
-        output_path = _resolve_output_templates(
-            self._output,
-        ) if self._output else self._output
-        ns['_BA_OUTPUT'] = output_path
-        ns['_BA_SYNC_CONFIG'] = json.dumps({
-            'uri': self._sync_uri,
-            'button': self._sync_button,
-            'recursive': self._sync_recursive,
-        })
-        ns['_BA_INFO_CARD_TITLE'] = self._info_card_title
-        ns['_BA_APP_TITLE'] = self._project_name
-        ns['_BA_INFO_CARD_TEXT'] = self._info_card_text
-        ns['_BA_DATA_COLS'] = json.dumps(
-            self._data_columns,
-        )
-
-        ns['_BA_FORM_CONFIG'] = json.dumps(
-            self._form_config,
-        )
-        cap = self._capture
-        if cap is True:
-            cap = DEFAULT_CAPTURE_LABEL
-        elif cap is False:
-            cap = ''
-        ns['_BA_CAPTURE'] = cap
-        ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
-        ns['_BA_CAPTURE_HEIGHT'] = (
-            str(self._capture_height)
-            if self._capture_height
-            else ''
-        )
-        ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(
-            self._spec_resolutions,
-        )
-        ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
-        ns['_BA_DUPLICATE_ENTRIES'] = (
-            'true' if self._duplicate_entries else ''
-        )
-        ns['_BA_DEFAULT_BUFFER'] = str(
-            self._default_buffer,
-        )
-        ns['_BA_CLIP_TABLE_HEIGHT'] = str(
-            self._clip_table_height,
-        )
-        ns['_BA_PLAYER_HEIGHT'] = str(
-            self._player_height,
-        )
-        ns['_BA_INFO_CARD_HEIGHT'] = str(
-            self._info_card_height,
-        )
-        ns['_BA_FORM_PANEL_HEIGHT'] = str(
-            self._form_panel_height,
-        )
-        ns['_BA_DESCRIPTION'] = (
-            json.dumps(self._description_config)
-            if self._description_config
-            else ''
-        )
-        ns['_BA_DESCRIPTION_HEIGHT'] = str(
-            self._description_height,
-        )
-        ns['_BA_PROJECT_PATH'] = self._project_file or ''
-        ns['_BA_CONFIG_PATH'] = self._config_file or ''
-        ns['_BA_FORM_PATH'] = self._form_file or ''
-        ns['_BA_MERGED_CONFIG'] = json.dumps(
-            self._merged_cfg, default=str,
-        )
-        ns['_BA_INSTANCE'] = self
-
-    def open(self, inline: bool = DEFAULT_INLINE) -> None:
-        """Serialize data and open the widget."""
-        if self._stripped_args:
-            policy = self._session_args
-            if isinstance(policy, list):
-                permitted = sorted(policy)
-            else:
-                permitted = []
-            warnings.warn(
-                f'session_args not allowed: {self._stripped_args}. '
-                f'Stripped from input.'
-                + (f' Permitted: {permitted}' if permitted else ''),
-                stacklevel=2,
-            )
-        result = validate_config(
-            config=self._init_args or None,
-            form_config=self._form_config or None,
-        )
-        for msg in result['errors']:
-            warnings.warn(f'Config error: {msg}', stacklevel=2)
-        for msg in result['warnings']:
-            _log.info('Config warning: %s', msg)
-        self.setup()
-        if inline:
-            self._open_inline()
-        else:
-            display(Javascript(
-                "window._bioacousticApp?.commands"
-                ".execute('bioacoustic:open')"
-            ))
-
-    def sync(
-        self,
-        dest: Optional[str] = None,
-        recursive: Optional[bool] = None,
-        **kwargs: Any,
-    ) -> str:
-        """Upload the output file to the configured remote.
-
-        Args:
-            dest: Override the destination URI.
-            recursive: Override recursive setting.
-            **kwargs: Additional auth kwargs.
-        """
-        from jupyter_bioacoustic.audio import io
-        _log.info(
-            'sync requested: dest=%s recursive=%s',
-            dest, recursive,
-        )
-
-        src = self._output
-        if not src:
-            raise ValueError('No output path configured')
-        if not os.path.exists(src):
-            raise FileNotFoundError(
-                f'Output file not found: {src}',
-            )
-
-        target = dest or self._sync_uri
-        if not target:
-            raise ValueError(
-                'No sync destination configured. '
-                'Set output.uri/url in config or pass '
-                'dest= to sync().'
-            )
-
-        rec = (
-            recursive
-            if recursive is not None
-            else self._sync_recursive
-        )
-
-        merged_kwargs: dict[str, Any] = {}
-        if self._sync_secrets_raw:
-            merged_kwargs.update(
-                _resolve_secrets(self._sync_secrets_raw),
-            )
-        merged_kwargs.update(kwargs)
-
-        _log.info(
-            'syncing %s -> %s (recursive=%s)',
-            src, target, rec,
-        )
-        result = io.write(
-            src, target, recursive=rec, **merged_kwargs,
-        )
-        _log.info('sync complete: %s', result)
-        return result
-
-    def save_as_project(
-        self,
-        filename: Optional[str] = None,
-        folder: str = 'projects',
-        overwrite: bool = False,
-    ) -> str:
-        """Save the current config as a project YAML."""
-        try:
-            import yaml
-        except ImportError:
-            raise ImportError(
-                "pyyaml is required to save project "
-                "files: pip install pyyaml"
-            )
-
-        if filename is None:
-            slug = re.sub(
-                r'[^a-z0-9]+', '_',
-                self._project_name.lower(),
-            ).strip('_')
-            filename = f'{slug}.yaml'
-        elif not os.path.splitext(filename)[1]:
-            filename = f'{filename}.yaml'
-
-        path = os.path.join(folder, filename)
-        os.makedirs(
-            os.path.dirname(path) or '.', exist_ok=True,
-        )
-
-        if os.path.exists(path) and not overwrite:
-            raise FileExistsError(
-                f"Project file already exists: {path}  "
-                f"(pass overwrite=True to replace)"
-            )
-
-        cfg = dict(self._init_args)
-        cfg['project_name'] = self._project_name
-        if self._init_kwargs:
-            cfg.update(self._init_kwargs)
-        cfg = {
-            k: v for k, v in cfg.items()
-            if v is not None and v != '' and v != []
-        }
-
-        with open(path, 'w') as f:
-            yaml.dump(
-                cfg, f,
-                default_flow_style=False,
-                sort_keys=False,
-            )
-
-        _log.info('saved project to %s', path)
-        return path
 
     def _open_inline(self) -> None:
         """Inject the widget into the cell output area."""
