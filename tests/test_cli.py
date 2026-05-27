@@ -77,6 +77,7 @@ class TestLab:
         assert result.exit_code == 0
         assert 'rate-limit' in result.output
         assert '--debug' in result.output
+        assert '--clean' in result.output
 
 
 #
