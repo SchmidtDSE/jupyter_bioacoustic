@@ -1,6 +1,6 @@
 {
   "name": "jupyter-bioacoustic",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "JupyterLab bioacoustic audio review plugin",
   "keywords": [
     "jupyter",
@@ -45,7 +45,7 @@
     "extension": true,
     "outputDir": "labextension",
     "_build": {
-      "load": "static/remoteEntry.9a2fae5576bac4f680d7.js",
+      "load": "static/remoteEntry.f66f147999db7e7ca3eb.js",
       "extension": "./extension"
     }
   }
