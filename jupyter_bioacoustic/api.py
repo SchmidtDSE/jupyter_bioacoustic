@@ -149,11 +149,14 @@ def _resolve_secrets(
     resolved: dict[str, str] = {}
     for entry in data_secrets:
         k = entry['key']
-        v = entry['value']
-        if isinstance(v, str) and re.match(
-            r'^env:', v, re.IGNORECASE,
-        ):
+        v = entry.get('value', '__IS_ENV')
+        if v == '__IS_ENV':
+            env_var = k
+        elif isinstance(v, str) and re.match(r'^env:', v, re.IGNORECASE):
             env_var = v[4:]
+        else:
+            env_var = None
+        if env_var:
             resolved[k] = os.environ.get(env_var, '')
             if not resolved[k]:
                 _log.error(
