@@ -49,12 +49,24 @@ export function parseAccuracyConfig(progressTracker: any): AccuracyConfig | null
 }
 
 const TEMPLATE_RE = /\[\[([^\]]+)\]\]/g;
+const DEFAULT_SEP = '||';
 
-/** Replace [[column_name]] placeholders with values from a row object. */
+/** Replace [[column_name]] and [[column||default]] placeholders with row values. */
 export function resolveTemplate(template: string, row: Record<string, any>): string {
-  return template.replace(TEMPLATE_RE, (_, col: string) => {
-    const val = row[col.trim()];
-    return val !== undefined ? String(val) : `[[${col}]]`;
+  return template.replace(TEMPLATE_RE, (match, raw: string) => {
+    let key: string;
+    let fallback: string | undefined;
+    if (raw.includes(DEFAULT_SEP)) {
+      const idx = raw.indexOf(DEFAULT_SEP);
+      key = raw.slice(0, idx).trim();
+      fallback = raw.slice(idx + DEFAULT_SEP.length).trim();
+    } else {
+      key = raw.trim();
+    }
+    const val = row[key];
+    if (val !== undefined) return String(val);
+    if (fallback !== undefined) return fallback;
+    return match;
   });
 }
 
