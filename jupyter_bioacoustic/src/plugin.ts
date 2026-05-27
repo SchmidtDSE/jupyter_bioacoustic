@@ -50,13 +50,13 @@ class BioacousticWidget extends Widget {
   private _form!: FormPanel;
   private _description!: DescriptionPanel;
 
-  constructor(tracker: INotebookTracker, directKernel?: any) {
+  constructor(tracker: INotebookTracker, directKernel?: any, ownsKernel = true) {
     super();
     this._kernelBridge = new KernelBridge(
       directKernel ? null : tracker,
       directKernel,
     );
-    this._ownedKernel = directKernel ?? null;
+    this._ownedKernel = (ownsKernel && directKernel) ? directKernel : null;
     this.id = `jp-bioacoustic-${_counter++}`;
     this.title.label = DEFAULT_TITLE;
     this.title.closable = true;
@@ -926,8 +926,8 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
       Widget.attach(widget, container);
     };
 
-    (window as any)._bioacousticOpenWithKernel = (directKernel: any) => {
-      const widget = new BioacousticWidget(tracker, directKernel);
+    (window as any)._bioacousticOpenWithKernel = (directKernel: any, ownsKernel = true) => {
+      const widget = new BioacousticWidget(tracker, directKernel, ownsKernel);
       app.shell.add(widget, 'main');
       app.shell.activateById(widget.id);
     };
