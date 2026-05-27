@@ -43,7 +43,7 @@ from ._validation import validate_config
 _log = logging.getLogger('jupyter_bioacoustic.api')
 
 _UNSET = object()
-_OUTPUT_TEMPLATE_RE = re.compile(r'\[\[([^\]]*%[^\]]*)\]\]')
+_TEMPLATE_RE = re.compile(r'\[\[([^\]]+)\]\]')
 
 DEFAULT_OUTPUT_DIR = 'outputs'
 DEFAULT_OUTPUT_PREFIX = 'annotation_output'
@@ -67,19 +67,64 @@ _TOOLBAR_AND_PADDING_PX = 290
 
 
 #
-# Output path template resolution
+# Template resolution
 #
-def _resolve_output_templates(path: str) -> str:
-    """Replace ``[[strftime_format]]`` placeholders in an output path.
+def _resolve_templates(
+    text: str,
+    kwargs: dict[str, Any] | None = None,
+    resolve_dates: bool = True,
+    warn_missing: bool = False,
+) -> str:
+    """Replace ``[[...]]`` placeholders in a template string.
 
-    For example ``outputs/annotations-[[%Y%m%d-%H%M]].csv`` becomes
-    ``outputs/annotations-20260521-1430.csv`` (using the current time).
-    Only placeholders containing at least one ``%`` character are resolved.
+    Resolution order:
+
+    1. Date patterns (contain ``%``): ``[[%Y%m%d]]`` -> ``20260527``
+    2. Kwarg values: ``[[reviewer_name]]`` -> kwarg value
+    3. Unresolved: left as ``[[key]]`` for later column resolution
+
+    Args:
+        text: The template string.
+        kwargs: Fixed-value keyword arguments to resolve.
+        resolve_dates: Whether to resolve date format patterns.
+        warn_missing: Warn when a non-date placeholder has no match.
     """
     now = datetime.now()
-    return _OUTPUT_TEMPLATE_RE.sub(
-        lambda m: now.strftime(m.group(1)), path,
-    )
+    kw = kwargs or {}
+
+    def _replace(m: re.Match) -> str:
+        key = m.group(1).strip()
+        if resolve_dates and '%' in key:
+            return now.strftime(key)
+        if key in kw:
+            return str(kw[key])
+        if warn_missing:
+            _log.warning('unresolved template placeholder: [[%s]]', key)
+        return m.group(0)
+
+    return _TEMPLATE_RE.sub(_replace, text)
+
+
+def _resolve_templates_in_structure(
+    obj: Any,
+    kwargs: dict[str, Any] | None = None,
+    resolve_dates: bool = True,
+) -> Any:
+    """Recursively resolve ``[[...]]`` templates in nested dicts/lists.
+
+    Strings are resolved via :func:`_resolve_templates`.
+    Dicts and lists are traversed recursively.
+    All other types are returned unchanged.
+    """
+    if isinstance(obj, str):
+        return _resolve_templates(obj, kwargs, resolve_dates)
+    if isinstance(obj, dict):
+        return {k: _resolve_templates_in_structure(v, kwargs, resolve_dates)
+                for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_resolve_templates_in_structure(v, kwargs, resolve_dates)
+                for v in obj]
+    return obj
 
 
 #
@@ -1332,10 +1377,23 @@ class BioacousticAnnotator:
         )
 
         self._output_cache = None
+        kw = self._init_kwargs or None
         self._resolved_output = (
-            _resolve_output_templates(self._output)
+            _resolve_templates(self._output, kw, warn_missing=True)
             if self._output else self._output
         )
+        if self._info_card_title:
+            self._info_card_title = _resolve_templates(
+                self._info_card_title, kw,
+            )
+        if self._info_card_text:
+            self._info_card_text = _resolve_templates(
+                self._info_card_text, kw,
+            )
+        if self._form_config:
+            self._form_config = _resolve_templates_in_structure(
+                self._form_config, kw,
+            )
 
 
     def setup(self) -> None:
