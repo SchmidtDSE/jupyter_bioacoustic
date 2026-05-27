@@ -26,40 +26,113 @@ from jupyter_bioacoustic.api import (
     _resolve_secrets,
     _read_data,
     _merge_project_over_config,
-    _resolve_output_templates,
+    _resolve_templates,
+    _resolve_templates_in_structure,
 )
 
 
 #
-# _resolve_output_templates
+# _resolve_templates
 #
-class TestResolveOutputTemplates:
+class TestResolveTemplates:
 
     def test_no_placeholders(self):
-        assert _resolve_output_templates('outputs/data.csv') == 'outputs/data.csv'
+        assert _resolve_templates('outputs/data.csv') == 'outputs/data.csv'
 
     def test_year_placeholder(self):
         from datetime import datetime
-        result = _resolve_output_templates('outputs/data-[[%Y]].csv')
+        result = _resolve_templates('outputs/data-[[%Y]].csv')
         assert result == f'outputs/data-{datetime.now().year}.csv'
 
     def test_full_datetime(self):
         from datetime import datetime
-        result = _resolve_output_templates('out-[[%Y%m%d-%H%M]].csv')
+        result = _resolve_templates('out-[[%Y%m%d-%H%M]].csv')
         expected = f'out-{datetime.now().strftime("%Y%m%d-%H%M")}.csv'
         assert result == expected
 
     def test_multiple_placeholders(self):
         from datetime import datetime
-        result = _resolve_output_templates('[[%Y]]/data-[[%m%d]].csv')
+        result = _resolve_templates('[[%Y]]/data-[[%m%d]].csv')
         now = datetime.now()
         assert result == f'{now.year}/data-{now.strftime("%m%d")}.csv'
 
     def test_non_strftime_brackets_untouched(self):
-        assert _resolve_output_templates('[[column_name]].csv') == '[[column_name]].csv'
+        assert _resolve_templates('[[column_name]].csv') == '[[column_name]].csv'
 
     def test_empty_string(self):
-        assert _resolve_output_templates('') == ''
+        assert _resolve_templates('') == ''
+
+    def test_kwargs_resolved(self):
+        result = _resolve_templates(
+            'review.[[reviewer_name]].csv',
+            kwargs={'reviewer_name': 'alice'},
+        )
+        assert result == 'review.alice.csv'
+
+    def test_kwargs_and_dates(self):
+        from datetime import datetime
+        result = _resolve_templates(
+            '[[reviewer_name]]-[[%Y%m%d]].csv',
+            kwargs={'reviewer_name': 'bob'},
+        )
+        expected = f'bob-{datetime.now().strftime("%Y%m%d")}.csv'
+        assert result == expected
+
+    def test_kwargs_missing_left_untouched(self):
+        result = _resolve_templates(
+            'out.[[missing_key]].csv',
+            kwargs={'other_key': 'val'},
+        )
+        assert result == 'out.[[missing_key]].csv'
+
+    def test_kwargs_none_no_error(self):
+        result = _resolve_templates('out.[[key]].csv', kwargs=None)
+        assert result == 'out.[[key]].csv'
+
+    def test_kwargs_numeric_value(self):
+        result = _resolve_templates(
+            'review_[[review_date]].csv',
+            kwargs={'review_date': 20260413},
+        )
+        assert result == 'review_20260413.csv'
+
+    def test_column_names_untouched_with_kwargs(self):
+        result = _resolve_templates(
+            '[[common_name]] by [[reviewer_name]]',
+            kwargs={'reviewer_name': 'alice'},
+        )
+        assert result == '[[common_name]] by alice'
+
+
+class TestResolveTemplatesInStructure:
+
+    def test_nested_dict(self):
+        obj = {'label': 'reviewed by [[name]]', 'count': 5}
+        result = _resolve_templates_in_structure(obj, kwargs={'name': 'bob'})
+        assert result == {'label': 'reviewed by bob', 'count': 5}
+
+    def test_nested_list(self):
+        obj = ['[[name]] report', 42, True]
+        result = _resolve_templates_in_structure(obj, kwargs={'name': 'alice'})
+        assert result == ['alice report', 42, True]
+
+    def test_deep_nesting(self):
+        obj = {'form': [{'select': {'label': '[[reviewer]]'}}]}
+        result = _resolve_templates_in_structure(
+            obj, kwargs={'reviewer': 'carol'},
+        )
+        assert result == {'form': [{'select': {'label': 'carol'}}]}
+
+    def test_no_kwargs(self):
+        obj = {'text': '[[col]]'}
+        result = _resolve_templates_in_structure(obj)
+        assert result == {'text': '[[col]]'}
+
+    def test_dates_in_structure(self):
+        from datetime import datetime
+        obj = {'title': 'Report [[%Y]]'}
+        result = _resolve_templates_in_structure(obj)
+        assert result == {'title': f'Report {datetime.now().year}'}
 
 
 #
