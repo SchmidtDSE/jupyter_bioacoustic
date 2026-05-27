@@ -183,6 +183,7 @@ export class AppSection extends CollapsibleSection {
 
       // Click functionality (existing)
       chip.addEventListener('click', () => {
+        this._dispColsSet = true;
         selected.push(col);
         this._rebuildChips(this._dispChipsArea, selected);
         this._rebuildPicker(area, selected);
@@ -226,6 +227,7 @@ export class AppSection extends CollapsibleSection {
         area.style.background = '';
         const col = e.dataTransfer!.getData('text/plain');
         if (col && !selected.includes(col)) {
+          this._dispColsSet = true;
           selected.push(col);
           this._rebuildChips(area, selected);
           this._rebuildPicker(this._dispPickerArea, selected);
@@ -276,6 +278,7 @@ export class AppSection extends CollapsibleSection {
         if (isReorder && draggedIdx >= 0) {
           // Reordering existing chips
           if (draggedIdx !== insertIdx && draggedIdx !== insertIdx - 1) {
+            this._dispColsSet = true;
             const [moved] = selected.splice(draggedIdx, 1);
             const targetIdx = draggedIdx < insertIdx ? insertIdx - 1 : insertIdx;
             selected.splice(targetIdx, 0, moved);
@@ -284,7 +287,7 @@ export class AppSection extends CollapsibleSection {
             this._emitChanged();
           }
         } else if (!isReorder && newCol && !selected.includes(newCol)) {
-          // Adding new column at specific position
+          this._dispColsSet = true;
           selected.splice(insertIdx, 0, newCol);
           this._dispCols = [...selected];
           this._rebuildChips(area, this._dispCols);
@@ -341,6 +344,7 @@ export class AppSection extends CollapsibleSection {
       rm.addEventListener('click', () => {
         const idx = selected.indexOf(col);
         if (idx >= 0) {
+          this._dispColsSet = true;
           selected.splice(idx, 1);
           this._dispCols = [...selected];
           this._rebuildChips(area, this._dispCols);
@@ -361,13 +365,10 @@ export class AppSection extends CollapsibleSection {
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
-    if (this._dispColsSet) result.display_columns = [...this._dispCols];
+    if (this._dispColsSet) result.display_columns = this._dispCols.length > 0 ? [...this._dispCols] : [];
 
-    const title = this._titleInput.value.trim();
-    if (title) result.info_card_title = title;
-
-    const text = this._textInput.value.trim();
-    if (text) result.info_card_text = text;
+    result.info_card_title = this._titleInput.value.trim();
+    result.info_card_text = this._textInput.value.trim();
 
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
