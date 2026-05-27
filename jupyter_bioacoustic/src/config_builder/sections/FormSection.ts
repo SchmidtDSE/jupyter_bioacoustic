@@ -864,12 +864,52 @@ export class FormSection extends CollapsibleSection {
     });
     container.appendChild(cvRow);
 
-    const { row: naRow, input: naCb } = this._makeCheckbox('not_available', !!cfg.items?.not_available);
+    const naRow = this._makeRow();
+    const naCb = document.createElement('input');
+    naCb.type = 'checkbox';
+    naCb.style.cssText = `accent-color:${COLORS.blue};margin-right:6px;`;
+    const naVal = cfg.items?.not_available;
+    naCb.checked = !!naVal;
+
+    const naLabel = document.createElement('span');
+    naLabel.textContent = 'not_available';
+    naLabel.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:90px;`;
+
+    const naTextInput = this._makeInput('custom label', '140px');
+    naTextInput.style.fontSize = '11px';
+    if (typeof naVal === 'string') naTextInput.value = naVal;
+
+    const updateNaTextState = () => {
+      naTextInput.disabled = !naCb.checked;
+      naTextInput.style.opacity = naCb.checked ? '1' : '0.5';
+      naTextInput.style.backgroundColor = naCb.checked ? COLORS.bgSurface0 : COLORS.bgSurface1;
+    };
+    updateNaTextState();
+
     naCb.addEventListener('change', () => {
       if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.not_available = naCb.checked;
+      if (naCb.checked) {
+        const label = naTextInput.value.trim();
+        cfg.items.not_available = label || true;
+      } else {
+        delete cfg.items.not_available;
+      }
+      updateNaTextState();
       this._emitChanged();
     });
+
+    naTextInput.addEventListener('input', () => {
+      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
+      const label = naTextInput.value.trim();
+      if (label && !naCb.checked) {
+        naCb.checked = true;
+        updateNaTextState();
+      }
+      cfg.items.not_available = label || true;
+      this._emitChanged();
+    });
+
+    naRow.append(naCb, naLabel, naTextInput);
     container.appendChild(naRow);
   }
 
