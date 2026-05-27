@@ -44,6 +44,7 @@ _log = logging.getLogger('jupyter_bioacoustic.api')
 
 _UNSET = object()
 _TEMPLATE_RE = re.compile(r'\[\[([^\]]+)\]\]')
+_DEFAULT_SEP = '||'
 
 DEFAULT_OUTPUT_DIR = 'outputs'
 DEFAULT_OUTPUT_PREFIX = 'annotation_output'
@@ -74,30 +75,51 @@ def _resolve_templates(
     kwargs: dict[str, Any] | None = None,
     resolve_dates: bool = True,
     warn_missing: bool = False,
+    columns: set[str] | None = None,
 ) -> str:
     """Replace ``[[...]]`` placeholders in a template string.
+
+    Supports default values via ``[[key || default]]``.
 
     Resolution order:
 
     1. Date patterns (contain ``%``): ``[[%Y%m%d]]`` -> ``20260527``
     2. Kwarg values: ``[[reviewer_name]]`` -> kwarg value
-    3. Unresolved: left as ``[[key]]`` for later column resolution
+    3. Column names (if *columns* provided): left as ``[[key]]``
+       or ``[[key||default]]`` for later per-row resolution
+    4. Default value (if ``||`` present and key is not a column):
+       returns the default
+    5. Otherwise: left as ``[[key]]`` unresolved
 
     Args:
         text: The template string.
         kwargs: Fixed-value keyword arguments to resolve.
         resolve_dates: Whether to resolve date format patterns.
         warn_missing: Warn when a non-date placeholder has no match.
+        columns: Source data column names. When provided, placeholders
+            matching a column are preserved for later per-row resolution.
     """
     now = datetime.now()
     kw = kwargs or {}
+    cols = columns or set()
 
     def _replace(m: re.Match) -> str:
-        key = m.group(1).strip()
+        raw = m.group(1)
+        if _DEFAULT_SEP in raw:
+            key, default = raw.split(_DEFAULT_SEP, 1)
+            key = key.strip()
+            default = default.strip()
+        else:
+            key = raw.strip()
+            default = None
         if resolve_dates and '%' in key:
             return now.strftime(key)
         if key in kw:
             return str(kw[key])
+        if key in cols:
+            return m.group(0)
+        if default is not None:
+            return default
         if warn_missing:
             _log.warning('unresolved template placeholder: [[%s]]', key)
         return m.group(0)
@@ -109,6 +131,7 @@ def _resolve_templates_in_structure(
     obj: Any,
     kwargs: dict[str, Any] | None = None,
     resolve_dates: bool = True,
+    columns: set[str] | None = None,
 ) -> Any:
     """Recursively resolve ``[[...]]`` templates in nested dicts/lists.
 
@@ -117,13 +140,17 @@ def _resolve_templates_in_structure(
     All other types are returned unchanged.
     """
     if isinstance(obj, str):
-        return _resolve_templates(obj, kwargs, resolve_dates)
+        return _resolve_templates(obj, kwargs, resolve_dates, columns=columns)
     if isinstance(obj, dict):
-        return {k: _resolve_templates_in_structure(v, kwargs, resolve_dates)
-                for k, v in obj.items()}
+        return {
+            k: _resolve_templates_in_structure(v, kwargs, resolve_dates, columns)
+            for k, v in obj.items()
+        }
     if isinstance(obj, list):
-        return [_resolve_templates_in_structure(v, kwargs, resolve_dates)
-                for v in obj]
+        return [
+            _resolve_templates_in_structure(v, kwargs, resolve_dates, columns)
+            for v in obj
+        ]
     return obj
 
 
@@ -1381,21 +1408,22 @@ class BioacousticAnnotator:
 
         self._output_cache = None
         kw = self._init_kwargs or None
+        cols = set(self._data.columns) if self._data is not None else None
         self._resolved_output = (
             _resolve_templates(self._output, kw, warn_missing=True)
             if self._output else self._output
         )
         if self._info_card_title:
             self._info_card_title = _resolve_templates(
-                self._info_card_title, kw,
+                self._info_card_title, kw, columns=cols,
             )
         if self._info_card_text:
             self._info_card_text = _resolve_templates(
-                self._info_card_text, kw,
+                self._info_card_text, kw, columns=cols,
             )
         if self._form_config:
             self._form_config = _resolve_templates_in_structure(
-                self._form_config, kw,
+                self._form_config, kw, columns=cols,
             )
 
 
