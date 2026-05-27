@@ -300,7 +300,7 @@ export class ProjectSection extends CollapsibleSection {
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {
-      project_name: this._nameInput.value || undefined,
+      project_name: this._nameInput.value.trim(),
       project_enabled: this._projectCb.checked,
       config_enabled: this._configCb.checked,
       form_enabled: this._formCb.checked,
