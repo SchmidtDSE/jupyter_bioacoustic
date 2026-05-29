@@ -5,9 +5,8 @@
  * holds types used across multiple files.
  */
 
-/** A single row of the input data. Requires at minimum id, start_time, end_time. */
+/** A single row of the input data. Requires at minimum start_time, end_time. */
 export interface Detection {
-  id: number;
   start_time: number;
   end_time: number;
   [key: string]: any;
