@@ -833,6 +833,7 @@ _CONFIG_PARAMS = {
     'data', 'data_path', 'data_url', 'data_sql',
     'data_api', 'data_start_time', 'data_end_time',
     'data_duration', 'data_secrets',
+    'data_index_column',
     'audio', 'audio_src', 'audio_path', 'audio_url',
     'audio_uri', 'audio_column', 'audio_prefix',
     'audio_suffix', 'audio_fallback', 'audio_secrets',
@@ -841,7 +842,7 @@ _CONFIG_PARAMS = {
     'secrets',
     'output', 'output_path', 'output_url', 'output_uri',
     'output_sync_button', 'output_recursive',
-    'output_secrets',
+    'output_secrets', 'output_index_column',
     'info_card_title', 'info_card_text', 'display_columns',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
@@ -882,6 +883,7 @@ class BioacousticAnnotator:
         data_end_time=_UNSET,
         data_duration=_UNSET,
         data_secrets=_UNSET,
+        data_index_column=_UNSET,
         audio=_UNSET,
         audio_src=_UNSET,
         audio_path=_UNSET,
@@ -903,6 +905,7 @@ class BioacousticAnnotator:
         output_sync_button=_UNSET,
         output_recursive=_UNSET,
         output_secrets=_UNSET,
+        output_index_column=_UNSET,
         description=_UNSET,
         description_title=_UNSET,
         description_text=_UNSET,
@@ -952,6 +955,8 @@ class BioacousticAnnotator:
             data_duration: Column name or fixed number for clip duration.
             data_secrets: Auth for data loading. ``{key, value}`` pairs
                 where value is ``env:VAR``, ``dialog``, or a literal.
+            data_index_column: Column name that uniquely identifies
+                each row in the input data. Required.
             audio: Audio source. String: local path, URL/URI, or column
                 name (auto-detected). Dict form:
                 ``{path|url|uri|column|sql|api|src, prefix, suffix,
@@ -982,6 +987,8 @@ class BioacousticAnnotator:
             output_recursive: Passed to ``io.write()`` for uploading
                 directories.
             output_secrets: Auth for sync uploads.
+            output_index_column: Column name for the row identifier
+                in the output file. Defaults to ``data_index_column``.
             description: Description panel config — True, string (markdown
                 text), file path, or dict.
             description_title: Description panel title.
@@ -1280,6 +1287,49 @@ class BioacousticAnnotator:
                     columns=renames,
                 )
 
+        _dict_idx = (
+            raw_data.get('index_column')
+            if isinstance(raw_data, dict) else None
+        )
+        idx_col = (
+            resolve(
+                data_index_column,
+                'data_index_column', None,
+            )
+            or _dict_idx
+        )
+        if idx_col is None:
+            raise ValueError(
+                "'data_index_column' is required — set it "
+                "to the column that uniquely identifies "
+                "each row in the input data."
+            )
+        if idx_col not in loaded_data.columns:
+            raise ValueError(
+                f"data_index_column '{idx_col}' not found "
+                f"in data columns: "
+                f"{list(loaded_data.columns)}"
+            )
+        self._data_index_column = idx_col
+
+        raw_output_for_idx = resolve(
+            output, 'output', _UNSET,
+        )
+        _dict_out_idx = (
+            raw_output_for_idx.get('index_column')
+            if isinstance(raw_output_for_idx, dict)
+            else None
+        )
+        out_idx_col = (
+            resolve(
+                output_index_column,
+                'output_index_column', None,
+            )
+            or _dict_out_idx
+            or idx_col
+        )
+        self._output_index_column = out_idx_col
+
         self._init_audio(
             resolve, cfg, audio, audio_src, audio_path,
             audio_url, audio_uri, audio_column,
@@ -1500,6 +1550,10 @@ class BioacousticAnnotator:
         )
         ns['_BA_DESCRIPTION_HEIGHT'] = str(
             self._description_height,
+        )
+        ns['_BA_DATA_INDEX_COL'] = self._data_index_column
+        ns['_BA_OUTPUT_INDEX_COL'] = (
+            self._output_index_column
         )
         ns['_BA_PROJECT_PATH'] = self._project_file or ''
         ns['_BA_CONFIG_PATH'] = self._config_file or ''
