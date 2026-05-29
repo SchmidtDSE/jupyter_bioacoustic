@@ -28,6 +28,7 @@ VALID_FORM_KEYS = frozenset({
 VALID_CONFIG_KEYS = frozenset({
     'data', 'data_path', 'data_url', 'data_sql', 'data_api',
     'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
+    'data_index_column',
     'display_columns',
     'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
     'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
@@ -36,6 +37,7 @@ VALID_CONFIG_KEYS = frozenset({
     'secrets',
     'output', 'output_path', 'output_url', 'output_uri',
     'output_sync_button', 'output_recursive', 'output_secrets',
+    'output_index_column',
     'info_card_title', 'info_card_text',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
@@ -104,6 +106,8 @@ def validate_config(
     if config:
         _validate_config_keys(config, 'config', errors)
 
+    if config or project:
+        _validate_required_fields(config or {}, project or {}, errors)
     _validate_forms_and_annotations(fc, errors, warnings)
 
     if errors:
@@ -138,6 +142,26 @@ def _validate_config_keys(
             errors.append(f'Unknown {label} key "{key}"')
         elif key == 'form_config' and isinstance(cfg[key], dict):
             _validate_form_keys(cfg[key], errors)
+
+
+def _validate_required_fields(
+    config: dict, project: dict, errors: list,
+) -> None:
+    """Check that required fields are present across config/project."""
+    cfg_data = config.get('data')
+    proj_data = project.get('data')
+    has_idx = (
+        'data_index_column' in config
+        or 'data_index_column' in project
+        or (isinstance(cfg_data, dict) and cfg_data.get('index_column'))
+        or (isinstance(proj_data, dict) and proj_data.get('index_column'))
+    )
+    if not has_idx:
+        errors.append(
+            '"data_index_column" is required — set it to the '
+            'column that uniquely identifies each row in the '
+            'input data'
+        )
 
 
 def _validate_forms_and_annotations(
