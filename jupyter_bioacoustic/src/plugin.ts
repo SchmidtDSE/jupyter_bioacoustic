@@ -215,6 +215,8 @@ class BioacousticWidget extends Widget {
       config_path: string;
       form_path: string;
       merged_config: string;
+      data_index_col: string;
+      output_index_col: string;
     };
     try {
       cfg = JSON.parse(raw);
@@ -274,11 +276,16 @@ class BioacousticWidget extends Widget {
       uri?: string; button?: string; recursive?: boolean;
     };
 
+    const dataIndexCol = cfg.data_index_col;
+    const outputIndexCol = cfg.output_index_col;
+
     this._form.setContext({
       formConfig,
       rows,
       duplicateEntries,
       outputPath,
+      dataIndexCol,
+      outputIndexCol,
       syncConfig,
       height: parseInt(cfg.form_panel_height) || undefined,
     });
@@ -302,6 +309,7 @@ class BioacousticWidget extends Widget {
       specResolutions,
       vizMeta,
       rows,
+      dataIndexCol,
       height: parseInt(cfg.player_height) || undefined,
     });
 
@@ -310,6 +318,7 @@ class BioacousticWidget extends Widget {
       rows,
       dataCols,
       duplicateEntries,
+      dataIndexCol,
       height: parseInt(cfg.clip_table_height) || undefined,
     });
 
