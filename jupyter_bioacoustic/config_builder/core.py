@@ -37,11 +37,15 @@ DEFAULT_PROJECT_DIR = 'projects'
 DEFAULT_CONFIG_DIR = 'config'
 DEFAULT_FORM_DIR = 'forms'
 DATA_PROJECT_KEYS = frozenset({'path', 'url', 'sql', 'api', 'secrets'})
-DATA_CONFIG_KEYS = frozenset({'start_time', 'end_time', 'duration'})
+DATA_CONFIG_KEYS = frozenset({'start_time', 'end_time', 'duration', 'index_column'})
 AUDIO_PROJECT_KEYS = frozenset({
     'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'
 })
 AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
+OUTPUT_PROJECT_KEYS = frozenset({
+    'path', 'uri', 'url', 'sync_button', 'recursive', 'secrets',
+})
+OUTPUT_CONFIG_KEYS = frozenset({'index_column'})
 SECTION_KEYS = frozenset({'data', 'audio', 'output'})
 APP_KEYS = frozenset({
     'info_card_title', 'info_card_text',
@@ -115,7 +119,7 @@ class ConfigBuilder:
             'project': 'project',
             'data': 'split',
             'audio': 'split',
-            'output': 'project',
+            'output': 'split',
             'app': 'config',
             'form': 'form_config',
         }
@@ -236,10 +240,29 @@ class ConfigBuilder:
             for k, v in data.items():
                 if v is not None and v != '' and v != []:
                     output_dict[k] = v
-            if target == 'project':
+            if target == 'split':
+                proj_part = {
+                    k: v for k, v in output_dict.items()
+                    if k in OUTPUT_PROJECT_KEYS
+                }
+                conf_part = {
+                    k: v for k, v in output_dict.items()
+                    if k not in OUTPUT_PROJECT_KEYS
+                }
+                if proj_part:
+                    self._project['output'] = proj_part
+                elif 'output' in self._project:
+                    del self._project['output']
+                if conf_part:
+                    self._config['output'] = conf_part
+                elif 'output' in self._config:
+                    del self._config['output']
+            elif target == 'project':
                 self._project['output'] = output_dict
+                self._config.pop('output', None)
             else:
                 self._config['output'] = output_dict
+                self._project.pop('output', None)
 
         elif section == 'app':
             dest = self._project if target == 'project' else self._config
