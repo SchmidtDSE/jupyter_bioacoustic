@@ -83,6 +83,7 @@ export class ClipTable {
 
   private _rows: Detection[] = [];
   private _filtered: Detection[] = [];
+  private _dataIndexCol = 'id';
   private _sortCol = 'id';
   private _sortAsc = true;
   private _page = 0;
@@ -122,11 +123,14 @@ export class ClipTable {
     rows: Detection[];
     dataCols: string[];
     duplicateEntries: boolean;
+    dataIndexCol: string;
     height?: number;
   }): void {
     if (opts.height) {
       this._tableWrap.style.maxHeight = `${opts.height}px`;
     }
+    this._dataIndexCol = opts.dataIndexCol;
+    this._sortCol = opts.dataIndexCol;
     this._rows = opts.rows;
     this._configureColumns(opts);
     this._detectColumnTypes();
@@ -645,7 +649,7 @@ export class ClipTable {
       this._tableCols = Object.keys(opts.rows[0]).map(k => ({ key: k, label: prettify(k) }));
     } else {
       this._tableCols = [
-        { key: 'id', label: 'ID' },
+        { key: this._dataIndexCol, label: 'ID' },
         { key: 'start_time', label: 'Start (s)' },
         { key: 'end_time', label: 'End (s)' },
       ];
@@ -746,9 +750,11 @@ export class ClipTable {
 
     // Apply view mode filter
     if (this._viewMode === 'pending') {
-      rows = rows.filter(r => !this._form.getReviewedMap().has(r.id));
+      const idxCol = this._dataIndexCol;
+      rows = rows.filter(r => !this._form.getReviewedMap().has(r[idxCol]));
     } else if (this._viewMode === 'reviewed') {
-      rows = rows.filter(r => this._form.getReviewedMap().has(r.id));
+      const idxCol = this._dataIndexCol;
+      rows = rows.filter(r => this._form.getReviewedMap().has(r[idxCol]));
     }
 
     this._filtered = rows;
