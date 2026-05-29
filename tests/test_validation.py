@@ -86,11 +86,11 @@ class TestConfigKeys:
         assert any('bogus_key' in e for e in result['errors'])
 
     def test_valid_config_key(self):
-        result = validate_config(config={'data': 'x'})
+        result = validate_config(config={'data': 'x', 'data_index_column': 'id'})
         assert result['valid']
 
     def test_session_args_is_valid_key(self):
-        result = validate_config(config={'session_args': True})
+        result = validate_config(config={'session_args': True, 'data_index_column': 'id'})
         assert result['valid']
 
 
@@ -287,27 +287,27 @@ class TestConfigKeyHeights:
     """Verify all height/layout config keys are accepted."""
 
     def test_clip_table_height_valid(self):
-        result = validate_config(config={'clip_table_height': 200})
+        result = validate_config(config={'clip_table_height': 200, 'data_index_column': 'id'})
         assert result['valid']
 
     def test_player_height_valid(self):
-        result = validate_config(config={'player_height': 400})
+        result = validate_config(config={'player_height': 400, 'data_index_column': 'id'})
         assert result['valid']
 
     def test_info_card_height_valid(self):
-        result = validate_config(config={'info_card_height': 50})
+        result = validate_config(config={'info_card_height': 50, 'data_index_column': 'id'})
         assert result['valid']
 
     def test_form_panel_height_valid(self):
-        result = validate_config(config={'form_panel_height': 180})
+        result = validate_config(config={'form_panel_height': 180, 'data_index_column': 'id'})
         assert result['valid']
 
     def test_capture_height_valid(self):
-        result = validate_config(config={'capture_height': 300})
+        result = validate_config(config={'capture_height': 300, 'data_index_column': 'id'})
         assert result['valid']
 
     def test_display_columns_valid(self):
-        result = validate_config(config={'display_columns': ['a', 'b']})
+        result = validate_config(config={'display_columns': ['a', 'b'], 'data_index_column': 'id'})
         assert result['valid']
 
     def test_description_keys_valid(self):
@@ -317,5 +317,56 @@ class TestConfigKeyHeights:
             'description_path': 'desc.md',
             'description_open': True,
             'description_height': 200,
+            'data_index_column': 'id',
         })
+        assert result['valid']
+
+    def test_data_index_column_valid(self):
+        result = validate_config(config={'data_index_column': 'id'})
+        assert result['valid']
+
+    def test_output_index_column_valid(self):
+        result = validate_config(config={
+            'output_index_column': 'review_id',
+            'data_index_column': 'id',
+        })
+        assert result['valid']
+
+
+#
+# required field validation
+#
+class TestRequiredFields:
+    """Tests for required field validation."""
+
+    def test_missing_data_index_column_error(self):
+        result = validate_config(config={'data': 'x'})
+        assert not result['valid']
+        assert any('data_index_column' in e for e in result['errors'])
+
+    def test_data_index_column_top_level(self):
+        result = validate_config(config={'data_index_column': 'id'})
+        assert result['valid']
+
+    def test_data_index_column_in_data_dict(self):
+        result = validate_config(
+            config={'data': {'path': 'x', 'index_column': 'id'}},
+        )
+        assert result['valid']
+
+    def test_data_index_column_in_project(self):
+        result = validate_config(
+            project={'data_index_column': 'id'},
+        )
+        assert result['valid']
+
+    def test_data_index_column_in_project_data_dict(self):
+        result = validate_config(
+            project={'data': {'path': 'x', 'index_column': 'id'}},
+        )
+        assert result['valid']
+
+    def test_form_only_skips_required_check(self):
+        """Form-only validation should not require data_index_column."""
+        result = validate_config(form_config={'title': 'Test'})
         assert result['valid']
