@@ -2,6 +2,7 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
 
 export class OutputSection extends CollapsibleSection {
+  private _indexColInput: HTMLInputElement;
   private _uriInput: HTMLInputElement;
   private _syncBtnCb: HTMLInputElement;
   private _syncLabelInput: HTMLInputElement;
@@ -9,7 +10,11 @@ export class OutputSection extends CollapsibleSection {
   private _secrets: SecretsEditor;
 
   constructor() {
-    super('Output', 'output', false, true);
+    super('Output', 'output', false, true, ['split', 'project', 'config']);
+
+    this._indexColInput = this._makeInput('e.g. id', '150px');
+    this._indexColInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('index_column', this._indexColInput));
 
     this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
     this._uriInput.addEventListener('input', () => this._emitChanged());
@@ -37,6 +42,7 @@ export class OutputSection extends CollapsibleSection {
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
+    if (this._indexColInput.value) result.index_column = this._indexColInput.value;
     if (this._uriInput.value) result.uri = this._uriInput.value;
     if (this._syncBtnCb.checked) {
       result.sync_button = this._syncLabelInput.value || true;
@@ -47,7 +53,12 @@ export class OutputSection extends CollapsibleSection {
     return result;
   }
 
+  setColumnOptions(_cols: string[]): void {
+    // Output index_column is free-form text (may differ from data columns)
+  }
+
   setData(data: Record<string, any>): void {
+    if (data.index_column) this._indexColInput.value = data.index_column;
     if (data.uri || data.url) this._uriInput.value = data.uri || data.url;
     if (data.sync_button) {
       this._syncBtnCb.checked = true;
