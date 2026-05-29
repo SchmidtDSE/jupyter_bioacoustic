@@ -370,3 +370,32 @@ class TestRequiredFields:
         """Form-only validation should not require data_index_column."""
         result = validate_config(form_config={'title': 'Test'})
         assert result['valid']
+
+    def test_output_index_column_warning_when_missing(self):
+        result = validate_config(config={'data_index_column': 'id'})
+        assert result['valid']
+        assert any('output_index_column' in w for w in result['warnings'])
+        assert any('"id"' in w for w in result['warnings'])
+
+    def test_output_index_column_no_warning_when_set(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output_index_column': 'review_id',
+        })
+        assert result['valid']
+        assert not any('output_index_column' in w for w in result['warnings'])
+
+    def test_output_index_column_no_warning_in_output_dict(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output': {'index_column': 'review_id'},
+        })
+        assert result['valid']
+        assert not any('output_index_column' in w for w in result['warnings'])
+
+    def test_output_index_column_no_warning_in_project(self):
+        result = validate_config(
+            project={'data_index_column': 'id', 'output_index_column': 'rid'},
+        )
+        assert result['valid']
+        assert not any('output_index_column' in w for w in result['warnings'])
