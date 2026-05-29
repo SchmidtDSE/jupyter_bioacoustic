@@ -8,6 +8,7 @@ export class AudioSection extends CollapsibleSection {
   private _sourceType: HTMLSelectElement;
   private _valueInput: HTMLInputElement;
   private _colSelect: HTMLSelectElement;
+  private _colInput: HTMLInputElement;
   private _browseBtn: HTMLButtonElement;
   private _pathRow: HTMLDivElement;
   private _prefixInput: HTMLInputElement;
@@ -35,11 +36,14 @@ export class AudioSection extends CollapsibleSection {
     this._colSelect = this._makeSelect([], '');
     this._colSelect.style.display = 'none';
     this._colSelect.addEventListener('change', () => this._emitChanged());
+    this._colInput = this._makeInput('column name', '150px');
+    this._colInput.style.display = 'none';
+    this._colInput.addEventListener('input', () => this._emitChanged());
     this._browseBtn = this._makeButton('Browse');
     this._browseBtn.addEventListener('click', () => {
       this.browseRequested.emit(this._valueInput.value || '.');
     });
-    this._pathRow.append(this._valueInput, this._colSelect, this._browseBtn);
+    this._pathRow.append(this._valueInput, this._colSelect, this._colInput, this._browseBtn);
     this._body.appendChild(this._pathRow);
 
     this._prefixInput = this._makeInput('optional prefix', '200px');
@@ -73,21 +77,29 @@ export class AudioSection extends CollapsibleSection {
       o.value = col; o.textContent = col;
       this._colSelect.appendChild(o);
     }
+    const pending = this._colInput.value.trim();
+    if (pending && cols.includes(pending)) {
+      this._colSelect.value = pending;
+    }
     this._updateValueUI();
   }
 
   private _updateValueUI(): void {
     const sourceType = this._sourceType.value;
     const isCol = sourceType === 'column';
+    const hasCols = this._availableCols.length > 0;
     this._valueInput.style.display = isCol ? 'none' : '';
-    this._colSelect.style.display = isCol ? '' : 'none';
+    this._colSelect.style.display = (isCol && hasCols) ? '' : 'none';
+    this._colInput.style.display = (isCol && !hasCols) ? '' : 'none';
     this._browseBtn.style.display = (sourceType === 'path') ? '' : 'none';
   }
 
   getData(): Record<string, any> {
     const sourceType = this._sourceType.value;
     const result: Record<string, any> = {};
-    let val = sourceType === 'column' ? this._colSelect.value : this._valueInput.value;
+    let val = sourceType === 'column'
+      ? (this._availableCols.length > 0 ? this._colSelect.value : this._colInput.value.trim())
+      : this._valueInput.value;
 
     if (val && sourceType === 'url/uri') {
       // Auto-detect protocol and choose appropriate field
@@ -123,7 +135,13 @@ export class AudioSection extends CollapsibleSection {
       this._sourceType.value = 'url/uri';
       this._valueInput.value = data.url || data.uri;
     }
-    else if (data.column) { this._sourceType.value = 'column'; this._colSelect.value = data.column; }
+    else if (data.column) {
+      this._sourceType.value = 'column';
+      this._colInput.value = data.column;
+      if (this._availableCols.includes(data.column)) {
+        this._colSelect.value = data.column;
+      }
+    }
     if (data.prefix) this._prefixInput.value = data.prefix;
     if (data.suffix) this._suffixInput.value = data.suffix;
     if (data.fallback) this._fallbackInput.value = data.fallback;
