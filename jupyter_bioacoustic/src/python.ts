@@ -53,6 +53,8 @@ export function readKernelVars(): string {
     `  'config_path': _BA_CONFIG_PATH,`,
     `  'form_path': _BA_FORM_PATH,`,
     `  'merged_config': _BA_MERGED_CONFIG,`,
+    `  'data_index_col': _BA_DATA_INDEX_COL,`,
+    `  'output_index_col': _BA_OUTPUT_INDEX_COL,`,
     `}))`,
   ].join('\n');
 }
