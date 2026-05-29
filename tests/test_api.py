@@ -367,6 +367,7 @@ class TestMergeProjectOverConfig:
 def _make_df():
     """Create a minimal DataFrame for annotator tests."""
     return pd.DataFrame({
+        'id': [1, 2],
         'start_time': [0.0, 1.0],
         'end_time': [1.0, 2.0],
         'audio_path': ['a.wav', 'b.wav'],
@@ -378,12 +379,14 @@ class TestAnnotatorConfig:
     def test_config_returns_dict(self):
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
+            data_index_column='id',
         )
         assert isinstance(ba.config, dict)
 
     def test_config_is_copy(self):
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
+            data_index_column='id',
         )
         cfg = ba.config
         cfg['injected'] = True
@@ -393,6 +396,7 @@ class TestAnnotatorConfig:
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             info_card_title='[[audio_path]]',
+            data_index_column='id',
         )
         assert ba.config == {}
 
@@ -402,6 +406,7 @@ class TestAnnotatorConfig:
             'audio': {'column': 'audio_path'},
             'info_card_title': '[[audio_path]]',
             'default_buffer': 5,
+            'data_index_column': 'id',
         }
         cfg_file = tmp_path / 'config.yaml'
         cfg_file.write_text(yaml.dump(cfg_data))
@@ -423,6 +428,7 @@ class TestAnnotatorConfig:
             'audio': {'column': 'audio_path'},
             'info_card_title': '[[audio_path]]',
             'default_buffer': 5,
+            'data_index_column': 'id',
         }
         nested_file = tmp_path / 'base.yaml'
         nested_file.write_text(yaml.dump(nested_cfg))
@@ -484,28 +490,33 @@ class TestAnnotatorTimeColumns:
 
     def test_custom_start_time_col(self):
         df = pd.DataFrame({
+            'id': [1, 2],
             'begin': [0.0, 1.0],
             'end_time': [1.0, 2.0],
             'audio_path': ['a.wav', 'b.wav'],
         })
         ba = BioacousticAnnotator(
             data=df, audio='audio_path', data_start_time='begin',
+            data_index_column='id',
         )
         assert 'start_time' in ba.source.columns
 
     def test_custom_end_time_col(self):
         df = pd.DataFrame({
+            'id': [1, 2],
             'start_time': [0.0, 1.0],
             'stop': [1.0, 2.0],
             'audio_path': ['a.wav', 'b.wav'],
         })
         ba = BioacousticAnnotator(
             data=df, audio='audio_path', data_end_time='stop',
+            data_index_column='id',
         )
         assert 'end_time' in ba.source.columns
 
     def test_both_time_cols_remapped(self):
         df = pd.DataFrame({
+            'id': [1, 2],
             'begin': [0.0, 1.0],
             'stop': [1.0, 2.0],
             'audio_path': ['a.wav', 'b.wav'],
@@ -513,6 +524,7 @@ class TestAnnotatorTimeColumns:
         ba = BioacousticAnnotator(
             data=df, audio='audio_path',
             data_start_time='begin', data_end_time='stop',
+            data_index_column='id',
         )
         assert 'start_time' in ba.source.columns
         assert 'end_time' in ba.source.columns
@@ -527,18 +539,22 @@ class TestAnnotatorDataColumns:
 
     def test_display_columns_stored(self):
         df = pd.DataFrame({
-            'start_time': [0.0], 'end_time': [1.0],
+            'id': [1], 'start_time': [0.0], 'end_time': [1.0],
             'species': ['owl'], 'confidence': [0.9],
             'audio_path': ['a.wav'],
         })
         ba = BioacousticAnnotator(
             data=df, audio='audio_path',
             display_columns=['species', 'confidence'],
+            data_index_column='id',
         )
         assert ba._data_columns == ['species', 'confidence']
 
     def test_display_columns_default_empty(self):
-        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
         assert ba._data_columns == []
 
 
@@ -548,52 +564,72 @@ class TestAnnotatorDataColumns:
 class TestAnnotatorHeightParams:
 
     def test_clip_table_height_default(self):
-        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
         assert ba._clip_table_height == DEFAULT_CLIP_TABLE_HEIGHT
 
     def test_clip_table_height_custom(self):
         ba = BioacousticAnnotator(
-            data=_make_df(), audio='audio_path', clip_table_height=200,
+            data=_make_df(), audio='audio_path',
+            clip_table_height=200, data_index_column='id',
         )
         assert ba._clip_table_height == 200
 
     def test_player_height_default(self):
-        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
         assert ba._player_height == DEFAULT_PLAYER_HEIGHT
 
     def test_player_height_custom(self):
         ba = BioacousticAnnotator(
-            data=_make_df(), audio='audio_path', player_height=400,
+            data=_make_df(), audio='audio_path',
+            player_height=400, data_index_column='id',
         )
         assert ba._player_height == 400
 
     def test_info_card_height_default(self):
-        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
         assert ba._info_card_height == DEFAULT_INFO_CARD_HEIGHT
 
     def test_info_card_height_custom(self):
         ba = BioacousticAnnotator(
-            data=_make_df(), audio='audio_path', info_card_height=50,
+            data=_make_df(), audio='audio_path',
+            info_card_height=50, data_index_column='id',
         )
         assert ba._info_card_height == 50
 
     def test_form_panel_height_default(self):
-        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
         assert ba._form_panel_height == DEFAULT_FORM_PANEL_HEIGHT
 
     def test_form_panel_height_custom(self):
         ba = BioacousticAnnotator(
-            data=_make_df(), audio='audio_path', form_panel_height=200,
+            data=_make_df(), audio='audio_path',
+            form_panel_height=200, data_index_column='id',
         )
         assert ba._form_panel_height == 200
 
     def test_capture_height_default_none(self):
-        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
         assert ba._capture_height is None
 
     def test_capture_height_custom(self):
         ba = BioacousticAnnotator(
-            data=_make_df(), audio='audio_path', capture_height=300,
+            data=_make_df(), audio='audio_path',
+            capture_height=300, data_index_column='id',
         )
         assert ba._capture_height == 300
 
@@ -607,6 +643,7 @@ class TestAnnotatorSyncParams:
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             output={'path': 'out.csv', 'uri': 's3://bucket/out.csv'},
+            data_index_column='id',
         )
         assert ba._sync_uri == 's3://bucket/out.csv'
 
@@ -614,6 +651,7 @@ class TestAnnotatorSyncParams:
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             output_uri='s3://bucket/out.csv',
+            data_index_column='id',
         )
         assert ba._sync_uri == 's3://bucket/out.csv'
 
@@ -621,6 +659,7 @@ class TestAnnotatorSyncParams:
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             output={'path': 'out.csv', 'sync_button': 'Upload'},
+            data_index_column='id',
         )
         assert ba._sync_button == 'Upload'
 
@@ -628,6 +667,7 @@ class TestAnnotatorSyncParams:
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             output={'path': 'out.csv', 'uri': 's3://bucket/out.csv'},
+            data_index_column='id',
         )
         assert ba._sync_button == 'Sync'
 
@@ -635,13 +675,14 @@ class TestAnnotatorSyncParams:
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             output={'path': 'out.csv', 'recursive': True},
+            data_index_column='id',
         )
         assert ba._sync_recursive is True
 
     def test_sync_recursive_default_false(self):
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
-            output='out.csv',
+            output='out.csv', data_index_column='id',
         )
         assert ba._sync_recursive is False
 
@@ -656,5 +697,97 @@ class TestAnnotatorSecrets:
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             secrets={'key': 'Authorization', 'value': 'env:JBA_TEST_TOKEN'},
+            data_index_column='id',
         )
         assert ba._audio_config['secrets'] == {'Authorization': 'tok123'}
+
+
+#
+# BioacousticAnnotator — data_index_column / output_index_column
+#
+class TestAnnotatorIndexColumns:
+
+    def test_data_index_column_required(self):
+        """Missing data_index_column raises ValueError."""
+        with pytest.raises(ValueError, match='data_index_column.*required'):
+            BioacousticAnnotator(
+                data=_make_df(), audio='audio_path',
+            )
+
+    def test_data_index_column_not_in_data(self):
+        """data_index_column pointing to missing column raises ValueError."""
+        with pytest.raises(ValueError, match='not found'):
+            BioacousticAnnotator(
+                data=_make_df(), audio='audio_path',
+                data_index_column='nonexistent',
+            )
+
+    def test_data_index_column_stored(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
+        assert ba._data_index_column == 'id'
+
+    def test_data_index_column_uppercase(self):
+        """Uppercase ID column should work when specified."""
+        df = pd.DataFrame({
+            'ID': [1, 2],
+            'start_time': [0.0, 1.0],
+            'end_time': [1.0, 2.0],
+            'audio_path': ['a.wav', 'b.wav'],
+        })
+        ba = BioacousticAnnotator(
+            data=df, audio='audio_path',
+            data_index_column='ID',
+        )
+        assert ba._data_index_column == 'ID'
+
+    def test_output_index_column_defaults_to_data(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
+        assert ba._output_index_column == 'id'
+
+    def test_output_index_column_custom(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+            output_index_column='review_id',
+        )
+        assert ba._output_index_column == 'review_id'
+
+    def test_data_index_column_from_data_dict(self):
+        """data.index_column in dict form should be resolved."""
+        df = _make_df()
+        ba = BioacousticAnnotator(
+            data={'path': df, 'index_column': 'id'},
+            audio='audio_path',
+        )
+        assert ba._data_index_column == 'id'
+
+    def test_output_index_column_from_output_dict(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+            output={'path': 'out.csv', 'index_column': 'out_id'},
+        )
+        assert ba._output_index_column == 'out_id'
+
+    def test_data_index_column_from_config_file(self, tmp_path):
+        import yaml
+        cfg = {
+            'audio': {'column': 'audio_path'},
+            'data_index_column': 'id',
+        }
+        cfg_file = tmp_path / 'config.yaml'
+        cfg_file.write_text(yaml.dump(cfg))
+
+        data_file = tmp_path / 'data.csv'
+        _make_df().to_csv(data_file, index=False)
+
+        ba = BioacousticAnnotator(
+            data=str(data_file), config=str(cfg_file),
+        )
+        assert ba._data_index_column == 'id'
