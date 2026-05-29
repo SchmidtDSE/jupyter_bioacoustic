@@ -107,7 +107,9 @@ def validate_config(
         _validate_config_keys(config, 'config', errors)
 
     if config or project:
-        _validate_required_fields(config or {}, project or {}, errors)
+        _validate_required_fields(
+            config or {}, project or {}, errors, warnings,
+        )
     _validate_forms_and_annotations(fc, errors, warnings)
 
     if errors:
@@ -145,22 +147,38 @@ def _validate_config_keys(
 
 
 def _validate_required_fields(
-    config: dict, project: dict, errors: list,
+    config: dict, project: dict,
+    errors: list, warnings: list,
 ) -> None:
     """Check that required fields are present across config/project."""
     cfg_data = config.get('data')
     proj_data = project.get('data')
-    has_idx = (
-        'data_index_column' in config
-        or 'data_index_column' in project
+    idx_val = (
+        config.get('data_index_column')
+        or project.get('data_index_column')
         or (isinstance(cfg_data, dict) and cfg_data.get('index_column'))
         or (isinstance(proj_data, dict) and proj_data.get('index_column'))
     )
-    if not has_idx:
+    if not idx_val:
         errors.append(
             '"data_index_column" is required — set it to the '
             'column that uniquely identifies each row in the '
             'input data'
+        )
+        return
+
+    cfg_out = config.get('output')
+    proj_out = project.get('output')
+    has_out_idx = (
+        'output_index_column' in config
+        or 'output_index_column' in project
+        or (isinstance(cfg_out, dict) and cfg_out.get('index_column'))
+        or (isinstance(proj_out, dict) and proj_out.get('index_column'))
+    )
+    if not has_out_idx:
+        warnings.append(
+            f'"output_index_column" not set — '
+            f'will default to "{idx_val}"'
         )
 
 
