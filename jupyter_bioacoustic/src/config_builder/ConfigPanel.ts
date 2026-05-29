@@ -146,6 +146,7 @@ export class ConfigPanel {
     this._data.columnsLoaded.connect((_, cols) => {
       this._app.setColumnOptions(cols);
       this._audio.setColumnOptions(cols);
+      this._output.setColumnOptions(cols);
     });
 
     this._audio.browseRequested.connect((_, dir) => {
@@ -529,10 +530,8 @@ export class ConfigPanel {
         if (mergedData) this._data.setData(mergedData);
         const mergedAudio = this._resolveSectionData('audio', targets, proj, conf);
         if (mergedAudio) this._audio.setData(mergedAudio);
-        const outputSource = targets.output === 'config' ? conf : proj;
-        if (outputSource.output && typeof outputSource.output === 'object') {
-          this._output.setData(outputSource.output);
-        }
+        const mergedOutput = this._resolveSectionData('output', targets, proj, conf);
+        if (mergedOutput) this._output.setData(mergedOutput);
         const appSource = targets.app === 'config' ? { ...proj, ...conf } : proj;
         this._app.setData(appSource);
       }
@@ -692,9 +691,8 @@ export class ConfigPanel {
     for (const sec of [this._data, this._audio]) {
       sec.setTargetOptions(splitOpts);
     }
-    for (const sec of [this._output, this._app]) {
-      sec.setTargetOptions(baseOpts);
-    }
+    this._output.setTargetOptions(splitOpts);
+    this._app.setTargetOptions(baseOpts);
 
     const formOpts: string[] = [...baseOpts];
     if (states.form) formOpts.push('form');
