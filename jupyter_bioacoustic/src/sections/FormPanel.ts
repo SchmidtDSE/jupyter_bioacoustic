@@ -111,7 +111,7 @@ export class FormPanel {
   private _multiboxContainer: HTMLDivElement | null = null;
 
   // Reviewed state (for duplicate_entries=false)
-  private _reviewedMap: Map<number, Record<string, any>[]> = new Map();
+  private _reviewedMap: Map<string | number, Record<string, any>[]> = new Map();
   private _showingReviewedView = false;
   private _reviewedTool = '';
 
@@ -119,6 +119,8 @@ export class FormPanel {
   private _rows: Detection[] = [];
   private _duplicateEntries = false;
   private _outputPath = '';
+  private _dataIndexCol = '';
+  private _outputIndexCol = '';
   private _syncConfig: { uri?: string; button?: string; recursive?: boolean } = {};
   private _syncBtn: HTMLButtonElement | null = null;
   private _selectedIdx = -1;
@@ -160,6 +162,8 @@ export class FormPanel {
     rows: Detection[];
     duplicateEntries: boolean;
     outputPath: string;
+    dataIndexCol: string;
+    outputIndexCol: string;
     syncConfig?: { uri?: string; button?: string; recursive?: boolean };
     height?: number;
     projectSaveBtn?: string;
@@ -171,6 +175,8 @@ export class FormPanel {
     this._rows = opts.rows;
     this._duplicateEntries = opts.duplicateEntries;
     this._outputPath = opts.outputPath;
+    this._dataIndexCol = opts.dataIndexCol;
+    this._outputIndexCol = opts.outputIndexCol;
     this._syncConfig = opts.syncConfig ?? {};
   }
 
@@ -200,6 +206,14 @@ export class FormPanel {
     this._accuracy = null;
     this._progressEls = [];
     this._accuracyConfig = null;
+
+    if (this._dataIndexCol) {
+      this._passValueDefs.push({
+        sourceCol: this._dataIndexCol,
+        col: this._outputIndexCol || this._dataIndexCol,
+      });
+      this._formValues[this._outputIndexCol || this._dataIndexCol] = null;
+    }
 
     const cfg = this._formConfig;
     if (!cfg) {
@@ -386,9 +400,12 @@ export class FormPanel {
   // ─── End multibox API ──────────────────────────────────────
 
   /** Read the full reviewed map (for ClipTable row styling). */
-  getReviewedMap(): Map<number, Record<string, any>[]> {
+  getReviewedMap(): Map<string | number, Record<string, any>[]> {
     return this._reviewedMap;
   }
+
+  /** The data index column name. */
+  get dataIndexCol(): string { return this._dataIndexCol; }
 
   /** True if a row has been reviewed and duplicate_entries is off. */
   isReviewed(row: Detection): boolean {
@@ -434,8 +451,8 @@ export class FormPanel {
   }
 
   /** Load reviewed state from the output file (called during init when
-   *  duplicate_entries=false). Matches output rows to input rows by
-   *  pass_value id mapping, or start_time+end_time fallback. */
+   *  duplicate_entries=false). Matches output rows to input rows via
+   *  the configured data/output index columns. */
   async loadReviewedState(): Promise<void> {
     if (this._duplicateEntries || !this._outputPath) return;
     this._reviewedMap.clear();
@@ -448,27 +465,20 @@ export class FormPanel {
       outputRows = JSON.parse(await this._kernel.exec(code));
     } catch { return; }
 
-    const idMapping = this._passValueDefs.find(pv => pv.sourceCol === 'id');
-    const outIdCol = idMapping?.col;
+    const outCol = this._outputIndexCol;
+    const srcCol = this._dataIndexCol;
 
     for (const outRow of outputRows) {
-      let inputId: number | null = null;
-      if (outIdCol && outRow[outIdCol] !== undefined) {
-        inputId = Number(outRow[outIdCol]);
-      } else {
-        const st = Number(outRow['start_time'] ?? NaN);
-        const et = Number(outRow['end_time'] ?? NaN);
-        if (!isNaN(st) && !isNaN(et)) {
-          const match = this._rows.find(r =>
-            Math.abs(r.start_time - st) < 0.01 && Math.abs(r.end_time - et) < 0.01);
-          if (match) inputId = match.id;
-        }
-      }
-      if (inputId !== null) {
-        const arr = this._reviewedMap.get(inputId);
-        if (arr) arr.push(outRow);
-        else this._reviewedMap.set(inputId, [outRow]);
-      }
+      if (!outCol || outRow[outCol] === undefined) continue;
+      const outVal = outRow[outCol];
+      const match = this._rows.find(
+        r => String(r[srcCol]) === String(outVal),
+      );
+      if (!match) continue;
+      const key = match[srcCol];
+      const arr = this._reviewedMap.get(key);
+      if (arr) arr.push(outRow);
+      else this._reviewedMap.set(key, [outRow]);
     }
   }
 
@@ -1706,14 +1716,14 @@ export class FormPanel {
   // ─── Private: reviewed state ────────────────────────────────
 
   private _isRowReviewed(row: Detection): boolean {
-    return !this._duplicateEntries && this._reviewedMap.has(row.id);
+    return !this._duplicateEntries && this._reviewedMap.has(row[this._dataIndexCol]);
   }
 
   private _showReviewedResult(row: Detection): void {
     this._dynFormEl.innerHTML = '';
     this._submitBtns = [];
     this._showingReviewedView = true;
-    const rows = this._reviewedMap.get(row.id);
+    const rows = this._reviewedMap.get(row[this._dataIndexCol]);
     if (!rows || rows.length === 0) return;
 
     const title = document.createElement('div');
@@ -1888,7 +1898,7 @@ export class FormPanel {
           await this._kernel.exec(code);
         }
         this.statusChanged.emit({
-          message: `✓ Saved ${n} boxes for clip ${activeRow.id} → ${this._outputPath}`,
+          message: `✓ Saved ${n} boxes for clip ${activeRow[this._dataIndexCol]} → ${this._outputPath}`,
           error: false,
         });
       } catch (e: any) {
@@ -1908,7 +1918,7 @@ export class FormPanel {
           Object.assign(rv, entry.formValues);
           return rv;
         });
-        this._reviewedMap.set(activeRow.id, multiRows);
+        this._reviewedMap.set(activeRow[this._dataIndexCol], multiRows);
       }
       void this._refreshAccuracy().then(() => this._updateProgress());
       void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
@@ -1922,7 +1932,7 @@ export class FormPanel {
     const code = writeOutputRow(this._outputPath, values);
     try {
       await this._kernel.exec(code);
-      this.statusChanged.emit({ message: `✓ Saved clip ${activeRow.id} → ${this._outputPath}`, error: false });
+      this.statusChanged.emit({ message: `✓ Saved clip ${activeRow[this._dataIndexCol]} → ${this._outputPath}`, error: false });
     } catch (e: any) {
       const summary = e instanceof KernelError ? e.message : String(e.message ?? e);
       if (e instanceof KernelError) console.error('[JBA] Write failed:', e.traceback);
@@ -1931,7 +1941,7 @@ export class FormPanel {
     }
     this._sessionCount++;
     if (!this._duplicateEntries) {
-      this._reviewedMap.set(activeRow.id, [{ ...values }]);
+      this._reviewedMap.set(activeRow[this._dataIndexCol], [{ ...values }]);
     }
     void this._refreshAccuracy().then(() => this._updateProgress());
     void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
@@ -1940,19 +1950,22 @@ export class FormPanel {
   }
 
   private _currentRow: Detection | null = null;
-  private _currentRowId(): number { return this._currentRow?.id ?? -1; }
-  private _rowById(id: number): number {
-    return this._rows.findIndex(r => r.id === id);
+  private _currentRowId(): string | number {
+    return this._currentRow?.[this._dataIndexCol] ?? -1;
+  }
+  private _rowById(id: string | number): number {
+    return this._rows.findIndex(
+      r => String(r[this._dataIndexCol]) === String(id),
+    );
   }
 
   private async _onDeleteReview(row: Detection): Promise<void> {
     if (!confirm('Delete this review? This cannot be undone.')) return;
 
-    const idMapping = this._passValueDefs.find(pv => pv.sourceCol === 'id');
-    const outIdCol = idMapping?.col;
-    const matchExpr = outIdCol
-      ? `str(r.get('${escPy(outIdCol)}','')) == '${row.id}'`
-      : `abs(_sf(r.get('start_time'))-${row.start_time})<0.01 and abs(_sf(r.get('end_time'))-${row.end_time})<0.01`;
+    const outCol = this._outputIndexCol;
+    const rowIdx = row[this._dataIndexCol];
+    const matchExpr =
+      `str(r.get('${escPy(outCol)}','')) == '${escPy(String(rowIdx))}'`;
     const code = deleteOutputRow(this._outputPath, matchExpr);
 
     try {
@@ -1962,7 +1975,7 @@ export class FormPanel {
       return;
     }
 
-    this._reviewedMap.delete(row.id);
+    this._reviewedMap.delete(rowIdx);
     this._reviewedTool = '';
     this._reviewedMultiboxEntries = [];
     this._sessionCount = 0;
@@ -1972,7 +1985,7 @@ export class FormPanel {
     // Rebuild the form and show it
     await this.build();
     this._applyRow(row);
-    this.statusChanged.emit({ message: `✓ Review deleted for clip ${row.id}`, error: false });
+    this.statusChanged.emit({ message: `✓ Review deleted for clip ${rowIdx}`, error: false });
 
     void this._kernel.exec(
       INVALIDATE_OUTPUT_CACHE
