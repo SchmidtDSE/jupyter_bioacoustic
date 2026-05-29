@@ -164,6 +164,7 @@ class TestConfigBuilderValidate:
     def test_skip_keys_not_flagged(self):
         cb = ConfigBuilder()
         cb._project = {k: 'val' for k in list(SKIP_KEYS)[:3]}
+        cb._config = {'data_index_column': 'id'}
         result = cb.validate()
         assert result['valid'] is True
 
@@ -308,6 +309,42 @@ class TestUpdateSection:
         cb._section_targets['app'] = 'project'
         cb.update_section('app', {'info_card_title': '[[species]]', 'width': ''})
         assert 'width' not in cb._project
+
+    def test_update_data_split_index_column(self):
+        """index_column should route to config in split mode."""
+        cb = ConfigBuilder()
+        cb._section_targets['data'] = 'split'
+        cb.update_section('data', {
+            'path': 'data.csv', 'index_column': 'id',
+        })
+        assert cb._project['data'] == {'path': 'data.csv'}
+        assert cb._config['data'] == {'index_column': 'id'}
+
+    def test_update_output_split(self):
+        """Output section split routes index_column to config."""
+        cb = ConfigBuilder()
+        cb._section_targets['output'] = 'split'
+        cb.update_section('output', {
+            'uri': 's3://bucket/out.csv', 'index_column': 'id',
+        })
+        assert cb._project['output'] == {'uri': 's3://bucket/out.csv'}
+        assert cb._config['output'] == {'index_column': 'id'}
+
+    def test_update_output_to_config(self):
+        cb = ConfigBuilder()
+        cb._section_targets['output'] = 'config'
+        cb.update_section('output', {'index_column': 'id'})
+        assert cb._config['output'] == {'index_column': 'id'}
+
+    def test_update_output_to_project(self):
+        cb = ConfigBuilder()
+        cb._section_targets['output'] = 'project'
+        cb.update_section('output', {
+            'uri': 's3://bucket/out.csv', 'index_column': 'id',
+        })
+        assert cb._project['output'] == {
+            'uri': 's3://bucket/out.csv', 'index_column': 'id',
+        }
 
 
 #
