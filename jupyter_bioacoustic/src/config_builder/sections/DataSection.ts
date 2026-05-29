@@ -115,8 +115,6 @@ export class DataSection extends CollapsibleSection {
     }
     if (currentIdx && this._detectedCols.includes(currentIdx)) {
       this._indexColSelect.value = currentIdx;
-    } else {
-      this._indexColSelect.value = this._autoDetectIndexCol();
     }
 
     const cols = this._detectedCols.length > 0 ? this._detectedCols : ['start_time'];
@@ -174,11 +172,4 @@ export class DataSection extends CollapsibleSection {
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 
-  private _autoDetectIndexCol(): string {
-    const cols = this._detectedCols;
-    const exact = cols.find(c => c === 'id') ?? cols.find(c => c === 'ID');
-    if (exact) return exact;
-    const suffixed = cols.find(c => /_id$/i.test(c) || /-id$/i.test(c));
-    return suffixed ?? '';
-  }
 }
