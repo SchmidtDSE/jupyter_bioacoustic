@@ -50,6 +50,8 @@ export class FormPreview {
       rows: [],
       duplicateEntries: true,
       outputPath: '',
+      dataIndexCol: '',
+      outputIndexCol: '',
     });
 
     const el = this._formPanel.element;
