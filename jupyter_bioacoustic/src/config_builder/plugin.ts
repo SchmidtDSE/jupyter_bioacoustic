@@ -20,8 +20,9 @@ class ConfigBuilderWidget extends Widget {
   private _ownedKernel: any;
   private _panel!: ConfigPanel;
   private _titleEl!: HTMLSpanElement;
+  private _browserPath: string;
 
-  constructor(tracker: INotebookTracker, directKernel?: any, cwd?: string) {
+  constructor(tracker: INotebookTracker, directKernel?: any, cwd?: string, browserPath?: string) {
     super();
     this._kernelBridge = new KernelBridge(
       directKernel ? null : tracker,
@@ -29,6 +30,7 @@ class ConfigBuilderWidget extends Widget {
       cwd,
     );
     this._ownedKernel = directKernel ?? null;
+    this._browserPath = browserPath || '';
     this.id = `jp-config-builder-${_builderCounter++}`;
     this.title.label = 'Config Builder';
     this.title.closable = true;
@@ -68,11 +70,12 @@ class ConfigBuilderWidget extends Widget {
       return p.split('/').filter(Boolean).pop() || '.';
     };
     const cwdLabel = document.createElement('span');
-    cwdLabel.textContent = '.';
+    const displayPath = this._browserPath ? this._browserPath + '/' : '.';
+    cwdLabel.textContent = displayPath;
     cwdLabel.title = initialCwd;
     this._panel.onCwdReady((cwd) => {
       baseCwd = cwd;
-      cwdLabel.textContent = '.';
+      cwdLabel.textContent = displayPath;
       cwdLabel.title = cwd;
     });
     cwdLabel.style.cssText =
@@ -274,6 +277,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
           tracker,
           ownsKernel ? kernel : undefined,
           cwd,
+          browserPath,
         );
         app.shell.add(widget, 'main');
         app.shell.activateById(widget.id);
