@@ -107,6 +107,7 @@ export class Player {
   private _captureHeight: number | undefined;
   private _titleTemplate = '';
   private _currentRow: Detection | null = null;
+  private _dataIndexCol = 'id';
   private _rows: Detection[] = [];
   private _selectedIdx = -1;
 
@@ -132,6 +133,7 @@ export class Player {
     specResolutions: string[];
     vizMeta: Array<{type: string; key?: string; label: string; freq_scale?: string; index: number}>;
     rows: Detection[];
+    dataIndexCol: string;
     height?: number;
   }): void {
     if (opts.height) {
@@ -143,6 +145,7 @@ export class Player {
     this._captureDir = opts.captureDir;
     this._captureHeight = opts.captureHeight;
     this._titleTemplate = opts.titleTemplate;
+    this._dataIndexCol = opts.dataIndexCol;
     this._rows = opts.rows;
     this._bufferInput.value = String(opts.defaultBuffer);
     this._specResolutions = opts.specResolutions;
@@ -1656,7 +1659,7 @@ export class Player {
         }
       }
     }
-    return `clip_${row.id}.png`;
+    return `clip_${row[this._dataIndexCol]}.png`;
   }
 
   private async _onCapture(): Promise<void> {
