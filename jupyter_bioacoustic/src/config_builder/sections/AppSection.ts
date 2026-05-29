@@ -24,15 +24,26 @@ export class AppSection extends CollapsibleSection {
   private _availableCols: string[] = [];
   private _dispChipsArea: HTMLDivElement;
   private _dispPickerArea: HTMLDivElement;
+  private _dispTextInput: HTMLInputElement;
   private _secrets: SecretsEditor;
 
   constructor() {
     super('Application', 'app', false, true);
 
+    this._dispTextInput = this._makeInput('col1, col2, col3', '250px');
+    this._dispTextInput.addEventListener('input', () => {
+      this._dispColsSet = true;
+      this._dispCols = this._dispTextInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      this._emitChanged();
+    });
     this._dispChipsArea = this._makeChipsArea();
+    this._dispChipsArea.style.display = 'none';
     this._dispPickerArea = this._makePickerArea();
     const dispWrap = this._makeColumnGroupWrapper();
-    dispWrap.append(this._makeSectionLabel('display_columns', 'display columns'), this._dispChipsArea, this._dispPickerArea);
+    dispWrap.append(
+      this._makeSectionLabel('display_columns', 'display columns'),
+      this._dispTextInput, this._dispChipsArea, this._dispPickerArea,
+    );
     this._body.appendChild(dispWrap);
 
     this._titleInput = this._makeInput('[[common_name]]', '220px');
@@ -157,6 +168,18 @@ export class AppSection extends CollapsibleSection {
 
   setColumnOptions(cols: string[]): void {
     this._availableCols = cols;
+    if (cols.length > 0) {
+      if (this._dispCols.length === 0 && this._dispTextInput.value.trim()) {
+        this._dispCols = this._dispTextInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      this._dispTextInput.style.display = 'none';
+      this._dispChipsArea.style.display = '';
+      this._rebuildChips(this._dispChipsArea, this._dispCols);
+    } else {
+      this._dispTextInput.value = this._dispCols.join(', ');
+      this._dispTextInput.style.display = '';
+      this._dispChipsArea.style.display = 'none';
+    }
     this._rebuildPicker(this._dispPickerArea, this._dispCols);
   }
 
@@ -406,7 +429,12 @@ export class AppSection extends CollapsibleSection {
     if ('display_columns' in data && Array.isArray(data.display_columns)) {
       this._dispCols = [...data.display_columns];
       this._dispColsSet = true;
-      this._rebuildChips(this._dispChipsArea, this._dispCols);
+      this._dispTextInput.value = this._dispCols.join(', ');
+      if (this._availableCols.length > 0) {
+        this._dispTextInput.style.display = 'none';
+        this._dispChipsArea.style.display = '';
+        this._rebuildChips(this._dispChipsArea, this._dispCols);
+      }
       this._rebuildPicker(this._dispPickerArea, this._dispCols);
     }
     if (data.info_card_title) this._titleInput.value = data.info_card_title;
