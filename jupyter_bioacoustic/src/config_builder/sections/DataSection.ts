@@ -10,6 +10,8 @@ export class DataSection extends CollapsibleSection {
   private _sourceType: HTMLSelectElement;
   private _pathInput: HTMLInputElement;
   private _indexColSelect: HTMLSelectElement;
+  private _indexColInput: HTMLInputElement;
+  private _indexColRow: HTMLDivElement;
   private _startTimeSelect: HTMLSelectElement;
   private _endTimeSelect: HTMLSelectElement;
   private _durationInput: HTMLInputElement;
@@ -35,6 +37,16 @@ export class DataSection extends CollapsibleSection {
       this._emitChanged();
       this._scheduleAutoLoad();
     });
+    this._pathInput.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
+      if (this._debounceTimer) clearTimeout(this._debounceTimer);
+      const path = this._pathInput.value.trim();
+      if (path && /\.(csv|parquet|json|jsonl|tsv)$/i.test(path)) {
+        this.fileLoadRequested.emit(path);
+      } else {
+        this.setDetectedColumns([]);
+      }
+    });
     this._browseBtn = this._makeButton('Browse');
     this._browseBtn.addEventListener('click', () => {
       this.browseRequested.emit(this._pathInput.value || '.');
@@ -42,9 +54,17 @@ export class DataSection extends CollapsibleSection {
     pathRow.append(this._pathInput, this._browseBtn);
     this._body.appendChild(pathRow);
 
+    this._indexColInput = this._makeInput('e.g. id', '150px');
+    this._indexColInput.addEventListener('input', () => this._emitChanged());
     this._indexColSelect = this._makeSelect([], '');
+    this._indexColSelect.style.display = 'none';
     this._indexColSelect.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('index_column', this._indexColSelect));
+    this._indexColRow = this._makeRow();
+    this._indexColRow.appendChild(this._makeLabel('index_column'));
+    this._indexColRow.append(this._indexColInput, this._indexColSelect);
+    this._indexColRow.addEventListener('focusin', () => this.fieldFocused.emit('index_column'));
+    this._indexColRow.addEventListener('click', () => this.fieldFocused.emit('index_column'));
+    this._body.appendChild(this._indexColRow);
 
     this._startTimeSelect = this._makeSelect(['start_time'], 'start_time');
     this._startTimeSelect.addEventListener('change', () => this._emitChanged());
@@ -101,10 +121,10 @@ export class DataSection extends CollapsibleSection {
     const currentStart = this._startTimeSelect.value;
     const currentEnd = this._endTimeSelect.value;
 
-    this._indexColSelect.innerHTML = '';
     this._startTimeSelect.innerHTML = '';
     this._endTimeSelect.innerHTML = '';
 
+    this._indexColSelect.innerHTML = '';
     const placeholder = document.createElement('option');
     placeholder.value = ''; placeholder.textContent = '— select —';
     this._indexColSelect.appendChild(placeholder);
@@ -113,8 +133,16 @@ export class DataSection extends CollapsibleSection {
       o.value = col; o.textContent = col;
       this._indexColSelect.appendChild(o);
     }
-    if (currentIdx && this._detectedCols.includes(currentIdx)) {
-      this._indexColSelect.value = currentIdx;
+    const pending = currentIdx || this._indexColInput.value.trim();
+    if (pending && this._detectedCols.includes(pending)) {
+      this._indexColSelect.value = pending;
+    }
+    if (this._detectedCols.length > 0) {
+      this._indexColInput.style.display = 'none';
+      this._indexColSelect.style.display = '';
+    } else {
+      this._indexColInput.style.display = '';
+      this._indexColSelect.style.display = 'none';
     }
 
     const cols = this._detectedCols.length > 0 ? this._detectedCols : ['start_time'];
@@ -142,7 +170,9 @@ export class DataSection extends CollapsibleSection {
     const result: Record<string, any> = {};
     result[sourceKey] = this._pathInput.value || undefined;
 
-    const idx = this._indexColSelect.value;
+    const idx = this._detectedCols.length > 0
+      ? this._indexColSelect.value
+      : this._indexColInput.value.trim();
     if (idx) result.index_column = idx;
     const st = this._startTimeSelect.value;
     const et = this._endTimeSelect.value;
@@ -165,7 +195,12 @@ export class DataSection extends CollapsibleSection {
     else if (data.url) { this._sourceType.value = 'url'; this._pathInput.value = data.url; }
     else if (data.sql) { this._sourceType.value = 'sql'; this._pathInput.value = data.sql; }
     else if (data.api) { this._sourceType.value = 'api'; this._pathInput.value = data.api; }
-    if (data.index_column) this._indexColSelect.value = data.index_column;
+    if (data.index_column) {
+      this._indexColInput.value = data.index_column;
+      if (this._detectedCols.includes(data.index_column)) {
+        this._indexColSelect.value = data.index_column;
+      }
+    }
     if (data.start_time) this._startTimeSelect.value = data.start_time;
     if (data.end_time) this._endTimeSelect.value = data.end_time;
     if (data.duration !== undefined) this._durationInput.value = String(data.duration);
