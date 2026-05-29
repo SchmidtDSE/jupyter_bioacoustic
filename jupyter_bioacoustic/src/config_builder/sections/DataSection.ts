@@ -9,6 +9,7 @@ export class DataSection extends CollapsibleSection {
 
   private _sourceType: HTMLSelectElement;
   private _pathInput: HTMLInputElement;
+  private _indexColSelect: HTMLSelectElement;
   private _startTimeSelect: HTMLSelectElement;
   private _endTimeSelect: HTMLSelectElement;
   private _durationInput: HTMLInputElement;
@@ -40,6 +41,10 @@ export class DataSection extends CollapsibleSection {
     });
     pathRow.append(this._pathInput, this._browseBtn);
     this._body.appendChild(pathRow);
+
+    this._indexColSelect = this._makeSelect([], '');
+    this._indexColSelect.addEventListener('change', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('index_column', this._indexColSelect));
 
     this._startTimeSelect = this._makeSelect(['start_time'], 'start_time');
     this._startTimeSelect.addEventListener('change', () => this._emitChanged());
@@ -92,11 +97,27 @@ export class DataSection extends CollapsibleSection {
   }
 
   private _rebuildTimeSelects(): void {
+    const currentIdx = this._indexColSelect.value;
     const currentStart = this._startTimeSelect.value;
     const currentEnd = this._endTimeSelect.value;
 
+    this._indexColSelect.innerHTML = '';
     this._startTimeSelect.innerHTML = '';
     this._endTimeSelect.innerHTML = '';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = ''; placeholder.textContent = '— select —';
+    this._indexColSelect.appendChild(placeholder);
+    for (const col of this._detectedCols) {
+      const o = document.createElement('option');
+      o.value = col; o.textContent = col;
+      this._indexColSelect.appendChild(o);
+    }
+    if (currentIdx && this._detectedCols.includes(currentIdx)) {
+      this._indexColSelect.value = currentIdx;
+    } else {
+      this._indexColSelect.value = this._autoDetectIndexCol();
+    }
 
     const cols = this._detectedCols.length > 0 ? this._detectedCols : ['start_time'];
     for (const col of cols) {
@@ -123,6 +144,8 @@ export class DataSection extends CollapsibleSection {
     const result: Record<string, any> = {};
     result[sourceKey] = this._pathInput.value || undefined;
 
+    const idx = this._indexColSelect.value;
+    if (idx) result.index_column = idx;
     const st = this._startTimeSelect.value;
     const et = this._endTimeSelect.value;
     const dur = this._durationInput.value.trim();
@@ -144,9 +167,18 @@ export class DataSection extends CollapsibleSection {
     else if (data.url) { this._sourceType.value = 'url'; this._pathInput.value = data.url; }
     else if (data.sql) { this._sourceType.value = 'sql'; this._pathInput.value = data.sql; }
     else if (data.api) { this._sourceType.value = 'api'; this._pathInput.value = data.api; }
+    if (data.index_column) this._indexColSelect.value = data.index_column;
     if (data.start_time) this._startTimeSelect.value = data.start_time;
     if (data.end_time) this._endTimeSelect.value = data.end_time;
     if (data.duration !== undefined) this._durationInput.value = String(data.duration);
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
+  }
+
+  private _autoDetectIndexCol(): string {
+    const cols = this._detectedCols;
+    const exact = cols.find(c => c === 'id') ?? cols.find(c => c === 'ID');
+    if (exact) return exact;
+    const suffixed = cols.find(c => /_id$/i.test(c) || /-id$/i.test(c));
+    return suffixed ?? '';
   }
 }
