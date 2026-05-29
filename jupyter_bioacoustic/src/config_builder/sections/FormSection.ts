@@ -784,17 +784,35 @@ export class FormSection extends CollapsibleSection {
 
     const valSel = this._makeSelect([], '');
     valSel.style.width = '150px';
+    valSel.style.display = 'none';
     valSel.addEventListener('change', () => {
       if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
       cfg.items.value = valSel.value;
       this._emitChanged();
     });
 
+    const valInput = this._makeInput('value column', '150px');
+    if (cfg.items?.value) valInput.value = cfg.items.value;
+    valInput.addEventListener('input', () => {
+      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
+      cfg.items.value = valInput.value.trim();
+      this._emitChanged();
+    });
+
     const lblSel = this._makeSelect(['(none)'], '');
     lblSel.style.width = '150px';
+    lblSel.style.display = 'none';
     lblSel.addEventListener('change', () => {
       if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
       cfg.items.label = lblSel.value || undefined;
+      this._emitChanged();
+    });
+
+    const lblInput = this._makeInput('label column (optional)', '150px');
+    if (cfg.items?.label) lblInput.value = cfg.items.label;
+    lblInput.addEventListener('input', () => {
+      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
+      cfg.items.label = lblInput.value.trim() || undefined;
       this._emitChanged();
     });
 
@@ -812,13 +830,32 @@ export class FormSection extends CollapsibleSection {
         o2.value = col; o2.textContent = col;
         lblSel.appendChild(o2);
       }
-      if (cfg.items?.value && cols.includes(cfg.items.value)) valSel.value = cfg.items.value;
-      if (cfg.items?.label && cols.includes(cfg.items.label)) lblSel.value = cfg.items.label;
+      const pendingVal = valInput.value.trim();
+      if (pendingVal && cols.includes(pendingVal)) valSel.value = pendingVal;
+      else if (cfg.items?.value && cols.includes(cfg.items.value)) valSel.value = cfg.items.value;
+      const pendingLbl = lblInput.value.trim();
+      if (pendingLbl && cols.includes(pendingLbl)) lblSel.value = pendingLbl;
+      else if (cfg.items?.label && cols.includes(cfg.items.label)) lblSel.value = cfg.items.label;
+      valInput.style.display = 'none';
+      valSel.style.display = '';
+      lblInput.style.display = 'none';
+      lblSel.style.display = '';
+    };
+
+    const revertToText = () => {
+      valSel.style.display = 'none';
+      valInput.style.display = '';
+      valInput.value = valSel.value || valInput.value;
+      lblSel.style.display = 'none';
+      lblInput.style.display = '';
+      lblInput.value = lblSel.value || lblInput.value;
     };
 
     const loadCols = (path: string) => {
       if (path && /\.(csv|parquet|json|jsonl|tsv)$/i.test(path)) {
         this.columnsRequested.emit({ path, callback: populateSelects });
+      } else {
+        revertToText();
       }
     };
 
@@ -826,7 +863,10 @@ export class FormSection extends CollapsibleSection {
       if (!cfg.items || typeof cfg.items !== 'object' || Array.isArray(cfg.items)) cfg.items = {};
       cfg.items.path = pathInp.value;
       this._emitChanged();
-      loadCols(pathInp.value);
+    });
+    pathInp.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
+      loadCols(pathInp.value.trim());
     });
     const browseBtn = this._makeButton('Browse');
     browseBtn.addEventListener('click', () => {
@@ -843,8 +883,15 @@ export class FormSection extends CollapsibleSection {
     pathRow.append(pathInp, browseBtn);
     container.appendChild(pathRow);
 
-    container.appendChild(this._makeFieldRow('value col', valSel));
-    container.appendChild(this._makeFieldRow('label col', lblSel));
+    const valRow = this._makeRow();
+    valRow.appendChild(this._makeLabel('value col'));
+    valRow.append(valInput, valSel);
+    container.appendChild(valRow);
+
+    const lblRow = this._makeRow();
+    lblRow.appendChild(this._makeLabel('label col'));
+    lblRow.append(lblInput, lblSel);
+    container.appendChild(lblRow);
 
     if (pathInp.value) loadCols(pathInp.value);
 
