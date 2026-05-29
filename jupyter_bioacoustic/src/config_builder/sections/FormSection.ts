@@ -884,12 +884,12 @@ export class FormSection extends CollapsibleSection {
     container.appendChild(pathRow);
 
     const valRow = this._makeRow();
-    valRow.appendChild(this._makeLabel('value col'));
+    valRow.appendChild(this._makeLabel('value column'));
     valRow.append(valInput, valSel);
     container.appendChild(valRow);
 
     const lblRow = this._makeRow();
-    lblRow.appendChild(this._makeLabel('label col'));
+    lblRow.appendChild(this._makeLabel('label column'));
     lblRow.append(lblInput, lblSel);
     container.appendChild(lblRow);
 
