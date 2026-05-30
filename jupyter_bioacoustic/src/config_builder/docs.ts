@@ -5,19 +5,13 @@ export interface SectionDocs {
 
 export const DOCS: Record<string, SectionDocs> = {
   project: {
-    _intro: `Setup controls the project identity, file paths, and an optional description panel shown at the top of the annotator.`,
-    project_name: `(optional) Widget header title displayed at the top of the annotator.\nIf not set, it is auto-derived from the project filename.`,
-    '_sub:Configuration File Paths': `Configure where config files are saved and load existing configs. Enable or disable each file with the checkbox. With all three enabled, the project file references the config file, which references the form file. Uncheck a file to inline its contents into the parent.\n\nEach row has Browse and Load buttons. Click Load to read an existing file and populate the builder. Loading cascades: a project file loads its referenced config, which loads its referenced form.`,
+    _intro: `Setup controls project creation, loading, and configuration file paths.\nUse "Create New" to start a fresh project or "Load Existing" to open saved files.`,
+    '_sub:Create New': `Enter a project name and click Create. This generates default file paths under annotator_config/ and opens the other sections for editing.`,
+    '_sub:Load Existing': `Choose a file type (project, config, or form), browse or type a path, and click Load. Loading cascades: a project file loads its referenced config, which loads its referenced form.`,
+    '_sub:Configuration Files': `Controls which files are enabled and where they are saved. Each checkbox enables or disables a file — unchecking inlines its contents into the parent file.\n\n• Linked mode: all three files share the same base name. Editing the linked name updates all paths.\n• Duplicate: unlocks the paths for manual editing. Use this to save a copy under new filenames.\n• Lock: returns to read-only mode.`,
     'project file': `Project-specific configuration — data sources, audio paths, output locations, and anything unique to this particular review task. References the config file for shared app settings.\nLoad: populates all sections and cascades into config and form files if referenced.`,
-    'config file': `Application setup shared across multiple projects — layout options, column visibility, capture settings, heights, and general widget behavior. Referenced by the project file; references the form file.\nLoad: populates app/layout sections and cascades into the form file if referenced. The project file is updated to point to this config.`,
+    'config file': `Application setup shared across multiple projects — layout options, column visibility, capture settings, heights, and general widget behavior. Referenced by the project file; references the form file.\nLoad: populates app/layout sections and cascades into the form file if referenced.`,
     'form file': `Form definition only — the annotation interface controls (selects, textboxes, checkboxes, etc.) and dynamic forms. Kept separate so the same form can be reused across different project/config combinations.\nLoad: populates the form section only.`,
-    'output path': `(optional) Output file path for saved annotations.\nAuto-generated from project name if form is configured.\nExample: outputs/reviews.csv`,
-    '_sub:Description Panel': `Add an optional collapsible section at the top of the annotator for project descriptions, reviewer instructions, or other guidance. Accepts inline markdown or a path to a markdown file.`,
-    'description title': `(optional) Title shown in the collapsible description bar.\nDefault: "Description".`,
-    'description text': `(optional) Markdown-formatted text displayed in the description panel.\nSupports headings, lists, bold, italic, code blocks, links, and horizontal rules.`,
-    description_path: `(optional) Path to a markdown file whose contents populate the description panel.\nOverridden by text if both are set.`,
-    'description open': `(optional) Whether the description panel starts expanded.\nDefault: true.`,
-    'description height': `(optional) Max height in pixels for the description body.\nLeave empty for auto height. Set to constrain long descriptions with scroll.`,
   },
   data: {
     _intro: `Data is where you define your clip source — a table of detections or segments to review. Each row represents one clip. The table must have at minimum a start_time column (or you must map one). Supported formats: CSV, Parquet, JSON, JSONL.`,
@@ -50,7 +44,7 @@ export const DOCS: Record<string, SectionDocs> = {
   },
   output: {
     _intro: `Output controls where annotation results are saved.\nResults are written as a table (CSV/Parquet) with one row per submission. Optionally sync to remote storage.`,
-    path: `(optional) Output file path for saved annotations.\nAuto-generated from project name if form is configured.\nExample: outputs/reviews.csv`,
+    'output path': `(optional) Output file path for saved annotations.\nAuto-generated from project name if form is configured.\nExample: outputs/reviews.csv`,
     sync_uri: `(optional) Remote URI to sync the output file after writes.\nExample: s3://my-bucket/annotations/reviews.csv`,
     sync_button: `(optional) Show a sync button in the widget.\nSet to true for default "Sync" label, or provide a custom string.`,
     sync_label: `(optional) Text label shown next to the sync button.`,
@@ -59,6 +53,7 @@ export const DOCS: Record<string, SectionDocs> = {
   },
   app: {
     _intro: `Application settings control the widget layout, visible columns, and interaction features like capture and buffering.`,
+    project_name: `(optional) Widget header title displayed at the top of the annotator.\nIf not set, it is auto-derived from the project filename.`,
     display_columns: `(optional) Columns visible in the clip table.\nControls which columns appear as sortable table headers.`,
     info_card_title: `(optional) Template string shown prominently in the info card and used for naming captured files.\nSupports [[column_name]] placeholders.\nExample: "[[common_name]]"`,
     info_card_text: `(optional) Template string shown after the time range in the info card.\nSupports [[column_name]] placeholders.\nExample: "species: [[scientific_name]] | confidence: [[confidence]]"`,
@@ -73,6 +68,14 @@ export const DOCS: Record<string, SectionDocs> = {
     form_panel_height: `(optional) Form panel height in pixels. Default: 140.`,
     capture_height: `(optional) Capture image height in pixels.\nDefaults to player_height if not set.`,
     secrets: `(optional) Global key-value pairs for credentials available to all sections.\nSection-level secrets override global ones with the same key.`,
+  },
+  description: {
+    _intro: `Add an optional collapsible section at the top of the annotator for project descriptions, reviewer instructions, or other guidance. Accepts inline markdown or a path to a markdown file.`,
+    title: `(optional) Title shown in the collapsible description bar.\nDefault: "Description".`,
+    text: `(optional) Markdown-formatted text displayed in the description panel.\nSupports headings, lists, bold, italic, code blocks, links, and horizontal rules.`,
+    description_path: `(optional) Path to a markdown file whose contents populate the description panel.\nOverridden by text if both are set.`,
+    open: `(optional) Whether the description panel starts expanded.\nDefault: true.`,
+    height: `(optional) Max height in pixels for the description body.\nLeave empty for auto height. Set to constrain long descriptions with scroll.`,
   },
   form: {
     _intro: `Form defines the annotation interface — the controls users interact with to label each clip. Elements are rendered in order. Each element writes its value to a specified output column.\n\nElement types: title, select, textbox, checkbox, number, annotation, pass_value, fixed_value, submission_buttons.`,
