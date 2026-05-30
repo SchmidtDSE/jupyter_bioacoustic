@@ -1,3 +1,11 @@
+/**
+ * ConfigPanel
+ *
+ * Main orchestrator for the config builder. Wires all sections together,
+ * manages kernel communication, state syncing, and YAML preview.
+ *
+ * License: BSD 3-Clause
+ */
 import { COLORS, btnStyle } from '../styles';
 import { showDialog } from '../util';
 import { KernelBridge } from '../kernel';
@@ -18,12 +26,13 @@ import {
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
-import { ProjectSection } from './sections/ProjectSection';
+import { SetupSection } from './sections/SetupSection';
 import { DataSection } from './sections/DataSection';
 import { AudioSection } from './sections/AudioSection';
 import { OutputSection } from './sections/OutputSection';
 import { AppSection } from './sections/AppSection';
 import { FormSection } from './sections/FormSection';
+import { DescriptionSection } from './sections/DescriptionSection';
 import { CollapsibleSection } from './sections/CollapsibleSection';
 import { ConfigSummary } from './sections/ConfigSummary';
 
@@ -44,12 +53,13 @@ export class ConfigPanel {
   private _resolvedCwd = '';
   private _cwdCallbacks: Array<(cwd: string) => void> = [];
 
-  private _project: ProjectSection;
+  private _setup: SetupSection;
   private _data: DataSection;
   private _audio: AudioSection;
   private _output: OutputSection;
   private _app: AppSection;
   private _form: FormSection;
+  private _description: DescriptionSection;
   private _summary: ConfigSummary;
 
   constructor(kernel: KernelBridge) {
@@ -63,21 +73,23 @@ export class ConfigPanel {
     left.style.cssText =
       `display:flex;flex-direction:column;flex:1;overflow-y:auto;min-width:0;`;
 
-    this._project = new ProjectSection();
+    this._setup = new SetupSection();
     this._data = new DataSection();
     this._audio = new AudioSection();
     this._output = new OutputSection();
     this._app = new AppSection();
     this._form = new FormSection();
+    this._description = new DescriptionSection();
     this._summary = new ConfigSummary();
 
     this._sections = new Map<string, CollapsibleSection>([
-      ['project', this._project],
+      ['project', this._setup],
       ['data', this._data],
       ['audio', this._audio],
       ['output', this._output],
       ['app', this._app],
       ['form', this._form],
+      ['description', this._description],
     ]);
 
     for (const [name, section] of this._sections) {
@@ -95,49 +107,51 @@ export class ConfigPanel {
 
     this._form.changed.connect(() => void this._updateSummary());
 
-    for (const sec of [this._data, this._audio, this._output, this._app, this._form]) {
+    for (const sec of [this._data, this._audio, this._output, this._app, this._form, this._description]) {
       sec.targetChanged.connect((_, { section, target }) => {
         void this._onTargetChanged(section, target);
       });
     }
     this._app.setTarget('config');
     this._form.setTarget('form');
+    this._description.setTarget('project');
     left.appendChild(this._summary.element);
 
-    this._project.browseRequested.connect((_, { field, current }) => {
-      if (field === 'output_path') {
-        this._openBrowser(current, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._project.setOutputPath(p));
-      } else if (field === 'description_path') {
-        this._openBrowser(current, ['.md', '.txt', '.html'], (p) => this._project.setDescriptionPath(p));
-      } else {
-        const configSubdirs: Record<string, string> = {
-          project: 'annotator_config/projects',
-          config: 'annotator_config/config',
-          form: 'annotator_config/forms',
-        };
-        const onSelect = (p: string) => {
-          if (field === 'project') this._project.setProjectPath(p);
-          else if (field === 'config') this._project.setConfigPath(p);
-          else if (field === 'form') this._project.setFormPath(p);
-        };
+    this._setup.browseRequested.connect((_, { field, current }) => {
+      const configSubdirs: Record<string, string> = {
+        project: 'annotator_config/projects',
+        config: 'annotator_config/config',
+        form: 'annotator_config/forms',
+      };
+      if (field === 'project' || field === 'config' || field === 'form') {
         const preferred = configSubdirs[field];
         if (preferred) {
           void this._resolveConfigDir(preferred).then(dir => {
-            this._openBrowser(dir, ['.yaml', '.yml'], onSelect);
+            this._openBrowser(dir, ['.yaml', '.yml'], (p) => {
+              this._setup.setLoadPath(p);
+            });
           });
         } else {
-          this._openBrowser(current, ['.yaml', '.yml'], onSelect);
+          this._openBrowser(current, ['.yaml', '.yml'], (p) => {
+            this._setup.setLoadPath(p);
+          });
         }
       }
     });
 
-    this._project.projectEnabledChanged.connect((_, enabled) => {
+    this._setup.projectCreated.connect((_, name) => {
+      this._app.setProjectName(name);
+      void this._onSectionChanged('project');
+      void this._onSectionChanged('app');
+    });
+
+    this._setup.projectEnabledChanged.connect((_, enabled) => {
       void this._onProjectEnabledChanged(enabled);
     });
-    this._project.fileStatesChanged.connect((_, states) => {
+    this._setup.fileStatesChanged.connect((_, states) => {
       this._updateTargetOptions(states);
     });
-    this._project.loadConfigRequested.connect((_, { field, path }) => void this._onLoadConfig(path, field));
+    this._setup.loadConfigRequested.connect((_, { field, path }) => void this._onLoadConfig(path, field));
 
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
     this._data.browseRequested.connect((_, dir) => {
@@ -153,8 +167,16 @@ export class ConfigPanel {
       this._openBrowser(dir, ['.flac', '.wav', '.mp3', '.ogg', '.m4a', '.aac'], (p) => this._audio.setPath(p));
     });
 
+    this._output.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._output.setOutputPath(p));
+    });
+
     this._app.browseRequested.connect((_, dir) => {
       this._openBrowser(dir, [], (p) => this._app.setCaptureDir(p), true);
+    });
+
+    this._description.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, ['.md', '.txt', '.html'], (p) => this._description.setDescriptionPath(p));
     });
 
     this._form.browseRequested.connect((_, { callback }) => {
@@ -255,14 +277,42 @@ export class ConfigPanel {
     const section = this._sections.get(sectionName);
     if (!section) return;
 
-    const data = section.getData();
+    let data = section.getData();
+    let pySection = sectionName;
     const uiTarget = section.getTarget();
     const target = uiTarget === 'form' ? 'form_config' : uiTarget;
     this._dbg('sectionChanged', sectionName, data, 'target=', target);
     this._setStatus('Updating…');
 
+    if (sectionName === 'description') {
+      pySection = 'project';
+    }
+
+    if (sectionName === 'output') {
+      const outputPath = data.path;
+      if (outputPath) {
+        data = { ...data };
+        delete data.path;
+      }
+      try {
+        if (outputPath) {
+          const projData = this._setup.getData();
+          projData.output_path = outputPath;
+          await this._kernel.exec(updateSection('project', projData));
+        }
+        const raw = await this._kernel.exec(updateSection('output', data, target));
+        const state = JSON.parse(extractJson(raw));
+        this._applyStatePartial(state, sectionName);
+        void this._updateSummary();
+        this._setStatus('Ready');
+      } catch (e: any) {
+        this._setStatus(`Error: ${String(e.message ?? e)}`, true);
+      }
+      return;
+    }
+
     try {
-      const raw = await this._kernel.exec(updateSection(sectionName, data, target));
+      const raw = await this._kernel.exec(updateSection(pySection, data, target));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, sectionName);
       void this._updateSummary();
@@ -399,7 +449,7 @@ export class ConfigPanel {
   }
 
   private _activeFilePath(): { path: string; label: string } {
-    const d = this._project.getData();
+    const d = this._setup.getData();
     if (d.project_enabled && d.project_path) return { path: d.project_path, label: 'project' };
     if (d.config_enabled && d.config_path) return { path: d.config_path, label: 'config' };
     if (d.form_enabled && d.form_path) return { path: d.form_path, label: 'form' };
@@ -425,7 +475,7 @@ export class ConfigPanel {
   }
 
   get isProjectConfigured(): boolean {
-    const d = this._project.getData();
+    const d = this._setup.getData();
     return !!(d.project_enabled && d.project_path);
   }
 
@@ -433,7 +483,7 @@ export class ConfigPanel {
     await this._readyPromise;
     if (!this._ready) return null;
 
-    const projectData = this._project.getData();
+    const projectData = this._setup.getData();
     const enabled = [
       projectData.project_enabled && projectData.project_path,
       projectData.config_enabled && projectData.config_path,
@@ -441,7 +491,7 @@ export class ConfigPanel {
     ].filter(Boolean);
 
     if (enabled.length === 0) {
-      this._setStatus('Enable at least one output file in Project section', true);
+      this._setStatus('Enable at least one output file in Setup section', true);
       return null;
     }
 
@@ -554,24 +604,37 @@ export class ConfigPanel {
       if (state.project) {
         const proj = state.project || {};
         const conf = state.config || {};
-        const projWithDesc = { ...proj };
-        if (conf.description) projWithDesc.description = conf.description;
-        if (conf.description_title) projWithDesc.description_title = conf.description_title;
-        if (conf.description_text) projWithDesc.description_text = conf.description_text;
-        if (conf.description_path) projWithDesc.description_path = conf.description_path;
-        if (conf.description_open !== undefined) projWithDesc.description_open = conf.description_open;
-        if (conf.description_height) projWithDesc.description_height = conf.description_height;
-        this._project.setData(projWithDesc);
+        this._setup.setData(proj);
         const targets = state.section_targets || {};
+
+        if (proj.project_name) {
+          this._app.setProjectName(proj.project_name);
+        }
 
         const mergedData = this._resolveSectionData('data', targets, proj, conf);
         if (mergedData) this._data.setData(mergedData);
         const mergedAudio = this._resolveSectionData('audio', targets, proj, conf);
         if (mergedAudio) this._audio.setData(mergedAudio);
+
         const mergedOutput = this._resolveSectionData('output', targets, proj, conf);
-        if (mergedOutput) this._output.setData(mergedOutput);
+        const outputData: Record<string, any> = mergedOutput ? { ...mergedOutput } : {};
+        const outputPath = proj.output?.path || proj.output_path;
+        if (outputPath) outputData.path = outputPath;
+        if (Object.keys(outputData).length > 0) this._output.setData(outputData);
+
         const appSource = targets.app === 'config' ? { ...proj, ...conf } : proj;
         this._app.setData(appSource);
+
+        const descData: Record<string, any> = {};
+        for (const src of [proj, conf]) {
+          if (src.description) descData.description = src.description;
+          if (src.description_title) descData.description_title = src.description_title;
+          if (src.description_text) descData.description_text = src.description_text;
+          if (src.description_path) descData.description_path = src.description_path;
+          if (src.description_open !== undefined) descData.description_open = src.description_open;
+          if (src.description_height) descData.description_height = src.description_height;
+        }
+        if (Object.keys(descData).length > 0) this._description.setData(descData);
       }
       if (state.form_config && typeof state.form_config === 'object') {
         this._form.setData(state.form_config);
@@ -601,8 +664,8 @@ export class ConfigPanel {
   }
 
   onProjectStateChanged(cb: () => void): void {
-    this._project.projectEnabledChanged.connect(() => cb());
-    this._project.changed.connect(() => cb());
+    this._setup.projectEnabledChanged.connect(() => cb());
+    this._setup.changed.connect(() => cb());
   }
 
   get cwd(): string {
@@ -697,7 +760,7 @@ export class ConfigPanel {
     await this._readyPromise;
     if (!this._ready) return;
     try {
-      const raw = await this._kernel.exec(updateSection('project', this._project.getData()));
+      const raw = await this._kernel.exec(updateSection('project', this._setup.getData()));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, 'project');
     } catch { /* ignore */ }
@@ -731,6 +794,7 @@ export class ConfigPanel {
     }
     this._output.setTargetOptions(splitOpts);
     this._app.setTargetOptions(baseOpts);
+    this._description.setTargetOptions(baseOpts);
 
     const formOpts: string[] = [...baseOpts];
     if (states.form) formOpts.push('form');
