@@ -6,6 +6,7 @@ export class YamlPanel {
   readonly element: HTMLDivElement;
   readonly configEdited = new Signal<this, { yaml: string; configType: string }>(this);
   readonly saveSingleRequested = new Signal<this, string>(this);
+  readonly refreshRequested = new Signal<this, void>(this);
 
   private _expanded = true;
   private _editing = false;
@@ -118,7 +119,16 @@ export class YamlPanel {
       this.saveSingleRequested.emit(this._configType);
     });
 
-    header.append(this._editBtn, saveFileBtn);
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = 'Reload YAML';
+    refreshBtn.title = 'Reload active file from disk';
+    refreshBtn.style.cssText = btnStyle(true) + `font-size:11px;padding:2px 8px;`;
+    refreshBtn.addEventListener('click', () => this.refreshRequested.emit());
+
+    const headerSpacer = document.createElement('span');
+    headerSpacer.style.flex = '1';
+
+    header.append(this._editBtn, saveFileBtn, headerSpacer, refreshBtn);
 
     this._editBar = document.createElement('div');
     this._editBar.style.cssText =
@@ -223,7 +233,6 @@ export class YamlPanel {
       btn.style.background = t === this._configType ? COLORS.bgSurface0 : 'transparent';
       btn.style.color = t === this._configType ? COLORS.textPrimary : COLORS.textMuted;
     }
-
     this._yamls = yamls;
     this._updateYamlDisplay(yamls);
     this._renderDocs(section);
