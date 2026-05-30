@@ -52,9 +52,7 @@ export class DataSection extends CollapsibleSection {
     });
     this._browseBtn = this._makeButton('Browse');
     this._browseBtn.addEventListener('click', () => {
-      if (this._sourceType.value === 'path') {
-        this.browseRequested.emit(this._pathInput.value || '.');
-      }
+      this.browseRequested.emit(this._pathInput.value || '.');
     });
     pathRow.append(this._pathInput, this._browseBtn);
     this._body.appendChild(pathRow);
@@ -91,9 +89,7 @@ export class DataSection extends CollapsibleSection {
 
   private _updateValueUI(): void {
     const isPath = this._sourceType.value === 'path';
-    this._browseBtn.disabled = !isPath;
-    this._browseBtn.style.opacity = isPath ? '1' : '0.4';
-    this._browseBtn.style.cursor = isPath ? 'pointer' : 'default';
+    this._browseBtn.style.display = isPath ? '' : 'none';
   }
 
   private _scheduleAutoLoad(): void {
