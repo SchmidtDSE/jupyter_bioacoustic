@@ -18,7 +18,7 @@ export class OutputSection extends CollapsibleSection {
 
     this._indexColInput = this._makeInput('e.g. id', '150px');
     this._indexColInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('index_column', this._indexColInput));
+    this._body.appendChild(this._makeFieldRow('index_column', this._indexColInput, true));
 
     const pathRow = this._makeRow();
     pathRow.addEventListener('focusin', () => this.fieldFocused.emit('output path'));
