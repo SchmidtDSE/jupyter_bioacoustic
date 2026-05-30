@@ -1,7 +1,11 @@
+import { Signal } from '@lumino/signaling';
 import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
 
 export class OutputSection extends CollapsibleSection {
+  readonly browseRequested = new Signal<this, string>(this);
+
+  private _pathInput: HTMLInputElement;
   private _indexColInput: HTMLInputElement;
   private _uriInput: HTMLInputElement;
   private _syncBtnCb: HTMLInputElement;
@@ -11,6 +15,19 @@ export class OutputSection extends CollapsibleSection {
 
   constructor() {
     super('Output', 'output', false, true, ['split', 'project', 'config']);
+
+    const pathRow = this._makeRow();
+    pathRow.addEventListener('focusin', () => this.fieldFocused.emit('output path'));
+    pathRow.addEventListener('click', () => this.fieldFocused.emit('output path'));
+    pathRow.appendChild(this._makeLabel('path'));
+    this._pathInput = this._makeInput('outputs/my_project.csv', '200px');
+    this._pathInput.addEventListener('input', () => this._emitChanged());
+    const browseBtn = this._makeButton('Browse');
+    browseBtn.addEventListener('click', () => {
+      this.browseRequested.emit(this._pathInput.value || '.');
+    });
+    pathRow.append(this._pathInput, browseBtn);
+    this._body.appendChild(pathRow);
 
     this._indexColInput = this._makeInput('e.g. id', '150px');
     this._indexColInput.addEventListener('input', () => this._emitChanged());
@@ -40,8 +57,18 @@ export class OutputSection extends CollapsibleSection {
     this._body.appendChild(this._secrets.element);
   }
 
+  setOutputPath(path: string): void {
+    this._pathInput.value = path;
+    this._emitChanged();
+  }
+
+  getOutputPath(): string {
+    return this._pathInput.value;
+  }
+
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
+    if (this._pathInput.value) result.path = this._pathInput.value;
     if (this._indexColInput.value) result.index_column = this._indexColInput.value;
     if (this._uriInput.value) result.uri = this._uriInput.value;
     if (this._syncBtnCb.checked) {
@@ -58,6 +85,7 @@ export class OutputSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
+    if (data.path) this._pathInput.value = data.path;
     if (data.index_column) this._indexColInput.value = data.index_column;
     if (data.uri || data.url) this._uriInput.value = data.uri || data.url;
     if (data.sync_button) {
