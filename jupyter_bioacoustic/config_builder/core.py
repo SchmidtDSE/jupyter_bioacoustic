@@ -159,11 +159,12 @@ class ConfigBuilder:
             for k in SKIP_KEYS:
                 if k in data:
                     self._project[k] = data[k]
-            pn = data.get('project_name', '')
-            if pn:
-                self._project['project_name'] = pn
-            else:
-                self._project.pop('project_name', None)
+            if 'project_name' in data:
+                pn = data['project_name']
+                if pn:
+                    self._project['project_name'] = pn
+                else:
+                    self._project.pop('project_name', None)
             if 'output_path' in data:
                 op = data['output_path']
                 if op:
@@ -265,6 +266,11 @@ class ConfigBuilder:
                 self._project.pop('output', None)
 
         elif section == 'app':
+            pn = data.get('project_name', '')
+            if pn:
+                self._project['project_name'] = pn
+            else:
+                self._project.pop('project_name', None)
             dest = self._project if target == 'project' else self._config
             for k in APP_KEYS:
                 if k in data:
