@@ -172,6 +172,9 @@ export class ConfigPanel {
     this._yamlPanel.saveSingleRequested.connect((_, configType) => {
       void this._saveSingleFile(configType);
     });
+    this._yamlPanel.refreshRequested.connect(() => {
+      void this._confirmAndRefresh();
+    });
 
     const handle = document.createElement('div');
     handle.style.cssText =
@@ -384,6 +387,41 @@ export class ConfigPanel {
 
   async saveAndOpenAnnotator(): Promise<string | null> {
     return this._validateAndSave(true);
+  }
+
+  async refreshActive(): Promise<void> {
+    const { path } = this._activeFilePath();
+    if (!path) {
+      this._setStatus('No active file to refresh', true);
+      return;
+    }
+    await this._onLoadConfig(path);
+  }
+
+  private _activeFilePath(): { path: string; label: string } {
+    const d = this._project.getData();
+    if (d.project_enabled && d.project_path) return { path: d.project_path, label: 'project' };
+    if (d.config_enabled && d.config_path) return { path: d.config_path, label: 'config' };
+    if (d.form_enabled && d.form_path) return { path: d.form_path, label: 'form' };
+    return { path: '', label: '' };
+  }
+
+  private async _confirmAndRefresh(): Promise<void> {
+    const { path } = this._activeFilePath();
+    if (!path) {
+      this._setStatus('No active file to reload', true);
+      return;
+    }
+    const choice = await showDialog({
+      title: 'Reload YAML',
+      body: 'Reloading will erase unsaved changes. Continue?',
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Reload', primary: true },
+      ],
+    });
+    if (choice !== 'Reload') return;
+    await this._onLoadConfig(path);
   }
 
   get isProjectConfigured(): boolean {
