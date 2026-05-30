@@ -883,14 +883,24 @@ export class FormSection extends CollapsibleSection {
     pathRow.append(pathInp, browseBtn);
     container.appendChild(pathRow);
 
+    const hintStyle = `color:${COLORS.textSubtle};font-size:12px;white-space:nowrap;`;
+
     const valRow = this._makeRow();
     valRow.appendChild(this._makeLabel('value column'));
     valRow.append(valInput, valSel);
+    const valHint = document.createElement('span');
+    valHint.style.cssText = hintStyle;
+    valHint.textContent = '| source column whose value is written to output dataset';
+    valRow.appendChild(valHint);
     container.appendChild(valRow);
 
     const lblRow = this._makeRow();
     lblRow.appendChild(this._makeLabel('label column'));
     lblRow.append(lblInput, lblSel);
+    const lblHint = document.createElement('span');
+    lblHint.style.cssText = hintStyle;
+    lblHint.textContent = '| source column whose value is shown in dropdown (defaults to value column)';
+    lblRow.appendChild(lblHint);
     container.appendChild(lblRow);
 
     if (pathInp.value) loadCols(pathInp.value);
