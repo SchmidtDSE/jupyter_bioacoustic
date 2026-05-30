@@ -44,6 +44,7 @@ export const DOCS: Record<string, SectionDocs> = {
   },
   output: {
     _intro: `Output controls where annotation results are saved.\nResults are written as a table (CSV/Parquet) with one row per submission. Optionally sync to remote storage.`,
+    index_column: `(optional) Column name used as the unique row identifier in the output file.\nDefaults to the data index_column if not set. Set this when the output needs a different key than the input data.`,
     'output path': `(optional) Output file path for saved annotations.\nAuto-generated from project name if form is configured.\nExample: outputs/reviews.csv`,
     sync_uri: `(optional) Remote URI to sync the output file after writes.\nExample: s3://my-bucket/annotations/reviews.csv`,
     sync_button: `(optional) Show a sync button in the widget.\nSet to true for default "Sync" label, or provide a custom string.`,
