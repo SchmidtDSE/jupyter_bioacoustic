@@ -25,13 +25,16 @@ export class DataSection extends CollapsibleSection {
     super('Data', 'data', false, true, ['split', 'project', 'config']);
 
     this._sourceType = this._makeSelect(['path', 'url', 'sql', 'api'], 'path');
-    this._sourceType.addEventListener('change', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('source_type', this._sourceType));
+    this._sourceType.addEventListener('change', () => {
+      this._updateValueUI();
+      this._emitChanged();
+    });
+    this._body.appendChild(this._makeFieldRow('source_type', this._sourceType, true));
 
     const pathRow = this._makeRow();
-    pathRow.addEventListener('focusin', () => this.fieldFocused.emit('path'));
-    pathRow.addEventListener('click', () => this.fieldFocused.emit('path'));
-    pathRow.appendChild(this._makeLabel('path / url'));
+    pathRow.addEventListener('focusin', () => this.fieldFocused.emit('value'));
+    pathRow.addEventListener('click', () => this.fieldFocused.emit('value'));
+    pathRow.appendChild(this._makeLabel('value', true));
     this._pathInput = this._makeInput('data/detections.csv', '220px');
     this._pathInput.addEventListener('input', () => {
       this._emitChanged();
@@ -49,7 +52,9 @@ export class DataSection extends CollapsibleSection {
     });
     this._browseBtn = this._makeButton('Browse');
     this._browseBtn.addEventListener('click', () => {
-      this.browseRequested.emit(this._pathInput.value || '.');
+      if (this._sourceType.value === 'path') {
+        this.browseRequested.emit(this._pathInput.value || '.');
+      }
     });
     pathRow.append(this._pathInput, this._browseBtn);
     this._body.appendChild(pathRow);
@@ -60,7 +65,7 @@ export class DataSection extends CollapsibleSection {
     this._indexColSelect.style.display = 'none';
     this._indexColSelect.addEventListener('change', () => this._emitChanged());
     this._indexColRow = this._makeRow();
-    this._indexColRow.appendChild(this._makeLabel('index_column'));
+    this._indexColRow.appendChild(this._makeLabel('index_column', true));
     this._indexColRow.append(this._indexColInput, this._indexColSelect);
     this._indexColRow.addEventListener('focusin', () => this.fieldFocused.emit('index_column'));
     this._indexColRow.addEventListener('click', () => this.fieldFocused.emit('index_column'));
@@ -82,6 +87,13 @@ export class DataSection extends CollapsibleSection {
     this._secrets.changed.connect(() => this._emitChanged());
     this._secrets.focused.connect(() => this.fieldFocused.emit('secrets'));
     this._body.appendChild(this._secrets.element);
+  }
+
+  private _updateValueUI(): void {
+    const isPath = this._sourceType.value === 'path';
+    this._browseBtn.disabled = !isPath;
+    this._browseBtn.style.opacity = isPath ? '1' : '0.4';
+    this._browseBtn.style.cursor = isPath ? 'pointer' : 'default';
   }
 
   private _scheduleAutoLoad(): void {
