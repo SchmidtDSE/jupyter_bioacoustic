@@ -346,6 +346,41 @@ class TestUpdateSection:
             'uri': 's3://bucket/out.csv', 'index_column': 'id',
         }
 
+    def test_app_project_name_routes_to_project(self):
+        """project_name sent via app section always goes to _project."""
+        cb = ConfigBuilder()
+        cb._section_targets['app'] = 'config'
+        cb.update_section('app', {
+            'project_name': 'Test App Name',
+            'info_card_title': '[[species]]',
+        })
+        assert cb._project['project_name'] == 'Test App Name'
+        assert cb._config['info_card_title'] == '[[species]]'
+
+    def test_app_empty_project_name_pops(self):
+        """Empty project_name via app section removes it from _project."""
+        cb = ConfigBuilder()
+        cb._project['project_name'] = 'Old'
+        cb._section_targets['app'] = 'config'
+        cb.update_section('app', {'project_name': ''})
+        assert 'project_name' not in cb._project
+
+    def test_description_does_not_clear_project_name(self):
+        """Description update via project handler must not clear project_name."""
+        cb = ConfigBuilder()
+        cb._project['project_name'] = 'Keep Me'
+        cb.update_section('project', {
+            'description': {'title': 'Instructions', 'text': 'Do stuff'},
+        })
+        assert cb._project['project_name'] == 'Keep Me'
+        assert cb._project['description'] == {'title': 'Instructions', 'text': 'Do stuff'}
+
+    def test_output_path_via_project_handler(self):
+        """output_path sent via project handler sets output.path."""
+        cb = ConfigBuilder()
+        cb.update_section('project', {'output_path': 'outputs/reviews.csv'})
+        assert cb._project['output']['path'] == 'outputs/reviews.csv'
+
 
 #
 # ConfigBuilder._build_file_contents
