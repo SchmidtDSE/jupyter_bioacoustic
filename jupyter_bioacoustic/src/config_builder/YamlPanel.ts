@@ -322,14 +322,30 @@ export class YamlPanel {
       `border-left:3px solid ${COLORS.bgSurface1};transition:border-color 0.15s ease;`;
 
     const nameEl = document.createElement('div');
-    nameEl.textContent = key;
     nameEl.style.cssText =
-      `font-size:12px;font-weight:700;color:${COLORS.mauve};margin-bottom:4px;font-family:monospace;`;
+      `font-size:12px;font-weight:700;color:${COLORS.mauve};margin-bottom:4px;font-family:monospace;` +
+      `display:flex;align-items:center;gap:6px;`;
+
+    const nameText = document.createElement('span');
+    nameText.textContent = key;
+    nameEl.appendChild(nameText);
+
+    let desc = text;
+    const tagMatch = text.match(/^\(([^)]+)\)\s*/);
+    if (tagMatch) {
+      desc = text.slice(tagMatch[0].length);
+      const tag = document.createElement('span');
+      tag.textContent = tagMatch[1];
+      tag.style.cssText =
+        `font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px;font-family:sans-serif;` +
+        `background:${COLORS.teal}22;color:${COLORS.teal};`;
+      nameEl.appendChild(tag);
+    }
 
     const descEl = document.createElement('div');
     descEl.style.cssText =
       `font-size:11px;color:${COLORS.textSubtle};line-height:1.5;white-space:pre-wrap;`;
-    descEl.textContent = text;
+    descEl.textContent = desc;
 
     fieldEl.append(nameEl, descEl);
     return fieldEl;
