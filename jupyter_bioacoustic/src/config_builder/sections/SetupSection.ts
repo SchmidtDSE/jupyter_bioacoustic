@@ -2,7 +2,7 @@
  * SetupSection
  *
  * Two-mode project setup: Create New or Load Existing.
- * Configuration Files subsection with linked/duplicate/lock workflow.
+ * Configuration Files subsection with linked/rename/lock workflow.
  *
  * License: BSD 3-Clause
  */
@@ -300,7 +300,7 @@ export class SetupSection extends CollapsibleSection {
       section.appendChild(this._buildFileRow(ft));
     }
 
-    this._duplicateBtn = this._makeButton('Duplicate');
+    this._duplicateBtn = this._makeButton('Rename');
     this._duplicateBtn.style.cssText += `margin-top:4px;align-self:flex-start;`;
     this._duplicateBtn.addEventListener('click', () => this._onDuplicateOrLock());
     section.appendChild(this._duplicateBtn);
@@ -428,7 +428,7 @@ export class SetupSection extends CollapsibleSection {
     } else {
       this._locked = true;
       this._linkedToggle.disabled = true;
-      this._duplicateBtn.textContent = 'Duplicate';
+      this._duplicateBtn.textContent = 'Rename';
     }
     this._applyLockState();
   }
