@@ -159,11 +159,11 @@ export abstract class CollapsibleSection {
     return row;
   }
 
-  protected _makeLabel(text: string): HTMLLabelElement {
+  protected _makeLabel(text: string, required = false): HTMLLabelElement {
     const lbl = document.createElement('label');
     lbl.textContent = text;
     lbl.style.cssText =
-      `color:${COLORS.textSubtle};font-size:12px;min-width:100px;flex-shrink:0;`;
+      `color:${required ? COLORS.teal : COLORS.textSubtle};font-size:12px;min-width:100px;flex-shrink:0;`;
     return lbl;
   }
 
@@ -221,9 +221,9 @@ export abstract class CollapsibleSection {
   }
 
 
-  protected _makeFieldRow(labelText: string, input: HTMLElement): HTMLDivElement {
+  protected _makeFieldRow(labelText: string, input: HTMLElement, required = false): HTMLDivElement {
     const row = this._makeRow();
-    row.appendChild(this._makeLabel(labelText));
+    row.appendChild(this._makeLabel(labelText, required));
     row.appendChild(input);
     row.addEventListener('focusin', () => this.fieldFocused.emit(labelText));
     row.addEventListener('click', () => this.fieldFocused.emit(labelText));
