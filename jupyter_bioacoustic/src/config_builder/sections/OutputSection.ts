@@ -16,6 +16,10 @@ export class OutputSection extends CollapsibleSection {
   constructor() {
     super('Output', 'output', false, true, ['split', 'project', 'config']);
 
+    this._indexColInput = this._makeInput('e.g. id', '150px');
+    this._indexColInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('index_column', this._indexColInput));
+
     const pathRow = this._makeRow();
     pathRow.addEventListener('focusin', () => this.fieldFocused.emit('output path'));
     pathRow.addEventListener('click', () => this.fieldFocused.emit('output path'));
@@ -28,10 +32,6 @@ export class OutputSection extends CollapsibleSection {
     });
     pathRow.append(this._pathInput, browseBtn);
     this._body.appendChild(pathRow);
-
-    this._indexColInput = this._makeInput('e.g. id', '150px');
-    this._indexColInput.addEventListener('input', () => this._emitChanged());
-    this._body.appendChild(this._makeFieldRow('index_column', this._indexColInput));
 
     this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
     this._uriInput.addEventListener('input', () => this._emitChanged());
