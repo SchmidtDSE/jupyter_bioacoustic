@@ -6,6 +6,7 @@ import { SecretsEditor } from './SecretsEditor';
 export class AppSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, string>(this);
 
+  private _projectNameInput: HTMLInputElement;
   private _titleInput: HTMLInputElement;
   private _textInput: HTMLInputElement;
   private _dispCols: string[] = [];
@@ -29,6 +30,10 @@ export class AppSection extends CollapsibleSection {
 
   constructor() {
     super('Application', 'app', false, true);
+
+    this._projectNameInput = this._makeInput('e.g. Bird Review', '250px');
+    this._projectNameInput.addEventListener('input', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('project_name', this._projectNameInput));
 
     this._dispTextInput = this._makeInput('col1, col2, col3', '250px');
     this._dispTextInput.addEventListener('input', () => {
@@ -388,6 +393,8 @@ export class AppSection extends CollapsibleSection {
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
+    const pn = this._projectNameInput.value.trim();
+    if (pn) result.project_name = pn;
     if (this._dispColsSet) result.display_columns = this._dispCols.length > 0 ? [...this._dispCols] : [];
 
     result.info_card_title = this._titleInput.value.trim();
@@ -425,7 +432,13 @@ export class AppSection extends CollapsibleSection {
     return result;
   }
 
+  setProjectName(name: string): void {
+    this._projectNameInput.value = name;
+    this._emitChanged();
+  }
+
   setData(data: Record<string, any>): void {
+    if (data.project_name !== undefined) this._projectNameInput.value = data.project_name;
     if ('display_columns' in data && Array.isArray(data.display_columns)) {
       this._dispCols = [...data.display_columns];
       this._dispColsSet = true;
