@@ -439,6 +439,60 @@ export class ConfigPanel {
     return this._validateAndSave(true);
   }
 
+  async validateAndOpen(): Promise<string | null> {
+    await this._readyPromise;
+    if (!this._ready) return null;
+
+    const projectData = this._setup.getData();
+    const enabled = [
+      projectData.project_enabled && projectData.project_path,
+      projectData.config_enabled && projectData.config_path,
+      projectData.form_enabled && projectData.form_path,
+    ].filter(Boolean);
+
+    if (enabled.length === 0) {
+      this._setStatus('Enable at least one output file in Setup section', true);
+      return null;
+    }
+
+    this._setStatus('Validating…');
+    try {
+      const vRaw = await this._kernel.exec(validateConfig());
+      const vResult = JSON.parse(extractJson(vRaw));
+      const msgs: string[] = [];
+      if (vResult.errors?.length) msgs.push('Errors:\n• ' + vResult.errors.join('\n• '));
+      if (vResult.warnings?.length) msgs.push('Warnings:\n• ' + vResult.warnings.join('\n• '));
+      if (!vResult.valid) {
+        await showDialog({ title: 'Validation Failed', body: msgs.join('\n\n') });
+        this._setStatus('Validation failed', true);
+        return null;
+      }
+      if (msgs.length > 0) {
+        const choice = await showDialog({
+          title: 'Validation Warnings',
+          body: msgs.join('\n\n'),
+          buttons: [
+            { label: 'Cancel' },
+            { label: 'Open Anyway', primary: true },
+          ],
+        });
+        if (choice !== 'Open Anyway') {
+          this._setStatus('Cancelled', false, true);
+          return null;
+        }
+      }
+    } catch (e: any) {
+      this._setStatus(`Validation error: ${String(e.message ?? e)}`, true);
+      return null;
+    }
+
+    const path = (projectData.project_enabled && projectData.project_path) ||
+      (projectData.config_enabled && projectData.config_path) ||
+      (projectData.form_enabled && projectData.form_path) || '';
+    this._setStatus('Ready');
+    return path || null;
+  }
+
   async refreshActive(): Promise<void> {
     const { path } = this._activeFilePath();
     if (!path) {
@@ -666,6 +720,12 @@ export class ConfigPanel {
   onProjectStateChanged(cb: () => void): void {
     this._setup.projectEnabledChanged.connect(() => cb());
     this._setup.changed.connect(() => cb());
+  }
+
+  onAnyChanged(cb: () => void): void {
+    for (const [, section] of this._sections) {
+      section.changed.connect(() => cb());
+    }
   }
 
   get cwd(): string {
