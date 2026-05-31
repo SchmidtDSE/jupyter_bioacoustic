@@ -129,12 +129,16 @@ class ConfigBuilderWidget extends Widget {
     spacer.style.flex = '1';
 
     const openBtn = document.createElement('button');
-    openBtn.textContent = 'Save & Open Annotator';
+    openBtn.textContent = 'Open Annotator';
     openBtn.style.cssText = btnStyle(true) + `font-size:11px;`;
-    openBtn.style.display = this._panel.isProjectConfigured ? '' : 'none';
+    openBtn.disabled = !this._panel.isProjectConfigured;
+    openBtn.style.opacity = this._panel.isProjectConfigured ? '1' : '0.4';
     openBtn.addEventListener('click', () => void this._onSaveAndOpen());
-    this._panel.onProjectStateChanged(() => {
-      openBtn.style.display = this._panel.isProjectConfigured ? '' : 'none';
+    this._panel.onAnyChanged(() => {
+      const ready = this._panel.isProjectConfigured;
+      openBtn.disabled = !ready;
+      openBtn.style.opacity = ready ? '1' : '0.4';
+      openBtn.textContent = this._panel.dirty ? 'Save & Open Annotator' : 'Open Annotator';
     });
 
     const dismissBtn = document.createElement('button');
@@ -152,7 +156,9 @@ class ConfigBuilderWidget extends Widget {
   }
 
   private async _onSaveAndOpen(): Promise<void> {
-    const savedPath = await this._panel.saveAndOpenAnnotator();
+    const savedPath = this._panel.dirty
+      ? await this._panel.saveAndOpenAnnotator()
+      : await this._panel.validateAndOpen();
     if (!savedPath) return;
     try {
       await this._panel.kernel.exec(setupAnnotatorFromProject(savedPath));
