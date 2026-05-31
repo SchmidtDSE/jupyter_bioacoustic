@@ -1296,6 +1296,7 @@ export class FormPanel {
 
         const itemsCfg = cfg.items;
         const hasFilterBox = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.filter_box;
+        const hasCustomValue = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.custom_value;
         const notAvailCfg = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) ? itemsCfg.not_available : undefined;
 
         const items = await this._loadSelectItems(cfg.items);
@@ -1338,7 +1339,8 @@ export class FormPanel {
         };
         rebuildOptions();
 
-        sel.addEventListener('change', () => { entry.formValues[col] = sel.value; this._validateForm(); });
+        const onSelChange = () => { entry.formValues[col] = sel.value; this._validateForm(); };
+        sel.addEventListener('change', onSelChange);
         entry.formValues[col] = entry.formValues[col] ?? selectedDefault;
         if (entry.formValues[col]) sel.value = entry.formValues[col];
 
@@ -1346,18 +1348,41 @@ export class FormPanel {
         lbl.style.cssText = labelStyle() + `font-size:11px;`;
         lbl.textContent = cfg.label ?? col;
 
-        if (hasFilterBox) {
+        if (hasFilterBox || hasCustomValue) {
           const wrapper = document.createElement('div');
           wrapper.style.cssText = `display:inline-flex;align-items:center;gap:4px;`;
           const filterInput = document.createElement('input');
           filterInput.type = 'text';
           filterInput.placeholder = 'filter';
           filterInput.style.cssText = inputStyle('80px') + `font-size:11px;`;
+
+          let addBtn: HTMLButtonElement | null = null;
+          if (hasCustomValue) {
+            addBtn = document.createElement('button');
+            addBtn.textContent = '+ Add';
+            addBtn.style.cssText = btnStyle() + `font-size:10px;padding:2px 6px;display:none;`;
+            addBtn.addEventListener('click', () => {
+              const custom = filterInput.value.trim();
+              if (!custom) return;
+              allItems.push({ val: custom, label: custom, isDefault: false });
+              rebuildOptions();
+              sel.value = custom;
+              filterInput.value = '';
+              if (addBtn) addBtn.style.display = 'none';
+              onSelChange();
+            });
+          }
+
           filterInput.addEventListener('input', () => {
             const f = filterInput.value.trim();
             rebuildOptions(f);
             sel.size = Math.min(8, sel.options.length);
             if (!f) sel.size = 0;
+            if (addBtn) {
+              const hasExact = f && allItems.some(
+                item => item.val.toLowerCase() === f.toLowerCase() || item.label.toLowerCase() === f.toLowerCase());
+              addBtn.style.display = (f && !hasExact) ? '' : 'none';
+            }
           });
           filterInput.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowDown') {
@@ -1372,13 +1397,13 @@ export class FormPanel {
                 sel.size = 0;
                 filterInput.value = '';
                 rebuildOptions();
-                entry.formValues[col] = sel.value;
-                this._validateForm();
+                onSelChange();
               }
             }
           });
           sel.addEventListener('change', () => { sel.size = 0; });
           wrapper.append(sel, filterInput);
+          if (addBtn) wrapper.appendChild(addBtn);
           lbl.appendChild(wrapper);
         } else {
           lbl.appendChild(sel);
