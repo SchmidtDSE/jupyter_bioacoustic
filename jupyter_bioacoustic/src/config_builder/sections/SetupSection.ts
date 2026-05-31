@@ -235,7 +235,7 @@ export class SetupSection extends CollapsibleSection {
 
     this._loadPathInput = this._makeInput('path to configuration file', '400px');
     this._loadPathInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this._onLoad();
+      if (e.key === 'Enter') { e.preventDefault(); this._onLoad(); }
     });
 
     this._loadBrowseBtn = this._makeButton('Browse');
@@ -489,6 +489,7 @@ export class SetupSection extends CollapsibleSection {
 
   setLoadPath(path: string): void {
     this._loadPathInput.value = path;
+    this._loadPathInput.focus();
   }
 
   getLoadType(): string {
