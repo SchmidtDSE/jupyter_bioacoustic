@@ -213,7 +213,7 @@ export class SetupSection extends CollapsibleSection {
 
     const lbl = this._makeLabel('name');
     lbl.style.minWidth = '40px';
-    this._createNameInput = this._makeInput('e.g. Bird Review', '200px');
+    this._createNameInput = this._makeInput('e.g. Bird Review', '400px');
     this._createNameInput.style.flexShrink = '1';
     this._createNameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._onCreate();
@@ -233,8 +233,7 @@ export class SetupSection extends CollapsibleSection {
 
     this._loadTypeSelect = this._makeSelect(['project', 'config', 'form'], 'project');
 
-    this._loadPathInput = this._makeInput('path to configuration file', '180px');
-    this._loadPathInput.style.flex = '1 1 120px';
+    this._loadPathInput = this._makeInput('path to configuration file', '400px');
     this._loadPathInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._onLoad();
     });
@@ -370,8 +369,8 @@ export class SetupSection extends CollapsibleSection {
     this._mode = mode;
     this._createTab.style.cssText = this._tabStyle(mode === MODE_CREATE);
     this._loadTab.style.cssText = this._tabStyle(mode === MODE_LOAD);
-    this._createPane.style.display = mode === MODE_CREATE ? '' : 'none';
-    this._loadPane.style.display = mode === MODE_LOAD ? '' : 'none';
+    this._createPane.style.display = mode === MODE_CREATE ? 'flex' : 'none';
+    this._loadPane.style.display = mode === MODE_LOAD ? 'flex' : 'none';
   }
 
   private _onCreate(): void {
