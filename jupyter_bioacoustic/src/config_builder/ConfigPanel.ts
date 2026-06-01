@@ -289,17 +289,7 @@ export class ConfigPanel {
     }
 
     if (sectionName === 'output') {
-      const outputPath = data.path;
-      if (outputPath) {
-        data = { ...data };
-        delete data.path;
-      }
       try {
-        if (outputPath) {
-          const projData = this._setup.getData();
-          projData.output_path = outputPath;
-          await this._kernel.exec(updateSection('project', projData));
-        }
         const raw = await this._kernel.exec(updateSection('output', data, target));
         const state = JSON.parse(extractJson(raw));
         this._applyStatePartial(state, sectionName);
