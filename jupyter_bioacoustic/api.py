@@ -1287,9 +1287,15 @@ class BioacousticAnnotator:
                     columns=renames,
                 )
 
+        _cfg_data = cfg.get('data')
         _dict_idx = (
             raw_data.get('index_column')
-            if isinstance(raw_data, dict) else None
+            if isinstance(raw_data, dict)
+            else (
+                _cfg_data.get('index_column')
+                if isinstance(_cfg_data, dict)
+                else None
+            )
         )
         idx_col = (
             resolve(
@@ -1315,10 +1321,15 @@ class BioacousticAnnotator:
         raw_output_for_idx = resolve(
             output, 'output', _UNSET,
         )
+        _cfg_output = cfg.get('output')
         _dict_out_idx = (
             raw_output_for_idx.get('index_column')
             if isinstance(raw_output_for_idx, dict)
-            else None
+            else (
+                _cfg_output.get('index_column')
+                if isinstance(_cfg_output, dict)
+                else None
+            )
         )
         out_idx_col = (
             resolve(
