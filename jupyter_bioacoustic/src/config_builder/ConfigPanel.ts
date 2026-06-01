@@ -52,6 +52,7 @@ export class ConfigPanel {
   private _readyPromise: Promise<void>;
   private _resolvedCwd = '';
   private _cwdCallbacks: Array<(cwd: string) => void> = [];
+  private _dirtyCallbacks: Array<() => void> = [];
 
   private _setup: SetupSection;
   private _data: DataSection;
@@ -614,6 +615,7 @@ export class ConfigPanel {
       const savedList = Object.values(paths).join(', ');
       this._savedPath = paths.project || paths.config || paths.form || '';
       this._setStatus(`Saved: ${savedList}`);
+      for (const cb of this._dirtyCallbacks) cb();
       return this._savedPath;
     } catch (e: any) {
       this._setStatus(`Save failed: ${String(e.message ?? e)}`, true);
@@ -627,9 +629,13 @@ export class ConfigPanel {
       config_yaml: state.config_yaml || '',
       form_yaml: state.form_yaml || '',
     };
+    const wasDirty = this._dirty;
     this._dirty = !!state.dirty;
     this._savedPath = state.saved_path || '';
     this._yamlPanel.updateYaml(this._yamls);
+    if (this._dirty !== wasDirty) {
+      for (const cb of this._dirtyCallbacks) cb();
+    }
   }
 
   private _applyState(state: any): void {
@@ -697,6 +703,7 @@ export class ConfigPanel {
     } finally {
       this._suppressChanges = false;
     }
+    for (const cb of this._dirtyCallbacks) cb();
   }
 
   get dirty(): boolean {
@@ -716,6 +723,7 @@ export class ConfigPanel {
     for (const [, section] of this._sections) {
       section.changed.connect(() => cb());
     }
+    this._dirtyCallbacks.push(cb);
   }
 
   get cwd(): string {
