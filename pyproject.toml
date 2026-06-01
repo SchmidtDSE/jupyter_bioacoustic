@@ -70,6 +70,7 @@ python = ">=3.11"
 numpy = "*"
 matplotlib = "*"
 pandas = "*"
+ffmpeg = "*"   # provides ffprobe/ffmpeg binaries pydub needs for partial (byte-range) audio reads
 
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = { path = ".", editable = true }

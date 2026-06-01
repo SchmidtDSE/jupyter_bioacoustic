@@ -27,6 +27,32 @@ _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 pip install jupyter-bioacoustic
 ```
 
+### ffmpeg (recommended)
+
+`ffmpeg` (which includes `ffprobe`) enables **partial byte-range downloads** for remote audio (S3, HTTPS, GCS), so multi-hour recordings load in seconds. It is **not** a pip dependency — install it separately. Without it, remote files are fully downloaded and cached on first access (slower, but everything still works).
+
+```bash
+# macOS (Homebrew)
+brew install ffmpeg
+
+# Linux — Debian/Ubuntu
+sudo apt install ffmpeg
+# Linux — Fedora
+sudo dnf install ffmpeg
+
+# Windows (winget) — or: choco install ffmpeg
+winget install ffmpeg
+```
+
+Or pull it into a [pixi](https://pixi.sh) project (cross-platform, no system install) — `pixi add ffmpeg`, or in `pyproject.toml`:
+
+```toml
+[tool.pixi.dependencies]
+ffmpeg = "*"
+```
+
+(`conda install -c conda-forge ffmpeg` works too.)
+
 See the [Development wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) for building from source.
 
 ## Quick Start
