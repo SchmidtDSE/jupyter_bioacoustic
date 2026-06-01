@@ -1127,6 +1127,8 @@ class BioacousticAnnotator:
                 and not isinstance(v, _pd.DataFrame)
             )
         }
+        if 'data' not in self._init_args and isinstance(cfg.get('data'), dict):
+            self._init_args['data'] = dict(cfg['data'])
         def resolve(val, key, default):
             if val is not _UNSET:
                 return val
