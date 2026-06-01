@@ -131,13 +131,11 @@ class ConfigBuilderWidget extends Widget {
     const openBtn = document.createElement('button');
     openBtn.textContent = 'Open Annotator';
     openBtn.style.cssText = btnStyle(true) + `font-size:11px;`;
-    openBtn.disabled = !this._panel.isProjectConfigured;
-    openBtn.style.opacity = this._panel.isProjectConfigured ? '1' : '0.4';
+    openBtn.style.display = this._panel.isProjectConfigured ? '' : 'none';
     openBtn.addEventListener('click', () => void this._onSaveAndOpen());
     this._panel.onAnyChanged(() => {
       const ready = this._panel.isProjectConfigured;
-      openBtn.disabled = !ready;
-      openBtn.style.opacity = ready ? '1' : '0.4';
+      openBtn.style.display = ready ? '' : 'none';
       openBtn.textContent = this._panel.dirty ? 'Save & Open Annotator' : 'Open Annotator';
     });
 
