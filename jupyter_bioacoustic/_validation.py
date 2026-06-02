@@ -109,6 +109,7 @@ def validate_config(
     if config or project:
         _validate_required_fields(
             config or {}, project or {}, errors, warnings,
+            _has_form_configured(fc, config or {}, project or {}),
         )
     _validate_forms_and_annotations(fc, errors, warnings)
 
@@ -146,11 +147,31 @@ def _validate_config_keys(
             _validate_form_keys(cfg[key], errors)
 
 
+def _has_form_configured(fc: dict, config: dict, project: dict) -> bool:
+    """True if a form is configured.
+
+    A form is considered set when a form_config is provided, or when the
+    project/config carries a top-level "form" or "form_config" key. Without
+    a form the widget is a player-only view that needs no index column.
+    """
+    if fc:
+        return True
+    for cfg in (config, project):
+        if isinstance(cfg, dict) and (cfg.get('form') or cfg.get('form_config')):
+            return True
+    return False
+
+
 def _validate_required_fields(
     config: dict, project: dict,
     errors: list, warnings: list,
+    has_form: bool,
 ) -> None:
-    """Check that required fields are present across config/project."""
+    """Check that required fields are present across config/project.
+
+    data_index_column is required only when a form is configured; a
+    player-only view (no form) needs no index column.
+    """
     cfg_data = config.get('data')
     proj_data = project.get('data')
     idx_val = (
@@ -160,11 +181,12 @@ def _validate_required_fields(
         or (isinstance(proj_data, dict) and proj_data.get('index_column'))
     )
     if not idx_val:
-        errors.append(
-            '"data_index_column" is required — set it to the '
-            'column that uniquely identifies each row in the '
-            'input data'
-        )
+        if has_form:
+            errors.append(
+                '"data_index_column" is required when a form is '
+                'configured — set it to the column that uniquely '
+                'identifies each row in the input data'
+            )
         return
 
     cfg_out = config.get('output')
