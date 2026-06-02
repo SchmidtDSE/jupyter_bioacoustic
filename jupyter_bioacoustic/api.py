@@ -1306,19 +1306,29 @@ class BioacousticAnnotator:
             )
             or _dict_idx
         )
+        # data_index_column is only required when a form is configured
+        # (form_config or a top-level 'form' key). Without a form the
+        # widget is a player-only view and needs no index column.
+        _has_form = (
+            resolve(form_config, 'form_config', None) is not None
+            or bool(cfg.get('form'))
+        )
         if idx_col is None:
-            raise ValueError(
-                "'data_index_column' is required — set it "
-                "to the column that uniquely identifies "
-                "each row in the input data."
-            )
-        if idx_col not in loaded_data.columns:
-            raise ValueError(
-                f"data_index_column '{idx_col}' not found "
-                f"in data columns: "
-                f"{list(loaded_data.columns)}"
-            )
-        self._data_index_column = idx_col
+            if _has_form:
+                raise ValueError(
+                    "'data_index_column' is required when a form "
+                    "is configured — set it to the column that "
+                    "uniquely identifies each row in the input data."
+                )
+            self._data_index_column = None
+        else:
+            if idx_col not in loaded_data.columns:
+                raise ValueError(
+                    f"data_index_column '{idx_col}' not found "
+                    f"in data columns: "
+                    f"{list(loaded_data.columns)}"
+                )
+            self._data_index_column = idx_col
 
         raw_output_for_idx = resolve(
             output, 'output', _UNSET,
