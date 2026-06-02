@@ -339,8 +339,42 @@ class TestConfigKeyHeights:
 class TestRequiredFields:
     """Tests for required field validation."""
 
-    def test_missing_data_index_column_error(self):
+    def test_missing_data_index_column_no_form_ok(self):
+        """Player-only (no form): data_index_column is not required."""
         result = validate_config(config={'data': 'x'})
+        assert result['valid']
+        assert not any('data_index_column' in e for e in result['errors'])
+
+    def test_missing_data_index_column_with_form_config_error(self):
+        """A form_config makes data_index_column required."""
+        result = validate_config(
+            config={'data': 'x'},
+            form_config={'form': [{'select': {'label': 'a', 'column': 'a'}}]},
+        )
+        assert not result['valid']
+        assert any('data_index_column' in e for e in result['errors'])
+
+    def test_missing_data_index_column_with_config_form_key_error(self):
+        """A top-level 'form' key in config makes the index required."""
+        result = validate_config(
+            config={'data': 'x', 'form': [{'select': {'label': 'a'}}]},
+        )
+        assert not result['valid']
+        assert any('data_index_column' in e for e in result['errors'])
+
+    def test_missing_data_index_column_with_config_form_config_key_error(self):
+        """A 'form_config' reference in config makes the index required."""
+        result = validate_config(
+            config={'data': 'x', 'form_config': 'forms/x.yaml'},
+        )
+        assert not result['valid']
+        assert any('data_index_column' in e for e in result['errors'])
+
+    def test_missing_data_index_column_with_project_form_error(self):
+        """A form in the project makes the index required."""
+        result = validate_config(
+            project={'data': 'x', 'form_config': 'forms/x.yaml'},
+        )
         assert not result['valid']
         assert any('data_index_column' in e for e in result['errors'])
 
