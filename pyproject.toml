@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jupyter-bioacoustic"
-version = "0.8.5"
+version = "0.8.6"
 description = "JupyterLab bioacoustic audio review plugin"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
@@ -70,7 +70,6 @@ python = ">=3.11"
 numpy = "*"
 matplotlib = "*"
 pandas = "*"
-ffmpeg = "*"   # provides ffprobe/ffmpeg binaries pydub needs for partial (byte-range) audio reads
 
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = { path = ".", editable = true }
@@ -122,6 +121,9 @@ twine = "*"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 build = "*"
+
+[tool.pixi.feature.demo.dependencies]
+ffmpeg = "*"
 
 [tool.pixi.feature.demo.pypi-dependencies]
 ipyleaflet = "*"
