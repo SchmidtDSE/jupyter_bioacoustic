@@ -376,29 +376,41 @@ def _make_df():
 
 class TestAnnotatorConfig:
 
-    def test_config_returns_dict(self):
+    def test_config_none_without_file(self):
+        """config/project/form are None when nothing was defined."""
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             data_index_column='id',
         )
-        assert isinstance(ba.config, dict)
+        assert ba.config is None
+        assert ba.project is None
+        assert ba.form is None
 
-    def test_config_is_copy(self):
+    def test_configuration_returns_dict(self):
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             data_index_column='id',
         )
-        cfg = ba.config
+        assert isinstance(ba.configuration, dict)
+
+    def test_configuration_is_copy(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
+        cfg = ba.configuration
         cfg['injected'] = True
-        assert 'injected' not in ba.config
+        assert 'injected' not in ba.configuration
 
-    def test_config_from_inline_args(self):
+    def test_configuration_includes_inline_args(self):
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             info_card_title='[[audio_path]]',
             data_index_column='id',
         )
-        assert ba.config == {}
+        cfg = ba.configuration
+        assert cfg['info_card_title'] == '[[audio_path]]'
+        assert cfg['data_index_column'] == 'id'
 
     def test_config_from_config_file(self, tmp_path):
         import yaml
@@ -418,11 +430,15 @@ class TestAnnotatorConfig:
             data=str(data_file), audio='audio_path',
             config=str(cfg_file),
         )
+        # .config is the config file contents
         assert ba.config['info_card_title'] == '[[audio_path]]'
         assert ba.config['default_buffer'] == 5
         assert ba.config['audio'] == {'column': 'audio_path'}
+        assert ba.project is None
+        # .configuration reflects the same values (no project to override)
+        assert ba.configuration['default_buffer'] == 5
 
-    def test_config_from_project_with_nested(self, tmp_path):
+    def test_config_and_project_from_project_with_nested(self, tmp_path):
         import yaml
         nested_cfg = {
             'audio': {'column': 'audio_path'},
@@ -446,11 +462,43 @@ class TestAnnotatorConfig:
         proj_file.write_text(yaml.dump(proj_cfg))
 
         ba = BioacousticAnnotator(project=str(proj_file))
-        cfg = ba.config
+        # .project and .config return their respective file contents
+        assert ba.project['default_buffer'] == 10
+        assert ba.config['default_buffer'] == 5
+        assert ba.config['audio'] == {'column': 'audio_path'}
+        # .configuration is the merge (project overrides config)
+        cfg = ba.configuration
         assert cfg['audio'] == {'column': 'audio_path'}
         assert cfg['info_card_title'] == '[[audio_path]]'
         assert cfg['default_buffer'] == 10
         assert cfg['data']['path'] == str(data_file)
+
+    def test_validate_data_override_preserves_nested_index(self, tmp_path):
+        """Regression: a notebook data= arg overriding a config whose
+        nested data dict carries index_column must still validate when a
+        form is present (the index lives in the config, not the arg)."""
+        import yaml
+        cfg_data = {
+            'audio': {'column': 'audio_path'},
+            'data': {'index_column': 'id'},
+            'output': {'index_column': 'detection_id'},
+            'form_config': {
+                'form': [{'textbox': {'label': 'notes', 'column': 'notes'}}],
+            },
+        }
+        cfg_file = tmp_path / 'config.yaml'
+        cfg_file.write_text(yaml.dump(cfg_data))
+
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            config=str(cfg_file),
+        )
+        assert ba._data_index_column == 'id'
+        result = ba.validate()
+        assert result['valid'], result['errors']
+        assert not any(
+            'data_index_column' in e for e in result['errors']
+        )
 
 
 #
@@ -817,14 +865,17 @@ class TestAnnotatorValidate:
         assert result['valid']
         assert result['errors'] == []
 
-    def test_validate_reports_output_index_warning(self):
-        """validate() surfaces the same output_index_column warning."""
+    def test_validate_resolved_output_index_no_warning(self):
+        """The resolved configuration already carries output_index_column
+        (defaulted to the data index), so validate() does not warn."""
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             data_index_column='id',
         )
+        assert ba._output_index_column == 'id'
+        assert ba.configuration['output_index_column'] == 'id'
         result = ba.validate()
-        assert any(
+        assert not any(
             'output_index_column' in w for w in result['warnings']
         )
 
