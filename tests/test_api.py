@@ -800,3 +800,46 @@ class TestAnnotatorIndexColumns:
             data=str(data_file), config=str(cfg_file),
         )
         assert ba._data_index_column == 'id'
+
+
+#
+# BioacousticAnnotator — validate()
+#
+class TestAnnotatorValidate:
+
+    def test_validate_returns_result_dict(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
+        result = ba.validate()
+        assert set(result) >= {'valid', 'errors', 'warnings'}
+        assert result['valid']
+        assert result['errors'] == []
+
+    def test_validate_reports_output_index_warning(self):
+        """validate() surfaces the same output_index_column warning."""
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+        )
+        result = ba.validate()
+        assert any(
+            'output_index_column' in w for w in result['warnings']
+        )
+
+    def test_validate_catches_form_error(self):
+        """A form with an annotation lacking tools is invalid."""
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            data_index_column='id',
+            form_config={
+                'annotation': {
+                    'start_time': {'column': 'start_time'},
+                    'tools': [],
+                },
+            },
+        )
+        result = ba.validate()
+        assert not result['valid']
+        assert any('tool' in e.lower() for e in result['errors'])
