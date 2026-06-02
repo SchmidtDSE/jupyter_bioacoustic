@@ -707,12 +707,21 @@ class TestAnnotatorSecrets:
 #
 class TestAnnotatorIndexColumns:
 
-    def test_data_index_column_required(self):
-        """Missing data_index_column raises ValueError."""
+    def test_data_index_column_required_with_form(self):
+        """Missing data_index_column raises ValueError when a form is set."""
         with pytest.raises(ValueError, match='data_index_column.*required'):
             BioacousticAnnotator(
                 data=_make_df(), audio='audio_path',
+                form_config={'form': [{'textbox': {'label': 'notes'}}]},
             )
+
+    def test_data_index_column_optional_without_form(self):
+        """Player-only (no form): missing data_index_column is allowed."""
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+        )
+        assert ba._data_index_column is None
+        assert ba._output_index_column is None
 
     def test_data_index_column_not_in_data(self):
         """data_index_column pointing to missing column raises ValueError."""
