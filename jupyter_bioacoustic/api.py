@@ -1586,6 +1586,22 @@ class BioacousticAnnotator:
         )
         ns['_BA_INSTANCE'] = self
 
+    def validate(self) -> dict:
+        """Validate the resolved configuration.
+
+        Runs the same checks as the ``jba validate`` CLI and the config
+        builder's Validate button, against this annotator's merged config
+        and form.
+
+        Returns:
+            Dict with ``valid`` (bool), ``errors`` (list), and
+            ``warnings`` (list).
+        """
+        return validate_config(
+            config=self._init_args or None,
+            form_config=self._form_config or None,
+        )
+
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
         """Serialize data and open the widget."""
         if self._stripped_args:
@@ -1600,10 +1616,7 @@ class BioacousticAnnotator:
                 + (f' Permitted: {permitted}' if permitted else ''),
                 stacklevel=2,
             )
-        result = validate_config(
-            config=self._init_args or None,
-            form_config=self._form_config or None,
-        )
+        result = self.validate()
         for msg in result['errors']:
             warnings.warn(f'Config error: {msg}', stacklevel=2)
         for msg in result['warnings']:
