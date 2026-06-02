@@ -1,6 +1,0 @@
-project_name: simple examples 3b
-config: annotator_config/config/simple_examples_3b.yaml
-data:
-  path: data/annotate-data.csv
-audio:
-  path: audio/test2.flac

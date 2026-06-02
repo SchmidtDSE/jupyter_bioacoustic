@@ -4,5 +4,5 @@ form:
           column: 'common_name'
           required: true
           items:
-              path: 'data/categories-small.csv'
+              path: 'data/species_counts.N-dse.csv'
               value: 'common_name'
