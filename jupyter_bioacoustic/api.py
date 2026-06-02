@@ -1031,6 +1031,8 @@ class BioacousticAnnotator:
         self._project_file = None
         self._config_file = None
         self._form_file = None
+        self._project_cfg = None
+        self._config_cfg = None
 
         if project is not None:
             passed = {
@@ -1057,6 +1059,7 @@ class BioacousticAnnotator:
                     f" or dict, got "
                     f"{type(project).__name__}"
                 )
+            self._project_cfg = dict(proj_cfg)
             nested = proj_cfg.pop('config', None)
             if nested:
                 if isinstance(nested, str):
@@ -1074,6 +1077,7 @@ class BioacousticAnnotator:
                         f" be a file path or dict, got "
                         f"{type(nested).__name__}"
                     )
+                self._config_cfg = dict(base)
                 _merge_project_over_config(
                     base, proj_cfg,
                 )
@@ -1087,6 +1091,7 @@ class BioacousticAnnotator:
                 )
                 cfg = _load_config(config)
                 self._config_file = config
+                self._config_cfg = dict(cfg)
             else:
                 cfg = {}
 
@@ -1116,6 +1121,7 @@ class BioacousticAnnotator:
             if _v is not _UNSET:
                 _init_overrides[_k] = _v
         _init_cfg.update(_init_overrides)
+        self._init_overrides = dict(_init_overrides)
         _init_cfg.pop('config', None)
         _init_cfg.pop('session_args', None)
         import pandas as _pd
@@ -1590,16 +1596,19 @@ class BioacousticAnnotator:
         """Validate the resolved configuration.
 
         Runs the same checks as the ``jba validate`` CLI and the config
-        builder's Validate button, against this annotator's merged config
-        and form.
+        builder's Validate button, against the fully resolved
+        :attr:`configuration` (so notebook arguments and nested config
+        values are reflected).
 
         Returns:
             Dict with ``valid`` (bool), ``errors`` (list), and
             ``warnings`` (list).
         """
+        cfg = self.configuration
+        form = cfg.pop('form_config', None)
         return validate_config(
-            config=self._init_args or None,
-            form_config=self._form_config or None,
+            config=cfg or None,
+            form_config=form or None,
         )
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
@@ -1698,7 +1707,7 @@ class BioacousticAnnotator:
         print(f'- Form: {self.form_path}')
         print_md('---')
         print_md('**Configuration:**')
-        pprint(self.config)
+        pprint(self.configuration)
         print_md('---')
 
 
@@ -1706,9 +1715,41 @@ class BioacousticAnnotator:
     # PROPERTIES
     #
     @property
-    def config(self) -> dict[str, Any]:
-        """The fully merged configuration after all files and overrides."""
-        return dict(self._merged_cfg)
+    def project(self) -> Optional[dict]:
+        """The project file contents as a dict, or None if no project was set."""
+        return dict(self._project_cfg) if self._project_cfg else None
+
+    @property
+    def config(self) -> Optional[dict]:
+        """The config file contents as a dict, or None if no config was set."""
+        return dict(self._config_cfg) if self._config_cfg else None
+
+    @property
+    def form(self) -> Optional[dict]:
+        """The form configuration as a dict, or None if no form was set."""
+        return dict(self._form_config) if self._form_config else None
+
+    @property
+    def configuration(self) -> dict[str, Any]:
+        """The fully resolved configuration as a single dict.
+
+        Merges project + config + notebook arguments, inlines the resolved
+        form (no ``config``/``form_config`` path references), and reflects
+        the resolved ``data_index_column``/``output_index_column``. This is
+        the canonical config that ``validate()`` checks against.
+        """
+        cfg = dict(self._merged_cfg)
+        cfg.update(self._init_overrides)
+        cfg.pop('config', None)
+        cfg.pop('session_args', None)
+        cfg.pop('form_config', None)
+        if self._form_config:
+            cfg['form_config'] = dict(self._form_config)
+        if self._data_index_column is not None:
+            cfg['data_index_column'] = self._data_index_column
+        if self._output_index_column is not None:
+            cfg['output_index_column'] = self._output_index_column
+        return cfg
 
     @property
     def source(self) -> Any:
