@@ -99,13 +99,17 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/jupyter_bioaco
 
 ## Usage 
 
-The `BioacousticAnnotator` class has an extremely simple interface; having only two methods (`.open(inline=True)`, `.output(force=False)`) and one property (`.source`).
+The `BioacousticAnnotator` class has an extremely simple interface; having a few methods (`.open(inline=True)`, `.output(force=False)`, `.validate()`) and one property (`.source`).
 
 ```python
 from jupyter_bioacoustic import BioacousticAnnotator
 
 # Create an instance
 ja = BioacousticAnnotator(data='path_to_data.parquet', ...)
+
+# Validate the config (same checks as `jba validate` and the config builder)
+# -> {'valid': bool, 'errors': [...], 'warnings': [...]}
+ja.validate()
 
 # Open the interface
 ja.open()
