@@ -269,6 +269,9 @@ def _app_section(d: dict[str, Any]) -> dict[str, Any]:
         rows.append(_row('title', d['info_card_title']))
     if d.get('info_card_text'):
         rows.append(_row('text', d['info_card_text']))
+    if d.get('sort'):
+        order = 'desc' if str(d.get('sort_order')) == 'desc' else 'asc'
+        rows.append(_row('sort', f"{d['sort']} ({order})"))
     if d.get('duplicate_entries'):
         rows.append(_row('duplicates', 'allowed'))
     buf = d.get('default_buffer')
