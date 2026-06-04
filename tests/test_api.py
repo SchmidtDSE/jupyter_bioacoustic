@@ -410,7 +410,9 @@ class TestAnnotatorConfig:
         )
         cfg = ba.configuration
         assert cfg['info_card_title'] == '[[audio_path]]'
-        assert cfg['data_index_column'] == 'id'
+        # index column lives inside the data dict, not at top level
+        assert cfg['data']['index_column'] == 'id'
+        assert 'data_index_column' not in cfg
 
     def test_config_from_config_file(self, tmp_path):
         import yaml
@@ -494,6 +496,13 @@ class TestAnnotatorConfig:
             config=str(cfg_file),
         )
         assert ba._data_index_column == 'id'
+        # resolved index columns stay inside their data/output dict and are
+        # NOT also hoisted to top-level keys (no duplication)
+        cfg = ba.configuration
+        assert cfg['data']['index_column'] == 'id'
+        assert cfg['output']['index_column'] == 'detection_id'
+        assert 'data_index_column' not in cfg
+        assert 'output_index_column' not in cfg
         result = ba.validate()
         assert result['valid'], result['errors']
         assert not any(
@@ -865,19 +874,18 @@ class TestAnnotatorValidate:
         assert result['valid']
         assert result['errors'] == []
 
-    def test_validate_resolved_output_index_no_warning(self):
-        """The resolved configuration already carries output_index_column
-        (defaulted to the data index), so validate() does not warn."""
+    def test_configuration_keeps_index_in_data_dict(self):
+        """Resolved index column lives in the data dict (not top level), and
+        no output section is fabricated when none is configured."""
         ba = BioacousticAnnotator(
             data=_make_df(), audio='audio_path',
             data_index_column='id',
         )
-        assert ba._output_index_column == 'id'
-        assert ba.configuration['output_index_column'] == 'id'
-        result = ba.validate()
-        assert not any(
-            'output_index_column' in w for w in result['warnings']
-        )
+        cfg = ba.configuration
+        assert cfg['data']['index_column'] == 'id'
+        assert 'data_index_column' not in cfg
+        assert 'output' not in cfg
+        assert ba.validate()['valid']
 
     def test_validate_catches_form_error(self):
         """A form with an annotation lacking tools is invalid."""
