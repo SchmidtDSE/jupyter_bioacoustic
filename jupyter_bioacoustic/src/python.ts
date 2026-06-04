@@ -39,6 +39,8 @@ export function readKernelVars(): string {
     `  'capture_dir': _BA_CAPTURE_DIR,`,
     `  'capture_height': _BA_CAPTURE_HEIGHT,`,
     `  'duplicate_entries': _BA_DUPLICATE_ENTRIES,`,
+    `  'sort': _BA_SORT,`,
+    `  'sort_order': _BA_SORT_ORDER,`,
     `  'default_buffer': _BA_DEFAULT_BUFFER,`,
     `  'spec_resolutions': _BA_SPEC_RESOLUTIONS,`,
     `  'viz_meta': _BA_VIZ_META,`,
