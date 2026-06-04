@@ -205,6 +205,7 @@ class BioacousticWidget extends Widget {
       data: string; audio: string; output: string;
       info_card_title: string; app_title: string; info_card_text: string; data_cols: string;
       form_config: string; capture: string; capture_dir: string; capture_height: string; duplicate_entries: string;
+      sort: string; sort_order: string;
       default_buffer: string; spec_resolutions: string; viz_meta: string;
       sync_config: string;
       clip_table_height: string; player_height: string;
@@ -230,6 +231,8 @@ class BioacousticWidget extends Widget {
     const dataCols       = JSON.parse(cfg.data_cols) as string[];
     const formConfig     = JSON.parse(cfg.form_config);
     const duplicateEntries = !!cfg.duplicate_entries;
+    const sortCol        = cfg.sort || '';
+    const sortOrder      = cfg.sort_order || 'asc';
     const outputPath     = cfg.output;
 
     try {
@@ -319,6 +322,8 @@ class BioacousticWidget extends Widget {
       dataCols,
       duplicateEntries,
       dataIndexCol,
+      sort: sortCol,
+      sortOrder,
       height: parseInt(cfg.clip_table_height) || undefined,
     });
 
