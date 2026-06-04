@@ -84,7 +84,7 @@ export class ClipTable {
   private _rows: Detection[] = [];
   private _filtered: Detection[] = [];
   private _dataIndexCol = 'id';
-  private _sortCol = 'id';
+  private _sortCol = '';   // '' = no sort (preserve file/input order)
   private _sortAsc = true;
   private _page = 0;
   private _pageSize = 10;
@@ -124,13 +124,17 @@ export class ClipTable {
     dataCols: string[];
     duplicateEntries: boolean;
     dataIndexCol: string;
+    sort?: string;
+    sortOrder?: string;
     height?: number;
   }): void {
     if (opts.height) {
       this._tableWrap.style.maxHeight = `${opts.height}px`;
     }
     this._dataIndexCol = opts.dataIndexCol;
-    this._sortCol = opts.dataIndexCol;
+    // '' (default) preserves file/input order; a column name sorts by it
+    this._sortCol = opts.sort || '';
+    this._sortAsc = !/^desc/i.test(opts.sortOrder || 'asc');
     this._rows = opts.rows;
     this._configureColumns(opts);
     this._detectColumnTypes();
@@ -736,17 +740,19 @@ export class ClipTable {
       });
     });
 
-    rows.sort((a, b) => {
-      const av = (a as any)[this._sortCol];
-      const bv = (b as any)[this._sortCol];
-      let cmp = 0;
-      if (typeof av === 'string' && typeof bv === 'string') {
-        cmp = av.localeCompare(bv);
-      } else {
-        cmp = av < bv ? -1 : av > bv ? 1 : 0;
-      }
-      return this._sortAsc ? cmp : -cmp;
-    });
+    if (this._sortCol) {
+      rows.sort((a, b) => {
+        const av = (a as any)[this._sortCol];
+        const bv = (b as any)[this._sortCol];
+        let cmp = 0;
+        if (typeof av === 'string' && typeof bv === 'string') {
+          cmp = av.localeCompare(bv);
+        } else {
+          cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        }
+        return this._sortAsc ? cmp : -cmp;
+      });
+    }
 
     // Apply view mode filter
     if (this._viewMode === 'pending') {
