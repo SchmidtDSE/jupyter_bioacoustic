@@ -60,6 +60,8 @@ export const DOCS: Record<string, SectionDocs> = {
     display_columns: `Columns visible in the clip table.\nControls which columns appear as sortable table headers.`,
     info_card_title: `Template string shown prominently in the info card and used for naming captured files.\nSupports [[column_name]] placeholders.\nExample: "[[common_name]]"`,
     info_card_text: `Template string shown after the time range in the info card.\nSupports [[column_name]] placeholders.\nExample: "species: [[scientific_name]] | confidence: [[confidence]]"`,
+    sort: `(defaults to none) Column to sort the clip table by.\nLeave blank to keep the input/file order. Users can still re-sort by clicking column headers.`,
+    sort_order: `Sort direction when "sort" is set: asc (default) or desc.`,
     duplicate_entries: `Allow multiple submissions per row. Default: false.\nEnable for tasks where the same clip needs multiple annotations.`,
     default_buffer: `Buffer time in seconds added before/after the audio segment.\nDefault: 3. Increase for more context around short clips.`,
     capture: `Capture button lets users save audio clips.\nSet to false to hide, true for default label, or a string for custom label.`,
