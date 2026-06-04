@@ -1,0 +1,16 @@
+display_columns:
+- common_name
+- confidence
+- rank
+- county
+output:
+  index_column: detection_id
+info_card_title: '[[common_name]]'
+info_card_text: 'scientific_name: [[scientific_name]]'
+capture: Save Spectrogram
+capture_dir: spectrograms
+audio:
+  column: audio_url
+data:
+  index_column: id
+form_config: annotator_config/forms/simple-examples-3.yaml

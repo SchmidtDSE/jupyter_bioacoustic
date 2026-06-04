@@ -41,6 +41,7 @@ _build/
 demo/*.md
 demo/*.png
 demo/*.ipynb
+demo/*.py
 demo/audio/
 demo/outputs/
 demo/spectrograms/

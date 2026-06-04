@@ -1,0 +1,33 @@
+data:
+  index_column: id
+audio:
+  column: audio_uri_public
+output:
+  path: outputs/sync-example.csv
+  index_column: detections_id
+  uri: s3://dse-soundhub/dev/annotations/sync-example.csv
+  sync_button: Sync to S3
+sort: confidence
+sort_order: desc
+display_columns:
+- deployment_code
+- common_name
+- scientific_name
+- confidence
+form_config:
+  title:
+    value: REVIEW
+    progress_tracker: true
+  select:
+    label: Is [[common_name]] Valid
+    column: is_valid
+    required: true
+    items:
+    - 'yes'
+    - 'no'
+  submission_buttons:
+    line: true
+    next:
+      label: Skip
+    submit:
+      label: Verify

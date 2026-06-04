@@ -1,8 +1,0 @@
-form:
-    - select:
-          label: 'species'
-          column: 'common_name'
-          required: true
-          items:
-              path: 'data/species_counts.N-dse.csv'
-              value: 'common_name'
