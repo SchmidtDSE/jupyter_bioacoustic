@@ -191,6 +191,8 @@ dynamic_forms:
 | `project_name` | `None` | Widget header title. Auto-derived from project filename if not set. |
 | `info_card_text` | `''` | Info card text — supports `[[column_name]]` and `[[kwarg_name]]` templates |
 | `display_columns` | `[]` | Columns for the clip table |
+| `sort` | `None` | Column to sort the clip table by (`None` = input/file order) |
+| `sort_order` | `'asc'` | Sort direction when `sort` is set (`'asc'` or `'desc'`) |
 | `duplicate_entries` | `False` | Allow multiple submissions per row |
 | `default_buffer` | `3` | Buffer time in seconds |
 | `capture` | `True` | Capture button (`False` to hide, string for label) |
