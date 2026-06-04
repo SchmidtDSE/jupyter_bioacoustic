@@ -50,6 +50,7 @@ SECTION_KEYS = frozenset({'data', 'audio', 'output'})
 APP_KEYS = frozenset({
     'info_card_title', 'info_card_text',
     'display_columns',
+    'sort', 'sort_order',
     'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
     'spectrogram_resolution', 'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
