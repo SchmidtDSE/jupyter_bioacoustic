@@ -17,6 +17,8 @@ node_modules/
 .yarn/
 yarn.lock
 *yarn*
+pnpm-lock.yaml
+pnpm-workspace.yaml
 lib/
 *.tsbuildinfo
 __pycache__/
