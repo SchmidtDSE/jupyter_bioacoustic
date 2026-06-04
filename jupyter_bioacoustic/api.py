@@ -862,6 +862,7 @@ _CONFIG_PARAMS = {
     'output_sync_button', 'output_recursive',
     'output_secrets', 'output_index_column',
     'info_card_title', 'info_card_text', 'display_columns',
+    'sort', 'sort_order',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
     'visualizations', 'partial_download',
@@ -948,6 +949,8 @@ class BioacousticAnnotator:
         width=_UNSET,
         partial_download=_UNSET,
         duplicate_entries=_UNSET,
+        sort=_UNSET,
+        sort_order=_UNSET,
         session_args=_UNSET,
         **kwargs,
     ):
@@ -1041,6 +1044,10 @@ class BioacousticAnnotator:
             width: Widget width (pixels or percentage string).
             partial_download: Use byte-range downloads for remote audio.
             duplicate_entries: Allow multiple submissions per row.
+            sort: Column name to sort the clip table by. Defaults to None
+                (file/input order — no sort applied).
+            sort_order: Sort direction when ``sort`` is set —
+                ``'asc'`` (default) or ``'desc'``.
             session_args: List of allowed ``**kwargs`` keys, or True to
                 allow all.
             **kwargs: Fixed columns included in every output row.
@@ -1451,6 +1458,8 @@ class BioacousticAnnotator:
         self._duplicate_entries = resolve(
             duplicate_entries, 'duplicate_entries', False,
         )
+        self._sort = resolve(sort, 'sort', None)
+        self._sort_order = resolve(sort_order, 'sort_order', 'asc')
         self._default_buffer = resolve(
             default_buffer, 'default_buffer',
             DEFAULT_BUFFER,
@@ -1575,6 +1584,8 @@ class BioacousticAnnotator:
         ns['_BA_DUPLICATE_ENTRIES'] = (
             'true' if self._duplicate_entries else ''
         )
+        ns['_BA_SORT'] = self._sort or ''
+        ns['_BA_SORT_ORDER'] = self._sort_order or 'asc'
         ns['_BA_DEFAULT_BUFFER'] = str(
             self._default_buffer,
         )
