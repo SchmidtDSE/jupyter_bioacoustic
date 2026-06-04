@@ -94,7 +94,7 @@ cmd = "python -m ensurepip --upgrade && python -m pip install -e . && python dev
 depends-on = ["build"]
 
 [tool.pixi.tasks.tests]
-cmd = "cd jupyter_bioacoustic && pnpm test && cd .. && pixi run -e test pytest tests/ -v"
+cmd = "cd jupyter_bioacoustic && jlpm test && cd .. && pixi run -e test pytest tests/ -v"
 
 [tool.pixi.tasks.typecheck]
 cmd = "npx tsc --noEmit"
