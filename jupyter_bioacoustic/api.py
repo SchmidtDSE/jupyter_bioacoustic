@@ -21,7 +21,7 @@ License: BSD 3-Clause
 """
 
 from __future__ import annotations
-
+import yaml
 import json
 import logging
 import os
@@ -223,6 +223,31 @@ def _detect_data_type(data_str: str) -> str:
     ):
         return 'url'
     return 'path'
+
+
+def _section_with_index(
+    value: Any, index_col: Optional[str], is_data: bool,
+) -> dict:
+    """Return a data/output section as a dict carrying its index_column.
+
+    Consolidates a bare source (string path/url/sql/api, or DataFrame) into
+    a dict so the resolved ``index_column`` lives inside the section rather
+    than at the top level. Returns ``{}`` when there is no section.
+    """
+    if isinstance(value, dict):
+        section = dict(value)
+    elif value is not None:
+        key = (
+            _detect_data_type(value)
+            if is_data and isinstance(value, str)
+            else 'path'
+        )
+        section = {key: value}
+    else:
+        return {}
+    if index_col is not None:
+        section['index_column'] = index_col
+    return section
 
 
 #
@@ -568,13 +593,6 @@ def _load_config(path: str) -> dict:
         with open(path) as f:
             return json.load(f) or {}
     else:
-        try:
-            import yaml
-        except ImportError:
-            raise ImportError(
-                "pyyaml is required to load YAML config "
-                "files: pip install pyyaml"
-            )
         with open(path) as f:
             return yaml.safe_load(f) or {}
 
@@ -1698,16 +1716,18 @@ class BioacousticAnnotator:
         return result
 
 
-    def describe(self) -> None:
+    def describe(self, print_config: bool = True) -> None:
         """ print description of instance """
-        print_md('---')
-        print_md('**Configuration Files**')
-        print(f'- Project: {self.project_path}')
-        print(f'- Config: {self.config_path}')
-        print(f'- Form: {self.form_path}')
-        print_md('---')
-        print_md('**Configuration:**')
-        pprint(self.configuration)
+        if self.project_path or self.config_path or self.form_path:
+            print_md('---')
+            print_md('**Configuration Files**')
+            if self.project_path: print(f'- Project: {self.project_path}')
+            if self.config_path: print(f'- Config: {self.config_path}')
+            if self.form_path: print(f'- Form: {self.form_path}')
+        if print_config:
+            print_md('---')
+            print_md('**Configuration**')
+            print(yaml.dump(self.configuration))
         print_md('---')
 
 
@@ -1733,10 +1753,11 @@ class BioacousticAnnotator:
     def configuration(self) -> dict[str, Any]:
         """The fully resolved configuration as a single dict.
 
-        Merges project + config + notebook arguments, inlines the resolved
-        form (no ``config``/``form_config`` path references), and reflects
-        the resolved ``data_index_column``/``output_index_column``. This is
-        the canonical config that ``validate()`` checks against.
+        Merges project + config + notebook arguments and inlines the
+        resolved form (no ``config``/``form_config`` path references). The
+        resolved index columns are kept inside their ``data``/``output``
+        dict (data/output are consolidated to dicts), not hoisted to
+        top-level keys. This is the canonical config ``validate()`` checks.
         """
         cfg = dict(self._merged_cfg)
         cfg.update(self._init_overrides)
@@ -1745,10 +1766,19 @@ class BioacousticAnnotator:
         cfg.pop('form_config', None)
         if self._form_config:
             cfg['form_config'] = dict(self._form_config)
-        if self._data_index_column is not None:
-            cfg['data_index_column'] = self._data_index_column
-        if self._output_index_column is not None:
-            cfg['output_index_column'] = self._output_index_column
+        # keep index columns inside their data/output dict, not at top level
+        cfg.pop('data_index_column', None)
+        cfg.pop('output_index_column', None)
+        cfg['data'] = _section_with_index(
+            cfg.get('data'), self._data_index_column, is_data=True,
+        )
+        out = _section_with_index(
+            cfg.get('output'), self._output_index_column, is_data=False,
+        )
+        if out:
+            cfg['output'] = out
+        else:
+            cfg.pop('output', None)
         return cfg
 
     @property
