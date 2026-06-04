@@ -9,6 +9,9 @@ export class AppSection extends CollapsibleSection {
   private _projectNameInput: HTMLInputElement;
   private _titleInput: HTMLInputElement;
   private _textInput: HTMLInputElement;
+  private _sortInput: HTMLInputElement;
+  private _sortSelect: HTMLSelectElement;
+  private _sortOrderSelect: HTMLSelectElement;
   private _dispCols: string[] = [];
   private _dispColsSet = false; // Track if display_columns was explicitly set
   private _duplicateCb: HTMLInputElement;
@@ -58,6 +61,24 @@ export class AppSection extends CollapsibleSection {
     this._textInput = this._makeInput('species: [[species]] | confidence: [[confidence]]', '220px');
     this._textInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('info_card_text', this._textInput));
+
+    this._sortInput = this._makeInput('column (default: file order)', '180px');
+    this._sortInput.addEventListener('input', () => this._emitChanged());
+    // dropdown shown once data columns are known; writes back into _sortInput
+    // (the canonical value). Empty option = None (file order).
+    this._sortSelect = this._makeSelect([], '');
+    this._sortSelect.style.display = 'none';
+    this._sortSelect.addEventListener('change', () => {
+      this._sortInput.value = this._sortSelect.value;
+      this._emitChanged();
+    });
+    const sortRow = this._makeFieldRow('sort', this._sortInput);
+    sortRow.appendChild(this._sortSelect);
+    this._body.appendChild(sortRow);
+
+    this._sortOrderSelect = this._makeSelect(['asc', 'desc'], 'asc');
+    this._sortOrderSelect.addEventListener('change', () => this._emitChanged());
+    this._body.appendChild(this._makeFieldRow('sort_order', this._sortOrderSelect));
 
     const { row: dupRow, input: dupCb } = this._makeCheckbox('duplicate_entries');
     this._duplicateCb = dupCb;
@@ -173,6 +194,25 @@ export class AppSection extends CollapsibleSection {
 
   setColumnOptions(cols: string[]): void {
     this._availableCols = cols;
+    // sort field: dropdown of [None] + columns when columns are known,
+    // otherwise fall back to the free-text input
+    this._sortSelect.innerHTML = '';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = 'None';
+    this._sortSelect.appendChild(noneOpt);
+    for (const col of cols) {
+      const o = document.createElement('option');
+      o.value = col;
+      o.textContent = col;
+      this._sortSelect.appendChild(o);
+    }
+    const curSort = this._sortInput.value.trim();
+    this._sortSelect.value = cols.includes(curSort) ? curSort : '';
+    const hasCols = cols.length > 0;
+    this._sortSelect.style.display = hasCols ? '' : 'none';
+    this._sortInput.style.display = hasCols ? 'none' : '';
+
     if (cols.length > 0) {
       if (this._dispCols.length === 0 && this._dispTextInput.value.trim()) {
         this._dispCols = this._dispTextInput.value.split(',').map(s => s.trim()).filter(Boolean);
@@ -400,6 +440,12 @@ export class AppSection extends CollapsibleSection {
     result.info_card_title = this._titleInput.value.trim();
     result.info_card_text = this._textInput.value.trim();
 
+    const sortCol = this._sortInput.value.trim();
+    if (sortCol) {
+      result.sort = sortCol;
+      if (this._sortOrderSelect.value === 'desc') result.sort_order = 'desc';
+    }
+
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
     const bufStr = this._bufferInput.value.trim();
@@ -452,6 +498,12 @@ export class AppSection extends CollapsibleSection {
     }
     if (data.info_card_title) this._titleInput.value = data.info_card_title;
     if (data.info_card_text) this._textInput.value = data.info_card_text;
+    if (data.sort !== undefined) {
+      const sv = data.sort ? String(data.sort) : '';
+      this._sortInput.value = sv;
+      this._sortSelect.value = this._availableCols.includes(sv) ? sv : '';
+    }
+    if (data.sort_order !== undefined) this._sortOrderSelect.value = String(data.sort_order) === 'desc' ? 'desc' : 'asc';
     if (data.duplicate_entries) this._duplicateCb.checked = true;
     if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
     if (data.capture === false) this._captureCb.checked = false;
