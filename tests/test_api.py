@@ -902,3 +902,42 @@ class TestAnnotatorValidate:
         result = ba.validate()
         assert not result['valid']
         assert any('tool' in e.lower() for e in result['errors'])
+
+
+#
+# BioacousticAnnotator — sort / sort_order
+#
+class TestAnnotatorSort:
+
+    def test_sort_defaults_to_none(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', data_index_column='id',
+        )
+        assert ba._sort is None
+        assert ba._sort_order == 'asc'
+
+    def test_sort_params_stored(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', data_index_column='id',
+            sort='common_name', sort_order='desc',
+        )
+        assert ba._sort == 'common_name'
+        assert ba._sort_order == 'desc'
+
+    def test_sort_from_config(self, tmp_path):
+        import yaml
+        cfg = {
+            'audio': {'column': 'audio_path'},
+            'data': {'index_column': 'id'},
+            'sort': 'confidence',
+            'sort_order': 'desc',
+        }
+        cfg_file = tmp_path / 'config.yaml'
+        cfg_file.write_text(yaml.dump(cfg))
+        ba = BioacousticAnnotator(
+            data=_make_df(), config=str(cfg_file),
+        )
+        assert ba._sort == 'confidence'
+        assert ba._sort_order == 'desc'
+        # valid keys — no unknown-key errors
+        assert ba.validate()['valid']
