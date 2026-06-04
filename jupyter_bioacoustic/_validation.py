@@ -39,6 +39,7 @@ VALID_CONFIG_KEYS = frozenset({
     'output_sync_button', 'output_recursive', 'output_secrets',
     'output_index_column',
     'info_card_title', 'info_card_text',
+    'sort', 'sort_order',
     'form_config', 'duplicate_entries', 'default_buffer',
     'capture', 'capture_dir', 'spectrogram_resolution',
     'visualizations', 'partial_download',
