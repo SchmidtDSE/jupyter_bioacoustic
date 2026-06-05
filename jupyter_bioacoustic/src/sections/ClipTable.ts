@@ -671,25 +671,39 @@ export class ClipTable {
         `padding:5px 8px;text-align:left;color:${COLORS.blue};font-size:11px;` +
         `cursor:pointer;user-select:none;white-space:nowrap;` +
         `border-bottom:2px solid ${COLORS.bgSurface0};`;
+      th.title = 'Click to sort · Shift-click to clear sort';
       th.textContent = label;
-      th.addEventListener('click', () => {
-        if (this._sortCol === key) {
+      th.addEventListener('click', (e) => {
+        if (e.shiftKey) {
+          // shift-click clears the sort → natural/input order
+          this._sortCol = '';
+        } else if (this._sortCol === key) {
           this._sortAsc = !this._sortAsc;
         } else {
           this._sortCol = key;
           this._sortAsc = true;
         }
-        this._thead.querySelectorAll('th').forEach(t => {
-          const col = (t as HTMLElement).dataset.col!;
-          const entry = this._tableCols.find(c => c.key === col);
-          if (entry) t.textContent = entry.label + (col === this._sortCol ? (this._sortAsc ? ' ▲' : ' ▼') : '');
-        });
+        this._updateSortIndicators();
         this._page = 0;
         this.refresh();
       });
       headerRow.appendChild(th);
     });
     this._thead.appendChild(headerRow);
+    // reflect the current sort (including one set via the sort/sort_order
+    // params) in the header arrows on (re)build
+    this._updateSortIndicators();
+  }
+
+  private _updateSortIndicators(): void {
+    this._thead.querySelectorAll('th').forEach(t => {
+      const col = (t as HTMLElement).dataset.col!;
+      const entry = this._tableCols.find(c => c.key === col);
+      if (entry) {
+        t.textContent = entry.label
+          + (col === this._sortCol ? (this._sortAsc ? ' ▲' : ' ▼') : '');
+      }
+    });
   }
 
   // ─── Private: filter + sort ────────────────────────────────
