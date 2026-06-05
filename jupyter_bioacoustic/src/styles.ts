@@ -151,6 +151,20 @@ export function injectGlobalStyles(): void {
       color: ${COLORS.textSubtle} !important;
       opacity: 0.6 !important;
     }
+    /* When mounted inline (inline=True) the widget lives inside a notebook
+       output's .jp-RenderedHTMLCommon, whose table CSS (table-layout: fixed;
+       margin: auto; max-width) collapses the clip table so columns overlap.
+       Restore content-sizing + horizontal scroll for our tables. */
+    [id^="jp-bioacoustic-"] table {
+      table-layout: auto !important;
+      width: 100% !important;
+      margin: 0 !important;
+      max-width: none !important;
+    }
+    [id^="jp-bioacoustic-"] th,
+    [id^="jp-bioacoustic-"] td {
+      max-width: none !important;
+    }
   `;
   document.head.appendChild(styleEl);
 }
