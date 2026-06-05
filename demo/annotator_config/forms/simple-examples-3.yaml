@@ -6,7 +6,7 @@ pass_value:
   column: detection_id
 form:
 - select:
-    label: Is Valid
+    label: 'Is [[common_name]] Valid?'
     column: is_valid
     required: true
     items:

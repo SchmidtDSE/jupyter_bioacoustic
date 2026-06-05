@@ -1,8 +1,8 @@
 display_columns:
 - common_name
+- scientific_name
 - confidence
 - rank
-- county
 output:
   index_column: detection_id
 info_card_title: '[[common_name]]'
