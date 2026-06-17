@@ -40,6 +40,8 @@ export class SetupSection extends CollapsibleSection {
   readonly applyTemplateRequested = new Signal<this, {
     name: string; scope: string; projectName: string; values: Record<string, string>;
   }>(this);
+  readonly templateBrowseRequested = new Signal<this, { key: string; exts: string[]; current: string }>(this);
+  readonly templateColumnsRequested = new Signal<this, string>(this);
 
   private _mode = MODE_CREATE;
   private _active = false;
@@ -131,6 +133,14 @@ export class SetupSection extends CollapsibleSection {
 
   resetTemplateForm(): void {
     this._templateForm.reset();
+  }
+
+  setTemplateFieldValue(key: string, value: string): void {
+    this._templateForm.setFieldValue(key, value);
+  }
+
+  setTemplateColumns(path: string, cols: string[]): void {
+    this._templateForm.setColumns(path, cols);
   }
 
   setCheckedStates(project: boolean, config: boolean, form: boolean): void {
@@ -244,6 +254,10 @@ export class SetupSection extends CollapsibleSection {
     this._templateForm.templateSelected.connect((_, name) => this.templateSelected.emit(name));
     this._templateForm.applyRequested.connect((_, payload) =>
       this.applyTemplateRequested.emit(payload));
+    this._templateForm.browseRequested.connect((_, payload) =>
+      this.templateBrowseRequested.emit(payload));
+    this._templateForm.columnsRequested.connect((_, path) =>
+      this.templateColumnsRequested.emit(path));
     pane.appendChild(this._templateForm.element);
     return pane;
   }
