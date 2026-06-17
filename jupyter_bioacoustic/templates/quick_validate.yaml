@@ -1,0 +1,84 @@
+# Quick validation template (derived from the sync_example project).
+# Fast yes/no validation of detections.
+title: Quick Validate
+short_description: Fast yes/no validation of detections.
+description: |
+  The fastest review: for each clip, mark whether the detection is valid — yes or no.
+
+  ---
+
+  Clips are sorted by common name; use **Skip** to pass and **Submit** to record.
+
+project:
+  template_description: Where the clips, their audio, and the review output live.
+  builder_elements:
+    - group:
+        group_name: data
+        group_description: audio clip metadata
+        elements:
+          - data_value:
+              required: true
+              label: Data file
+              description: CSV/Parquet of audio-clip detections
+          - data_index_column:
+              required: true
+              description: unique row identifier in the clip dataset
+    - group:
+        group_name: audio
+        elements:
+          - audio_column:
+              default: audio_url
+              description: column holding each clip's audio path/URL
+    - output_index_column:
+        required: false
+        description: defaults to data.index_column
+    - output_uri:
+        required: false
+        description: optional remote sync destination (e.g. s3://bucket/reviews.csv)
+  configuration:
+    data:
+      source_type: path
+      value: __data_value__
+      index_column: __data_index_column__
+    audio:
+      source_type: column
+      value: __audio_column__
+    output:
+      index_column: __output_index_column__
+      uri: __output_uri__
+
+config:
+  configuration:
+    capture: true
+    default_buffer: 0.5
+    display_columns:
+      - deployment_code
+      - common_name
+      - scientific_name
+      - confidence
+    sort: common_name
+    sort_order: desc
+
+form:
+  builder_elements:
+    - title: REVIEW
+  configuration:
+    title:
+      value: __title__
+      progress_tracker: true
+    form:
+      - select:
+          column: is_valid
+          label: Is [[common_name]] Valid
+          required: true
+          items:
+            - 'yes'
+            - 'no'
+    submission_buttons:
+      line: true
+      next:
+        label: Skip
+        icon: true
+      submit:
+        label: Submit
+        icon: true

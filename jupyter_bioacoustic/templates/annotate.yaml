@@ -1,0 +1,120 @@
+# Audio Annotation template (derived from the demo_annotation project).
+# Draw bounding-box / time / multibox annotations and label each with a species.
+title: Annotate (Boxes + Species)
+short_description: Bounding-box & time annotations with a species dropdown.
+description: |
+  Draw **bounding-box**, **time**, and **multibox** annotations on the spectrogram and
+  label each with a species chosen from a dropdown loaded from your species list.
+
+  ---
+
+  Fill in your detections file and the species list — everything else (annotation tools,
+  spectrogram views, instructions) is preconfigured and can be tweaked after creation.
+
+project:
+  template_description: Where the clips, their audio, and the annotation output live.
+  builder_elements:
+    - group:
+        group_name: data
+        group_description: audio clip metadata
+        elements:
+          - data_value:
+              required: true
+              label: Data file
+              description: CSV/Parquet of audio-clip detections
+          - data_index_column:
+              required: true
+              description: unique row identifier in the clip dataset
+    - group:
+        group_name: audio
+        elements:
+          - audio_column:
+              default: audio_url
+              description: column holding each clip's audio path/URL
+    - output_index_column:
+        required: false
+        description: defaults to data.index_column
+    - output_uri:
+        required: false
+        description: optional remote sync destination (e.g. s3://bucket/reviews.csv)
+  configuration:
+    data:
+      source_type: path
+      value: __data_value__
+      index_column: __data_index_column__
+    audio:
+      source_type: column
+      value: __audio_column__
+    output:
+      index_column: __output_index_column__
+      uri: __output_uri__
+
+config:
+  configuration:
+    description:
+      title: Annotation Instructions
+      text: |
+        There are 5 types of annotations available:
+
+        ---
+
+        - **time-select**: Single draggable vertical line
+        - **start-end-time-select**: Two draggable vertical lines (constrained — can't cross)
+        - **bounding-box**: Click+drag rectangle with individually draggable edges
+        - **multibox**: Draw multiple bounding boxes, each with optional per-box form. Submits one row per box.
+        - **fixed-duration**: Click to place a fixed-length time region. Duration is set in config.
+      open: false
+    capture: true
+    default_buffer: 0.25
+    display_columns:
+      - deployment_placename
+      - start_time
+      - deployment_subproject
+      - recording_start_datetime
+      - audio_url
+    visualizations:
+      - plain
+      - mel
+      - log_frequency
+      - bandpass
+      - waveform
+
+form:
+  builder_elements:
+    - title: Bioacoustic Annotator
+    - species_file:
+        label: Species list file
+        description: file (CSV) containing the species names
+        default: data/species_counts.N-dse.csv
+    - species_column:
+        label: Species column
+        default: common_name
+        description: column in the species file to use as the label
+  configuration:
+    title:
+      value: __title__
+      progress_tracker: true
+    annotation:
+      tools:
+        - time_select
+        - start_end_time_select
+        - bounding_box
+        - multibox
+        - fixed_duration:
+            step: 0.01
+            initial_window: 1
+            min: 0.1
+            max: 3
+      form: species_form
+    dynamic_forms:
+      species_form:
+        - select:
+            label: Species
+            column: species
+            required: true
+            items:
+              path: __species_file__
+              value: __species_column__
+              filter_box: true
+              custom_value: true
+              not_available: true

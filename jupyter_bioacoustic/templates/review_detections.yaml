@@ -1,0 +1,161 @@
+# Detection review template (derived from the simple-examples-3 project).
+# Confirm/reject each detection with conditional follow-up forms.
+title: Review Detections
+short_description: Confirm/reject detections with conditional follow-up forms.
+description: |
+  Review model detections one at a time: mark each **valid** or **invalid**.
+
+  ---
+
+  - A **valid** detection asks for reviewer confidence and optional notes.
+  - An **invalid** detection asks for the corrected species, a rejection reason,
+    signal quality, and notes.
+
+project:
+  template_description: Where the clips, their audio, and the review output live.
+  builder_elements:
+    - group:
+        group_name: data
+        group_description: audio clip metadata
+        elements:
+          - data_value:
+              required: true
+              label: Data file
+              description: CSV/Parquet of audio-clip detections
+          - data_index_column:
+              required: true
+              description: unique row identifier in the clip dataset
+    - group:
+        group_name: audio
+        elements:
+          - audio_column:
+              default: audio_url
+              description: column holding each clip's audio path/URL
+    - output_index_column:
+        required: false
+        description: defaults to data.index_column
+    - output_uri:
+        required: false
+        description: optional remote sync destination (e.g. s3://bucket/reviews.csv)
+  configuration:
+    data:
+      source_type: path
+      value: __data_value__
+      index_column: __data_index_column__
+    audio:
+      source_type: column
+      value: __audio_column__
+    output:
+      index_column: __output_index_column__
+      uri: __output_uri__
+
+config:
+  configuration:
+    description:
+      title: Annotation Instructions
+      text: |
+        There are 5 types of annotations available:
+
+        ---
+
+        - `time_select`: Single draggable vertical line
+        - `start_end_time_select`: Two draggable vertical lines (constrained — can't cross)
+        - `bounding_box`: Click+drag rectangle with individually draggable edges
+        - `multibox`: Draw multiple bounding boxes, each with optional per-box form. Submits one row per box.
+        - `fixed_duration`: Click to place a fixed-length time region. Duration is set in config.
+      open: false
+    display_columns:
+      - common_name
+      - scientific_name
+      - confidence
+      - rank
+    info_card_title: '[[common_name]]'
+    info_card_text: 'scientific_name: [[scientific_name]]'
+    capture: true
+    capture_dir: spectrograms
+    default_buffer: 0.5
+
+form:
+  builder_elements:
+    - title: REVIEW DETECTION
+    - species_file:
+        label: Species list file
+        description: file (CSV) of species names for the corrected-species dropdown
+        default: data/species_counts.N-dse.csv
+    - species_column:
+        label: Species column
+        default: common_name
+        description: column in the species file to use as the label
+  configuration:
+    title:
+      value: __title__
+      progress_tracker: true
+    pass_value:
+      source_column: id
+      column: detection_id
+    form:
+      - select:
+          label: Is [[common_name]] Valid?
+          column: is_valid
+          required: true
+          items:
+            - label: 'yes'
+              value: 'yes'
+              form: confirmed_form
+            - label: 'no'
+              value: 'no'
+              form: rejected_form
+    dynamic_forms:
+      confirmed_form:
+        - select:
+            label: confidence
+            column: reviewer_confidence
+            items:
+              - low
+              - medium
+              - high
+        - textbox:
+            label: notes
+            column: notes
+      rejected_form:
+        - select:
+            label: corrected species
+            column: corrected_common_name
+            required: true
+            items:
+              path: __species_file__
+              value: __species_column__
+              filter_box: true
+              custom_value: true
+              not_available:
+                label: Unknown Species
+                value: unknown
+        - select:
+            label: rejection reason
+            column: rejection_reason
+            required: true
+            items:
+              - noise
+              - wrong species
+              - overlapping signals
+              - too faint
+              - other
+        - number:
+            label: signal quality (1-5)
+            column: signal_quality
+            min: 1
+            max: 5
+            step: 1
+        - checkbox:
+            label: flag for expert review
+            column: flagged
+        - textbox:
+            label: notes
+            column: notes
+            multiline: true
+    submission_buttons:
+      line: true
+      next:
+        label: Skip
+      submit:
+        label: Verify
