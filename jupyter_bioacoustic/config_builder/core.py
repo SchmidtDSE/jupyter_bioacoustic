@@ -843,6 +843,62 @@ class ConfigBuilder:
         state['loaded_paths'] = loaded_paths
         return state
 
+    def list_templates(self) -> list:
+        """List available "create from template" definitions."""
+        from .templates import list_templates
+        return list_templates()
+
+    def load_template(self, name: str) -> dict:
+        """Load the full parsed template dict for ``name`` (file stem)."""
+        from .templates import load_template
+        return load_template(name)
+
+    def apply_template(
+        self,
+        name: str,
+        scope: str,
+        project_name: str,
+        values: dict | None = None,
+    ) -> dict:
+        """Apply a template at ``scope`` with the user's ``values`` and load the result.
+
+        Substitutes the user's values into the template's per-section configuration,
+        loads them into the three dicts, sets the project name / enabled flags /
+        section targets so saving produces linked project/config/form files, and
+        returns the resulting state (same shape as ``load_config``).
+        """
+        from .templates import build_template_config
+        template = self.load_template(name)
+        sections = build_template_config(template, scope, values or {})
+
+        self._project = {}
+        self._config = {}
+        self._form_config = {}
+        if 'project' in sections:
+            self._project.update(sections['project'])
+        if 'config' in sections:
+            self._config.update(sections['config'])
+        if 'form' in sections:
+            self._form_config = sections['form']
+
+        if project_name:
+            self._project['project_name'] = project_name
+            slug = re.sub(r'[^a-z0-9]+', '_', project_name.lower()).strip('_')
+            self._project['project_path'] = f'annotator_config/{DEFAULT_PROJECT_DIR}/{slug}.yaml'
+            self._project['config_path'] = f'annotator_config/{DEFAULT_CONFIG_DIR}/{slug}.yaml'
+            self._project['form_path'] = f'annotator_config/{DEFAULT_FORM_DIR}/{slug}.yaml'
+        self._project['project_enabled'] = scope == 'project'
+        self._project['config_enabled'] = scope in ('project', 'config')
+        self._project['form_enabled'] = bool(self._form_config)
+        self._section_targets.update({
+            'data': 'project', 'audio': 'project', 'output': 'project',
+            'app': 'config', 'form': 'form_config',
+        })
+        self._saved_path = None
+        self._dirty = True
+        _log.info('apply_template(%s) scope=%s name=%s', name, scope, project_name)
+        return self._get_state()
+
     def validate(self) -> dict:
         """Validate configuration and return errors/warnings."""
         return validate_config(
