@@ -36,10 +36,13 @@ _UNSET = object()
 DEFAULT_PROJECT_DIR = 'projects'
 DEFAULT_CONFIG_DIR = 'config'
 DEFAULT_FORM_DIR = 'forms'
-DATA_PROJECT_KEYS = frozenset({'src', 'path', 'url', 'sql', 'api', 'secrets'})
+DATA_PROJECT_KEYS = frozenset({
+    'value', 'source_type', 'path', 'url', 'sql', 'api', 'secrets'
+})
 DATA_CONFIG_KEYS = frozenset({'start_time', 'end_time', 'duration', 'index_column'})
 AUDIO_PROJECT_KEYS = frozenset({
-    'src', 'path', 'url', 'uri', 'sql', 'api', 'secrets', 'response_index'
+    'value', 'source_type', 'path', 'url', 'uri', 'sql', 'api',
+    'secrets', 'response_index'
 })
 AUDIO_CONFIG_KEYS = frozenset({'column', 'prefix', 'suffix', 'fallback', 'property'})
 OUTPUT_PROJECT_KEYS = frozenset({
