@@ -27,6 +27,7 @@ from jupyter_bioacoustic.api import (
     DEFAULT_PLAYER_HEIGHT,
     _detect_data_type,
     _detect_audio_type,
+    _resolve_data_config,
     _resolve_secrets,
     _read_data,
     _merge_project_over_config,
@@ -291,6 +292,54 @@ class TestReadData:
 
 
 #
+# _resolve_data_config
+#
+class TestResolveDataConfig:
+    """Normalization of the data parameter, incl. the auto-detected 'src'."""
+
+    def test_explicit_path_key(self):
+        source, dtype, _ = _resolve_data_config({'path': 'data.csv'}, None)
+        assert source == 'data.csv'
+        assert dtype == 'path'
+
+    def test_explicit_url_key(self):
+        source, dtype, _ = _resolve_data_config(
+            {'url': 'https://x.com/data.csv'}, None,
+        )
+        assert dtype == 'url'
+
+    def test_src_auto_detects_path(self):
+        source, dtype, _ = _resolve_data_config({'src': 'data.csv'}, None)
+        assert source == 'data.csv'
+        assert dtype == 'path'
+
+    def test_src_auto_detects_url(self):
+        _, dtype, _ = _resolve_data_config(
+            {'src': 's3://bucket/data.csv'}, None,
+        )
+        assert dtype == 'url'
+
+    def test_src_auto_detects_sql(self):
+        _, dtype, _ = _resolve_data_config({'src': 'SELECT * FROM t'}, None)
+        assert dtype == 'sql'
+
+    def test_src_auto_detects_api(self):
+        _, dtype, _ = _resolve_data_config(
+            {'src': 'api::https://x.com/data'}, None,
+        )
+        assert dtype == 'api'
+
+    def test_string_auto_detects(self):
+        source, dtype, _ = _resolve_data_config('data.csv', None)
+        assert source == 'data.csv'
+        assert dtype == 'path'
+
+    def test_multiple_source_keys_error(self):
+        with pytest.raises(ValueError, match='exactly one'):
+            _resolve_data_config({'src': 'data.csv', 'path': 'b.csv'}, None)
+
+
+#
 # _detect_audio_type
 #
 class TestDetectAudioType:
@@ -347,6 +396,14 @@ class TestMergeProjectOverConfig:
         assert base['audio']['path'] == '/new/path'
         assert 'src' not in base['audio']
         assert base['audio']['prefix'] == '/audio/'
+
+    def test_data_merge_replaces_src_source_key(self):
+        base = {'data': {'src': 'old.csv', 'index_column': 'id'}}
+        proj = {'data': {'path': 'new.csv'}}
+        _merge_project_over_config(base, proj)
+        assert base['data']['path'] == 'new.csv'
+        assert 'src' not in base['data']
+        assert base['data']['index_column'] == 'id'
 
     def test_non_merge_key_replaced(self):
         base = {'capture': True}
@@ -613,6 +670,31 @@ class TestAnnotatorDataColumns:
             data_index_column='id',
         )
         assert ba._data_columns == []
+
+
+#
+# BioacousticAnnotator — data_src / data.src auto-detection
+#
+class TestAnnotatorDataSrc:
+    """data_src and data={'src': ...} load the same as a bare data string."""
+
+    def test_data_src_loads_local_csv(self, tmp_path):
+        p = tmp_path / "data.csv"
+        _make_df().to_csv(p, index=False)
+        ba = BioacousticAnnotator(
+            data_src=str(p), audio='audio_path',
+            data_index_column='id',
+        )
+        assert len(ba.source) == 2
+
+    def test_data_dict_src_loads_local_csv(self, tmp_path):
+        p = tmp_path / "data.csv"
+        _make_df().to_csv(p, index=False)
+        ba = BioacousticAnnotator(
+            data={'src': str(p)}, audio='audio_path',
+            data_index_column='id',
+        )
+        assert len(ba.source) == 2
 
 
 #
