@@ -433,3 +433,63 @@ class TestRequiredFields:
         )
         assert result['valid']
         assert not any('output_index_column' in w for w in result['warnings'])
+
+
+#
+# sync button validation
+#
+class TestSyncButton:
+    """Tests for sync_button-requires-uri validation."""
+
+    def test_sync_button_without_uri_error_nested(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output': {'sync_button': 'Sync'},
+        })
+        assert not result['valid']
+        assert any('sync' in e.lower() for e in result['errors'])
+
+    def test_sync_button_without_uri_error_flat(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output_sync_button': True,
+        })
+        assert not result['valid']
+        assert any('sync' in e.lower() for e in result['errors'])
+
+    def test_sync_button_with_uri_ok_nested(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output': {'sync_button': 'Sync', 'uri': 's3://bucket/out.csv'},
+        })
+        assert result['valid']
+
+    def test_sync_button_with_url_ok_nested(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output': {'sync_button': True, 'url': 's3://bucket/out.csv'},
+        })
+        assert result['valid']
+
+    def test_sync_button_with_uri_ok_flat(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output_sync_button': True,
+            'output_uri': 's3://bucket/out.csv',
+        })
+        assert result['valid']
+
+    def test_sync_button_uri_split_across_config_and_project(self):
+        """sync_button in config, uri in project — still valid."""
+        result = validate_config(
+            config={'data_index_column': 'id', 'output_sync_button': True},
+            project={'output_uri': 's3://bucket/out.csv'},
+        )
+        assert result['valid']
+
+    def test_no_sync_button_no_error(self):
+        result = validate_config(config={
+            'data_index_column': 'id',
+            'output': {'path': 'out.csv'},
+        })
+        assert result['valid']
