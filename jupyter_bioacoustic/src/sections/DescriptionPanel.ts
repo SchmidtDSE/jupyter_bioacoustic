@@ -8,7 +8,7 @@ export interface DescriptionConfig {
   open: boolean;
 }
 
-function renderMarkdown(src: string): string {
+export function renderMarkdown(src: string): string {
   const lines = src.split('\n');
   const out: string[] = [];
   let inList: 'ol' | 'ul' | '' = '';
