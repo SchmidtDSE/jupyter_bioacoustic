@@ -1551,7 +1551,7 @@ class BioacousticAnnotator:
         )
         ns['_BA_OUTPUT'] = self._resolved_output
         ns['_BA_SYNC_CONFIG'] = json.dumps({
-            'uri': self._sync_uri,
+            'uri': self.sync_uri,
             'button': self._sync_button,
             'recursive': self._sync_recursive,
         })
@@ -1695,7 +1695,7 @@ class BioacousticAnnotator:
                 f'Output file not found: {src}',
             )
 
-        target = dest or self._sync_uri
+        target = dest or self.sync_uri
         if not target:
             raise ValueError(
                 'No sync destination configured. '
@@ -1990,7 +1990,7 @@ class BioacousticAnnotator:
 
         if isinstance(raw_output, dict):
             self._output = raw_output.get('path', '')
-            self._sync_uri = (
+            self.sync_uri = (
                 raw_output.get('uri')
                 or raw_output.get('url')
                 or ''
@@ -2000,7 +2000,7 @@ class BioacousticAnnotator:
             )
             if sync_btn_raw is None:
                 self._sync_button = (
-                    'Sync' if self._sync_uri else ''
+                    'Sync' if self.sync_uri else ''
                 )
             elif isinstance(sync_btn_raw, str):
                 self._sync_button = sync_btn_raw
@@ -2016,7 +2016,7 @@ class BioacousticAnnotator:
             )
         else:
             self._output = raw_output
-            self._sync_uri = ''
+            self.sync_uri = ''
             self._sync_button = ''
             self._sync_recursive = False
             self._sync_secrets_raw = None
@@ -2027,7 +2027,7 @@ class BioacousticAnnotator:
             raw_output_url is not None
             or raw_output_uri is not None
         ):
-            self._sync_uri = (
+            self.sync_uri = (
                 raw_output_url or raw_output_uri or ''
             )
         if raw_output_sync_button is not None:
@@ -2044,7 +2044,7 @@ class BioacousticAnnotator:
         if raw_output_secrets is not None:
             self._sync_secrets_raw = raw_output_secrets
 
-        if self._sync_uri and not self._sync_button:
+        if self.sync_uri and not self._sync_button:
             self._sync_button = 'Sync'
 
     def _init_spec_resolutions(
