@@ -174,9 +174,11 @@ export class DataSection extends CollapsibleSection {
   }
 
   getData(): Record<string, any> {
-    const sourceKey = this._sourceType.value;
     const result: Record<string, any> = {};
-    result[sourceKey] = this._pathInput.value || undefined;
+    if (this._pathInput.value) {
+      result.source_type = this._sourceType.value;
+      result.value = this._pathInput.value;
+    }
 
     const idx = this._detectedCols.length > 0
       ? this._indexColSelect.value
@@ -199,7 +201,14 @@ export class DataSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
-    if (data.path) { this._sourceType.value = 'path'; this._pathInput.value = data.path; }
+    // Current form: source_type + value. Legacy form: an explicit
+    // path/url/sql/api key (still loadable).
+    if (data.value !== undefined || data.source_type) {
+      const st = data.source_type === 'uri' ? 'url' : (data.source_type || 'path');
+      this._sourceType.value = st;
+      this._pathInput.value = data.value ?? '';
+    }
+    else if (data.path) { this._sourceType.value = 'path'; this._pathInput.value = data.path; }
     else if (data.url) { this._sourceType.value = 'url'; this._pathInput.value = data.url; }
     else if (data.sql) { this._sourceType.value = 'sql'; this._pathInput.value = data.sql; }
     else if (data.api) { this._sourceType.value = 'api'; this._pathInput.value = data.api; }
