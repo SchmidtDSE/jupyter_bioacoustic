@@ -112,6 +112,7 @@ def validate_config(
             config or {}, project or {}, errors, warnings,
             _has_form_configured(fc, config or {}, project or {}),
         )
+        _validate_sync(config or {}, project or {}, errors)
     _validate_forms_and_annotations(fc, errors, warnings)
 
     if errors:
@@ -202,6 +203,36 @@ def _validate_required_fields(
         warnings.append(
             f'"output_index_column" not set — '
             f'will default to "{idx_val}"'
+        )
+
+
+def _validate_sync(config: dict, project: dict, errors: list) -> None:
+    """Check that an enabled sync button has a destination URI to sync to.
+
+    The sync button pushes the output file to a remote location, so enabling it
+    without an "output_uri" (nested "output.uri"/"output.url") leaves it with
+    nowhere to sync. Reads both the flat (output_*) and nested (output: {...})
+    config shapes.
+    """
+    sync_enabled = False
+    has_uri = False
+    for cfg in (config, project):
+        if not isinstance(cfg, dict):
+            continue
+        out = cfg.get('output')
+        if isinstance(out, dict):
+            if out.get('sync_button'):
+                sync_enabled = True
+            if out.get('uri') or out.get('url'):
+                has_uri = True
+        if cfg.get('output_sync_button'):
+            sync_enabled = True
+        if cfg.get('output_uri') or cfg.get('output_url'):
+            has_uri = True
+    if sync_enabled and not has_uri:
+        errors.append(
+            '"output_sync_button" is enabled but no sync destination is set — '
+            'provide an "output_uri" (e.g. s3://bucket/reviews.csv) to sync to'
         )
 
 
