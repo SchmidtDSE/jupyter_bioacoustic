@@ -160,6 +160,10 @@ export class ConfigPanel {
     this._setup.templateListRequested.connect(() => void this._onListTemplates());
     this._setup.templateSelected.connect((_, name) => void this._onLoadTemplate(name));
     this._setup.applyTemplateRequested.connect((_, payload) => void this._onApplyTemplate(payload));
+    this._setup.templateBrowseRequested.connect((_, { key, exts, current }) => {
+      this._openBrowser(current, exts, (p) => this._setup.setTemplateFieldValue(key, p));
+    });
+    this._setup.templateColumnsRequested.connect((_, path) => void this._onTemplateColumns(path));
 
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
     this._data.browseRequested.connect((_, dir) => {
@@ -773,6 +777,16 @@ export class ConfigPanel {
     } catch (e: any) {
       this._setStatus(`Failed to list templates: ${String(e.message ?? e)}`, true);
     }
+  }
+
+  private async _onTemplateColumns(path: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    try {
+      const raw = await this._kernel.exec(readColumns(path));
+      const cols = JSON.parse(extractJson(raw)).columns || [];
+      this._setup.setTemplateColumns(path, cols);
+    } catch { /* a bad/missing path just leaves the dropdown empty */ }
   }
 
   private async _onLoadTemplate(name: string): Promise<void> {
