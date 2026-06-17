@@ -23,6 +23,9 @@ import {
   setSectionTarget,
   getSummary,
   changeCwd,
+  listTemplates,
+  loadTemplate,
+  applyTemplate,
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
@@ -153,6 +156,10 @@ export class ConfigPanel {
       this._updateTargetOptions(states);
     });
     this._setup.loadConfigRequested.connect((_, { field, path }) => void this._onLoadConfig(path, field));
+
+    this._setup.templateListRequested.connect(() => void this._onListTemplates());
+    this._setup.templateSelected.connect((_, name) => void this._onLoadTemplate(name));
+    this._setup.applyTemplateRequested.connect((_, payload) => void this._onApplyTemplate(payload));
 
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
     this._data.browseRequested.connect((_, dir) => {
@@ -754,6 +761,59 @@ export class ConfigPanel {
 
   browseDirectory(startDir: string, onSelect: (path: string) => void): void {
     this._openBrowser(startDir, [], onSelect, true);
+  }
+
+  private async _onListTemplates(): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    try {
+      const raw = await this._kernel.exec(listTemplates());
+      const items = JSON.parse(extractJson(raw)).templates || [];
+      this._setup.setTemplateList(items);
+    } catch (e: any) {
+      this._setStatus(`Failed to list templates: ${String(e.message ?? e)}`, true);
+    }
+  }
+
+  private async _onLoadTemplate(name: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    try {
+      const raw = await this._kernel.exec(loadTemplate(name));
+      const tpl = JSON.parse(extractJson(raw)).template || {};
+      this._setup.setTemplate(name, tpl);
+    } catch (e: any) {
+      this._setStatus(`Failed to load template: ${String(e.message ?? e)}`, true);
+    }
+  }
+
+  private async _onApplyTemplate(payload: {
+    name: string; scope: string; projectName: string; values: Record<string, string>;
+  }): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    this._setStatus('Applying template…');
+    try {
+      const raw = await this._kernel.exec(
+        applyTemplate(payload.name, payload.scope, payload.projectName, payload.values),
+      );
+      const state = JSON.parse(extractJson(raw));
+      this._applyState(state);
+      const dataPath = this._data.getPath();
+      if (dataPath && /\.(csv|parquet|json|jsonl|tsv)$/i.test(dataPath)) {
+        void this._onLoadColumns(dataPath);
+      }
+    } catch (e: any) {
+      this._setStatus(`Template failed: ${String(e.message ?? e)}`, true);
+      return;
+    }
+    // Reuse the standard validate → overwrite-prompt → save flow.
+    const saved = await this._validateAndSave(true);
+    if (saved) {
+      this._setup.resetTemplateForm();
+      this._setup.close();
+      this._setStatus(`Created ${payload.projectName} — ${saved}`);
+    }
   }
 
   private async _onLoadConfig(path: string, fileType?: string): Promise<void> {
