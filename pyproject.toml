@@ -51,6 +51,11 @@ demo = [
 [tool.hatch.build.targets.wheel]
 artifacts = ["jupyter_bioacoustic/labextension"]
 
+# Ship the config-builder templates (data files, not a Python package) in both
+# the wheel and sdist regardless of VCS tracking state.
+[tool.hatch.build.force-include]
+"jupyter_bioacoustic/templates" = "jupyter_bioacoustic/templates"
+
 
 # Install pre-built labextension into JupyterLab's shared data directory
 # so `pip install` auto-registers it (no `develop.py` step needed).
