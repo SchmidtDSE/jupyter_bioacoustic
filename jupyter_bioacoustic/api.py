@@ -445,7 +445,7 @@ def _resolve_data_config(
         )
 
     if isinstance(data, dict):
-        type_keys = {'path', 'url', 'uri', 'api', 'sql'}
+        type_keys = {'src', 'path', 'url', 'uri', 'api', 'sql'}
         found = [k for k in type_keys if k in data]
         if len(found) != 1:
             raise ValueError(
@@ -461,6 +461,15 @@ def _resolve_data_config(
             else data.get('secrets')
         )
         secrets = _resolve_secrets(secrets_raw)
+
+        if key == 'src':
+            # 'src' is auto-detected just like a bare string source.
+            dtype = (
+                _detect_data_type(source)
+                if isinstance(source, str)
+                else None
+            )
+            return source, dtype, secrets
 
         dtype_map = {
             'path': 'path', 'url': 'url', 'uri': 'url',
@@ -784,7 +793,7 @@ def _resolve_audio_config(
 
 
 _DATA_SOURCE_KEYS = frozenset(
-    {'path', 'url', 'uri', 'api', 'sql'},
+    {'src', 'path', 'url', 'uri', 'api', 'sql'},
 )
 _AUDIO_SOURCE_KEYS = frozenset(
     {'src', 'path', 'url', 'uri', 'column', 'sql', 'api'},
@@ -848,7 +857,7 @@ def _filter_session_args(
 
 
 _CONFIG_PARAMS = {
-    'data', 'data_path', 'data_url', 'data_sql',
+    'data', 'data_src', 'data_path', 'data_url', 'data_sql',
     'data_api', 'data_start_time', 'data_end_time',
     'data_duration', 'data_secrets',
     'data_index_column',
@@ -894,6 +903,7 @@ class BioacousticAnnotator:
         config=_UNSET,
         form_config=_UNSET,
         data=_UNSET,
+        data_src=_UNSET,
         data_path=_UNSET,
         data_url=_UNSET,
         data_sql=_UNSET,
@@ -966,7 +976,13 @@ class BioacousticAnnotator:
             form_config: Form layout — YAML file path, dict, or None.
             data: Input data. DataFrame, file path, URL, ``api::url``,
                 or SQL query (``SELECT ...``). Dict form:
-                ``{path|url|uri|api|sql, secrets, columns}``.
+                ``{src|path|url|uri|api|sql, secrets, columns}``. A bare
+                string and the ``src`` dict key are auto-detected (path /
+                URL / ``api::`` / SQL); ``path``/``url``/``api``/``sql``
+                are explicit and skip detection.
+            data_src: Source string auto-detected as path, URL,
+                ``api::url``, or SQL — the same detection applied to a bare
+                ``data`` string (overrides ``data`` source).
             data_path: Explicit file path (overrides ``data`` source).
             data_url: Explicit URL (overrides ``data`` source).
             data_sql: Explicit SQL query (overrides ``data`` source).
@@ -1172,6 +1188,9 @@ class BioacousticAnnotator:
         )
 
         raw_data = resolve(data, 'data', _UNSET)
+        raw_data_src = resolve(
+            data_src, 'data_src', None,
+        )
         raw_data_path = resolve(
             data_path, 'data_path', None,
         )
@@ -1186,6 +1205,7 @@ class BioacousticAnnotator:
         )
 
         _top_level_data = {
+            'src': raw_data_src,
             'path': raw_data_path,
             'url': raw_data_url,
             'sql': raw_data_sql,
@@ -1198,34 +1218,40 @@ class BioacousticAnnotator:
 
         if len(_top_found) > 1:
             raise ValueError(
-                f"Only one of data_path, data_url, "
-                f"data_sql, data_api may be set. "
+                f"Only one of data_src, data_path, "
+                f"data_url, data_sql, data_api may be set. "
                 f"Got: {list(_top_found.keys())}"
             )
 
         if _top_found:
             _tkey, _tval = next(iter(_top_found.items()))
             if raw_data is _UNSET:
+                # 'src' is auto-detected, others carry their explicit type.
                 raw_data = _tval
             elif isinstance(raw_data, dict):
                 for k in (
-                    'path', 'url', 'uri', 'api', 'sql',
+                    'src', 'path', 'url', 'uri', 'api', 'sql',
                 ):
                     raw_data.pop(k, None)
-                raw_data[_tkey] = _tval
+                if _tkey == 'src':
+                    raw_data = _tval
+                else:
+                    raw_data[_tkey] = _tval
             else:
                 raw_data = _tval
         elif raw_data is _UNSET:
             raise ValueError(
                 "'data' is required — pass a DataFrame, "
                 "file path, URL, API endpoint, SQL query,"
-                " or dict. Alternatively use data_path, "
-                "data_url, data_sql, or data_api."
+                " or dict. Alternatively use data_src, "
+                "data_path, data_url, data_sql, or data_api."
             )
 
+        # 'src' must auto-detect, so it does not force an explicit dtype.
         _top_dtype = (
-            next(iter(_top_found.keys()), None)
-            if _top_found else None
+            _tkey
+            if _top_found and _tkey != 'src'
+            else None
         )
 
         raw_data_secrets = resolve(
