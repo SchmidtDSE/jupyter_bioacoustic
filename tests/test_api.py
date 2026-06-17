@@ -702,7 +702,7 @@ class TestAnnotatorSyncParams:
             output={'path': 'out.csv', 'uri': 's3://bucket/out.csv'},
             data_index_column='id',
         )
-        assert ba._sync_uri == 's3://bucket/out.csv'
+        assert ba.sync_uri == 's3://bucket/out.csv'
 
     def test_sync_uri_from_top_level(self):
         ba = BioacousticAnnotator(
@@ -710,7 +710,7 @@ class TestAnnotatorSyncParams:
             output_uri='s3://bucket/out.csv',
             data_index_column='id',
         )
-        assert ba._sync_uri == 's3://bucket/out.csv'
+        assert ba.sync_uri == 's3://bucket/out.csv'
 
     def test_sync_button_custom_string(self):
         ba = BioacousticAnnotator(
