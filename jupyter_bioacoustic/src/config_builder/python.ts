@@ -146,6 +146,34 @@ export function loadConfig(path: string, fileType?: string): string {
   ].join('\n');
 }
 
+export function listTemplates(): string {
+  return [
+    `import json as _j`,
+    wp(`_j.dumps({'templates': _CB_INSTANCE.list_templates()})`),
+  ].join('\n');
+}
+
+export function loadTemplate(name: string): string {
+  return [
+    `import json as _j`,
+    wp(`_j.dumps({'template': _CB_INSTANCE.load_template('${escPy(name)}')})`),
+  ].join('\n');
+}
+
+export function applyTemplate(
+  name: string,
+  scope: string,
+  projectName: string,
+  values: Record<string, any>,
+): string {
+  const valuesJson = JSON.stringify(values);
+  return [
+    `import json as _j`,
+    `_state = _CB_INSTANCE.apply_template('${escPy(name)}', '${escPy(scope)}', '${escPy(projectName)}', _j.loads('${escPy(valuesJson)}'))`,
+    wp(`_j.dumps(_state)`),
+  ].join('\n');
+}
+
 export function getSummary(): string {
   return [
     `import json as _j`,
