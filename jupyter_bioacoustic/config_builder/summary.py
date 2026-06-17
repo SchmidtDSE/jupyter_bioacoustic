@@ -190,11 +190,18 @@ def _data_section(d: dict[str, Any]) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     data = d.get('data', {})
     if isinstance(data, dict):
-        source_key = next((k for k in ('path', 'url', 'sql', 'api') if data.get(k)), '')
-        if source_key:
-            rows.append(_row(source_key, str(data[source_key])))
+        if data.get('value'):
+            rows.append(_row(
+                data.get('source_type') or 'value', str(data['value']),
+            ))
         else:
-            rows.append(_row('source', 'not set', muted=True))
+            source_key = next(
+                (k for k in ('path', 'url', 'sql', 'api') if data.get(k)), '',
+            )
+            if source_key:
+                rows.append(_row(source_key, str(data[source_key])))
+            else:
+                rows.append(_row('source', 'not set', muted=True))
         for field in ('start_time', 'end_time'):
             val = data.get(field)
             if val is not None and str(val) != field:
@@ -218,13 +225,18 @@ def _audio_section(d: dict[str, Any]) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     audio = d.get('audio', {})
     if isinstance(audio, dict):
-        source_key = next(
-            (k for k in ('path', 'url', 'uri', 'column') if audio.get(k)), '',
-        )
-        if source_key:
-            rows.append(_row(source_key, str(audio[source_key])))
+        if audio.get('value'):
+            rows.append(_row(
+                audio.get('source_type') or 'value', str(audio['value']),
+            ))
         else:
-            rows.append(_row('source', 'not set', muted=True))
+            source_key = next(
+                (k for k in ('path', 'url', 'uri', 'column') if audio.get(k)), '',
+            )
+            if source_key:
+                rows.append(_row(source_key, str(audio[source_key])))
+            else:
+                rows.append(_row('source', 'not set', muted=True))
         for field in ('prefix', 'suffix', 'fallback'):
             if audio.get(field):
                 rows.append(_row(field, str(audio[field])))
