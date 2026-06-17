@@ -26,11 +26,13 @@ VALID_FORM_KEYS = frozenset({
 })
 
 VALID_CONFIG_KEYS = frozenset({
-    'data', 'data_src', 'data_path', 'data_url', 'data_sql', 'data_api',
+    'data', 'data_source_type', 'data_value',
+    'data_path', 'data_url', 'data_sql', 'data_api',
     'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
     'data_index_column',
     'display_columns',
-    'audio', 'audio_src', 'audio_path', 'audio_url', 'audio_uri',
+    'audio', 'audio_source_type', 'audio_value',
+    'audio_path', 'audio_url', 'audio_uri',
     'audio_column', 'audio_prefix', 'audio_suffix', 'audio_fallback',
     'audio_secrets', 'audio_sql', 'audio_api', 'audio_property',
     'audio_response_index',
