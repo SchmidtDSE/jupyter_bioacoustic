@@ -192,6 +192,22 @@ class TestBuildSummary:
         audio_rows = sections[2]['rows']
         assert any(r['key'] == 'column' and r['value'] == 'audio_path' for r in audio_rows)
 
+    def test_data_section_source_type_value(self):
+        sections = build_summary(
+            project={}, config={}, form_config={},
+            merged={'data': {'source_type': 'path', 'value': 'input.csv'}},
+        )
+        data_rows = sections[1]['rows']
+        assert any(r['key'] == 'path' and r['value'] == 'input.csv' for r in data_rows)
+
+    def test_audio_section_source_type_value(self):
+        sections = build_summary(
+            project={}, config={}, form_config={},
+            merged={'audio': {'source_type': 'column', 'value': 'rec_col'}},
+        )
+        audio_rows = sections[2]['rows']
+        assert any(r['key'] == 'column' and r['value'] == 'rec_col' for r in audio_rows)
+
     def test_output_section(self):
         sections = build_summary(project={}, config={}, form_config={}, merged=FULL_MERGED)
         output_rows = sections[3]['rows']
