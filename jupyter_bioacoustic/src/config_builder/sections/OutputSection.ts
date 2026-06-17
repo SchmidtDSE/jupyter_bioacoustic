@@ -34,7 +34,10 @@ export class OutputSection extends CollapsibleSection {
     this._body.appendChild(pathRow);
 
     this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
-    this._uriInput.addEventListener('input', () => this._emitChanged());
+    this._uriInput.addEventListener('input', () => {
+      this._autoCheckSync();
+      this._emitChanged();
+    });
     this._body.appendChild(this._makeFieldRow('sync_uri', this._uriInput));
 
     const { row: syncRow, input: syncCb } = this._makeCheckbox('sync_button');
@@ -43,7 +46,10 @@ export class OutputSection extends CollapsibleSection {
     this._body.appendChild(syncRow);
 
     this._syncLabelInput = this._makeInput('Sync', '150px');
-    this._syncLabelInput.addEventListener('input', () => this._emitChanged());
+    this._syncLabelInput.addEventListener('input', () => {
+      this._autoCheckSync();
+      this._emitChanged();
+    });
     this._body.appendChild(this._makeFieldRow('sync_label', this._syncLabelInput));
 
     const { row: recRow, input: recCb } = this._makeCheckbox('recursive');
@@ -94,5 +100,13 @@ export class OutputSection extends CollapsibleSection {
     }
     if (data.recursive) this._recursiveCb.checked = true;
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
+  }
+
+  private _autoCheckSync(): void {
+    // Entering a sync URI or a sync button label implies the user wants the
+    // sync button shown, so check it automatically.
+    if (this._uriInput.value || this._syncLabelInput.value) {
+      this._syncBtnCb.checked = true;
+    }
   }
 }
