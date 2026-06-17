@@ -2,7 +2,7 @@ import {
   readKernelVars, readAudio, buildSpectrogram,
   spectrogramPipeline, loadSelectItems,
   countOutputRows, readOutputRows, writeOutputRow, deleteOutputRow,
-  savePng, syncOutput, getDefaultProjectPath, saveProject,
+  savePng, syncOutput,
   resolveOutputTemplates,
 } from '../python';
 import {
@@ -252,27 +252,6 @@ describe('syncOutput', () => {
   test('with dest', () => {
     const code = syncOutput('s3://bucket/output');
     expect(code).toContain("dest='s3://bucket/output'");
-  });
-});
-
-describe('getDefaultProjectPath', () => {
-  test('includes slug generation', () => {
-    const code = getDefaultProjectPath();
-    expect(code).toContain('_slug');
-    expect(code).toContain('_def_path');
-  });
-});
-
-describe('saveProject', () => {
-  test('includes path and overwrite', () => {
-    const code = saveProject('projects/test.yaml', true);
-    expect(code).toContain('projects/test.yaml');
-    expect(code).toContain('True');
-  });
-
-  test('default no overwrite', () => {
-    const code = saveProject('test.yaml');
-    expect(code).toContain('False');
   });
 });
 
