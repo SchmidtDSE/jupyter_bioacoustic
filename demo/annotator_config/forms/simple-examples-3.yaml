@@ -6,7 +6,7 @@ pass_value:
   column: detection_id
 form:
 - select:
-    label: 'Is [[common_name]] Valid?'
+    label: Is [[common_name]] Valid?
     column: is_valid
     required: true
     items:
@@ -17,7 +17,7 @@ form:
       value: 'no'
       form: rejected_form
 dynamic_forms:
-- confirmed_form:
+  confirmed_form:
   - select:
       label: confidence
       column: reviewer_confidence
@@ -28,7 +28,7 @@ dynamic_forms:
   - textbox:
       label: notes
       column: notes
-- rejected_form:
+  rejected_form:
   - select:
       label: corrected species
       column: corrected_common_name

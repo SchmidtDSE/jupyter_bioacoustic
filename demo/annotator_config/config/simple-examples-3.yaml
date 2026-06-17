@@ -1,3 +1,12 @@
+description:
+  title: Annotation Instructions
+  text: "There are 4 types of annotations available:\n\n---\n\n- `time_select`: Single\
+    \ draggable vertical line\n- `start\\_end\\_time_select`: Two draggable vertical\
+    \ lines (constrained \u2014 can't cross)\n- `bounding\\_box`: Click+drag rectangle\
+    \ with individually draggable edges\n- `multibox`: Draw multiple bounding boxes,\
+    \ each with optional per-box form. Submits one row per box.\n- `fixed_duration`:\
+    \ Click to place a fixed-length time region. Duration is set in config."
+  open: false
 display_columns:
 - common_name
 - scientific_name
@@ -5,12 +14,15 @@ display_columns:
 - rank
 output:
   index_column: detection_id
+  uri: s3://dse-soundhub/dev/annotations/simple-example-3.sync.csv
+  sync_button: Sync To S3
 info_card_title: '[[common_name]]'
 info_card_text: 'scientific_name: [[scientific_name]]'
-capture: Save Spectrogram
+capture: true
 capture_dir: spectrograms
 audio:
   column: audio_url
 data:
   index_column: id
+default_buffer: 0.5
 form_config: annotator_config/forms/simple-examples-3.yaml
