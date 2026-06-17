@@ -9,12 +9,14 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
+import { TemplateForm, TemplateSummary } from './TemplateForm';
 
 
 //
 // Constants
 //
 const MODE_CREATE = 'create';
+const MODE_TEMPLATE = 'template';
 const MODE_LOAD = 'load';
 const FILE_TYPES = ['project', 'config', 'form'] as const;
 const DIR_MAP: Record<string, string> = {
@@ -33,6 +35,11 @@ export class SetupSection extends CollapsibleSection {
   readonly projectCreated = new Signal<this, string>(this);
   readonly projectEnabledChanged = new Signal<this, boolean>(this);
   readonly fileStatesChanged = new Signal<this, { project: boolean; config: boolean; form: boolean }>(this);
+  readonly templateListRequested = new Signal<this, void>(this);
+  readonly templateSelected = new Signal<this, string>(this);
+  readonly applyTemplateRequested = new Signal<this, {
+    name: string; scope: string; projectName: string; values: Record<string, string>;
+  }>(this);
 
   private _mode = MODE_CREATE;
   private _active = false;
@@ -40,9 +47,12 @@ export class SetupSection extends CollapsibleSection {
   private _linked = true;
 
   private _createTab: HTMLButtonElement;
+  private _templateTab: HTMLButtonElement;
   private _loadTab: HTMLButtonElement;
   private _createPane: HTMLDivElement;
+  private _templatePane: HTMLDivElement;
   private _loadPane: HTMLDivElement;
+  private _templateForm: TemplateForm;
 
   private _createNameInput: HTMLInputElement;
   private _createBtn: HTMLButtonElement;
@@ -76,9 +86,11 @@ export class SetupSection extends CollapsibleSection {
     this._body.appendChild(tabBar);
 
     this._createPane = this._buildCreatePane();
+    this._templatePane = this._buildTemplatePane();
+    this._templatePane.style.display = 'none';
     this._loadPane = this._buildLoadPane();
     this._loadPane.style.display = 'none';
-    this._body.append(this._createPane, this._loadPane);
+    this._body.append(this._createPane, this._templatePane, this._loadPane);
 
     this._body.appendChild(this._makeSeparator());
 
@@ -107,6 +119,18 @@ export class SetupSection extends CollapsibleSection {
     this._formPathInput.value = path;
     this._formPathEl.textContent = path;
     this._emitChanged();
+  }
+
+  setTemplateList(items: TemplateSummary[]): void {
+    this._templateForm.setList(items);
+  }
+
+  setTemplate(name: string, template: Record<string, any>): void {
+    this._templateForm.setTemplate(name, template);
+  }
+
+  resetTemplateForm(): void {
+    this._templateForm.reset();
   }
 
   setCheckedStates(project: boolean, config: boolean, form: boolean): void {
@@ -198,13 +222,30 @@ export class SetupSection extends CollapsibleSection {
     this._createTab.style.cssText = this._tabStyle(true);
     this._createTab.addEventListener('click', () => this._switchMode(MODE_CREATE));
 
+    this._templateTab = document.createElement('button');
+    this._templateTab.textContent = 'Create from Template';
+    this._templateTab.style.cssText = this._tabStyle(false);
+    this._templateTab.addEventListener('click', () => this._switchMode(MODE_TEMPLATE));
+
     this._loadTab = document.createElement('button');
     this._loadTab.textContent = 'Load Existing';
     this._loadTab.style.cssText = this._tabStyle(false);
     this._loadTab.addEventListener('click', () => this._switchMode(MODE_LOAD));
 
-    bar.append(this._createTab, this._loadTab);
+    bar.append(this._createTab, this._templateTab, this._loadTab);
     return bar;
+  }
+
+  private _buildTemplatePane(): HTMLDivElement {
+    const pane = document.createElement('div');
+    pane.style.cssText = `display:flex;flex-direction:column;padding:4px 0;`;
+    this._templateForm = new TemplateForm();
+    this._templateForm.listRequested.connect(() => this.templateListRequested.emit());
+    this._templateForm.templateSelected.connect((_, name) => this.templateSelected.emit(name));
+    this._templateForm.applyRequested.connect((_, payload) =>
+      this.applyTemplateRequested.emit(payload));
+    pane.appendChild(this._templateForm.element);
+    return pane;
   }
 
   private _buildCreatePane(): HTMLDivElement {
@@ -368,9 +409,12 @@ export class SetupSection extends CollapsibleSection {
   private _switchMode(mode: string): void {
     this._mode = mode;
     this._createTab.style.cssText = this._tabStyle(mode === MODE_CREATE);
+    this._templateTab.style.cssText = this._tabStyle(mode === MODE_TEMPLATE);
     this._loadTab.style.cssText = this._tabStyle(mode === MODE_LOAD);
     this._createPane.style.display = mode === MODE_CREATE ? 'flex' : 'none';
+    this._templatePane.style.display = mode === MODE_TEMPLATE ? 'flex' : 'none';
     this._loadPane.style.display = mode === MODE_LOAD ? 'flex' : 'none';
+    if (mode === MODE_TEMPLATE) this._templateForm.activate();
   }
 
   private _onCreate(): void {
