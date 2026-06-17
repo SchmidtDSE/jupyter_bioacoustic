@@ -225,6 +225,13 @@ def _detect_data_type(data_str: str) -> str:
     return 'path'
 
 
+# Maps a data 'source_type' to the loader dtype ('uri' is a URL alias).
+_DATA_TYPE_MAP = {
+    'path': 'path', 'url': 'url', 'uri': 'url',
+    'api': 'api', 'sql': 'sql',
+}
+
+
 def _section_with_index(
     value: Any, index_col: Optional[str], is_data: bool,
 ) -> dict:
@@ -445,15 +452,22 @@ def _resolve_data_config(
         )
 
     if isinstance(data, dict):
-        type_keys = {'src', 'path', 'url', 'uri', 'api', 'sql'}
-        found = [k for k in type_keys if k in data]
-        if len(found) != 1:
+        explicit_keys = {'path', 'url', 'uri', 'api', 'sql'}
+        has_value = data.get('value') is not None
+        found = [k for k in explicit_keys if k in data]
+
+        if has_value and found:
             raise ValueError(
-                f"data dict must have exactly one of "
-                f"{type_keys}, got: {found or 'none'}"
+                f"data dict: use either 'value' (with optional "
+                f"'source_type') or one explicit source key "
+                f"{explicit_keys}, not both. "
+                f"Got: value + {found}"
             )
-        key = found[0]
-        source = data[key]
+        if not has_value and len(found) != 1:
+            raise ValueError(
+                f"data dict must have exactly one of 'value' or "
+                f"{explicit_keys}, got: {found or 'none'}"
+            )
 
         secrets_raw = (
             data_secrets
@@ -462,20 +476,21 @@ def _resolve_data_config(
         )
         secrets = _resolve_secrets(secrets_raw)
 
-        if key == 'src':
-            # 'src' is auto-detected just like a bare string source.
-            dtype = (
-                _detect_data_type(source)
-                if isinstance(source, str)
-                else None
-            )
+        if has_value:
+            # An explicit 'source_type' forces the type; a falsey
+            # 'source_type' auto-detects (like a bare string source).
+            source = data['value']
+            stype = data.get('source_type') or None
+            if stype:
+                dtype = _DATA_TYPE_MAP.get(stype, stype)
+            elif isinstance(source, str):
+                dtype = _detect_data_type(source)
+            else:
+                dtype = None
             return source, dtype, secrets
 
-        dtype_map = {
-            'path': 'path', 'url': 'url', 'uri': 'url',
-            'api': 'api', 'sql': 'sql',
-        }
-        return source, dtype_map[key], secrets
+        key = found[0]
+        return data[key], _DATA_TYPE_MAP[key], secrets
 
     if isinstance(data, str):
         secrets = _resolve_secrets(data_secrets)
@@ -713,19 +728,23 @@ def _resolve_audio_config(
 
     if isinstance(audio, dict):
         source_keys = {'sql', 'api'}
-        guess_keys = {'src'}
         static_keys = {'path', 'url', 'uri', 'column'}
-        all_type_keys = (
-            source_keys | guess_keys | static_keys
-        )
-        found = [k for k in all_type_keys if k in audio]
-        if len(found) != 1:
+        explicit_keys = source_keys | static_keys
+        has_value = audio.get('value') is not None
+        found = [k for k in explicit_keys if k in audio]
+
+        if has_value and found:
             raise ValueError(
-                f"audio dict must have exactly one of "
-                f"{all_type_keys}, "
-                f"got: {found or 'none'}"
+                f"audio dict: use either 'value' (with optional "
+                f"'source_type') or one explicit source key "
+                f"{explicit_keys}, not both. "
+                f"Got: value + {found}"
             )
-        key = found[0]
+        if not has_value and len(found) != 1:
+            raise ValueError(
+                f"audio dict must have exactly one of 'value' or "
+                f"{explicit_keys}, got: {found or 'none'}"
+            )
 
         secrets_raw = (
             audio_secrets
@@ -734,46 +753,44 @@ def _resolve_audio_config(
         )
         resolved_secrets = _resolve_secrets(secrets_raw)
 
-        if key in source_keys:
+        common = {
+            'prefix': prefix or audio.get('prefix', ''),
+            'suffix': suffix or audio.get('suffix', ''),
+            'fallback': fallback or audio.get('fallback', ''),
+            'secrets': resolved_secrets,
+        }
+
+        # Resolve the effective source type and raw value. 'value' with a
+        # falsey 'source_type' auto-detects (like a bare string); an
+        # explicit 'source_type' (or explicit key) forces the type.
+        if has_value:
+            raw_value = audio['value']
+            stype = audio.get('source_type') or None
+            if stype in ('url', 'uri'):
+                stype = 'url'
+        else:
+            key = found[0]
+            raw_value = audio[key]
+            stype = 'url' if key in ('url', 'uri') else key
+
+        if stype in source_keys:
             prop = audio.get('property')
             index = audio.get('response_index')
             resolved_value = _resolve_audio_from_source(
-                key, audio[key], prop, index,
+                stype, raw_value, prop, index,
                 resolved_secrets,
             )
-            atype = _detect_audio_type(resolved_value)
             return {
-                'type': atype,
+                'type': _detect_audio_type(resolved_value),
                 'value': resolved_value,
-                'prefix': (
-                    prefix or audio.get('prefix', '')
-                ),
-                'suffix': (
-                    suffix or audio.get('suffix', '')
-                ),
-                'fallback': (
-                    fallback
-                    or audio.get('fallback', '')
-                ),
-                'secrets': resolved_secrets,
+                **common,
             }
 
-        if key == 'src':
-            atype = _detect_audio_type(audio[key])
-        elif key in ('url', 'uri'):
-            atype = 'url'
-        else:
-            atype = key
-        return {
-            'type': atype,
-            'value': audio[key],
-            'prefix': prefix or audio.get('prefix', ''),
-            'suffix': suffix or audio.get('suffix', ''),
-            'fallback': (
-                fallback or audio.get('fallback', '')
-            ),
-            'secrets': resolved_secrets,
-        }
+        atype = (
+            _detect_audio_type(raw_value)
+            if stype is None else stype
+        )
+        return {'type': atype, 'value': raw_value, **common}
 
     if isinstance(audio, str) and audio:
         return {
@@ -793,10 +810,11 @@ def _resolve_audio_config(
 
 
 _DATA_SOURCE_KEYS = frozenset(
-    {'src', 'path', 'url', 'uri', 'api', 'sql'},
+    {'value', 'source_type', 'path', 'url', 'uri', 'api', 'sql'},
 )
 _AUDIO_SOURCE_KEYS = frozenset(
-    {'src', 'path', 'url', 'uri', 'column', 'sql', 'api'},
+    {'value', 'source_type', 'path', 'url', 'uri',
+     'column', 'sql', 'api'},
 )
 _MERGE_DICT_KEYS = frozenset(
     {'data', 'audio', 'output', 'description'},
@@ -857,11 +875,13 @@ def _filter_session_args(
 
 
 _CONFIG_PARAMS = {
-    'data', 'data_src', 'data_path', 'data_url', 'data_sql',
+    'data', 'data_source_type', 'data_value',
+    'data_path', 'data_url', 'data_sql',
     'data_api', 'data_start_time', 'data_end_time',
     'data_duration', 'data_secrets',
     'data_index_column',
-    'audio', 'audio_src', 'audio_path', 'audio_url',
+    'audio', 'audio_source_type', 'audio_value',
+    'audio_path', 'audio_url',
     'audio_uri', 'audio_column', 'audio_prefix',
     'audio_suffix', 'audio_fallback', 'audio_secrets',
     'audio_sql', 'audio_api', 'audio_property',
@@ -903,7 +923,8 @@ class BioacousticAnnotator:
         config=_UNSET,
         form_config=_UNSET,
         data=_UNSET,
-        data_src=_UNSET,
+        data_source_type=_UNSET,
+        data_value=_UNSET,
         data_path=_UNSET,
         data_url=_UNSET,
         data_sql=_UNSET,
@@ -914,7 +935,8 @@ class BioacousticAnnotator:
         data_secrets=_UNSET,
         data_index_column=_UNSET,
         audio=_UNSET,
-        audio_src=_UNSET,
+        audio_source_type=_UNSET,
+        audio_value=_UNSET,
         audio_path=_UNSET,
         audio_url=_UNSET,
         audio_uri=_UNSET,
@@ -976,13 +998,17 @@ class BioacousticAnnotator:
             form_config: Form layout — YAML file path, dict, or None.
             data: Input data. DataFrame, file path, URL, ``api::url``,
                 or SQL query (``SELECT ...``). Dict form:
-                ``{src|path|url|uri|api|sql, secrets, columns}``. A bare
-                string and the ``src`` dict key are auto-detected (path /
-                URL / ``api::`` / SQL); ``path``/``url``/``api``/``sql``
+                ``{value(+source_type)|path|url|uri|api|sql, secrets,
+                columns}``. A bare string and the ``value`` dict key are
+                auto-detected (path / URL / ``api::`` / SQL) when no
+                ``source_type`` is given; ``path``/``url``/``api``/``sql``
                 are explicit and skip detection.
-            data_src: Source string auto-detected as path, URL,
-                ``api::url``, or SQL — the same detection applied to a bare
-                ``data`` string (overrides ``data`` source).
+            data_source_type: Forces how ``data_value`` (or a ``data``
+                dict ``value``) is interpreted — one of ``path``, ``url``,
+                ``uri``, ``sql``, ``api``. Falsey/omitted ⇒ auto-detect.
+            data_value: Source string interpreted per ``data_source_type``;
+                auto-detected when ``data_source_type`` is falsey (the same
+                detection applied to a bare ``data`` string).
             data_path: Explicit file path (overrides ``data`` source).
             data_url: Explicit URL (overrides ``data`` source).
             data_sql: Explicit SQL query (overrides ``data`` source).
@@ -996,10 +1022,15 @@ class BioacousticAnnotator:
                 each row in the input data. Required.
             audio: Audio source. String: local path, URL/URI, or column
                 name (auto-detected). Dict form:
-                ``{path|url|uri|column|sql|api|src, prefix, suffix,
-                fallback, secrets, property, response_index}``.
-            audio_src: Audio source string (auto-detected as path, URL,
-                or column name).
+                ``{value(+source_type)|path|url|uri|column|sql|api,
+                prefix, suffix, fallback, secrets, property,
+                response_index}``.
+            audio_source_type: Forces how ``audio_value`` (or an ``audio``
+                dict ``value``) is interpreted — one of ``path``, ``url``,
+                ``uri``, ``column``, ``sql``, ``api``. Falsey/omitted ⇒
+                auto-detect (path / URL / column).
+            audio_value: Audio source string interpreted per
+                ``audio_source_type``; auto-detected when it is falsey.
             audio_path: Explicit local file path for audio.
             audio_url: Explicit URL for audio.
             audio_uri: Alias for ``audio_url``.
@@ -1188,8 +1219,11 @@ class BioacousticAnnotator:
         )
 
         raw_data = resolve(data, 'data', _UNSET)
-        raw_data_src = resolve(
-            data_src, 'data_src', None,
+        raw_data_value = resolve(
+            data_value, 'data_value', None,
+        )
+        raw_data_source_type = resolve(
+            data_source_type, 'data_source_type', None,
         )
         raw_data_path = resolve(
             data_path, 'data_path', None,
@@ -1205,7 +1239,7 @@ class BioacousticAnnotator:
         )
 
         _top_level_data = {
-            'src': raw_data_src,
+            'value': raw_data_value,
             'path': raw_data_path,
             'url': raw_data_url,
             'sql': raw_data_sql,
@@ -1218,7 +1252,7 @@ class BioacousticAnnotator:
 
         if len(_top_found) > 1:
             raise ValueError(
-                f"Only one of data_src, data_path, "
+                f"Only one of data_value, data_path, "
                 f"data_url, data_sql, data_api may be set. "
                 f"Got: {list(_top_found.keys())}"
             )
@@ -1226,15 +1260,20 @@ class BioacousticAnnotator:
         if _top_found:
             _tkey, _tval = next(iter(_top_found.items()))
             if raw_data is _UNSET:
-                # 'src' is auto-detected, others carry their explicit type.
+                # A bare value (no source_type) and explicit data_path/url/
+                # sql/api all reach _resolve_data_config as a string; the
+                # forced/auto dtype is applied below via _top_dtype.
                 raw_data = _tval
             elif isinstance(raw_data, dict):
                 for k in (
-                    'src', 'path', 'url', 'uri', 'api', 'sql',
+                    'value', 'source_type',
+                    'path', 'url', 'uri', 'api', 'sql',
                 ):
                     raw_data.pop(k, None)
-                if _tkey == 'src':
-                    raw_data = _tval
+                if _tkey == 'value':
+                    raw_data['value'] = _tval
+                    if raw_data_source_type:
+                        raw_data['source_type'] = raw_data_source_type
                 else:
                     raw_data[_tkey] = _tval
             else:
@@ -1243,16 +1282,25 @@ class BioacousticAnnotator:
             raise ValueError(
                 "'data' is required — pass a DataFrame, "
                 "file path, URL, API endpoint, SQL query,"
-                " or dict. Alternatively use data_src, "
+                " or dict. Alternatively use data_value, "
                 "data_path, data_url, data_sql, or data_api."
             )
 
-        # 'src' must auto-detect, so it does not force an explicit dtype.
-        _top_dtype = (
-            _tkey
-            if _top_found and _tkey != 'src'
-            else None
-        )
+        # When the top-level source is a bare string, force the dtype:
+        # explicit data_path/url/sql/api use their key; data_value uses
+        # data_source_type (falsey ⇒ None ⇒ auto-detect).
+        if _top_found and not isinstance(raw_data, dict):
+            if _tkey == 'value':
+                _top_dtype = (
+                    _DATA_TYPE_MAP.get(
+                        raw_data_source_type, raw_data_source_type,
+                    )
+                    if raw_data_source_type else None
+                )
+            else:
+                _top_dtype = _tkey
+        else:
+            _top_dtype = None
 
         raw_data_secrets = resolve(
             data_secrets, 'data_secrets', None,
@@ -1411,7 +1459,8 @@ class BioacousticAnnotator:
         self._output_index_column = out_idx_col
 
         self._init_audio(
-            resolve, cfg, audio, audio_src, audio_path,
+            resolve, cfg, audio, audio_source_type,
+            audio_value, audio_path,
             audio_url, audio_uri, audio_column,
             audio_prefix, audio_suffix, audio_fallback,
             audio_secrets, audio_sql, audio_api,
@@ -1858,15 +1907,19 @@ class BioacousticAnnotator:
     # INTERNAL
     #
     def _init_audio(
-        self, resolve, cfg, audio, audio_src, audio_path,
+        self, resolve, cfg, audio, audio_source_type,
+        audio_value, audio_path,
         audio_url, audio_uri, audio_column, audio_prefix,
         audio_suffix, audio_fallback, audio_secrets,
         audio_sql, audio_api, audio_property,
         audio_response_index, raw_global_secrets,
     ):
         raw_audio = resolve(audio, 'audio', _UNSET)
-        raw_audio_src = resolve(
-            audio_src, 'audio_src', None,
+        raw_audio_value = resolve(
+            audio_value, 'audio_value', None,
+        )
+        raw_audio_source_type = resolve(
+            audio_source_type, 'audio_source_type', None,
         )
         raw_audio_path = resolve(
             audio_path, 'audio_path', None,
@@ -1911,7 +1964,7 @@ class BioacousticAnnotator:
             raw_audio_secrets = None
 
         _top_audio = {
-            'src': raw_audio_src,
+            'value': raw_audio_value,
             'path': raw_audio_path,
             'url': raw_audio_url or raw_audio_uri,
             'column': raw_audio_column,
@@ -1925,40 +1978,48 @@ class BioacousticAnnotator:
 
         if len(_top_audio_found) > 1:
             raise ValueError(
-                f"Only one of audio_src, audio_path, "
+                f"Only one of audio_value, audio_path, "
                 f"audio_url, audio_uri, audio_column, "
                 f"audio_sql, audio_api may be set. "
                 f"Got: {list(_top_audio_found.keys())}"
             )
 
+        _audio_source_keys = (
+            'value', 'source_type', 'path', 'url', 'uri',
+            'column', 'sql', 'api',
+        )
         if _top_audio_found:
             _akey, _aval = next(
                 iter(_top_audio_found.items()),
             )
-            if raw_audio is _UNSET:
-                if _akey == 'src':
-                    raw_audio = _aval
-                elif _akey in ('sql', 'api'):
+            if _akey == 'value':
+                # 'value' carries an optional source_type; a falsey
+                # source_type auto-detects in _resolve_audio_config.
+                _vdict = {'value': _aval}
+                if raw_audio_source_type:
+                    _vdict['source_type'] = raw_audio_source_type
+                if isinstance(raw_audio, dict):
+                    for k in _audio_source_keys:
+                        raw_audio.pop(k, None)
+                    raw_audio.update(_vdict)
+                else:
+                    raw_audio = _vdict
+            elif raw_audio is _UNSET:
+                if _akey in ('sql', 'api'):
                     raw_audio = {_akey: _aval}
                 else:
                     raw_audio = _aval
             elif isinstance(raw_audio, dict):
-                for k in (
-                    'src', 'path', 'url', 'uri',
-                    'column', 'sql', 'api',
-                ):
+                for k in _audio_source_keys:
                     raw_audio.pop(k, None)
-                if _akey == 'src':
-                    raw_audio = _aval
-                else:
-                    raw_audio[_akey] = _aval
+                raw_audio[_akey] = _aval
             else:
                 raw_audio = _aval
         elif raw_audio is _UNSET:
             raise ValueError(
                 "'audio' is required — pass a path, "
                 "URL, column name, dict, or use "
-                "audio_src/audio_path/audio_url/"
+                "audio_value/audio_path/audio_url/"
                 "audio_column/audio_sql/audio_api."
             )
 
