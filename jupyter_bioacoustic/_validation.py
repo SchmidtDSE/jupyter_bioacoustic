@@ -26,7 +26,7 @@ VALID_FORM_KEYS = frozenset({
 })
 
 VALID_CONFIG_KEYS = frozenset({
-    'data', 'data_path', 'data_url', 'data_sql', 'data_api',
+    'data', 'data_src', 'data_path', 'data_url', 'data_sql', 'data_api',
     'data_start_time', 'data_end_time', 'data_duration', 'data_secrets',
     'data_index_column',
     'display_columns',
