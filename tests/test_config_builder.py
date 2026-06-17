@@ -279,6 +279,18 @@ class TestUpdateSection:
         assert cb._project['data'] == {'path': 'data.csv'}
         assert cb._config['data'] == {'start_time': 'begin'}
 
+    def test_update_data_split_source_type_value(self):
+        cb = ConfigBuilder()
+        cb._section_targets['data'] = 'split'
+        cb.update_section('data', {
+            'source_type': 'path', 'value': 'data.csv',
+            'index_column': 'id',
+        })
+        assert cb._project['data'] == {
+            'source_type': 'path', 'value': 'data.csv',
+        }
+        assert cb._config['data'] == {'index_column': 'id'}
+
     def test_update_app_display_columns(self):
         cb = ConfigBuilder()
         cb._section_targets['app'] = 'config'
