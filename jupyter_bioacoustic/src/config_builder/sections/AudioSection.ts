@@ -95,30 +95,26 @@ export class AudioSection extends CollapsibleSection {
   }
 
   getData(): Record<string, any> {
-    const sourceType = this._sourceType.value;
+    const uiType = this._sourceType.value;
     const result: Record<string, any> = {};
-    let val = sourceType === 'column'
+    let val = uiType === 'column'
       ? (this._availableCols.length > 0 ? this._colSelect.value : this._colInput.value.trim())
       : this._valueInput.value;
 
-    if (val && sourceType === 'url/uri') {
-      // Auto-detect protocol and choose appropriate field
+    if (val && uiType === 'url/uri') {
+      // Auto-detect protocol and choose url (http/https) vs uri (s3, gs, ...)
       const hasProtocol = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(val);
-
       if (!hasProtocol) {
         // Default to https:// if no protocol specified
         val = `https://${val}`;
       }
-
-      // Determine field based on protocol
-      if (val.startsWith('https://') || val.startsWith('http://')) {
-        result.url = val;
-      } else {
-        // s3://, gs://, ftp://, etc.
-        result.uri = val;
-      }
-    } else if (val && sourceType !== 'url/uri') {
-      result[sourceType] = val;
+      result.source_type =
+        (val.startsWith('https://') || val.startsWith('http://')) ? 'url' : 'uri';
+      result.value = val;
+    } else if (val) {
+      // 'path' or 'column' map directly to source_type
+      result.source_type = uiType;
+      result.value = val;
     }
 
     if (this._prefixInput.value) result.prefix = this._prefixInput.value;
@@ -130,7 +126,26 @@ export class AudioSection extends CollapsibleSection {
   }
 
   setData(data: Record<string, any>): void {
-    if (data.path) { this._sourceType.value = 'path'; this._valueInput.value = data.path; }
+    // Current form: source_type + value. Legacy form: an explicit
+    // path/url/uri/column key (still loadable).
+    if (data.value !== undefined || data.source_type) {
+      const st = data.source_type;
+      if (st === 'column') {
+        this._sourceType.value = 'column';
+        this._colInput.value = data.value ?? '';
+        if (this._availableCols.includes(data.value)) {
+          this._colSelect.value = data.value;
+        }
+      } else if (st === 'url' || st === 'uri') {
+        this._sourceType.value = 'url/uri';
+        this._valueInput.value = data.value ?? '';
+      } else {
+        // 'path' or a falsey/auto source_type
+        this._sourceType.value = 'path';
+        this._valueInput.value = data.value ?? '';
+      }
+    }
+    else if (data.path) { this._sourceType.value = 'path'; this._valueInput.value = data.path; }
     else if (data.url || data.uri) {
       this._sourceType.value = 'url/uri';
       this._valueInput.value = data.url || data.uri;
