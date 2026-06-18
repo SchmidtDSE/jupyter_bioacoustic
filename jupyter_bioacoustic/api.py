@@ -279,17 +279,94 @@ def _read_data(path: str) -> Any:
         )
 
 
+def _cloud_get_bytes(
+    url: str,
+    byte_range: Optional[tuple[int, int]] = None,
+) -> bytes:
+    """Fetch bytes from a local path or http(s)/s3/gs URL.
+
+    Optionally fetches an inclusive ``[start, end]`` byte range (e.g. just a
+    file header). Cloud schemes fall back to unsigned/anonymous access so
+    public buckets work without credentials.
+    """
+    if url.startswith(('http://', 'https://')):
+        import requests
+        headers = (
+            {'Range': f'bytes={byte_range[0]}-{byte_range[1]}'}
+            if byte_range else None
+        )
+        resp = requests.get(url, headers=headers, timeout=120)
+        resp.raise_for_status()
+        return resp.content
+    if url.startswith('s3://'):
+        import boto3
+        bucket, key = url[len('s3://'):].split('/', 1)
+        kw: dict[str, Any] = {'Bucket': bucket, 'Key': key}
+        if byte_range:
+            kw['Range'] = f'bytes={byte_range[0]}-{byte_range[1]}'
+        try:
+            return boto3.client('s3').get_object(**kw)['Body'].read()
+        except Exception as err:
+            from botocore import UNSIGNED
+            from botocore.config import Config
+            _log.info('s3 default creds failed (%s); retrying unsigned', err)
+            return boto3.client(
+                's3', config=Config(signature_version=UNSIGNED),
+            ).get_object(**kw)['Body'].read()
+    if url.startswith(('gs://', 'gcs://')):
+        from google.cloud import storage
+        bucket, blob = url.split('://', 1)[1].split('/', 1)
+        try:
+            client = storage.Client()
+        except Exception as err:
+            _log.info('gcs default creds failed (%s); using anonymous', err)
+            client = storage.Client.create_anonymous_client()
+        b = client.bucket(bucket).blob(blob)
+        if byte_range:
+            return b.download_as_bytes(start=byte_range[0], end=byte_range[1])
+        return b.download_as_bytes()
+    with open(url, 'rb') as f:
+        if byte_range:
+            f.seek(byte_range[0])
+            return f.read(byte_range[1] - byte_range[0] + 1)
+        return f.read()
+
+
+def _read_data_from_cloud(url: str) -> Any:
+    """Download a data file from s3:// or gs:// and read it as a DataFrame.
+
+    Uses the native client (not requests, which has no adapter for these
+    schemes) via ``_cloud_get_bytes``.
+    """
+    import os
+    import tempfile
+
+    ext = os.path.splitext(url.split('?')[0])[1].lower() or '.csv'
+    body = _cloud_get_bytes(url)
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+        f.write(body)
+        tmp_path = f.name
+    try:
+        return _read_data(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+
 def _read_data_from_url(
     url: str,
     cookies: Optional[dict] = None,
 ) -> Any:
     """Fetch data from a URL.
 
-    Auto-detects file vs JSON response.
+    Auto-detects file vs JSON response. Cloud-storage schemes (s3://, gs://)
+    are routed to their native clients rather than HTTP.
     """
     import pandas as pd
     import requests as req
     import tempfile
+
+    if url.startswith(('s3://', 'gs://', 'gcs://')):
+        return _read_data_from_cloud(url)
 
     _log.info('fetching data from URL: %s', url[:120])
     resp = req.get(url, cookies=cookies or {}, timeout=120)
