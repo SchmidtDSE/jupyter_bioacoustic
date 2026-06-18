@@ -395,7 +395,11 @@ export class SetupSection extends CollapsibleSection {
 
     const pathInput = this._makeInput(`${DIR_MAP[fileType]}/<name>.yaml`, '200px');
     pathInput.style.display = 'none';
-    pathInput.addEventListener('input', () => this._emitChanged());
+    pathInput.addEventListener('input', () => {
+      // Keep the read-only display in sync so locking shows the current path.
+      pathEl.textContent = pathInput.value;
+      this._emitChanged();
+    });
 
     row.append(lbl, pathEl, pathInput);
     row.addEventListener('focusin', () => this.fieldFocused.emit(`${fileType} file`));
