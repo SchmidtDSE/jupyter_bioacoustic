@@ -13,6 +13,7 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS, lockIconSvg } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
+import { CONFIG_FILES_HELP } from '../text';
 
 
 //
@@ -58,7 +59,7 @@ export class ConfigFilesSection extends CollapsibleSection {
   private _duplicateBtn!: HTMLButtonElement;
 
   constructor() {
-    super('Configuration Files', 'project', true);
+    super('Configuration Files', 'project', false);
     this._buildBody();
     this.setEnabled(false);
   }
@@ -201,16 +202,8 @@ export class ConfigFilesSection extends CollapsibleSection {
   private _buildBody(): void {
     const help = document.createElement('div');
     help.style.cssText =
-      `color:${COLORS.textMuted};font-size:11px;line-height:1.5;margin-bottom:4px;`;
-    help.innerHTML =
-      `A project is saved as up to three files — <b>project</b>, <b>config</b>, and <b>form</b>. ` +
-      `Use the controls below to manage them:` +
-      `<ul style="margin:4px 0 0 0;padding-left:16px;">` +
-      `<li><b>Checkbox</b> — whether that file is written as a separate file (uncheck to inline it into its parent).</li>` +
-      `<li><b>Linked</b> — keep all three filenames in sync from one name; unlink to set each path independently.</li>` +
-      `<li><b>Duplicate / Rename</b> — unlock the paths to save under new filenames. Saving writes the new files and leaves the originals untouched — your chance to start a copy from an existing config.</li>` +
-      `<li><b>Lock</b> (per file) — that file won't be saved and its fields are disabled, so you can't overwrite it.</li>` +
-      `</ul>`;
+      `color:${COLORS.textSubtle};font-size:11px;line-height:1.5;margin-bottom:4px;`;
+    help.innerHTML = CONFIG_FILES_HELP;
     this._body.appendChild(help);
 
     const linkedRow = document.createElement('div');
@@ -244,7 +237,7 @@ export class ConfigFilesSection extends CollapsibleSection {
 
     for (const ft of FILE_TYPES) this._body.appendChild(this._buildFileRow(ft));
 
-    this._duplicateBtn = this._makeButton('Duplicate / Rename');
+    this._duplicateBtn = this._makeButton('Duplicate');
     this._duplicateBtn.style.cssText += `margin-top:4px;align-self:flex-start;`;
     this._duplicateBtn.addEventListener('click', () => this._onDuplicateOrLock());
     this._body.appendChild(this._duplicateBtn);
@@ -349,7 +342,7 @@ export class ConfigFilesSection extends CollapsibleSection {
     } else {
       this._locked = true;
       this._linkedToggle.disabled = true;
-      this._duplicateBtn.textContent = 'Duplicate / Rename';
+      this._duplicateBtn.textContent = 'Duplicate';
     }
     this._applyLockState();
   }
