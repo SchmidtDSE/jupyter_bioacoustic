@@ -1,5 +1,5 @@
 import { Signal } from '@lumino/signaling';
-import { COLORS } from '../../styles';
+import { COLORS, lockIconSvg } from '../../styles';
 
 export abstract class CollapsibleSection {
   readonly element: HTMLDetailsElement;
@@ -12,10 +12,14 @@ export abstract class CollapsibleSection {
   protected _body: HTMLDivElement;
   protected _sectionName: string;
   private _targetToggle: HTMLSelectElement | null = null;
+  private _targetLockBadge: HTMLSpanElement | null = null;
   private _hasTargetToggle: boolean;
   private _chevron: HTMLSpanElement;
   private _summary: HTMLElement;
+  private _bodyLockBanner: HTMLDivElement | null = null;
   private _pinned = false;
+  private _targetForceDisabled = false;
+  private _optionsDisabled = false;
 
   constructor(title: string, sectionName: string, open = false, showTargetToggle = false, targetOptions?: string[]) {
     this._sectionName = sectionName;
@@ -96,7 +100,12 @@ export abstract class CollapsibleSection {
         this.targetChanged.emit({ section: this._sectionName, target: this._targetToggle!.value });
       });
 
-      toggleWrap.append(lbl, this._targetToggle);
+      this._targetLockBadge = document.createElement('span');
+      this._targetLockBadge.style.cssText = `display:none;color:${COLORS.textMuted};line-height:0;`;
+      this._targetLockBadge.innerHTML = lockIconSvg(true, 12);
+      this._targetLockBadge.title = 'Target is locked while a file is locked';
+
+      toggleWrap.append(lbl, this._targetToggle, this._targetLockBadge);
       summary.appendChild(toggleWrap);
     }
 
@@ -150,7 +159,38 @@ export abstract class CollapsibleSection {
     }
     if (options.includes(current)) this._targetToggle.value = current;
     else if (options.length > 0) this._targetToggle.value = options[options.length - 1];
-    this._targetToggle.disabled = options.length <= 1;
+    this._optionsDisabled = options.length <= 1;
+    this._applyTargetDisabled();
+  }
+
+  /** Grey out + disable the field body while keeping the section expandable. */
+  setFieldsLocked(locked: boolean): void {
+    this._body.style.opacity = locked ? '0.5' : '';
+    this._body.style.pointerEvents = locked ? 'none' : '';
+    if (locked && !this._bodyLockBanner) {
+      const b = document.createElement('div');
+      b.style.cssText =
+        `display:flex;align-items:center;gap:6px;color:${COLORS.textMuted};font-size:11px;`;
+      b.innerHTML = `${lockIconSvg(true, 12)}<span>Writes to a locked file — unlock it to edit</span>`;
+      this._bodyLockBanner = b;
+      this._body.insertBefore(b, this._body.firstChild);
+    } else if (!locked && this._bodyLockBanner) {
+      this._bodyLockBanner.remove();
+      this._bodyLockBanner = null;
+    }
+  }
+
+  /** Enable/disable the header target dropdown (e.g. frozen while files are locked). */
+  setTargetEnabled(enabled: boolean): void {
+    this._targetForceDisabled = !enabled;
+    if (this._targetLockBadge) this._targetLockBadge.style.display = enabled ? 'none' : '';
+    this._applyTargetDisabled();
+  }
+
+  private _applyTargetDisabled(): void {
+    if (this._targetToggle) {
+      this._targetToggle.disabled = this._targetForceDisabled || this._optionsDisabled;
+    }
   }
 
   protected _makeRow(): HTMLDivElement {
@@ -232,6 +272,33 @@ export abstract class CollapsibleSection {
 
   protected _emitChanged(): void {
     this.changed.emit(void 0);
+  }
+
+  /** Disable/grey a single control + show a small grey lock next to it. */
+  protected _setControlDisabled(el: HTMLElement | null | undefined, disabled: boolean): void {
+    if (!el) return;
+    const anyEl = el as any;
+    if ('disabled' in anyEl) anyEl.disabled = disabled;
+    el.style.opacity = disabled ? '0.5' : '';
+    el.style.pointerEvents = disabled ? 'none' : '';
+    if (el.tagName !== 'BUTTON') this._toggleFieldLockMarker(el, disabled);
+  }
+
+  private _toggleFieldLockMarker(el: HTMLElement, disabled: boolean): void {
+    const a = el as any;
+    if (disabled) {
+      if (a._lockMarker) return;
+      const m = document.createElement('span');
+      m.style.cssText =
+        `display:inline-flex;color:${COLORS.textMuted};margin-left:5px;vertical-align:middle;`;
+      m.innerHTML = lockIconSvg(true, 12);
+      m.title = 'Locked — this field writes to a locked file';
+      a._lockMarker = m;
+      el.insertAdjacentElement('afterend', m);
+    } else if (a._lockMarker) {
+      a._lockMarker.remove();
+      a._lockMarker = null;
+    }
   }
 
   abstract getData(): Record<string, any>;
