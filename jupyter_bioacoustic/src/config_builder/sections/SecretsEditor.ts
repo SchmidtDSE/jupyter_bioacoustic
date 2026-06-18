@@ -1,5 +1,6 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
+import { SECRETS_HINT } from '../text';
 
 export class SecretsEditor {
   readonly element: HTMLDivElement;
@@ -65,7 +66,7 @@ export class SecretsEditor {
     this.element.appendChild(header);
 
     const hint = document.createElement('span');
-    hint.textContent = 'Each entry is {key, value}. Value: env:VAR, dialog, or literal.';
+    hint.textContent = SECRETS_HINT;
     hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;line-height:1.3;`;
     this.element.appendChild(hint);
 
