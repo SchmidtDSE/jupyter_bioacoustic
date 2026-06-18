@@ -395,6 +395,49 @@ class TestUpdateSection:
 
 
 #
+# File locking
+#
+class TestFileLocking:
+    """Locked files are skipped on save; routing keys are exposed."""
+
+    def test_save_all_skips_locked_file(self, tmp_path):
+        cb = ConfigBuilder()
+        cb.update_section('project', {
+            'project_name': 'Lk', 'config_locked': True,
+        })
+        cb.update_section('data', {'value': 'd.csv', 'source_type': 'path'})
+        cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            saved = cb.save_all()
+        finally:
+            os.chdir(cwd)
+        assert 'config' not in saved          # locked → not written
+        assert 'project' in saved and 'form' in saved
+
+    def test_locked_flags_not_written_to_yaml(self, tmp_path):
+        import yaml
+        cb = ConfigBuilder()
+        cb.update_section('project', {'project_name': 'Lk', 'project_locked': True})
+        cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            cb.update_section('project', {'project_locked': False})  # so it writes
+            cb.save_all()
+            with open(tmp_path / 'projects' / 'lk.yaml') as f:
+                proj = yaml.safe_load(f)
+        finally:
+            os.chdir(cwd)
+        assert 'project_locked' not in proj
+
+    def test_get_routing_keys_shape(self):
+        rk = ConfigBuilder().get_routing_keys()
+        assert set(rk) == {'data', 'audio', 'output'}
+        assert 'source_type' in rk['data']['project']
+        assert 'index_column' in rk['data']['config']
+
+
+#
 # ConfigBuilder._build_file_contents
 #
 class TestBuildFileContents:
