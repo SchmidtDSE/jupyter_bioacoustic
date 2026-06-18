@@ -12,6 +12,7 @@ import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 import { TemplateForm, TemplateSummary } from './TemplateForm';
+import { SETUP_TAB_HELP } from '../text';
 
 
 //
@@ -43,6 +44,7 @@ export class SetupSection extends CollapsibleSection {
   private _createPane!: HTMLDivElement;
   private _templatePane!: HTMLDivElement;
   private _loadPane!: HTMLDivElement;
+  private _tabHelp!: HTMLDivElement;
   private _templateForm!: TemplateForm;
 
   private _createNameInput!: HTMLInputElement;
@@ -55,6 +57,12 @@ export class SetupSection extends CollapsibleSection {
     super('Setup', 'setup', true);
 
     this._body.appendChild(this._makeTabBar());
+
+    this._tabHelp = document.createElement('div');
+    this._tabHelp.style.cssText =
+      `color:${COLORS.textSubtle};font-size:11px;line-height:1.5;margin:2px 0 4px;`;
+    this._tabHelp.textContent = SETUP_TAB_HELP.create;
+    this._body.appendChild(this._tabHelp);
 
     this._createPane = this._buildCreatePane();
     this._templatePane = this._buildTemplatePane();
@@ -212,6 +220,10 @@ export class SetupSection extends CollapsibleSection {
     this._createPane.style.display = mode === MODE_CREATE ? 'flex' : 'none';
     this._templatePane.style.display = mode === MODE_TEMPLATE ? 'flex' : 'none';
     this._loadPane.style.display = mode === MODE_LOAD ? 'flex' : 'none';
+    this._tabHelp.textContent =
+      mode === MODE_TEMPLATE ? SETUP_TAB_HELP.template
+      : mode === MODE_LOAD ? SETUP_TAB_HELP.load
+      : SETUP_TAB_HELP.create;
     if (mode === MODE_TEMPLATE) this._templateForm.activate();
   }
 
