@@ -571,6 +571,53 @@ class ConfigBuilder:
             _log.warning('read_columns failed for %s: %s', filepath, e)
         return []
 
+    def read_columns_from_source(
+        self,
+        source_type: str,
+        value: str,
+        secrets: list | dict | None = None,
+    ) -> list:
+        """Load a remote/query data source and return its column names.
+
+        Handles ``url``/``uri``/``api``/``sql`` (and ``path``) by reusing the
+        annotator's data loaders. Raises on failure so the caller can surface
+        the error. ``secrets`` are resolved and passed through to the loader.
+        """
+        from ..api import _load_data, _resolve_secrets
+        _log.info('read_columns_from_source(%s): %s', source_type, str(value)[:120])
+        dtype_map = {
+            'path': 'path', 'url': 'url', 'uri': 'url', 'sql': 'sql', 'api': 'api',
+        }
+        dtype = dtype_map.get(source_type, 'path')
+        resolved = _resolve_secrets(secrets) if secrets else None
+        df = _load_data(value, dtype=dtype, secrets=resolved)
+        return list(df.columns)
+
+    def check_audio_url(self, value: str) -> dict:
+        """Best-effort reachability check for a remote audio file.
+
+        For FLAC, parses the file header (ffmpeg-free) for sample rate **and**
+        duration. For other formats — or if the FLAC header can't be read —
+        reads a short segment to confirm reachability + sample rate (no
+        duration). Raises on failure so the caller can surface the error.
+        """
+        from ..audio import _shared, read_segment
+        from ..api import _cloud_get_bytes
+        _log.info('check_audio_url: %s', str(value)[:120])
+
+        if value.split('?')[0].lower().endswith('.flac'):
+            try:
+                header = _cloud_get_bytes(value, (0, _shared.HEADER_BYTES - 1))
+                sr, dur = _shared.parse_flac_header(header)
+                return {'ok': True, 'sample_rate': int(sr), 'duration': float(dur)}
+            except Exception as err:
+                # No ffmpeg-free duration available — fall back to a segment read.
+                _log.info('FLAC header read failed (%s); using segment read', err)
+
+        raw, sr = read_segment(value, 0.0, 0.5, partial=True)
+        channels = raw.shape[1] if getattr(raw, 'ndim', 1) > 1 else 1
+        return {'ok': True, 'sample_rate': int(sr), 'channels': int(channels)}
+
     def read_sample_data(self, filepath: str, n_rows: int = 5) -> list:
         """Read sample data from a file."""
         _log.debug('read_sample_data: %s (n_rows=%d)', filepath, n_rows)
