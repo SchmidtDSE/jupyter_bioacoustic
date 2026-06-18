@@ -301,7 +301,7 @@ export class TemplateForm {
     this._nameInput.style.cssText = inputStyle('300px');
     this._nameInput.placeholder = 'e.g. Bird Review';
     this._nameInput.addEventListener('input', () => this._updateSaveEnabled());
-    nameRow.append(this._label('name *'), this._nameInput);
+    nameRow.append(this._label('name', true), this._nameInput);
     this._editableEl.appendChild(nameRow);
 
     this._formEl = document.createElement('div');
@@ -392,25 +392,30 @@ export class TemplateForm {
       if (!item || typeof item !== 'object') continue;
       if (item.group && typeof item.group === 'object') {
         const g = item.group;
-        const box = document.createElement('div');
-        box.style.cssText =
-          `display:flex;flex-direction:column;gap:6px;` +
-          `border-left:2px solid ${COLORS.bgSurface1};padding-left:8px;`;
+        // The group header (name + description) sits at the parent indent…
+        const groupWrap = document.createElement('div');
+        groupWrap.style.cssText = `display:flex;flex-direction:column;gap:4px;margin-bottom:12px;`;
         if (g.group_name) {
           const t = document.createElement('div');
           t.textContent = g.group_name;
           t.style.cssText =
             `color:${COLORS.textSubtle};font-size:11px;font-weight:600;text-transform:uppercase;`;
-          box.appendChild(t);
+          groupWrap.appendChild(t);
         }
         if (g.group_description) {
           const dd = document.createElement('div');
           dd.textContent = g.group_description;
           dd.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
-          box.appendChild(dd);
+          groupWrap.appendChild(dd);
         }
-        if (Array.isArray(g.elements)) this._renderElements(g.elements, box, descriptors);
-        parent.appendChild(box);
+        // …only the fields are indented under the left bar.
+        const inner = document.createElement('div');
+        inner.style.cssText =
+          `display:flex;flex-direction:column;gap:6px;margin-top:4px;` +
+          `border-left:2px solid ${COLORS.bgSurface1};padding-left:10px;`;
+        if (Array.isArray(g.elements)) this._renderElements(g.elements, inner, descriptors);
+        groupWrap.appendChild(inner);
+        parent.appendChild(groupWrap);
         continue;
       }
       const key = Object.keys(item)[0];
@@ -424,7 +429,7 @@ export class TemplateForm {
     const norm = this._normalize(spec);
     const row = document.createElement('div');
     row.style.cssText = `display:flex;align-items:center;gap:8px;`;
-    const lbl = this._label((norm.label || key) + (norm.required ? ' *' : ''));
+    const lbl = this._label(norm.label || key, norm.required);
     if (norm.description) lbl.title = norm.description;
     const host = document.createElement('div');
     host.style.cssText = `display:flex;align-items:center;gap:6px;flex:1;`;
@@ -714,10 +719,11 @@ export class TemplateForm {
     return wrap;
   }
 
-  private _label(text: string): HTMLSpanElement {
+  private _label(text: string, required = false): HTMLSpanElement {
     const s = document.createElement('span');
     s.textContent = text;
-    s.style.cssText = `color:${COLORS.textSubtle};font-size:12px;min-width:140px;`;
+    s.style.cssText =
+      `color:${required ? COLORS.teal : COLORS.textSubtle};font-size:12px;min-width:140px;`;
     return s;
   }
 
