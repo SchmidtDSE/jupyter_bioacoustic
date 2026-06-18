@@ -345,6 +345,11 @@ class ConfigBuilder:
         config_enabled = self._project.get('config_enabled', True)
         form_enabled = self._project.get('form_enabled', True)
 
+        # A locked file is never written (independent of the enabled flag).
+        project_locked = bool(self._project.get('project_locked', False))
+        config_locked = bool(self._project.get('config_locked', False))
+        form_locked = bool(self._project.get('form_locked', False))
+
         p_path = self._project.get('project_path') or f'{DEFAULT_PROJECT_DIR}/{slug}.yaml'
         c_path = self._project.get('config_path') or f'{DEFAULT_CONFIG_DIR}/{slug}.yaml'
         f_path = self._project.get('form_path') or f'{DEFAULT_FORM_DIR}/{slug}.yaml'
@@ -432,6 +437,9 @@ class ConfigBuilder:
             'project_enabled': project_enabled,
             'config_enabled': config_enabled,
             'form_enabled': form_enabled,
+            'project_locked': project_locked,
+            'config_locked': config_locked,
+            'form_locked': form_locked,
             'p_path': p_path,
             'c_path': c_path,
             'f_path': f_path,
@@ -450,9 +458,9 @@ class ConfigBuilder:
         project_cfg = fc['project_cfg']
         config_cfg = fc['config_cfg']
         form_cfg = fc['form_cfg']
-        project_enabled = fc['project_enabled']
-        config_enabled = fc['config_enabled']
-        form_enabled = fc['form_enabled']
+        project_enabled = fc['project_enabled'] and not fc['project_locked']
+        config_enabled = fc['config_enabled'] and not fc['config_locked']
+        form_enabled = fc['form_enabled'] and not fc['form_locked']
         p_path = fc['p_path']
         c_path = fc['c_path']
         f_path = fc['f_path']
@@ -500,15 +508,15 @@ class ConfigBuilder:
 
         fc = self._build_file_contents()
         if config_type == 'project':
-            path = fc['p_path']
-            content = fc['project_cfg']
+            path, content, locked = fc['p_path'], fc['project_cfg'], fc['project_locked']
         elif config_type == 'config':
-            path = fc['c_path']
-            content = fc['config_cfg']
+            path, content, locked = fc['c_path'], fc['config_cfg'], fc['config_locked']
         elif config_type == 'form_config':
-            path = fc['f_path']
-            content = fc['form_cfg']
+            path, content, locked = fc['f_path'], fc['form_cfg'], fc['form_locked']
         else:
+            return ''
+        if locked:
+            _log.info('save_single(%s) skipped — file is locked', config_type)
             return ''
 
         path = _ensure_ext(path)
@@ -842,6 +850,29 @@ class ConfigBuilder:
         state['detected_type'] = detected
         state['loaded_paths'] = loaded_paths
         return state
+
+    def get_routing_keys(self) -> dict:
+        """Return the split-routing key sets per section (source of truth for the UI).
+
+        For each split-capable section, ``project`` lists the keys routed to the
+        project file and ``config`` the keys routed to the config file when the
+        section target is ``split``. Used by the frontend to decide which fields
+        to disable when a file is locked.
+        """
+        return {
+            'data': {
+                'project': sorted(DATA_PROJECT_KEYS),
+                'config': sorted(DATA_CONFIG_KEYS),
+            },
+            'audio': {
+                'project': sorted(AUDIO_PROJECT_KEYS),
+                'config': sorted(AUDIO_CONFIG_KEYS),
+            },
+            'output': {
+                'project': sorted(OUTPUT_PROJECT_KEYS),
+                'config': sorted(OUTPUT_CONFIG_KEYS),
+            },
+        }
 
     def list_templates(self) -> list:
         """List available "create from template" definitions."""
