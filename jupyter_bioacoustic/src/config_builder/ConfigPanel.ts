@@ -824,7 +824,9 @@ export class ConfigPanel {
     // Reuse the standard validate → overwrite-prompt → save flow.
     const saved = await this._validateAndSave(true);
     if (saved) {
-      this._setup.resetTemplateForm();
+      // Lock the form (greyed, Edit button) and collapse Setup; reopening the
+      // section still shows the disabled form.
+      this._setup.markTemplateSaved();
       this._setup.close();
       this._setStatus(`Created ${payload.projectName} — ${saved}`);
     }
