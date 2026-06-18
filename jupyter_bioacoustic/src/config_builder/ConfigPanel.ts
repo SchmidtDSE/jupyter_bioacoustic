@@ -26,6 +26,7 @@ import {
   listTemplates,
   loadTemplate,
   applyTemplate,
+  getRoutingKeys,
 } from './python';
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
@@ -53,6 +54,7 @@ export class ConfigPanel {
   private _ready = false;
   private _debug = false;
   private _readyPromise: Promise<void>;
+  private _routingKeys: Record<string, { project: string[]; config: string[] }> | null = null;
   private _resolvedCwd = '';
   private _cwdCallbacks: Array<(cwd: string) => void> = [];
   private _dirtyCallbacks: Array<() => void> = [];
@@ -164,6 +166,7 @@ export class ConfigPanel {
       this._openBrowser(current, exts, (p) => this._setup.setTemplateFieldValue(key, p));
     });
     this._setup.templateColumnsRequested.connect((_, path) => void this._onTemplateColumns(path));
+    this._setup.lockStatesChanged.connect(() => this._applyFileLocks());
 
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
     this._data.browseRequested.connect((_, dir) => {
@@ -264,6 +267,12 @@ export class ConfigPanel {
       }
       for (const cb of this._cwdCallbacks) cb(this._resolvedCwd);
       this._cwdCallbacks = [];
+      // Cache the per-section split-routing key sets (single source of truth in
+      // core.py) so file-lock disabling needs no further kernel round-trips.
+      try {
+        const rk = await this._kernel.exec(getRoutingKeys());
+        this._routingKeys = JSON.parse(extractJson(rk));
+      } catch { /* lock disabling degrades to whole-section if absent */ }
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Init failed: ${String(e.message ?? e)}`, true);
@@ -447,13 +456,13 @@ export class ConfigPanel {
 
     const projectData = this._setup.getData();
     const enabled = [
-      projectData.project_enabled && projectData.project_path,
-      projectData.config_enabled && projectData.config_path,
-      projectData.form_enabled && projectData.form_path,
+      projectData.project_enabled && !projectData.project_locked && projectData.project_path,
+      projectData.config_enabled && !projectData.config_locked && projectData.config_path,
+      projectData.form_enabled && !projectData.form_locked && projectData.form_path,
     ].filter(Boolean);
 
     if (enabled.length === 0) {
-      this._setStatus('Enable at least one output file in Setup section', true);
+      this._setStatus('Nothing to save — all files are disabled or locked', true);
       return null;
     }
 
@@ -541,13 +550,13 @@ export class ConfigPanel {
 
     const projectData = this._setup.getData();
     const enabled = [
-      projectData.project_enabled && projectData.project_path,
-      projectData.config_enabled && projectData.config_path,
-      projectData.form_enabled && projectData.form_path,
+      projectData.project_enabled && !projectData.project_locked && projectData.project_path,
+      projectData.config_enabled && !projectData.config_locked && projectData.config_path,
+      projectData.form_enabled && !projectData.form_locked && projectData.form_path,
     ].filter(Boolean);
 
     if (enabled.length === 0) {
-      this._setStatus('Enable at least one output file in Setup section', true);
+      this._setStatus('Nothing to save — all files are disabled or locked', true);
       return null;
     }
 
@@ -595,8 +604,9 @@ export class ConfigPanel {
       return null;
     }
 
-    const checkPath = (projectData.project_enabled && projectData.project_path) ||
-      (projectData.config_enabled && projectData.config_path) || '';
+    const checkPath =
+      (projectData.project_enabled && !projectData.project_locked && projectData.project_path) ||
+      (projectData.config_enabled && !projectData.config_locked && projectData.config_path) || '';
     if (checkPath) {
       try {
         const existsRaw = await this._kernel.exec(checkFileExists(checkPath));
@@ -714,6 +724,7 @@ export class ConfigPanel {
     } finally {
       this._suppressChanges = false;
     }
+    this._applyFileLocks();
     for (const cb of this._dirtyCallbacks) cb();
   }
 
@@ -900,6 +911,29 @@ export class ConfigPanel {
     } catch { /* ignore */ }
   }
 
+  private _applyFileLocks(): void {
+    const locks = this._setup.getLockStates();
+    const anyLocked = locks.project || locks.config || locks.form;
+    const fileOf = (t: string): 'project' | 'config' | 'form' =>
+      t === 'form' ? 'form' : t === 'config' ? 'config' : 'project';
+
+    // Freeze every target dropdown while any file is locked (so routing can't
+    // shift fields into/out of a locked file).
+    for (const [name, section] of this._sections) {
+      if (name !== 'project') section.setTargetEnabled(!anyLocked);
+    }
+
+    // Whole-section-target sections route entirely to one file.
+    this._app.setFieldsLocked(locks[fileOf(this._app.getTarget())]);
+    this._description.setFieldsLocked(locks[fileOf(this._description.getTarget())]);
+    this._form.setFieldsLocked(locks[fileOf(this._form.getTarget())]);
+
+    // Split sections disable per-field by routing (project-group vs config-group).
+    this._data.applyLocks(locks, this._routingKeys?.data);
+    this._audio.applyLocks(locks, this._routingKeys?.audio);
+    this._output.applyLocks(locks, this._routingKeys?.output);
+  }
+
   private async _onTargetChanged(section: string, target: string): Promise<void> {
     await this._readyPromise;
     if (!this._ready) return;
@@ -909,6 +943,7 @@ export class ConfigPanel {
       const raw = await this._kernel.exec(setSectionTarget(section, pyTarget));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, section);
+      this._applyFileLocks();
       this._setStatus('Ready');
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
