@@ -79,6 +79,15 @@ pandas = "*"
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = { path = ".", editable = true }
 
+# Re-link the dev labextension into every pixi env on activation, so a pip
+# editable reinstall can't leave JupyterLab serving a stale bundle. Dev-only
+# (pixi config); has no effect on pip-installed users. See dev-relink.sh.
+[tool.pixi.activation]
+scripts = ["dev-relink.sh"]
+
+[tool.pixi.tasks.relink]
+cmd = "python develop.py"
+
 [tool.pixi.tasks.jlpm-install]
 cmd = "jlpm install"
 cwd = "jupyter_bioacoustic"
