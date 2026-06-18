@@ -146,6 +146,13 @@ export function loadConfig(path: string, fileType?: string): string {
   ].join('\n');
 }
 
+export function getRoutingKeys(): string {
+  return [
+    `import json as _j`,
+    wp(`_j.dumps(_CB_INSTANCE.get_routing_keys())`),
+  ].join('\n');
+}
+
 export function listTemplates(): string {
   return [
     `import json as _j`,
