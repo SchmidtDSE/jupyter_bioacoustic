@@ -1,6 +1,7 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
+import { FORM_ADD_HINT, FORM_ADD_ITEMS_HINT } from '../text';
 
 const ALL_ANNOTATION_TOOLS = [
   'time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration',
@@ -38,7 +39,7 @@ export class FormSection extends CollapsibleSection {
     super('Form', 'form', false, true, ['project', 'config', 'form']);
 
     const hint = document.createElement('div');
-    hint.textContent = 'Click on the buttons below to add items to the form.';
+    hint.textContent = FORM_ADD_HINT;
     hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;margin-bottom:4px;`;
     this._body.appendChild(hint);
 
@@ -712,7 +713,7 @@ export class FormSection extends CollapsibleSection {
     container.appendChild(addRow);
 
     const hint = document.createElement('span');
-    hint.textContent = 'Add items one at a time. Use form field to reference a dynamic form.';
+    hint.textContent = FORM_ADD_ITEMS_HINT;
     hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;`;
     container.appendChild(hint);
   }
