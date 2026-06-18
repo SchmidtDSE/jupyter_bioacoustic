@@ -1,17 +1,17 @@
 /**
  * SetupSection
  *
- * Two-mode project setup: Create New or Load Existing.
- * Configuration Files subsection with linked/rename/lock workflow.
+ * Tabbed project entry: Create New / Create from Template / Load Existing.
+ * File management (paths, enable, Duplicate/Rename, lock) lives in the separate
+ * ConfigFilesSection. This section only emits intent signals — `projectCreated`,
+ * `loadConfigRequested`, and the template signals.
  *
  * License: BSD 3-Clause
  */
 import { Signal } from '@lumino/signaling';
-import { COLORS, lockIconSvg } from '../../styles';
+import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 import { TemplateForm, TemplateSummary } from './TemplateForm';
-
-export interface FileLockStates { project: boolean; config: boolean; form: boolean; }
 
 
 //
@@ -20,12 +20,6 @@ export interface FileLockStates { project: boolean; config: boolean; form: boole
 const MODE_CREATE = 'create';
 const MODE_TEMPLATE = 'template';
 const MODE_LOAD = 'load';
-const FILE_TYPES = ['project', 'config', 'form'] as const;
-const DIR_MAP: Record<string, string> = {
-  project: 'annotator_config/projects',
-  config: 'annotator_config/config',
-  form: 'annotator_config/forms',
-};
 
 
 //
@@ -35,8 +29,6 @@ export class SetupSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, { field: string; current: string }>(this);
   readonly loadConfigRequested = new Signal<this, { field: string; path: string }>(this);
   readonly projectCreated = new Signal<this, string>(this);
-  readonly projectEnabledChanged = new Signal<this, boolean>(this);
-  readonly fileStatesChanged = new Signal<this, { project: boolean; config: boolean; form: boolean }>(this);
   readonly templateListRequested = new Signal<this, void>(this);
   readonly templateSelected = new Signal<this, string>(this);
   readonly applyTemplateRequested = new Signal<this, {
@@ -44,53 +36,25 @@ export class SetupSection extends CollapsibleSection {
   }>(this);
   readonly templateBrowseRequested = new Signal<this, { key: string; exts: string[]; current: string }>(this);
   readonly templateColumnsRequested = new Signal<this, string>(this);
-  readonly lockStatesChanged = new Signal<this, FileLockStates>(this);
 
-  private _mode = MODE_CREATE;
-  private _active = false;
-  private _locked = true;
-  private _linked = true;
+  private _createTab!: HTMLButtonElement;
+  private _templateTab!: HTMLButtonElement;
+  private _loadTab!: HTMLButtonElement;
+  private _createPane!: HTMLDivElement;
+  private _templatePane!: HTMLDivElement;
+  private _loadPane!: HTMLDivElement;
+  private _templateForm!: TemplateForm;
 
-  private _createTab: HTMLButtonElement;
-  private _templateTab: HTMLButtonElement;
-  private _loadTab: HTMLButtonElement;
-  private _createPane: HTMLDivElement;
-  private _templatePane: HTMLDivElement;
-  private _loadPane: HTMLDivElement;
-  private _templateForm: TemplateForm;
-
-  private _createNameInput: HTMLInputElement;
-  private _createBtn: HTMLButtonElement;
-
-  private _loadTypeSelect: HTMLSelectElement;
-  private _loadPathInput: HTMLInputElement;
-  private _loadBrowseBtn: HTMLButtonElement;
-  private _loadBtn: HTMLButtonElement;
-
-  private _configFilesSection: HTMLDivElement;
-  private _linkedToggle: HTMLButtonElement;
-  private _linkedNameEl: HTMLElement;
-  private _linkedNameInput: HTMLInputElement;
-
-  private _projectCb: HTMLInputElement;
-  private _configCb: HTMLInputElement;
-  private _formCb: HTMLInputElement;
-  private _lockBtns: Record<string, HTMLButtonElement> = {};
-  private _fileLocked: Record<string, boolean> = { project: false, config: false, form: false };
-  private _projectPathEl: HTMLSpanElement;
-  private _configPathEl: HTMLSpanElement;
-  private _formPathEl: HTMLSpanElement;
-  private _projectPathInput: HTMLInputElement;
-  private _configPathInput: HTMLInputElement;
-  private _formPathInput: HTMLInputElement;
-
-  private _duplicateBtn: HTMLButtonElement;
+  private _createNameInput!: HTMLInputElement;
+  private _createBtn!: HTMLButtonElement;
+  private _loadTypeSelect!: HTMLSelectElement;
+  private _loadPathInput!: HTMLInputElement;
+  private _loadBtn!: HTMLButtonElement;
 
   constructor() {
-    super('Setup', 'project', true);
+    super('Setup', 'setup', true);
 
-    const tabBar = this._makeTabBar();
-    this._body.appendChild(tabBar);
+    this._body.appendChild(this._makeTabBar());
 
     this._createPane = this._buildCreatePane();
     this._templatePane = this._buildTemplatePane();
@@ -98,36 +62,12 @@ export class SetupSection extends CollapsibleSection {
     this._loadPane = this._buildLoadPane();
     this._loadPane.style.display = 'none';
     this._body.append(this._createPane, this._templatePane, this._loadPane);
-
-    this._body.appendChild(this._makeSeparator());
-
-    this._configFilesSection = this._buildConfigFilesSection();
-    this._setConfigFilesEnabled(false);
-    this._body.appendChild(this._configFilesSection);
   }
 
 
   //
   // Public API
   //
-  setProjectPath(path: string): void {
-    this._projectPathInput.value = path;
-    this._projectPathEl.textContent = path;
-    this._emitChanged();
-  }
-
-  setConfigPath(path: string): void {
-    this._configPathInput.value = path;
-    this._configPathEl.textContent = path;
-    this._emitChanged();
-  }
-
-  setFormPath(path: string): void {
-    this._formPathInput.value = path;
-    this._formPathEl.textContent = path;
-    this._emitChanged();
-  }
-
   setTemplateList(items: TemplateSummary[]): void {
     this._templateForm.setList(items);
   }
@@ -152,88 +92,21 @@ export class SetupSection extends CollapsibleSection {
     this._templateForm.setColumns(path, cols);
   }
 
-  setCheckedStates(project: boolean, config: boolean, form: boolean): void {
-    this._projectCb.checked = project;
-    this._configCb.checked = config;
-    this._formCb.checked = form;
+  setLoadPath(path: string): void {
+    this._loadPathInput.value = path;
+    this._loadPathInput.focus();
   }
 
-  activateFromLoad(name: string): void {
-    this._active = true;
-    this._locked = true;
-    this._linked = true;
-    this._setConfigFilesEnabled(true);
-
-    const projPath = this._projectPathInput.value;
-    const confPath = this._configPathInput.value;
-    const formPath = this._formPathInput.value;
-    const projFile = this._filename(projPath);
-    const confFile = this._filename(confPath);
-    const formFile = this._filename(formPath);
-
-    const allSame = projFile && projFile === confFile && confFile === formFile;
-    if (allSame) {
-      this._linked = true;
-      const stem = projFile.replace(/\.(yaml|yml)$/i, '');
-      this._linkedNameEl.textContent = this._titlize(stem);
-      this._linkedNameInput.value = this._titlize(stem);
-    } else if (name) {
-      this._linkedNameEl.textContent = this._titlize(name);
-      this._linkedNameInput.value = this._titlize(name);
-      this._linked = false;
-    } else {
-      this._linked = false;
-      this._linkedNameEl.textContent = '—';
-      this._linkedNameInput.value = '';
-    }
-
-    this._updateLinkedToggle();
-    this._linkedToggle.disabled = true;
-    this._applyLockState();
-    this._emitFileStates();
+  getLoadType(): string {
+    return this._loadTypeSelect.value;
   }
 
   getData(): Record<string, any> {
-    const result: Record<string, any> = {
-      project_enabled: this._projectCb.checked,
-      config_enabled: this._configCb.checked,
-      form_enabled: this._formCb.checked,
-      project_path: this._projectCb.checked ? (this._getProjectPath() || undefined) : undefined,
-      config_path: this._configCb.checked ? (this._getConfigPath() || undefined) : undefined,
-      form_path: this._formCb.checked ? (this._getFormPath() || undefined) : undefined,
-      project_locked: this._fileLocked.project,
-      config_locked: this._fileLocked.config,
-      form_locked: this._fileLocked.form,
-    };
-    return result;
+    return {};
   }
 
-  setData(data: Record<string, any>): void {
-    if (data.project_path) {
-      this._projectPathInput.value = data.project_path;
-      this._projectPathEl.textContent = data.project_path;
-    }
-    if (data.config_path) {
-      this._configPathInput.value = data.config_path;
-      this._configPathEl.textContent = data.config_path;
-    }
-    if (data.form_path) {
-      this._formPathInput.value = data.form_path;
-      this._formPathEl.textContent = data.form_path;
-    }
-    if (data.project_enabled !== undefined) this._projectCb.checked = !!data.project_enabled;
-    if (data.config_enabled !== undefined) this._configCb.checked = !!data.config_enabled;
-    if (data.form_enabled !== undefined) this._formCb.checked = !!data.form_enabled;
-
-    for (const ft of FILE_TYPES) {
-      this._fileLocked[ft] = !!data[`${ft}_locked`];
-      if (this._lockBtns[ft]) this._renderLockBtn(ft);
-    }
-
-    if (data.project_path || data.config_path || data.form_path) {
-      const name = data.project_name || '';
-      this.activateFromLoad(name);
-    }
+  setData(_data: Record<string, any>): void {
+    /* tabs hold no persisted config; file state lives in ConfigFilesSection */
   }
 
 
@@ -310,161 +183,22 @@ export class SetupSection extends CollapsibleSection {
       if (e.key === 'Enter') { e.preventDefault(); this._onLoad(); }
     });
 
-    this._loadBrowseBtn = this._makeButton('Browse');
-    this._loadBrowseBtn.type = 'button';
-    this._loadBrowseBtn.addEventListener('click', (e) => {
+    const loadBrowseBtn = this._makeButton('Browse');
+    loadBrowseBtn.type = 'button';
+    loadBrowseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const field = this._loadTypeSelect.value;
-      const current = this._loadPathInput.value || '.';
-      this.browseRequested.emit({ field, current });
+      this.browseRequested.emit({
+        field: this._loadTypeSelect.value,
+        current: this._loadPathInput.value || '.',
+      });
     });
 
     this._loadBtn = this._makeButton('Load', true);
     this._loadBtn.type = 'button';
     this._loadBtn.addEventListener('click', (e) => { e.stopPropagation(); this._onLoad(); });
 
-    pane.append(this._loadTypeSelect, this._loadPathInput, this._loadBrowseBtn, this._loadBtn);
+    pane.append(this._loadTypeSelect, this._loadPathInput, loadBrowseBtn, this._loadBtn);
     return pane;
-  }
-
-  private _buildConfigFilesSection(): HTMLDivElement {
-    const section = document.createElement('div');
-    section.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
-
-    const header = document.createElement('div');
-    header.textContent = 'Configuration Files';
-    header.style.cssText =
-      `color:${COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
-    section.appendChild(header);
-
-    const help = document.createElement('div');
-    help.style.cssText =
-      `color:${COLORS.textMuted};font-size:11px;line-height:1.5;margin-bottom:4px;`;
-    help.innerHTML =
-      `A project is saved as up to three files — <b>project</b>, <b>config</b>, and <b>form</b>. ` +
-      `Use the controls below to manage them:` +
-      `<ul style="margin:4px 0 0 0;padding-left:16px;">` +
-      `<li><b>Checkbox</b> — whether that file is written as a separate file (uncheck to inline it into its parent).</li>` +
-      `<li><b>Linked</b> — keep all three filenames in sync from one name; unlink to set each path independently.</li>` +
-      `<li><b>Duplicate / Rename</b> — unlock the paths to save under new filenames. Saving writes the new files and leaves the originals untouched — your chance to start a copy from an existing config.</li>` +
-      `<li><b>Lock</b> (per file) — that file won't be saved and its fields are disabled, so you can't overwrite it.</li>` +
-      `</ul>`;
-    section.appendChild(help);
-
-    const linkedRow = document.createElement('div');
-    linkedRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-bottom:4px;`;
-
-    this._linkedToggle = document.createElement('button');
-    this._linkedToggle.style.cssText =
-      `background:${COLORS.bgSurface1};border:1px solid ${COLORS.bgSurface1};border-radius:4px;` +
-      `color:${COLORS.textPrimary};padding:2px 8px;font-size:11px;cursor:pointer;min-width:60px;`;
-    this._linkedToggle.disabled = true;
-    this._linkedToggle.addEventListener('click', () => {
-      this._linked = !this._linked;
-      this._updateLinkedToggle();
-      this._applyLockState();
-      if (this._linked) this._applyLinkedName();
-    });
-
-    this._linkedNameEl = document.createElement('span');
-    this._linkedNameEl.textContent = '—';
-    this._linkedNameEl.style.cssText =
-      `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
-
-    this._linkedNameInput = this._makeInput('linked name', '160px');
-    this._linkedNameInput.style.display = 'none';
-    this._linkedNameInput.addEventListener('input', () => {
-      if (this._linked && !this._locked) this._applyLinkedName();
-      this._emitChanged();
-    });
-
-    linkedRow.append(this._linkedToggle, this._linkedNameEl, this._linkedNameInput);
-    section.appendChild(linkedRow);
-
-    for (const ft of FILE_TYPES) {
-      section.appendChild(this._buildFileRow(ft));
-    }
-
-    this._duplicateBtn = this._makeButton('Duplicate / Rename');
-    this._duplicateBtn.style.cssText += `margin-top:4px;align-self:flex-start;`;
-    this._duplicateBtn.addEventListener('click', () => this._onDuplicateOrLock());
-    section.appendChild(this._duplicateBtn);
-
-    this._updateLinkedToggle();
-    return section;
-  }
-
-  private _buildFileRow(fileType: string): HTMLDivElement {
-    const row = document.createElement('div');
-    row.style.cssText = `display:flex;align-items:center;gap:6px;`;
-
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = true;
-    cb.style.cssText = `accent-color:${COLORS.blue};flex-shrink:0;`;
-    cb.addEventListener('change', () => {
-      this._emitFileStates();
-      this._emitChanged();
-    });
-
-    // Lock button — left of the checkbox; independent of the enable checkbox.
-    const lockBtn = document.createElement('button');
-    lockBtn.type = 'button';
-    lockBtn.style.cssText =
-      `background:none;border:none;cursor:pointer;padding:0;display:flex;` +
-      `align-items:center;flex-shrink:0;color:${COLORS.textMuted};`;
-    this._lockBtns[fileType] = lockBtn;
-    this._renderLockBtn(fileType);
-    lockBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._fileLocked[fileType] = !this._fileLocked[fileType];
-      this._renderLockBtn(fileType);
-      this.lockStatesChanged.emit(this.getLockStates());
-      this._emitChanged();
-    });
-
-    const lbl = document.createElement('label');
-    lbl.style.cssText = `display:flex;align-items:center;gap:4px;cursor:pointer;min-width:60px;`;
-    const lblText = document.createElement('span');
-    lblText.textContent = fileType;
-    lblText.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-weight:600;`;
-    lbl.append(cb, lblText);
-
-    const pathEl = document.createElement('span');
-    pathEl.textContent = '—';
-    pathEl.style.cssText =
-      `color:${COLORS.textMuted};font-size:12px;font-family:monospace;` +
-      `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
-
-    const pathInput = this._makeInput(`${DIR_MAP[fileType]}/<name>.yaml`, '200px');
-    pathInput.style.display = 'none';
-    pathInput.addEventListener('input', () => {
-      // Keep the read-only display in sync so locking shows the current path.
-      pathEl.textContent = pathInput.value;
-      this._emitChanged();
-    });
-
-    row.append(lockBtn, lbl, pathEl, pathInput);
-    row.addEventListener('focusin', () => this.fieldFocused.emit(`${fileType} file`));
-
-    if (fileType === 'project') {
-      this._projectCb = cb;
-      this._projectPathEl = pathEl;
-      this._projectPathInput = pathInput;
-      cb.addEventListener('change', () => {
-        this.projectEnabledChanged.emit(cb.checked);
-      });
-    } else if (fileType === 'config') {
-      this._configCb = cb;
-      this._configPathEl = pathEl;
-      this._configPathInput = pathInput;
-    } else {
-      this._formCb = cb;
-      this._formPathEl = pathEl;
-      this._formPathInput = pathInput;
-    }
-
-    return row;
   }
 
 
@@ -472,7 +206,6 @@ export class SetupSection extends CollapsibleSection {
   // Internal — actions
   //
   private _switchMode(mode: string): void {
-    this._mode = mode;
     this._createTab.style.cssText = this._tabStyle(mode === MODE_CREATE, true);
     this._templateTab.style.cssText = this._tabStyle(mode === MODE_TEMPLATE, true);
     this._loadTab.style.cssText = this._tabStyle(mode === MODE_LOAD);
@@ -485,178 +218,23 @@ export class SetupSection extends CollapsibleSection {
   private _onCreate(): void {
     const name = this._createNameInput.value.trim();
     if (!name) return;
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-
-    this._active = true;
-    this._locked = true;
-    this._linked = true;
-
-    this._setConfigFilesEnabled(true);
-    this._linkedToggle.disabled = true;
-    this._linkedNameEl.textContent = this._titlize(slug);
-    this._linkedNameInput.value = this._titlize(slug);
-
-    const pp = `${DIR_MAP.project}/${slug}.yaml`;
-    const cp = `${DIR_MAP.config}/${slug}.yaml`;
-    const fp = `${DIR_MAP.form}/${slug}.yaml`;
-
-    this._projectPathInput.value = pp;
-    this._projectPathEl.textContent = pp;
-    this._configPathInput.value = cp;
-    this._configPathEl.textContent = cp;
-    this._formPathInput.value = fp;
-    this._formPathEl.textContent = fp;
-
-    this._updateLinkedToggle();
-    this._applyLockState();
-    this._emitFileStates();
-    this._emitChanged();
     this.projectCreated.emit(name);
   }
 
   private _onLoad(): void {
     const path = this._loadPathInput.value.trim();
     if (!path) return;
-    const field = this._loadTypeSelect.value;
-    this.loadConfigRequested.emit({ field, path });
-  }
-
-  private _onDuplicateOrLock(): void {
-    if (this._locked) {
-      this._locked = false;
-      this._linkedToggle.disabled = false;
-      this._duplicateBtn.textContent = 'Lock';
-
-      const projPath = this._projectPathInput.value;
-      if (projPath) {
-        const stem = this._filename(projPath).replace(/\.(yaml|yml)$/i, '');
-        this._linkedNameEl.textContent = this._titlize(stem);
-        this._linkedNameInput.value = this._titlize(stem);
-      }
-    } else {
-      this._locked = true;
-      this._linkedToggle.disabled = true;
-      this._duplicateBtn.textContent = 'Duplicate / Rename';
-    }
-    this._applyLockState();
-  }
-
-  private _applyLinkedName(): void {
-    const raw = this._linkedNameInput.value.trim();
-    if (!raw) return;
-    const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-
-    const pp = `${DIR_MAP.project}/${slug}.yaml`;
-    const cp = `${DIR_MAP.config}/${slug}.yaml`;
-    const fp = `${DIR_MAP.form}/${slug}.yaml`;
-
-    this._projectPathInput.value = pp;
-    this._projectPathEl.textContent = pp;
-    this._configPathInput.value = cp;
-    this._configPathEl.textContent = cp;
-    this._formPathInput.value = fp;
-    this._formPathEl.textContent = fp;
-  }
-
-  private _applyLockState(): void {
-    const editable = !this._locked && this._active;
-
-    for (const inp of [this._projectPathInput, this._configPathInput, this._formPathInput]) {
-      inp.style.display = editable ? '' : 'none';
-    }
-    for (const el of [this._projectPathEl, this._configPathEl, this._formPathEl]) {
-      el.style.display = editable ? 'none' : '';
-    }
-
-    if (editable && this._linked) {
-      this._linkedNameInput.style.display = '';
-      this._linkedNameEl.style.display = 'none';
-    } else {
-      this._linkedNameInput.style.display = 'none';
-      this._linkedNameEl.style.display = '';
-    }
-  }
-
-  private _updateLinkedToggle(): void {
-    this._linkedToggle.textContent = this._linked ? 'Linked' : 'Unlinked';
-    this._linkedToggle.style.background = this._linked ? COLORS.blue : COLORS.bgSurface1;
-    this._linkedToggle.style.color = this._linked ? COLORS.bgBase : COLORS.textPrimary;
-  }
-
-  private _setConfigFilesEnabled(enabled: boolean): void {
-    this._configFilesSection.style.opacity = enabled ? '1' : '0.4';
-    this._configFilesSection.style.pointerEvents = enabled ? '' : 'none';
-  }
-
-  private _renderLockBtn(fileType: string): void {
-    const btn = this._lockBtns[fileType];
-    const locked = this._fileLocked[fileType];
-    btn.innerHTML = lockIconSvg(locked, 14);
-    btn.style.color = locked ? COLORS.lockAmber : COLORS.textMuted;
-    btn.title = locked
-      ? `Unlock ${fileType} file`
-      : `Lock ${fileType} file — won't be saved and its fields are disabled`;
-  }
-
-  getLockStates(): FileLockStates {
-    return {
-      project: this._fileLocked.project,
-      config: this._fileLocked.config,
-      form: this._fileLocked.form,
-    };
-  }
-
-  private _emitFileStates(): void {
-    this.fileStatesChanged.emit({
-      project: this._projectCb.checked,
-      config: this._configCb.checked,
-      form: this._formCb.checked,
-    });
-  }
-
-  setLoadPath(path: string): void {
-    this._loadPathInput.value = path;
-    this._loadPathInput.focus();
-  }
-
-  getLoadType(): string {
-    return this._loadTypeSelect.value;
+    this.loadConfigRequested.emit({ field: this._loadTypeSelect.value, path });
   }
 
 
   //
   // Internal — helpers
   //
-  private _getProjectPath(): string {
-    return this._projectPathInput.value.trim();
-  }
-
-  private _getConfigPath(): string {
-    return this._configPathInput.value.trim();
-  }
-
-  private _getFormPath(): string {
-    return this._formPathInput.value.trim();
-  }
-
-  private _filename(path: string): string {
-    return (path || '').split('/').pop() || '';
-  }
-
-  private _titlize(slug: string): string {
-    return slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  }
-
   private _tabStyle(active: boolean, divider = false): string {
     return `flex:1;padding:6px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;` +
       `background:${active ? COLORS.blue : 'transparent'};` +
       `color:${active ? COLORS.bgBase : COLORS.textMuted};` +
       (divider ? `border-right:1px solid ${COLORS.bgSurface1};` : '');
-  }
-
-  private _makeSeparator(): HTMLDivElement {
-    const sep = document.createElement('div');
-    sep.style.cssText = `height:1px;background:${COLORS.bgSurface1};margin:6px 0;`;
-    return sep;
   }
 }
