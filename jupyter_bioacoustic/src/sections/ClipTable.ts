@@ -8,6 +8,7 @@
 import { Signal } from '@lumino/signaling';
 import { Detection, FilterClause, FilterColumnMeta } from '../types';
 import { FormPanel } from './FormPanel';
+import { TOOLTIP } from '../text';
 import {
   COLORS,
   inputStyle,
@@ -381,7 +382,7 @@ export class ClipTable {
       dismissBtn.className = 'jp-BA-chip-dismiss';
       dismissBtn.style.cssText = filterChipDismissStyle();
       dismissBtn.textContent = '\u00d7';
-      dismissBtn.title = 'Remove filter';
+      dismissBtn.title = TOOLTIP.removeFilter;
       dismissBtn.addEventListener('click', () => this._removeFilter(i));
 
       chip.append(labelSpan, dismissBtn);
@@ -507,7 +508,7 @@ export class ClipTable {
 
     this._refreshBtn = document.createElement('button');
     this._refreshBtn.textContent = '↻';
-    this._refreshBtn.title = 'Refresh list';
+    this._refreshBtn.title = TOOLTIP.refreshList;
     this._refreshBtn.style.cssText = btnStyle() + `font-size:17px;padding:1px 7px 3px;display:none;`;
     this._refreshBtn.addEventListener('click', () => {
       this._page = 0;
@@ -671,7 +672,7 @@ export class ClipTable {
         `padding:5px 8px;text-align:left;color:${COLORS.blue};font-size:11px;` +
         `cursor:pointer;user-select:none;white-space:nowrap;` +
         `border-bottom:2px solid ${COLORS.bgSurface0};`;
-      th.title = 'Click to sort · Shift-click to clear sort';
+      th.title = TOOLTIP.sortHeader;
       th.textContent = label;
       th.addEventListener('click', (e) => {
         if (e.shiftKey) {
