@@ -14,6 +14,8 @@ import {
   ensureSetup,
   updateSection,
   readColumns,
+  readColumnsFromSource,
+  checkAudioUrl,
   updateConfigFromYaml,
   saveAll,
   saveSingleFile,
@@ -174,6 +176,7 @@ export class ConfigPanel {
     this._setup.templateColumnsRequested.connect((_, path) => void this._onTemplateColumns(path));
 
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
+    this._data.sourceLoadRequested.connect((_, req) => void this._onLoadSourceColumns(req));
     this._data.browseRequested.connect((_, dir) => {
       this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv', '.jsonl'], (p) => this._data.setPath(p));
     });
@@ -186,6 +189,7 @@ export class ConfigPanel {
     this._audio.browseRequested.connect((_, dir) => {
       this._openBrowser(dir, ['.flac', '.wav', '.mp3', '.ogg', '.m4a', '.aac'], (p) => this._audio.setPath(p));
     });
+    this._audio.validateRequested.connect((_, value) => void this._onValidateAudio(value));
 
     this._output.browseRequested.connect((_, dir) => {
       this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._output.setOutputPath(p));
@@ -426,6 +430,58 @@ export class ConfigPanel {
       this._setStatus(`${cols.length} columns loaded`);
     } catch (e: any) {
       this._setStatus(`Error: ${String(e.message ?? e)}`, true);
+    }
+  }
+
+  private async _onLoadSourceColumns(
+    req: { sourceType: string; value: string; secrets: any },
+  ): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    const label = req.value.length > 60 ? req.value.slice(0, 57) + '…' : req.value;
+    this._setStatus(`Loading ${label}…`);
+    try {
+      const raw = await this._kernel.exec(
+        readColumnsFromSource(req.sourceType, req.value, req.secrets),
+      );
+      const cols = (JSON.parse(extractJson(raw)).columns || []) as string[];
+      this._data.setDetectedColumns(cols);
+      this._data.setLoadStatus(true);
+      this._setStatus(`Loaded ${cols.length} columns from ${label}`);
+    } catch (e: any) {
+      this._data.setDetectedColumns([]);
+      this._data.setLoadStatus(false);
+      this._setStatus(`Load failed: ${String(e.message ?? e)}`, true);
+    }
+  }
+
+  private _fmtDuration(sec: number): string {
+    const s = Math.round(sec);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const rem = s % 60;
+    if (h) return `${h}h ${m}m`;
+    if (m) return `${m}m ${rem}s`;
+    return `${rem}s`;
+  }
+
+  private async _onValidateAudio(value: string): Promise<void> {
+    await this._readyPromise;
+    if (!this._ready) return;
+    const label = value.length > 60 ? value.slice(0, 57) + '…' : value;
+    this._setStatus(`Checking ${label}…`);
+    try {
+      const raw = await this._kernel.exec(checkAudioUrl(value));
+      const info = JSON.parse(extractJson(raw));
+      const parts: string[] = [];
+      if (typeof info.duration === 'number') parts.push(this._fmtDuration(info.duration));
+      parts.push(`${info.sample_rate} Hz`);
+      if (info.channels > 1) parts.push(`${info.channels} ch`);
+      this._audio.setValidateStatus(true);
+      this._setStatus(`Audio reachable — ${parts.join(' · ')}`);
+    } catch (e: any) {
+      this._audio.setValidateStatus(false);
+      this._setStatus(`Audio not reachable: ${String(e.message ?? e)}`, true);
     }
   }
 
