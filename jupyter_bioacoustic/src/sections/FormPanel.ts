@@ -11,6 +11,7 @@ import { Signal } from '@lumino/signaling';
 import { Detection, AnnotConfig, MultiboxEntry } from '../types';
 import { KernelBridge, KernelError } from '../kernel';
 import { escPy, AccuracyConfig, parseAccuracyConfig, isTruthyValue, resolveTemplate, hasTemplatePlaceholders } from '../util';
+import { HINT, TOOLTIP } from '../text';
 import {
   countOutputRows,
   readOutputRows,
@@ -1198,7 +1199,7 @@ export class FormPanel {
     if (this._multiboxEntries.length === 0) {
       const hint = document.createElement('div');
       hint.style.cssText = mutedTextStyle({ fontSize: 11 });
-      hint.textContent = 'Draw on spectrogram to add boxes';
+      hint.textContent = HINT.drawBoxes;
       this._multiboxContainer.appendChild(hint);
       return;
     }
@@ -1235,7 +1236,7 @@ export class FormPanel {
 
       const delBtn = document.createElement('button');
       delBtn.textContent = '×';
-      delBtn.title = 'Remove this box';
+      delBtn.title = TOOLTIP.removeBox;
       delBtn.style.cssText = btnStyle() + `font-size:14px;padding:0 6px;line-height:1;`;
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
