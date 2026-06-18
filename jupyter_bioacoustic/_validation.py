@@ -76,6 +76,7 @@ ALL_ANNOTATION_FIELDS = frozenset({
 SKIP_KEYS = frozenset({
     'project_name', 'project_path', 'config_path',
     'form_path', 'project_enabled', 'config_enabled', 'form_enabled',
+    'project_locked', 'config_locked', 'form_locked',
     'output_path',
 })
 
