@@ -40,6 +40,7 @@ export const COLORS = {
   pink:         '#f5c2e7',
   overlay:      '#bac2de',
   flamingo:     '#f2cdcd',
+  lockAmber:    '#cf9268',  // deadened peach — a locked file's lock toggle
 };
 
 export const DISPLAY_CHIP_COLORS = [
@@ -127,6 +128,24 @@ export const filterChipDismissStyle = () =>
 
 export const cssSize = (val: any): string =>
   typeof val === 'number' ? `${val}px` : String(val);
+
+// ─── Icons ──────────────────────────────
+
+/**
+ * Inline padlock SVG markup (closed when `locked`, open otherwise). Uses
+ * `currentColor` so it inherits the element's text color. Set as innerHTML.
+ */
+export const lockIconSvg = (locked: boolean, size = 14): string => {
+  const shackle = locked
+    ? `<path d="M7 11V7a5 5 0 0 1 10 0v4"/>`
+    : `<path d="M7 11V7a5 5 0 0 1 9.9-1"/>`;
+  return (
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" ` +
+    `stroke="currentColor" stroke-width="2" stroke-linecap="round" ` +
+    `stroke-linejoin="round" style="vertical-align:middle;">` +
+    `<rect x="3" y="11" width="18" height="11" rx="2"/>${shackle}</svg>`
+  );
+};
 
 // ─── Global stylesheet injection ──────────────────────────────
 
