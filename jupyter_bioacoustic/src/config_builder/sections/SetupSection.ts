@@ -7,9 +7,11 @@
  * License: BSD 3-Clause
  */
 import { Signal } from '@lumino/signaling';
-import { COLORS } from '../../styles';
+import { COLORS, lockIconSvg } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 import { TemplateForm, TemplateSummary } from './TemplateForm';
+
+export interface FileLockStates { project: boolean; config: boolean; form: boolean; }
 
 
 //
@@ -42,6 +44,7 @@ export class SetupSection extends CollapsibleSection {
   }>(this);
   readonly templateBrowseRequested = new Signal<this, { key: string; exts: string[]; current: string }>(this);
   readonly templateColumnsRequested = new Signal<this, string>(this);
+  readonly lockStatesChanged = new Signal<this, FileLockStates>(this);
 
   private _mode = MODE_CREATE;
   private _active = false;
@@ -72,6 +75,8 @@ export class SetupSection extends CollapsibleSection {
   private _projectCb: HTMLInputElement;
   private _configCb: HTMLInputElement;
   private _formCb: HTMLInputElement;
+  private _lockBtns: Record<string, HTMLButtonElement> = {};
+  private _fileLocked: Record<string, boolean> = { project: false, config: false, form: false };
   private _projectPathEl: HTMLSpanElement;
   private _configPathEl: HTMLSpanElement;
   private _formPathEl: HTMLSpanElement;
@@ -196,6 +201,9 @@ export class SetupSection extends CollapsibleSection {
       project_path: this._projectCb.checked ? (this._getProjectPath() || undefined) : undefined,
       config_path: this._configCb.checked ? (this._getConfigPath() || undefined) : undefined,
       form_path: this._formCb.checked ? (this._getFormPath() || undefined) : undefined,
+      project_locked: this._fileLocked.project,
+      config_locked: this._fileLocked.config,
+      form_locked: this._fileLocked.form,
     };
     return result;
   }
@@ -216,6 +224,11 @@ export class SetupSection extends CollapsibleSection {
     if (data.project_enabled !== undefined) this._projectCb.checked = !!data.project_enabled;
     if (data.config_enabled !== undefined) this._configCb.checked = !!data.config_enabled;
     if (data.form_enabled !== undefined) this._formCb.checked = !!data.form_enabled;
+
+    for (const ft of FILE_TYPES) {
+      this._fileLocked[ft] = !!data[`${ft}_locked`];
+      if (this._lockBtns[ft]) this._renderLockBtn(ft);
+    }
 
     if (data.project_path || data.config_path || data.form_path) {
       const name = data.project_name || '';
@@ -324,6 +337,20 @@ export class SetupSection extends CollapsibleSection {
       `color:${COLORS.textMuted};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:2px;`;
     section.appendChild(header);
 
+    const help = document.createElement('div');
+    help.style.cssText =
+      `color:${COLORS.textMuted};font-size:11px;line-height:1.5;margin-bottom:4px;`;
+    help.innerHTML =
+      `A project is saved as up to three files — <b>project</b>, <b>config</b>, and <b>form</b>. ` +
+      `Use the controls below to manage them:` +
+      `<ul style="margin:4px 0 0 0;padding-left:16px;">` +
+      `<li><b>Checkbox</b> — whether that file is written as a separate file (uncheck to inline it into its parent).</li>` +
+      `<li><b>Linked</b> — keep all three filenames in sync from one name; unlink to set each path independently.</li>` +
+      `<li><b>Duplicate / Rename</b> — unlock the paths to save under new filenames. Saving writes the new files and leaves the originals untouched — your chance to start a copy from an existing config.</li>` +
+      `<li><b>Lock</b> (per file) — that file won't be saved and its fields are disabled, so you can't overwrite it.</li>` +
+      `</ul>`;
+    section.appendChild(help);
+
     const linkedRow = document.createElement('div');
     linkedRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-bottom:4px;`;
 
@@ -358,7 +385,7 @@ export class SetupSection extends CollapsibleSection {
       section.appendChild(this._buildFileRow(ft));
     }
 
-    this._duplicateBtn = this._makeButton('Rename');
+    this._duplicateBtn = this._makeButton('Duplicate / Rename');
     this._duplicateBtn.style.cssText += `margin-top:4px;align-self:flex-start;`;
     this._duplicateBtn.addEventListener('click', () => this._onDuplicateOrLock());
     section.appendChild(this._duplicateBtn);
@@ -377,6 +404,22 @@ export class SetupSection extends CollapsibleSection {
     cb.style.cssText = `accent-color:${COLORS.blue};flex-shrink:0;`;
     cb.addEventListener('change', () => {
       this._emitFileStates();
+      this._emitChanged();
+    });
+
+    // Lock button — left of the checkbox; independent of the enable checkbox.
+    const lockBtn = document.createElement('button');
+    lockBtn.type = 'button';
+    lockBtn.style.cssText =
+      `background:none;border:none;cursor:pointer;padding:0;display:flex;` +
+      `align-items:center;flex-shrink:0;color:${COLORS.textMuted};`;
+    this._lockBtns[fileType] = lockBtn;
+    this._renderLockBtn(fileType);
+    lockBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._fileLocked[fileType] = !this._fileLocked[fileType];
+      this._renderLockBtn(fileType);
+      this.lockStatesChanged.emit(this.getLockStates());
       this._emitChanged();
     });
 
@@ -401,7 +444,7 @@ export class SetupSection extends CollapsibleSection {
       this._emitChanged();
     });
 
-    row.append(lbl, pathEl, pathInput);
+    row.append(lockBtn, lbl, pathEl, pathInput);
     row.addEventListener('focusin', () => this.fieldFocused.emit(`${fileType} file`));
 
     if (fileType === 'project') {
@@ -493,7 +536,7 @@ export class SetupSection extends CollapsibleSection {
     } else {
       this._locked = true;
       this._linkedToggle.disabled = true;
-      this._duplicateBtn.textContent = 'Rename';
+      this._duplicateBtn.textContent = 'Duplicate / Rename';
     }
     this._applyLockState();
   }
@@ -543,6 +586,24 @@ export class SetupSection extends CollapsibleSection {
   private _setConfigFilesEnabled(enabled: boolean): void {
     this._configFilesSection.style.opacity = enabled ? '1' : '0.4';
     this._configFilesSection.style.pointerEvents = enabled ? '' : 'none';
+  }
+
+  private _renderLockBtn(fileType: string): void {
+    const btn = this._lockBtns[fileType];
+    const locked = this._fileLocked[fileType];
+    btn.innerHTML = lockIconSvg(locked, 14);
+    btn.style.color = locked ? COLORS.lockAmber : COLORS.textMuted;
+    btn.title = locked
+      ? `Unlock ${fileType} file`
+      : `Lock ${fileType} file — won't be saved and its fields are disabled`;
+  }
+
+  getLockStates(): FileLockStates {
+    return {
+      project: this._fileLocked.project,
+      config: this._fileLocked.config,
+      form: this._fileLocked.form,
+    };
   }
 
   private _emitFileStates(): void {
