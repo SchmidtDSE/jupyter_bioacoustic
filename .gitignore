@@ -5,6 +5,7 @@ playground*
 scratch*
 Untitled*
 dev*
+!dev-relink.sh
 *.ipynb
 !jupyter_bioacoustic/config_builder/nb/starter-notebook.ipynb
 tmp/
