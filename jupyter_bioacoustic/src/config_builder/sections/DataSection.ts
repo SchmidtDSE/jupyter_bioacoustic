@@ -173,6 +173,31 @@ export class DataSection extends CollapsibleSection {
     else if (endCols.includes('end_time')) this._endTimeSelect.value = 'end_time';
   }
 
+  applyLocks(
+    locks: { project: boolean; config: boolean; form: boolean },
+    routing?: { project: string[]; config: string[] },
+  ): void {
+    const projKeys = new Set(routing?.project ?? []);
+    const target = this.getTarget();
+    const fields: { el: HTMLElement; key: string }[] = [
+      { el: this._sourceType, key: 'source_type' },
+      { el: this._pathInput, key: 'value' },
+      { el: this._browseBtn, key: 'value' },
+      { el: this._secrets.element, key: 'secrets' },
+      { el: this._indexColInput, key: 'index_column' },
+      { el: this._indexColSelect, key: 'index_column' },
+      { el: this._startTimeSelect, key: 'start_time' },
+      { el: this._endTimeSelect, key: 'end_time' },
+      { el: this._durationInput, key: 'duration' },
+    ];
+    for (const { el, key } of fields) {
+      const file = target === 'project' ? 'project'
+        : target === 'config' ? 'config'
+        : (projKeys.has(key) ? 'project' : 'config');
+      this._setControlDisabled(el, !!locks[file]);
+    }
+  }
+
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
     if (this._pathInput.value) {

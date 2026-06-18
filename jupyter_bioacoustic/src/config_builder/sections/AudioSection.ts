@@ -94,6 +94,31 @@ export class AudioSection extends CollapsibleSection {
     this._browseBtn.style.display = (sourceType === 'path') ? '' : 'none';
   }
 
+  applyLocks(
+    locks: { project: boolean; config: boolean; form: boolean },
+    routing?: { project: string[]; config: string[] },
+  ): void {
+    const projKeys = new Set(routing?.project ?? []);
+    const target = this.getTarget();
+    const fields: { el: HTMLElement; key: string }[] = [
+      { el: this._sourceType, key: 'source_type' },
+      { el: this._valueInput, key: 'value' },
+      { el: this._colSelect, key: 'value' },
+      { el: this._colInput, key: 'value' },
+      { el: this._browseBtn, key: 'value' },
+      { el: this._secrets.element, key: 'secrets' },
+      { el: this._prefixInput, key: 'prefix' },
+      { el: this._suffixInput, key: 'suffix' },
+      { el: this._fallbackInput, key: 'fallback' },
+    ];
+    for (const { el, key } of fields) {
+      const file = target === 'project' ? 'project'
+        : target === 'config' ? 'config'
+        : (projKeys.has(key) ? 'project' : 'config');
+      this._setControlDisabled(el, !!locks[file]);
+    }
+  }
+
   getData(): Record<string, any> {
     const uiType = this._sourceType.value;
     const result: Record<string, any> = {};

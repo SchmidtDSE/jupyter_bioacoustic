@@ -11,6 +11,7 @@ export class OutputSection extends CollapsibleSection {
   private _syncBtnCb: HTMLInputElement;
   private _syncLabelInput: HTMLInputElement;
   private _recursiveCb: HTMLInputElement;
+  private _browseBtn: HTMLButtonElement;
   private _secrets: SecretsEditor;
 
   constructor() {
@@ -26,11 +27,11 @@ export class OutputSection extends CollapsibleSection {
     pathRow.appendChild(this._makeLabel('path'));
     this._pathInput = this._makeInput('outputs/my_project.csv', '200px');
     this._pathInput.addEventListener('input', () => this._emitChanged());
-    const browseBtn = this._makeButton('Browse');
-    browseBtn.addEventListener('click', () => {
+    this._browseBtn = this._makeButton('Browse');
+    this._browseBtn.addEventListener('click', () => {
       this.browseRequested.emit(this._pathInput.value || '.');
     });
-    pathRow.append(this._pathInput, browseBtn);
+    pathRow.append(this._pathInput, this._browseBtn);
     this._body.appendChild(pathRow);
 
     this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
@@ -70,6 +71,30 @@ export class OutputSection extends CollapsibleSection {
 
   getOutputPath(): string {
     return this._pathInput.value;
+  }
+
+  applyLocks(
+    locks: { project: boolean; config: boolean; form: boolean },
+    routing?: { project: string[]; config: string[] },
+  ): void {
+    const projKeys = new Set(routing?.project ?? []);
+    const target = this.getTarget();
+    const fields: { el: HTMLElement; key: string }[] = [
+      { el: this._pathInput, key: 'path' },
+      { el: this._browseBtn, key: 'path' },
+      { el: this._uriInput, key: 'uri' },
+      { el: this._syncBtnCb, key: 'sync_button' },
+      { el: this._syncLabelInput, key: 'sync_button' },
+      { el: this._recursiveCb, key: 'recursive' },
+      { el: this._secrets.element, key: 'secrets' },
+      { el: this._indexColInput, key: 'index_column' },
+    ];
+    for (const { el, key } of fields) {
+      const file = target === 'project' ? 'project'
+        : target === 'config' ? 'config'
+        : (projKeys.has(key) ? 'project' : 'config');
+      this._setControlDisabled(el, !!locks[file]);
+    }
   }
 
   getData(): Record<string, any> {
