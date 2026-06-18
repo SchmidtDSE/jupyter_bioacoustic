@@ -438,6 +438,24 @@ class TestFileLocking:
 
 
 #
+# Source column loading
+#
+class TestReadColumnsFromSource:
+    """Loading columns from a (path) source for the Data Load button."""
+
+    def test_path_source_returns_columns(self, tmp_path):
+        import pandas as pd
+        p = tmp_path / 'd.csv'
+        pd.DataFrame({'a': [1], 'b': [2], 'c': [3]}).to_csv(p, index=False)
+        cols = ConfigBuilder().read_columns_from_source('path', str(p))
+        assert cols == ['a', 'b', 'c']
+
+    def test_missing_path_raises(self, tmp_path):
+        with pytest.raises(Exception):
+            ConfigBuilder().read_columns_from_source('path', str(tmp_path / 'nope.csv'))
+
+
+#
 # ConfigBuilder._build_file_contents
 #
 class TestBuildFileContents:
