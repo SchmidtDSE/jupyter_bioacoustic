@@ -135,6 +135,10 @@ export class SetupSection extends CollapsibleSection {
     this._templateForm.reset();
   }
 
+  markTemplateSaved(): void {
+    this._templateForm.markSaved();
+  }
+
   setTemplateFieldValue(key: string, value: string): void {
     this._templateForm.setFieldValue(key, value);
   }
@@ -229,12 +233,12 @@ export class SetupSection extends CollapsibleSection {
 
     this._createTab = document.createElement('button');
     this._createTab.textContent = 'Create New';
-    this._createTab.style.cssText = this._tabStyle(true);
+    this._createTab.style.cssText = this._tabStyle(true, true);
     this._createTab.addEventListener('click', () => this._switchMode(MODE_CREATE));
 
     this._templateTab = document.createElement('button');
     this._templateTab.textContent = 'Create from Template';
-    this._templateTab.style.cssText = this._tabStyle(false);
+    this._templateTab.style.cssText = this._tabStyle(false, true);
     this._templateTab.addEventListener('click', () => this._switchMode(MODE_TEMPLATE));
 
     this._loadTab = document.createElement('button');
@@ -422,8 +426,8 @@ export class SetupSection extends CollapsibleSection {
   //
   private _switchMode(mode: string): void {
     this._mode = mode;
-    this._createTab.style.cssText = this._tabStyle(mode === MODE_CREATE);
-    this._templateTab.style.cssText = this._tabStyle(mode === MODE_TEMPLATE);
+    this._createTab.style.cssText = this._tabStyle(mode === MODE_CREATE, true);
+    this._templateTab.style.cssText = this._tabStyle(mode === MODE_TEMPLATE, true);
     this._loadTab.style.cssText = this._tabStyle(mode === MODE_LOAD);
     this._createPane.style.display = mode === MODE_CREATE ? 'flex' : 'none';
     this._templatePane.style.display = mode === MODE_TEMPLATE ? 'flex' : 'none';
@@ -578,10 +582,11 @@ export class SetupSection extends CollapsibleSection {
     return slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
 
-  private _tabStyle(active: boolean): string {
+  private _tabStyle(active: boolean, divider = false): string {
     return `flex:1;padding:6px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;` +
       `background:${active ? COLORS.blue : 'transparent'};` +
-      `color:${active ? COLORS.bgBase : COLORS.textMuted};`;
+      `color:${active ? COLORS.bgBase : COLORS.textMuted};` +
+      (divider ? `border-right:1px solid ${COLORS.bgSurface1};` : '');
   }
 
   private _makeSeparator(): HTMLDivElement {
