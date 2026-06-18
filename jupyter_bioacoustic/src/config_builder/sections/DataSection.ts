@@ -1,4 +1,5 @@
 import { Signal } from '@lumino/signaling';
+import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
 
@@ -6,6 +7,7 @@ export class DataSection extends CollapsibleSection {
   readonly columnsLoaded = new Signal<this, string[]>(this);
   readonly fileLoadRequested = new Signal<this, string>(this);
   readonly browseRequested = new Signal<this, string>(this);
+  readonly sourceLoadRequested = new Signal<this, { sourceType: string; value: string; secrets: any }>(this);
 
   private _sourceType: HTMLSelectElement;
   private _pathInput: HTMLInputElement;
@@ -17,6 +19,8 @@ export class DataSection extends CollapsibleSection {
   private _durationInput: HTMLInputElement;
 
   private _browseBtn: HTMLButtonElement;
+  private _loadBtn!: HTMLButtonElement;
+  private _loadStatus!: HTMLSpanElement;
   private _detectedCols: string[] = [];
   private _secrets: SecretsEditor;
   private _debounceTimer: any = null;
@@ -37,15 +41,22 @@ export class DataSection extends CollapsibleSection {
     pathRow.appendChild(this._makeLabel('value', true));
     this._pathInput = this._makeInput('data/detections.csv', '220px');
     this._pathInput.addEventListener('input', () => {
+      this._autoDetectSourceType();
       this._emitChanged();
+      this.setLoadStatus(null);
       this._scheduleAutoLoad();
     });
     this._pathInput.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key !== 'Enter') return;
+      this._autoDetectSourceType();
       if (this._debounceTimer) clearTimeout(this._debounceTimer);
+      if (this._sourceType.value !== 'path') {
+        this._triggerSourceLoad();
+        return;
+      }
       const path = this._pathInput.value.trim();
       if (path && /\.(csv|parquet|json|jsonl|tsv)$/i.test(path)) {
-        this.fileLoadRequested.emit(path);
+        this._triggerSourceLoad();
       } else {
         this.setDetectedColumns([]);
       }
@@ -54,7 +65,14 @@ export class DataSection extends CollapsibleSection {
     this._browseBtn.addEventListener('click', () => {
       this.browseRequested.emit(this._pathInput.value || '.');
     });
-    pathRow.append(this._pathInput, this._browseBtn);
+    // sql/api need an explicit Load (don't auto-run a query on each keystroke);
+    // url auto-loads. Both fetch via the source-aware loader (handles s3://).
+    this._loadBtn = this._makeButton('Load', true);
+    this._loadBtn.style.display = 'none';
+    this._loadBtn.addEventListener('click', () => this._triggerSourceLoad());
+    this._loadStatus = document.createElement('span');
+    this._loadStatus.style.cssText = `font-size:14px;font-weight:700;display:none;`;
+    pathRow.append(this._pathInput, this._browseBtn, this._loadBtn, this._loadStatus);
     this._body.appendChild(pathRow);
 
     this._indexColInput = this._makeInput('e.g. id', '150px');
@@ -82,23 +100,78 @@ export class DataSection extends CollapsibleSection {
     this._body.appendChild(this._makeFieldRow('duration', this._durationInput));
 
     this._secrets = new SecretsEditor(true);
-    this._secrets.changed.connect(() => this._emitChanged());
+    this._secrets.changed.connect(() => {
+      this._emitChanged();
+      this._retryLoadAfterSecrets();
+    });
     this._secrets.focused.connect(() => this.fieldFocused.emit('secrets'));
     this._body.appendChild(this._secrets.element);
   }
 
+  /**
+   * Drive `source_type` from the value: a remote scheme (e.g. `https://`,
+   * `s3://`) selects `url`, otherwise `path`. Only switches between the two
+   * value-detectable types — a deliberate `sql`/`api` choice is left alone.
+   */
+  private _autoDetectSourceType(): void {
+    const type = this._sourceType.value;
+    if (type !== 'path' && type !== 'url') return;
+    const val = this._pathInput.value.trim();
+    if (!val) return;
+    const detected = /^[a-z][a-z0-9+.-]*:\/\//i.test(val) ? 'url' : 'path';
+    if (detected !== type) {
+      this._sourceType.value = detected;
+      this._updateValueUI();
+    }
+  }
+
   private _updateValueUI(): void {
-    const isPath = this._sourceType.value === 'path';
-    this._browseBtn.style.display = isPath ? '' : 'none';
+    const type = this._sourceType.value;
+    this._browseBtn.style.display = type === 'path' ? '' : 'none';
+    // url auto-loads; sql/api use an explicit Load button.
+    this._loadBtn.style.display = (type === 'sql' || type === 'api') ? '' : 'none';
+    this.setLoadStatus(null);
+  }
+
+  /** Set the load indicator next to the value: ✓ ok, ✗ failed, null clears. */
+  setLoadStatus(ok: boolean | null): void {
+    if (ok === null) { this._loadStatus.style.display = 'none'; return; }
+    this._loadStatus.style.display = '';
+    this._loadStatus.textContent = ok ? '✓' : '✗';
+    this._loadStatus.style.color = ok ? COLORS.green : COLORS.red;
+    this._loadStatus.title = ok ? 'Loaded' : 'Load failed — see status bar';
+  }
+
+  private _retryLoadAfterSecrets(): void {
+    if (this._sourceType.value === 'path' || !this._pathInput.value.trim()) return;
+    if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    this._debounceTimer = setTimeout(() => this._triggerSourceLoad(), 400);
+  }
+
+  private _triggerSourceLoad(): void {
+    const value = this._pathInput.value.trim();
+    if (!value) return;
+    this.sourceLoadRequested.emit({
+      sourceType: this._sourceType.value,
+      value,
+      secrets: this._secrets.getData(),
+    });
   }
 
   private _scheduleAutoLoad(): void {
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    const type = this._sourceType.value;
     this._debounceTimer = setTimeout(() => {
-      const path = this._pathInput.value.trim();
-      if (path && /\.(csv|parquet|json|jsonl|tsv)$/i.test(path)) {
-        this.fileLoadRequested.emit(path);
+      const val = this._pathInput.value.trim();
+      if (!val) return;
+      if (type === 'path') {
+        // Local file: auto-load (with ✓/✗) once it looks like a data file.
+        if (/\.(csv|parquet|json|jsonl|tsv)$/i.test(val)) this._triggerSourceLoad();
+      } else if (type === 'url') {
+        // url (incl. s3://) auto-loads via the source-aware loader.
+        this._triggerSourceLoad();
       }
+      // sql/api: explicit Load button only.
     }, 800);
   }
 
