@@ -16,8 +16,11 @@ project:
   builder_elements:
     - group:
         group_name: data
-        group_description: audio clip metadata
+        group_description: audio clip metadata 1
         elements:
+          - data_source_type:
+              required: true
+              label: Data Source Type
           - data_value:
               required: true
               label: Data file
@@ -28,9 +31,8 @@ project:
     - group:
         group_name: audio
         elements:
-          - audio_column:
-              default: audio_url
-              description: column holding each clip's audio path/URL
+          - audio_source_type: true
+          - audio_value: true
     - output_index_column:
         required: false
         description: defaults to data.index_column
@@ -39,12 +41,12 @@ project:
         description: optional remote sync destination (e.g. s3://bucket/reviews.csv)
   configuration:
     data:
-      source_type: path
+      source_type: __data_source_type__
       value: __data_value__
       index_column: __data_index_column__
     audio:
-      source_type: column
-      value: __audio_column__
+      source_type: __audio_source_type__
+      value: __audio_value__
     output:
       index_column: __output_index_column__
       uri: __output_uri__
