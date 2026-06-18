@@ -58,7 +58,11 @@ class TestBuildTemplateConfig:
     """Placeholder substitution, scope selection, and empty-stripping."""
 
     def _vals(self, **kw):
-        base = {'data_value': 'data/clips.csv', 'data_index_column': 'id'}
+        base = {
+            'data_source_type': 'path', 'data_value': 'data/clips.csv',
+            'data_index_column': 'id',
+            'audio_source_type': 'column', 'audio_value': 'audio_url',
+        }
         base.update(kw)
         return base
 
@@ -74,10 +78,17 @@ class TestBuildTemplateConfig:
             'source_type': 'path', 'value': 'data/clips.csv', 'index_column': 'id',
         }
 
-    def test_audio_uses_default(self):
+    def test_audio_substituted(self):
         tpl = load_template('annotate')
         out = build_template_config(tpl, 'project', self._vals())
         assert out['project']['audio'] == {'source_type': 'column', 'value': 'audio_url'}
+
+    def test_missing_required_source_type_raises(self):
+        tpl = load_template('annotate')
+        vals = self._vals()
+        del vals['data_source_type']
+        with pytest.raises(ValueError, match='required'):
+            build_template_config(tpl, 'project', vals)
 
     def test_empty_optional_output_dropped(self):
         tpl = load_template('annotate')
@@ -136,7 +147,11 @@ class TestApplyTemplate:
 
     def _apply(self, scope='project', **vals):
         cb = ConfigBuilder()
-        base = {'data_value': 'data/clips.csv', 'data_index_column': 'id'}
+        base = {
+            'data_source_type': 'path', 'data_value': 'data/clips.csv',
+            'data_index_column': 'id',
+            'audio_source_type': 'column', 'audio_value': 'audio_url',
+        }
         base.update(vals)
         state = cb.apply_template('annotate', scope, 'My Project', base)
         return cb, state
