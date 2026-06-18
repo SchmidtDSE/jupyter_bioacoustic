@@ -1,15 +1,19 @@
 import { Signal } from '@lumino/signaling';
+import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
 
 export class AudioSection extends CollapsibleSection {
   readonly browseRequested = new Signal<this, string>(this);
+  readonly validateRequested = new Signal<this, string>(this);
 
   private _sourceType: HTMLSelectElement;
   private _valueInput: HTMLInputElement;
   private _colSelect: HTMLSelectElement;
   private _colInput: HTMLInputElement;
   private _browseBtn: HTMLButtonElement;
+  private _validateBtn!: HTMLButtonElement;
+  private _validateStatus!: HTMLSpanElement;
   private _pathRow: HTMLDivElement;
   private _prefixInput: HTMLInputElement;
   private _suffixInput: HTMLInputElement;
@@ -32,7 +36,11 @@ export class AudioSection extends CollapsibleSection {
     this._pathRow.addEventListener('click', () => this.fieldFocused.emit('value'));
     this._pathRow.appendChild(this._makeLabel('value', true));
     this._valueInput = this._makeInput('audio/recording.flac', '200px');
-    this._valueInput.addEventListener('input', () => this._emitChanged());
+    this._valueInput.addEventListener('input', () => {
+      this._autoDetectSourceType();
+      this._emitChanged();
+      this.setValidateStatus(null);
+    });
     this._colSelect = this._makeSelect([], '');
     this._colSelect.style.display = 'none';
     this._colSelect.addEventListener('change', () => this._emitChanged());
@@ -43,7 +51,19 @@ export class AudioSection extends CollapsibleSection {
     this._browseBtn.addEventListener('click', () => {
       this.browseRequested.emit(this._valueInput.value || '.');
     });
-    this._pathRow.append(this._valueInput, this._colSelect, this._colInput, this._browseBtn);
+    // For url/uri audio, confirm the remote file is reachable.
+    this._validateBtn = this._makeButton('Validate');
+    this._validateBtn.style.display = 'none';
+    this._validateBtn.addEventListener('click', () => {
+      const v = this._valueInput.value.trim();
+      if (v) this.validateRequested.emit(v);
+    });
+    this._validateStatus = document.createElement('span');
+    this._validateStatus.style.cssText = `font-size:14px;font-weight:700;display:none;`;
+    this._pathRow.append(
+      this._valueInput, this._colSelect, this._colInput,
+      this._browseBtn, this._validateBtn, this._validateStatus,
+    );
     this._body.appendChild(this._pathRow);
 
     this._prefixInput = this._makeInput('optional prefix', '200px');
@@ -84,6 +104,23 @@ export class AudioSection extends CollapsibleSection {
     this._updateValueUI();
   }
 
+  /**
+   * Drive `source_type` from the value: a remote scheme (e.g. `https://`,
+   * `s3://`) selects `url/uri`, otherwise `path`. Only switches between those
+   * two value-detectable types — a deliberate `column` choice is left alone.
+   */
+  private _autoDetectSourceType(): void {
+    const type = this._sourceType.value;
+    if (type !== 'path' && type !== 'url/uri') return;
+    const val = this._valueInput.value.trim();
+    if (!val) return;
+    const detected = /^[a-z][a-z0-9+.-]*:\/\//i.test(val) ? 'url/uri' : 'path';
+    if (detected !== type) {
+      this._sourceType.value = detected;
+      this._updateValueUI();
+    }
+  }
+
   private _updateValueUI(): void {
     const sourceType = this._sourceType.value;
     const isCol = sourceType === 'column';
@@ -92,6 +129,17 @@ export class AudioSection extends CollapsibleSection {
     this._colSelect.style.display = (isCol && hasCols) ? '' : 'none';
     this._colInput.style.display = (isCol && !hasCols) ? '' : 'none';
     this._browseBtn.style.display = (sourceType === 'path') ? '' : 'none';
+    this._validateBtn.style.display = (sourceType === 'url/uri') ? '' : 'none';
+    this.setValidateStatus(null);
+  }
+
+  /** Set the validate indicator next to the button: ✓ ok, ✗ failed, null clears. */
+  setValidateStatus(ok: boolean | null): void {
+    if (ok === null) { this._validateStatus.style.display = 'none'; return; }
+    this._validateStatus.style.display = '';
+    this._validateStatus.textContent = ok ? '✓' : '✗';
+    this._validateStatus.style.color = ok ? COLORS.green : COLORS.red;
+    this._validateStatus.title = ok ? 'Reachable' : 'Not reachable — see status bar';
   }
 
   applyLocks(
