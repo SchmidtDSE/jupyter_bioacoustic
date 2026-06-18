@@ -107,6 +107,26 @@ export function readColumns(filepath: string): string {
   ].join('\n');
 }
 
+export function readColumnsFromSource(
+  sourceType: string,
+  value: string,
+  secrets?: any,
+): string {
+  const secretsJson = JSON.stringify(secrets ?? null);
+  return [
+    `import json as _j`,
+    `_cols = _CB_INSTANCE.read_columns_from_source('${escPy(sourceType)}', '${escPy(value)}', _j.loads('${escPy(secretsJson)}'))`,
+    wp(`_j.dumps({'columns': _cols})`),
+  ].join('\n');
+}
+
+export function checkAudioUrl(value: string): string {
+  return [
+    `import json as _j`,
+    wp(`_j.dumps(_CB_INSTANCE.check_audio_url('${escPy(value)}'))`),
+  ].join('\n');
+}
+
 export function readSampleData(filepath: string, nRows = 5): string {
   return [
     `import json as _j`,
