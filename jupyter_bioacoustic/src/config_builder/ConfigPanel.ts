@@ -31,6 +31,7 @@ import {
 import { FileBrowser } from './FileBrowser';
 import { YamlPanel } from './YamlPanel';
 import { SetupSection } from './sections/SetupSection';
+import { ConfigFilesSection } from './sections/ConfigFilesSection';
 import { DataSection } from './sections/DataSection';
 import { AudioSection } from './sections/AudioSection';
 import { OutputSection } from './sections/OutputSection';
@@ -60,6 +61,7 @@ export class ConfigPanel {
   private _dirtyCallbacks: Array<() => void> = [];
 
   private _setup: SetupSection;
+  private _configFiles: ConfigFilesSection;
   private _data: DataSection;
   private _audio: AudioSection;
   private _output: OutputSection;
@@ -80,6 +82,7 @@ export class ConfigPanel {
       `display:flex;flex-direction:column;flex:1;overflow-y:auto;min-width:0;`;
 
     this._setup = new SetupSection();
+    this._configFiles = new ConfigFilesSection();
     this._data = new DataSection();
     this._audio = new AudioSection();
     this._output = new OutputSection();
@@ -89,7 +92,8 @@ export class ConfigPanel {
     this._summary = new ConfigSummary();
 
     this._sections = new Map<string, CollapsibleSection>([
-      ['project', this._setup],
+      ['setup', this._setup],
+      ['project', this._configFiles],
       ['data', this._data],
       ['audio', this._audio],
       ['output', this._output],
@@ -147,16 +151,18 @@ export class ConfigPanel {
 
     this._setup.projectCreated.connect((_, name) => {
       this._app.setProjectName(name);
+      this._configFiles.initFromCreate(name);
       void this._onSectionChanged('project');
       void this._onSectionChanged('app');
     });
 
-    this._setup.projectEnabledChanged.connect((_, enabled) => {
+    this._configFiles.projectEnabledChanged.connect((_, enabled) => {
       void this._onProjectEnabledChanged(enabled);
     });
-    this._setup.fileStatesChanged.connect((_, states) => {
+    this._configFiles.fileStatesChanged.connect((_, states) => {
       this._updateTargetOptions(states);
     });
+    this._configFiles.lockStatesChanged.connect(() => this._applyFileLocks());
     this._setup.loadConfigRequested.connect((_, { field, path }) => void this._onLoadConfig(path, field));
 
     this._setup.templateListRequested.connect(() => void this._onListTemplates());
@@ -166,7 +172,6 @@ export class ConfigPanel {
       this._openBrowser(current, exts, (p) => this._setup.setTemplateFieldValue(key, p));
     });
     this._setup.templateColumnsRequested.connect((_, path) => void this._onTemplateColumns(path));
-    this._setup.lockStatesChanged.connect(() => this._applyFileLocks());
 
     this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
     this._data.browseRequested.connect((_, dir) => {
@@ -454,7 +459,7 @@ export class ConfigPanel {
     await this._readyPromise;
     if (!this._ready) return null;
 
-    const projectData = this._setup.getData();
+    const projectData = this._configFiles.getData();
     const enabled = [
       projectData.project_enabled && !projectData.project_locked && projectData.project_path,
       projectData.config_enabled && !projectData.config_locked && projectData.config_path,
@@ -514,7 +519,7 @@ export class ConfigPanel {
   }
 
   private _activeFilePath(): { path: string; label: string } {
-    const d = this._setup.getData();
+    const d = this._configFiles.getData();
     if (d.project_enabled && d.project_path) return { path: d.project_path, label: 'project' };
     if (d.config_enabled && d.config_path) return { path: d.config_path, label: 'config' };
     if (d.form_enabled && d.form_path) return { path: d.form_path, label: 'form' };
@@ -540,7 +545,7 @@ export class ConfigPanel {
   }
 
   get isProjectConfigured(): boolean {
-    const d = this._setup.getData();
+    const d = this._configFiles.getData();
     return !!(d.project_enabled && d.project_path);
   }
 
@@ -548,7 +553,7 @@ export class ConfigPanel {
     await this._readyPromise;
     if (!this._ready) return null;
 
-    const projectData = this._setup.getData();
+    const projectData = this._configFiles.getData();
     const enabled = [
       projectData.project_enabled && !projectData.project_locked && projectData.project_path,
       projectData.config_enabled && !projectData.config_locked && projectData.config_path,
@@ -675,7 +680,7 @@ export class ConfigPanel {
       if (state.project) {
         const proj = state.project || {};
         const conf = state.config || {};
-        this._setup.setData(proj);
+        this._configFiles.setData(proj);
         const targets = state.section_targets || {};
 
         if (proj.project_name) {
@@ -737,8 +742,8 @@ export class ConfigPanel {
   }
 
   onProjectStateChanged(cb: () => void): void {
-    this._setup.projectEnabledChanged.connect(() => cb());
-    this._setup.changed.connect(() => cb());
+    this._configFiles.projectEnabledChanged.connect(() => cb());
+    this._configFiles.changed.connect(() => cb());
   }
 
   onAnyChanged(cb: () => void): void {
@@ -905,14 +910,14 @@ export class ConfigPanel {
     await this._readyPromise;
     if (!this._ready) return;
     try {
-      const raw = await this._kernel.exec(updateSection('project', this._setup.getData()));
+      const raw = await this._kernel.exec(updateSection('project', this._configFiles.getData()));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, 'project');
     } catch { /* ignore */ }
   }
 
   private _applyFileLocks(): void {
-    const locks = this._setup.getLockStates();
+    const locks = this._configFiles.getLockStates();
     const anyLocked = locks.project || locks.config || locks.form;
     const fileOf = (t: string): 'project' | 'config' | 'form' =>
       t === 'form' ? 'form' : t === 'config' ? 'config' : 'project';
