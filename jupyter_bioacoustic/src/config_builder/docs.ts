@@ -4,12 +4,15 @@ export interface SectionDocs {
 }
 
 export const DOCS: Record<string, SectionDocs> = {
-  project: {
-    _intro: `Setup controls project creation, loading, and configuration file paths.\nUse "Create New" to start from scratch, "Create from Template" to start from a ready-made config, or "Load Existing" to open saved files.`,
+  setup: {
+    _intro: `Start a project: "Create New" from scratch, "Create from Template" from a ready-made config, or "Load Existing" to open saved files. File names and locations are managed in the Configuration Files section below.`,
     '_sub:Create New': `Enter a project name and click Create. This generates default file paths under annotator_config/ and opens the other sections for editing.`,
     '_sub:Create from Template': `Start from a ready-made template and fill in only the deployment-specific bits.\n\n• Pick a template from the list to see its description.\n• Choose what to create — project (project + config + form), config (config + form), or just a form.\n• Enter a name (used for the saved file names), then fill the inputs. A source-type dropdown reconfigures its value field: a path adds a Browse button; a column becomes a dropdown once the data file's columns load (until then it's a text box).\n• Save writes the files and locks the form; reopen Setup and click Edit to change values and save again.`,
     '_sub:Load Existing': `Choose a file type (project, config, or form), browse or type a path, and click Load. Loading cascades: a project file loads its referenced config, which loads its referenced form.`,
-    '_sub:Configuration Files': `Controls which files are enabled and where they are saved. Each checkbox enables or disables a file — unchecking inlines its contents into the parent file.\n\n• Linked mode: all three files share the same base name. Editing the linked name updates all paths.\n• Rename: unlocks the paths for manual editing. Use this to save a copy under new filenames.\n• Lock: returns to read-only mode.`,
+  },
+  project: {
+    _intro: `Configuration Files controls how the project is saved — up to three files (project, config, form), their names, and per-file enable/lock.`,
+    '_sub:Linked / Duplicate-Rename / Lock': `• Checkbox — write that file as a separate file (uncheck to inline it into its parent).\n• Linked — keep all three filenames in sync from one name; unlink to set each path independently.\n• Duplicate / Rename — unlock the paths to save under new filenames. Saving writes the new files and leaves the originals untouched — your chance to start a copy from an existing config.\n• Lock (per file) — that file won't be saved and its fields are disabled, so you can't overwrite it.`,
     'project file': `Project-specific configuration — data sources, audio paths, output locations, and anything unique to this particular review task. References the config file for shared app settings.\nLoad: populates all sections and cascades into config and form files if referenced.`,
     'config file': `Application setup shared across multiple projects — layout options, column visibility, capture settings, heights, and general widget behavior. Referenced by the project file; references the form file.\nLoad: populates app/layout sections and cascades into the form file if referenced.`,
     'form file': `Form definition only — the annotation interface controls (selects, textboxes, checkboxes, etc.) and dynamic forms. Kept separate so the same form can be reused across different project/config combinations.\nLoad: populates the form section only.`,
