@@ -15,6 +15,7 @@ import {
 } from './styles';
 import { Detection } from './types';
 import { showDialog } from './util';
+import { LAUNCHER, PROJECT_PICKER, DIALOG, TOOLTIP } from './text';
 import { KernelBridge } from './kernel';
 import { readKernelVars, syncOutput, validateFormConfig } from './python';
 import { FormPanel } from './sections/FormPanel';
@@ -101,7 +102,7 @@ class BioacousticWidget extends Widget {
     this._infoToggle.style.cssText =
       `background:none;border:none;cursor:pointer;padding:2px;` +
       `flex-shrink:0;transition:all 0.15s;font-size:14px;color:${COLORS.textSubtle};`;
-    this._infoToggle.title = 'Toggle configuration info';
+    this._infoToggle.title = TOOLTIP.toggleInfo;
     this._infoToggle.onclick = () => this._toggleInfoPanel();
 
     // Hover effect
@@ -243,7 +244,7 @@ class BioacousticWidget extends Widget {
       if (configErrors.length > 0) {
         this._setStatus('❌ Config validation failed', true);
         await showDialog({
-          title: 'Config Validation Failed',
+          title: DIALOG.configValidationFailedTitle,
           body: '• ' + configErrors.join('\n• '),
         });
         return;
@@ -584,7 +585,7 @@ async function showProjectFileDialog(
     padding: 16px 20px; border-bottom: 1px solid #e0e0e0;
     font-weight: 600; font-size: 16px;
   `;
-  header.textContent = 'Select Bioacoustic Project';
+  header.textContent = PROJECT_PICKER.title;
 
   // Path input section
   const inputSection = document.createElement('div');
@@ -597,11 +598,11 @@ async function showProjectFileDialog(
   inputLabel.style.cssText = `
     margin-bottom: 8px; font-size: 13px; font-weight: 500; color: #333;
   `;
-  inputLabel.textContent = 'Project file path (local, s3://, gs://, or https://):';
+  inputLabel.textContent = PROJECT_PICKER.pathLabel;
 
   const pathInput = document.createElement('input');
   pathInput.type = 'text';
-  pathInput.placeholder = 'e.g., annotator_config/projects/my_project.yaml or s3://bucket/config.yaml';
+  pathInput.placeholder = PROJECT_PICKER.pathPlaceholder;
   pathInput.style.cssText = `
     width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 3px;
     font-size: 13px; font-family: monospace; box-sizing: border-box;
@@ -622,7 +623,7 @@ async function showProjectFileDialog(
     padding: 12px 20px; font-size: 13px; font-weight: 500; color: #555;
     border-bottom: 1px solid #f0f0f0;
   `;
-  browserLabel.textContent = 'Or browse files:';
+  browserLabel.textContent = PROJECT_PICKER.browseLabel;
 
   const browserContainer = document.createElement('div');
   browserContainer.style.cssText = `
@@ -691,21 +692,21 @@ async function showProjectFileDialog(
       // Disable and grey out file browser for remote URIs
       browserSection.style.opacity = '0.4';
       browserSection.style.pointerEvents = 'none';
-      browserLabel.textContent = 'File browser (disabled for remote URIs)';
+      browserLabel.textContent = PROJECT_PICKER.browseDisabledLabel;
       browserLabel.style.color = '#999';
-      pathInput.placeholder = 'Remote URI detected - file browser disabled';
+      pathInput.placeholder = PROJECT_PICKER.remoteUriPlaceholder;
     } else {
       // Enable file browser for local paths
       browserSection.style.opacity = '1';
       browserSection.style.pointerEvents = 'auto';
-      browserLabel.textContent = 'Or browse files:';
+      browserLabel.textContent = PROJECT_PICKER.browseLabel;
       browserLabel.style.color = '#555';
 
       if (currentValue && !currentValue.startsWith('/')) {
         // If user typed a relative path, combine with current browser path
         pathInput.placeholder = `Current dir: ${currentBrowserPath}/`;
       } else {
-        pathInput.placeholder = 'e.g., annotator_config/projects/my_project.yaml or s3://bucket/config.yaml';
+        pathInput.placeholder = PROJECT_PICKER.pathPlaceholder;
       }
     }
   };
@@ -970,7 +971,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
         const kernel = getExistingKernel(tracker) ?? await startKernel(app);
         if (!kernel) {
           placeholder.dispose();
-          void showDialog({ title: 'Error', body: 'Failed to start a Python kernel.' });
+          void showDialog({ title: 'Error', body: DIALOG.kernelFailed });
           return;
         }
         const ownsKernel = !getExistingKernel(tracker);
@@ -1001,7 +1002,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
 
         if (error) {
           if (ownsKernel) kernel.shutdown().catch(() => {});
-          void showDialog({ title: 'Annotator Error', body: error });
+          void showDialog({ title: DIALOG.annotatorErrorTitle, body: error });
           return;
         }
 
@@ -1028,7 +1029,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
           () => app.commands.execute('bioacoustic:open-config-builder'),
           async () => {
             const kernel = getExistingKernel(tracker) ?? await startKernel(app);
-            if (!kernel) { void showDialog({ title: 'Error', body: 'Failed to start Python kernel.' }); return; }
+            if (!kernel) { void showDialog({ title: 'Error', body: DIALOG.kernelFailed }); return; }
             const ownsKernel = !getExistingKernel(tracker);
             const code = [
               `import os as _os; _os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,
@@ -1095,13 +1096,13 @@ function showLauncherDialog(
     `font-family:var(--jp-ui-font-family,ui-sans-serif,sans-serif);`;
 
   const title = document.createElement('div');
-  title.textContent = 'Bioacoustic Annotator';
+  title.textContent = LAUNCHER.title;
   title.style.cssText =
     `font-size:20px;font-weight:700;color:${COLORS.textPrimary};text-align:center;`;
   dialog.appendChild(title);
 
   const subtitle = document.createElement('div');
-  subtitle.textContent = 'Choose an option to get started';
+  subtitle.textContent = LAUNCHER.subtitle;
   subtitle.style.cssText =
     `font-size:14px;color:${COLORS.textMuted};text-align:center;margin-top:-8px;`;
   dialog.appendChild(subtitle);
@@ -1160,15 +1161,15 @@ function showLauncherDialog(
   </svg>`;
 
   tileRow.appendChild(makeTile(
-    'Notebook',
-    'Start with a pre-configured Jupyter notebook',
+    LAUNCHER.tiles.notebook.label,
+    LAUNCHER.tiles.notebook.desc,
     notebookSvg,
     onNotebook,
   ));
 
   tileRow.appendChild(makeTile(
-    'Annotator',
-    'Open a project file to review and annotate clips',
+    LAUNCHER.tiles.annotator.label,
+    LAUNCHER.tiles.annotator.desc,
     bioacousticIconSvg,
     onAnnotator,
   ));
@@ -1182,8 +1183,8 @@ function showLauncherDialog(
   </svg>`;
 
   tileRow.appendChild(makeTile(
-    'Config Builder',
-    'Create or edit configuration files with a GUI',
+    LAUNCHER.tiles.builder.label,
+    LAUNCHER.tiles.builder.desc,
     builderSvg,
     onConfigBuilder,
   ));
