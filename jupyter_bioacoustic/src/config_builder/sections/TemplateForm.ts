@@ -6,10 +6,13 @@
  *
  * The widget for each builder element is inferred from where its
  * ``__placeholder__`` sits in the template's ``configuration`` (a scoped
- * positional inference): a source path → text + Browse; a data/audio index or
- * select column → a dropdown populated from the chosen file; everything else →
- * a text input. This reuses the builder's read_columns + FileBrowser via the
- * panel (see ConfigPanel) rather than duplicating the section widgets.
+ * positional inference):
+ *  - a ``*.source_type`` placeholder → a dropdown that live-reconfigures its
+ *    paired ``value`` control (path ⇒ Browse, column ⇒ column picker, else text);
+ *  - an index/select column → a **text input until the source file's columns are
+ *    loaded**, then a dropdown of those columns (preserving the typed value);
+ *  - a source path → text + Browse; everything else → text.
+ * Columns and Browse reuse the kernel's read_columns + FileBrowser via ConfigPanel.
  *
  * License: BSD 3-Clause
  */
@@ -47,21 +50,28 @@ export interface TemplateSummary {
   short_description: string;
 }
 
-type WidgetKind = 'text' | 'path' | 'column' | 'source_type';
+type Role = 'plain' | 'source_type' | 'value' | 'column' | 'pathfile';
 
 interface Descriptor {
-  widget: WidgetKind;
+  role: Role;
+  section?: 'data' | 'audio';
   exts?: string[];
-  providerKey?: string;   // column: the field whose value is the source file
-  section?: string;       // source_type: which section's options
+  sourceTypeKey?: string;     // value: sibling source_type placeholder key (dynamic)
+  literalSourceType?: string; // value: fixed source_type literal from config
+  providerKey?: string;       // column / value(column): field holding the source file
 }
 
 interface Field {
   key: string;
   required: boolean;
-  widget: WidgetKind;
-  el: HTMLInputElement | HTMLSelectElement;
+  role: Role;
   default: any;
+  value: string;              // source of truth (survives control swaps)
+  host: HTMLDivElement;       // container the control(s) render into
+  section?: 'data' | 'audio';
+  exts?: string[];
+  sourceTypeKey?: string;
+  literalSourceType?: string;
   providerKey?: string;
 }
 
@@ -95,11 +105,16 @@ export class TemplateForm {
 
   private _scopeSelect!: HTMLSelectElement;
   private _nameInput!: HTMLInputElement;
+  private _editableEl!: HTMLDivElement;
   private _formEl!: HTMLDivElement;
+  private _btnRow!: HTMLDivElement;
   private _saveBtn!: HTMLButtonElement;
+  private _locked = false;
   private _fields: Field[] = [];
   private _fieldByKey = new Map<string, Field>();
   private _columnsByPath = new Map<string, string[]>();
+  private _providerKeys = new Set<string>();
+  private _debounce = new Map<string, any>();
 
   constructor() {
     this.element = document.createElement('div');
@@ -162,12 +177,21 @@ export class TemplateForm {
     this._renderDetail();
   }
 
+  /** After a successful save: grey out + lock the form, show an Edit button. */
+  markSaved(): void {
+    this._setLocked(true);
+  }
+
   /** Set a field's value (e.g. after a Browse pick) and refresh dependents. */
   setFieldValue(key: string, value: string): void {
     const f = this._fieldByKey.get(key);
     if (!f) return;
-    f.el.value = value;
-    this._maybeRequestColumns(value);
+    f.value = value;
+    this._renderControl(f);
+    if (this._providerKeys.has(key)) {
+      this._refreshColumnDependents(key);
+      this._maybeRequestColumns(value);
+    }
     this._updateSaveEnabled();
   }
 
@@ -175,18 +199,21 @@ export class TemplateForm {
   setColumns(path: string, cols: string[]): void {
     this._columnsByPath.set(path, cols);
     for (const f of this._fields) {
-      if (f.widget !== 'column' || !f.providerKey) continue;
-      const provVal = this._fieldByKey.get(f.providerKey)?.el.value.trim();
-      if (provVal === path) this._populateColumn(f, cols);
+      if (this._isColumnConsumer(f) && this._providerValue(f) === path) {
+        this._renderControl(f);
+      }
     }
+    this._updateSaveEnabled();
   }
 
   reset(): void {
     this._selectedName = '';
     this._template = null;
+    this._locked = false;
     this._fields = [];
     this._fieldByKey.clear();
     this._columnsByPath.clear();
+    this._providerKeys.clear();
     this._detailEl.style.display = 'none';
     this._detailEl.innerHTML = '';
     for (const row of this._rows.values()) row.style.background = '';
@@ -209,7 +236,7 @@ export class TemplateForm {
     if (this._saveBtn.disabled) return;
     const values: Record<string, string> = {};
     for (const f of this._fields) {
-      const v = f.el.value.trim();
+      const v = (f.value || '').trim();
       if (v) values[f.key] = v;
     }
     this.applyRequested.emit({
@@ -230,22 +257,29 @@ export class TemplateForm {
   }
 
   private _maybeRequestColumns(path: string): void {
-    if (path && COLUMN_FILE_RE.test(path)) this.columnsRequested.emit(path);
+    const p = (path || '').trim();
+    if (p && COLUMN_FILE_RE.test(p)) this.columnsRequested.emit(p);
   }
 
 
   //
-  // Internal — rendering
+  // Internal — detail + form rendering
   //
   private _renderDetail(): void {
     const tpl = this._template!;
     this._detailEl.innerHTML = '';
     this._detailEl.style.display = 'flex';
 
+    this._locked = false;
+
     const head = document.createElement('div');
     head.innerHTML = renderMarkdown(`# ${tpl.title ?? this._selectedName}\n\n${tpl.description ?? ''}`);
     head.style.cssText = `color:${COLORS.textPrimary};font-size:12px;`;
     this._detailEl.appendChild(head);
+
+    // Everything the Edit/Save state greys out lives in _editableEl.
+    this._editableEl = document.createElement('div');
+    this._editableEl.style.cssText = `display:flex;flex-direction:column;gap:8px;`;
 
     const scopeRow = document.createElement('div');
     scopeRow.style.cssText = `display:flex;align-items:center;gap:8px;`;
@@ -259,7 +293,7 @@ export class TemplateForm {
     this._scopeSelect.value = 'project';
     this._scopeSelect.addEventListener('change', () => this._renderForm());
     scopeRow.append(this._label('create'), this._scopeSelect);
-    this._detailEl.appendChild(scopeRow);
+    this._editableEl.appendChild(scopeRow);
 
     const nameRow = document.createElement('div');
     nameRow.style.cssText = `display:flex;align-items:center;gap:8px;`;
@@ -268,14 +302,31 @@ export class TemplateForm {
     this._nameInput.placeholder = 'e.g. Bird Review';
     this._nameInput.addEventListener('input', () => this._updateSaveEnabled());
     nameRow.append(this._label('name *'), this._nameInput);
-    this._detailEl.appendChild(nameRow);
+    this._editableEl.appendChild(nameRow);
 
     this._formEl = document.createElement('div');
     this._formEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
-    this._detailEl.appendChild(this._formEl);
+    this._editableEl.appendChild(this._formEl);
+    this._detailEl.appendChild(this._editableEl);
 
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = `display:flex;gap:8px;margin-top:4px;`;
+    this._btnRow = document.createElement('div');
+    this._btnRow.style.cssText = `display:flex;gap:8px;margin-top:4px;`;
+    this._detailEl.appendChild(this._btnRow);
+    this._renderButtons();
+
+    this._renderForm();
+  }
+
+  private _renderButtons(): void {
+    this._btnRow.innerHTML = '';
+    if (this._locked) {
+      const edit = document.createElement('button');
+      edit.textContent = 'Edit';
+      edit.style.cssText = btnStyle(true);
+      edit.addEventListener('click', () => this._setLocked(false));
+      this._btnRow.appendChild(edit);
+      return;
+    }
     this._saveBtn = document.createElement('button');
     this._saveBtn.textContent = 'Save';
     this._saveBtn.style.cssText = btnStyle(true);
@@ -284,10 +335,15 @@ export class TemplateForm {
     dismissBtn.textContent = 'Dismiss';
     dismissBtn.style.cssText = btnStyle(false);
     dismissBtn.addEventListener('click', () => this._onDismiss());
-    btnRow.append(this._saveBtn, dismissBtn);
-    this._detailEl.appendChild(btnRow);
+    this._btnRow.append(this._saveBtn, dismissBtn);
+    this._updateSaveEnabled();
+  }
 
-    this._renderForm();
+  private _setLocked(locked: boolean): void {
+    this._locked = locked;
+    this._editableEl.style.opacity = locked ? '0.55' : '1';
+    this._editableEl.style.pointerEvents = locked ? 'none' : '';
+    this._renderButtons();
   }
 
   private _renderForm(): void {
@@ -301,24 +357,30 @@ export class TemplateForm {
     for (const section of SCOPE_SECTIONS[scope] ?? []) {
       const sec = tpl[section];
       if (!sec || typeof sec !== 'object') continue;
-      if (sec.template_description) {
+      const hasElements = Array.isArray(sec.builder_elements) && sec.builder_elements.length > 0;
+      const hasDesc = !!sec.template_description;
+      // A section with neither inputs nor a description (e.g. a fixed `config`)
+      // contributes no UI — not even a title.
+      if (!hasElements && !hasDesc) continue;
+      this._formEl.appendChild(this._sectionHeader(section));
+      if (hasDesc) {
         const d = document.createElement('div');
         d.innerHTML = renderMarkdown(String(sec.template_description));
         d.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
         this._formEl.appendChild(d);
       }
-      if (Array.isArray(sec.builder_elements)) {
+      if (hasElements) {
         this._renderElements(sec.builder_elements, this._formEl, descriptors);
       }
     }
 
-    // Seed column dropdowns from any path provider that already has a value
-    // (e.g. a defaulted species-list file populates its column dropdown).
+    this._providerKeys = new Set(
+      this._fields.map(f => f.providerKey).filter((k): k is string => !!k),
+    );
+    for (const f of this._fields) this._renderControl(f);
+    // Seed columns from any path provider that already has a value.
     for (const f of this._fields) {
-      if (f.widget === 'path') {
-        const v = f.el.value.trim();
-        if (v) this._maybeRequestColumns(v);
-      }
+      if (this._providerKeys.has(f.key) && f.value) this._maybeRequestColumns(f.value);
     }
     this._updateSaveEnabled();
   }
@@ -352,96 +414,196 @@ export class TemplateForm {
         continue;
       }
       const key = Object.keys(item)[0];
-      if (key) this._renderField(key, item[key], parent, descriptors.get(key));
+      if (key) this._addField(key, item[key], parent, descriptors.get(key));
     }
   }
 
-  private _renderField(
+  private _addField(
     key: string, spec: any, parent: HTMLElement, desc?: Descriptor,
   ): void {
     const norm = this._normalize(spec);
-    const widget = desc?.widget ?? 'text';
     const row = document.createElement('div');
     row.style.cssText = `display:flex;align-items:center;gap:8px;`;
     const lbl = this._label((norm.label || key) + (norm.required ? ' *' : ''));
     if (norm.description) lbl.title = norm.description;
-    row.appendChild(lbl);
-
-    let el: HTMLInputElement | HTMLSelectElement;
-    if (widget === 'column' || widget === 'source_type') {
-      const select = document.createElement('select');
-      select.style.cssText = selectStyle() + 'min-width:200px;';
-      if (widget === 'source_type') {
-        for (const opt of SOURCE_TYPE_OPTIONS[desc?.section ?? 'data'] ?? []) {
-          const o = document.createElement('option');
-          o.value = opt; o.textContent = opt;
-          select.appendChild(o);
-        }
-        if (norm.default != null) select.value = String(norm.default);
-      } else {
-        this._fillColumnOptions(select, [], norm.default, norm.required);
-      }
-      select.addEventListener('change', () => this._updateSaveEnabled());
-      row.appendChild(select);
-      el = select;
-    } else {
-      const input = document.createElement('input');
-      input.style.cssText = inputStyle('300px');
-      if (norm.default != null) input.value = String(norm.default);
-      if (norm.description) input.placeholder = norm.description;
-      input.addEventListener('input', () => this._updateSaveEnabled());
-      if (widget === 'path') {
-        const exts = desc?.exts ?? DATA_EXTS;
-        input.addEventListener('change', () => this._maybeRequestColumns(input.value.trim()));
-        const browse = document.createElement('button');
-        browse.textContent = 'Browse';
-        browse.style.cssText = btnStyle(false);
-        browse.addEventListener('click', () =>
-          this.browseRequested.emit({ key, exts, current: input.value || '.' }));
-        row.append(input, browse);
-      } else {
-        row.appendChild(input);
-      }
-      el = input;
-    }
-
+    const host = document.createElement('div');
+    host.style.cssText = `display:flex;align-items:center;gap:6px;flex:1;`;
+    row.append(lbl, host);
     parent.appendChild(row);
+
     const field: Field = {
-      key, required: norm.required, widget, el,
-      default: norm.default, providerKey: desc?.providerKey,
+      key, required: norm.required, role: desc?.role ?? 'plain',
+      default: norm.default, value: norm.default != null ? String(norm.default) : '',
+      host, section: desc?.section, exts: desc?.exts,
+      sourceTypeKey: desc?.sourceTypeKey, literalSourceType: desc?.literalSourceType,
+      providerKey: desc?.providerKey,
     };
     this._fields.push(field);
     this._fieldByKey.set(key, field);
   }
 
-  private _fillColumnOptions(
-    select: HTMLSelectElement, cols: string[], def: any, required: boolean,
-  ): void {
-    const current = select.value || (def != null ? String(def) : '');
-    select.innerHTML = '';
-    if (!required || !current) {
+
+  //
+  // Internal — per-field control rendering
+  //
+  private _renderControl(field: Field): void {
+    field.host.innerHTML = '';
+    switch (field.role) {
+      case 'source_type':
+        this._renderSourceType(field);
+        break;
+      case 'pathfile':
+        this._renderPath(field, field.exts ?? DATA_EXTS);
+        break;
+      case 'value': {
+        const eff = this._effSourceType(field);
+        if (eff === 'path') this._renderPath(field, field.exts ?? DATA_EXTS);
+        else if (eff === 'column') this._renderColumn(field);
+        else this._renderText(field);
+        break;
+      }
+      case 'column':
+        this._renderColumn(field);
+        break;
+      default:
+        this._renderText(field);
+    }
+  }
+
+  private _renderSourceType(field: Field): void {
+    const select = document.createElement('select');
+    select.style.cssText = selectStyle() + 'min-width:120px;';
+    const opts = SOURCE_TYPE_OPTIONS[field.section ?? 'data'] ?? [];
+    if (!field.value) {
       const ph = document.createElement('option');
       ph.value = ''; ph.textContent = '— select —';
       select.appendChild(ph);
     }
-    const opts = [...cols];
-    if (current && !opts.includes(current)) opts.unshift(current);
-    for (const c of opts) {
+    for (const opt of opts) {
       const o = document.createElement('option');
-      o.value = c; o.textContent = c;
+      o.value = opt; o.textContent = opt;
       select.appendChild(o);
     }
-    select.value = current;
+    select.value = field.value;
+    select.addEventListener('change', () => {
+      field.value = select.value;
+      // re-render the paired value field(s) — their widget depends on this.
+      for (const vf of this._fields) {
+        if (vf.role === 'value' && vf.sourceTypeKey === field.key) this._renderControl(vf);
+      }
+      this._updateSaveEnabled();
+    });
+    field.host.appendChild(select);
   }
 
-  private _populateColumn(f: Field, cols: string[]): void {
-    this._fillColumnOptions(f.el as HTMLSelectElement, cols, f.default, f.required);
-    this._updateSaveEnabled();
+  private _renderText(field: Field): void {
+    const input = document.createElement('input');
+    input.style.cssText = inputStyle('300px');
+    input.value = field.value;
+    input.addEventListener('input', () => {
+      field.value = input.value;
+      this._updateSaveEnabled();
+    });
+    field.host.appendChild(input);
+  }
+
+  private _renderPath(field: Field, exts: string[]): void {
+    const input = document.createElement('input');
+    input.style.cssText = inputStyle('300px');
+    input.value = field.value;
+    input.addEventListener('input', () => {
+      field.value = input.value;
+      this._updateSaveEnabled();
+      if (this._providerKeys.has(field.key)) this._scheduleProvide(field);
+    });
+    const browse = document.createElement('button');
+    browse.textContent = 'Browse';
+    browse.style.cssText = btnStyle(false);
+    browse.addEventListener('click', () =>
+      this.browseRequested.emit({ key: field.key, exts, current: field.value || '.' }));
+    field.host.append(input, browse);
+  }
+
+  private _renderColumn(field: Field): void {
+    const providerVal = this._providerValue(field);
+    const cols = providerVal ? this._columnsByPath.get(providerVal) : undefined;
+    if (cols && cols.length) {
+      const select = document.createElement('select');
+      select.style.cssText = selectStyle() + 'min-width:200px;';
+      const current = field.value;
+      if (!field.required || !current) {
+        const ph = document.createElement('option');
+        ph.value = ''; ph.textContent = '— select —';
+        select.appendChild(ph);
+      }
+      const opts = [...cols];
+      if (current && !opts.includes(current)) opts.unshift(current);
+      for (const c of opts) {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        select.appendChild(o);
+      }
+      select.value = current;
+      select.addEventListener('change', () => {
+        field.value = select.value;
+        this._updateSaveEnabled();
+      });
+      field.host.appendChild(select);
+    } else {
+      // No columns yet — a plain text input until the source file loads.
+      const input = document.createElement('input');
+      input.style.cssText = inputStyle('300px');
+      input.value = field.value;
+      input.placeholder = 'type a column, or pick the file above';
+      input.addEventListener('input', () => {
+        field.value = input.value;
+        this._updateSaveEnabled();
+      });
+      field.host.appendChild(input);
+    }
+  }
+
+
+  //
+  // Internal — dynamic helpers
+  //
+  private _effSourceType(field: Field): string | undefined {
+    if (field.sourceTypeKey) {
+      const st = this._fieldByKey.get(field.sourceTypeKey);
+      return st ? st.value || undefined : field.literalSourceType;
+    }
+    return field.literalSourceType;
+  }
+
+  private _isColumnConsumer(field: Field): boolean {
+    return field.role === 'column'
+      || (field.role === 'value' && this._effSourceType(field) === 'column');
+  }
+
+  private _providerValue(field: Field): string {
+    if (!field.providerKey) return '';
+    return this._fieldByKey.get(field.providerKey)?.value.trim() ?? '';
+  }
+
+  private _refreshColumnDependents(providerKey: string): void {
+    for (const f of this._fields) {
+      if (this._isColumnConsumer(f) && f.providerKey === providerKey) this._renderControl(f);
+    }
+  }
+
+  private _scheduleProvide(field: Field): void {
+    const prev = this._debounce.get(field.key);
+    if (prev) clearTimeout(prev);
+    this._debounce.set(field.key, setTimeout(() => {
+      this._refreshColumnDependents(field.key);
+      this._maybeRequestColumns(field.value);
+    }, 500));
   }
 
   private _updateSaveEnabled(): void {
+    if (this._locked) return;
     const nameOk = !!this._nameInput.value.trim();
-    const requiredOk = this._fields.every(f => !f.required || !!f.el.value.trim());
+    const requiredOk = this._fields.every(f => !f.required || !!(f.value || '').trim());
     this._saveBtn.disabled = !(nameOk && requiredOk);
     this._saveBtn.style.opacity = this._saveBtn.disabled ? '0.5' : '1';
     this._saveBtn.style.cursor = this._saveBtn.disabled ? 'not-allowed' : 'pointer';
@@ -449,7 +611,7 @@ export class TemplateForm {
 
 
   //
-  // Internal — placeholder analysis (location → widget)
+  // Internal — placeholder analysis (location → descriptor)
   //
   private _analyze(scope: string): Map<string, Descriptor> {
     const map = new Map<string, Descriptor>();
@@ -490,32 +652,30 @@ export class TemplateForm {
   private _classify(
     tail: string, key: string, parent: any, dataProvider?: string,
   ): Descriptor {
+    const stMeta = {
+      sourceTypeKey: this._ph(parent.source_type) || undefined,
+      literalSourceType: (typeof parent.source_type === 'string' && !this._ph(parent.source_type))
+        ? parent.source_type : undefined,
+    };
     if (tail === 'data') {
-      if (key === 'path') return { widget: 'path', exts: DATA_EXTS };
-      if (key === 'value') {
-        const st = parent.source_type;
-        return (st === undefined || st === 'path' || this._ph(st))
-          ? { widget: 'path', exts: DATA_EXTS } : { widget: 'text' };
-      }
-      if (key === 'index_column') return { widget: 'column', providerKey: dataProvider };
-      if (key === 'source_type') return { widget: 'source_type', section: 'data' };
+      if (key === 'source_type') return { role: 'source_type', section: 'data' };
+      if (key === 'path') return { role: 'pathfile', exts: DATA_EXTS };
+      if (key === 'value') return { role: 'value', section: 'data', exts: DATA_EXTS, ...stMeta };
+      if (key === 'index_column') return { role: 'column', providerKey: dataProvider };
     } else if (tail === 'audio') {
-      if (key === 'source_type') return { widget: 'source_type', section: 'audio' };
-      if (key === 'column') return { widget: 'column', providerKey: dataProvider };
+      if (key === 'source_type') return { role: 'source_type', section: 'audio' };
+      if (key === 'column') return { role: 'column', providerKey: dataProvider };
       if (key === 'value') {
-        const st = parent.source_type;
-        if (st === 'column') return { widget: 'column', providerKey: dataProvider };
-        if (st === 'path') return { widget: 'path', exts: AUDIO_EXTS };
-        return { widget: 'text' };
+        return { role: 'value', section: 'audio', exts: AUDIO_EXTS, providerKey: dataProvider, ...stMeta };
       }
     } else if (tail === 'output') {
-      if (key === 'path') return { widget: 'path', exts: OUTPUT_EXTS };
+      if (key === 'path') return { role: 'pathfile', exts: OUTPUT_EXTS };
     } else if (tail === 'items') {
-      if (key === 'path') return { widget: 'path', exts: DATA_EXTS };
-      if (key === 'value') return { widget: 'column', providerKey: this._ph(parent.path) };
+      if (key === 'path') return { role: 'pathfile', exts: DATA_EXTS };
+      if (key === 'value') return { role: 'column', providerKey: this._ph(parent.path) || undefined };
     }
-    if (key === 'source_type') return { widget: 'source_type', section: 'data' };
-    return { widget: 'text' };
+    if (key === 'source_type') return { role: 'source_type', section: 'data' };
+    return { role: 'plain' };
   }
 
   private _ph(v: any): string {
@@ -540,6 +700,18 @@ export class TemplateForm {
     if (spec === true) return { required: true, default: null };
     if (spec === false) return { required: false, default: null };
     return { required: false, default: spec };
+  }
+
+  private _sectionHeader(name: string): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `display:flex;flex-direction:column;gap:3px;margin-top:8px;`;
+    const title = document.createElement('div');
+    title.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    title.style.cssText = `color:${COLORS.textPrimary};font-size:14px;font-weight:700;padding-bottom:4px;`;
+    const hr = document.createElement('div');
+    hr.style.cssText = `height:1px;background:${COLORS.bgSurface1};`;
+    wrap.append(title, hr);
+    return wrap;
   }
 
   private _label(text: string): HTMLSpanElement {
