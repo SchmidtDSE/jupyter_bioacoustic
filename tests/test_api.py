@@ -388,6 +388,29 @@ class TestDetectAudioType:
 
 
 #
+# _read_data_from_url cloud routing
+#
+class TestUrlLoaderCloudRouting:
+    """s3://, gs:// route to the cloud reader, not requests."""
+
+    def test_s3_routes_to_cloud(self, monkeypatch):
+        import jupyter_bioacoustic.api as api
+        seen = {}
+
+        def fake(url):
+            seen['url'] = url
+            return 'DF'
+        monkeypatch.setattr(api, '_read_data_from_cloud', fake)
+        assert api._read_data_from_url('s3://bucket/k.csv') == 'DF'
+        assert seen['url'] == 's3://bucket/k.csv'
+
+    def test_gs_routes_to_cloud(self, monkeypatch):
+        import jupyter_bioacoustic.api as api
+        monkeypatch.setattr(api, '_read_data_from_cloud', lambda url: 'DF')
+        assert api._read_data_from_url('gs://bucket/k.parquet') == 'DF'
+
+
+#
 # _resolve_audio_config
 #
 class TestResolveAudioConfig:
