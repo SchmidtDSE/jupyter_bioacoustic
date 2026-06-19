@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/conda/menuinst/main/menuinst/data/menuinst.schema.json",
+  "menu_name": "Jupyter Bioacoustic",
+  "menu_items": [
+    {
+      "name": "Jupyter Bioacoustic",
+      "description": "Annotate and review bioacoustic audio in JupyterLab",
+      "icon": "{{ MENU_DIR }}/jupyter_bioacoustic.{{ ICON_EXT }}",
+      "command": ["{{ PREFIX }}/bin/jba", "lab"],
+      "activate": true,
+      "platforms": {
+        "linux": {
+          "Categories": ["Science", "Education", "AudioVideo"]
+        },
+        "osx": {
+          "CFBundleName": "Jupyter Bioacoustic",
+          "CFBundleIdentifier": "org.schmidtdse.jupyterbioacoustic"
+        },
+        "win": {
+          "command": ["{{ PREFIX }}/Scripts/jba.exe", "lab"],
+          "desktop": false
+        }
+      }
+    }
+  ]
+}
