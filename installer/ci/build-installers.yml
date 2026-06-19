@@ -1,0 +1,93 @@
+# GitHub Actions: build + sign + notarize the desktop installers and attach them
+# to the GitHub Release for a tag. Place at .github/workflows/build-installers.yml
+# (kept here under installer/ci/ as a reference copy).
+#
+# Required secrets:
+#   macOS  : MACOS_CERT_P12, MACOS_CERT_PASSWORD, APP_CERT_NAME, PKG_CERT_NAME,
+#            NOTARY_KEY (App Store Connect API .p8), NOTARY_KEY_ID, NOTARY_ISSUER
+#   Windows: WIN_CERT_PFX, WIN_CERT_PASSWORD   (or Azure Trusted Signing creds)
+name: build-installers
+
+on:
+  release:
+    types: [published]          # fires after the wheel/PyPI release for the tag
+  workflow_dispatch:
+
+env:
+  PIXI_VERSION: "0.70.0"
+  APP_VERSION: ${{ github.event.release.tag_name || '0.0.0' }}
+
+jobs:
+  macos:
+    strategy:
+      matrix:
+        include:
+          - { runner: macos-14, arch: arm64, pixi_target: aarch64-apple-darwin }
+          - { runner: macos-13, arch: x64,   pixi_target: x86_64-apple-darwin }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned pixi + checksum
+        run: |
+          cd installer/macos && mkdir -p payload
+          url="https://github.com/prefix-dev/pixi/releases/download/v${PIXI_VERSION}/pixi-${{ matrix.pixi_target }}"
+          curl -fsSL "$url" -o payload/pixi
+          curl -fsSL "$url.sha256" -o payload/pixi.sha256
+          shasum -a 256 -c payload/pixi.sha256   # fail closed
+          chmod +x payload/pixi
+      - name: Generate lock + icons
+        run: |
+          ./installer/macos/payload/pixi list --manifest-path installer/manifest/pixi.toml >/dev/null 2>&1 || true
+          ./installer/macos/payload/pixi lock --manifest-path installer/manifest/pixi.toml
+          cp installer/manifest/pixi.lock installer/manifest/pixi.lock
+          brew install librsvg
+          bash installer/icon/make-icons.sh
+      - name: Import signing certs
+        env: { P12: ${{ secrets.MACOS_CERT_P12 }}, PW: ${{ secrets.MACOS_CERT_PASSWORD }} }
+        run: |
+          echo "$P12" | base64 -d > cert.p12
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "$PW" -T /usr/bin/codesign
+          security list-keychains -s build.keychain
+          security set-key-partition-list -S apple-tool:,apple: -k "" build.keychain
+      - name: Build, sign, notarize
+        env:
+          APP_CERT: ${{ secrets.APP_CERT_NAME }}
+          PKG_CERT: ${{ secrets.PKG_CERT_NAME }}
+          PIXI_BIN: ${{ github.workspace }}/installer/macos/payload/pixi
+          PIXI_SHA256: ${{ github.workspace }}/installer/macos/payload/pixi.sha256
+          VERSION: ${{ env.APP_VERSION }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          xcrun notarytool store-credentials jba-notary \
+            --key <(echo "${{ secrets.NOTARY_KEY }}") --key-id "${{ secrets.NOTARY_KEY_ID }}" \
+            --issuer "${{ secrets.NOTARY_ISSUER }}"
+          NOTARY_PROFILE=jba-notary bash installer/macos/build-pkg.sh
+      - uses: softprops/action-gh-release@v2
+        with: { files: installer/dist/*.pkg }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned pixi
+        shell: bash
+        run: |
+          cd installer/windows && mkdir -p payload
+          url="https://github.com/prefix-dev/pixi/releases/download/v${PIXI_VERSION}/pixi-x86_64-pc-windows-msvc.exe"
+          curl -fsSL "$url" -o payload/pixi.exe
+      - name: Generate lock + icons
+        shell: bash
+        run: |
+          installer/windows/payload/pixi.exe lock --manifest-path installer/manifest/pixi.toml
+          choco install imagemagick.app -y
+          bash installer/icon/make-icons.sh
+      - name: Build + sign
+        shell: pwsh
+        env: { PFX: ${{ secrets.WIN_CERT_PFX }}, PFX_PW: ${{ secrets.WIN_CERT_PASSWORD }} }
+        run: |
+          choco install innosetup -y
+          # import PFX, resolve thumbprint, then:
+          pwsh installer/windows/build.ps1 -Version "$env:APP_VERSION" -CertThumbprint "$env:THUMB"
+      - uses: softprops/action-gh-release@v2
+        with: { files: installer/dist/*.exe }
