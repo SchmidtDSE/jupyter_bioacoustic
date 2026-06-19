@@ -63,7 +63,7 @@ spectrograms/
 .ipynb_checkpoints
 build/
 develop-eggs/
-MANIFEST
+/MANIFEST
 downloads/
 eggs/
 .eggs/
