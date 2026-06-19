@@ -10,6 +10,7 @@ dev*
 !jupyter_bioacoustic/config_builder/nb/starter-notebook.ipynb
 tmp/
 logs/
+*.log
 
 #***************************************************************************
 # JupyterBioacoustic Extension
