@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# .pkg postinstall — runs with the installer's progress UI (so the heavy first
+# `pixi install` shows progress). Best-effort: if it fails (e.g. offline), the
+# app's launch script retries on first open.
+set -uo pipefail
+
+# Resolve the per-user home even when the installer runs as root.
+USER_HOME=$(eval echo "~${USER:-$(stat -f%Su /dev/console)}")
+APP_SUPPORT="$USER_HOME/Library/Application Support/JupyterBioacoustic"
+APP="/Applications/JupyterBioacoustic.app"
+PAYLOAD="$APP/Contents/Resources/payload"
+
+mkdir -p "$APP_SUPPORT/env"
+cp "$PAYLOAD/pixi" "$APP_SUPPORT/pixi" 2>/dev/null && chmod +x "$APP_SUPPORT/pixi"
+cp "$PAYLOAD/pixi.toml" "$APP_SUPPORT/env/pixi.toml" 2>/dev/null || true
+cp "$PAYLOAD/pixi.lock" "$APP_SUPPORT/env/pixi.lock" 2>/dev/null || true
+
+# Best-effort env install so first launch is instant. Ignore failure.
+"$APP_SUPPORT/pixi" install --manifest-path "$APP_SUPPORT/env/pixi.toml" \
+  >"$APP_SUPPORT/install.log" 2>&1 || true
+
+# Make the per-user dir owned by the user (installer may run as root).
+chown -R "${USER:-$(stat -f%Su /dev/console)}" "$APP_SUPPORT" 2>/dev/null || true
+exit 0
