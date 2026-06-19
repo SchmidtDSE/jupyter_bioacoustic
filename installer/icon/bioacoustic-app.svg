@@ -1,0 +1,15 @@
+<!--
+  App-icon treatment of the oscilloscope mark (bioacousticIconSvg, src/plugin.ts:912):
+  same waveform-in-a-circle glyph used by the annotator button + launcher tile,
+  placed on the brand base (#1e1e2e) in brand blue (#89b4fa) with ~17% padding.
+  Master art is 1024x1024; make-icons.sh rasterizes + downscales this into .icns/.ico.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" rx="180" fill="#1e1e2e"/>
+  <g transform="translate(512,512) scale(28) translate(-12,-12)"
+     fill="none" stroke="#89b4fa" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 12 C2 12 4 6 6 6 C8 6 8 18 10 18 C12 18 12 3 14 3 C16 3 16 21 18 21 C20 21 22 12 22 12"/>
+    <circle cx="12" cy="12" r="11" stroke-width="1"/>
+  </g>
+</svg>
