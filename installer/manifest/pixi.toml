@@ -1,0 +1,31 @@
+# Bundled end-user runtime manifest (NOT the dev pyproject.toml).
+#
+# This is the pixi project that ships *inside the installer* and is copied to a
+# per-user app-support dir at install time (see installer/README.md §"Manifest").
+# It declares only what an end user needs to launch the app.
+#
+# jupyter-bioacoustic is currently published to PyPI (not conda-forge), so it is
+# pulled via [pypi-dependencies]. When the conda-forge feedstock exists, move it
+# to [dependencies] to also get the menuinst launcher shortcut for free.
+#
+# A platform-specific pixi.lock is generated alongside this file in CI so the
+# first install is reproducible. The version constraint below bounds what the
+# launcher's check-and-prompt update may pull (no surprise major version).
+
+[project]
+name = "jupyter-bioacoustic-app"
+version = "0.1.0"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "win-64", "linux-64"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+# ffmpeg powers partial/remote audio reads (e.g. FLAC on s3) — bundle for robustness.
+ffmpeg = "*"
+
+[pypi-dependencies]
+jupyter-bioacoustic = ">=0.9,<1.0"
+
+[tasks]
+# `pixi run lab` == `jba lab` (sets the IOPub data-rate limit for base64 spectrograms).
+lab = "jba lab"
