@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jupyter-bioacoustic"
-version = "0.9.1"
+version = "0.9.2"
 description = "JupyterLab bioacoustic audio review plugin"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
@@ -94,6 +94,17 @@ depends-on = ["jlpm-install"]
 [tool.pixi.tasks.build-release]
 cmd = "rm -rf labextension && jlpm run clean && jlpm run build:prod && cd .. && python develop.py"
 cwd = "jupyter_bioacoustic"
+depends-on = ["jlpm-install"]
+
+# Build the production labextension AND the wheel in a SINGLE pixi invocation.
+# This ordering is load-bearing: the dev-env editable reinstall clobbers the
+# labextension on activation, so `build:prod` must run AFTER activation and in
+# the SAME `pixi run` as `python -m build`. Splitting the prod build and the
+# wheel build across two `pixi run` calls lets the 2nd activation clobber a
+# stale labextension into the wheel. Always run in the dev env:
+#   pixi run -e dev build-wheel
+[tool.pixi.tasks.build-wheel]
+cmd = "rm -rf dist build && cd jupyter_bioacoustic && rm -rf labextension && jlpm run clean && jlpm run build:prod && cd .. && python develop.py && python -m build --wheel"
 depends-on = ["jlpm-install"]
 
 [tool.pixi.tasks.setup]
