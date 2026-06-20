@@ -12,7 +12,7 @@
 # first install is reproducible. The version constraint below bounds what the
 # launcher's check-and-prompt update may pull (no surprise major version).
 
-[project]
+[workspace]
 name = "jupyter-bioacoustic-app"
 version = "0.1.0"
 channels = ["conda-forge"]
