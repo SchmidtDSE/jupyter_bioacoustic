@@ -21,6 +21,17 @@ installer/
 └── ci/build-installers.yml   GH Actions: build+sign+notarize, attach to release
 ```
 
+## Working folder (where the app opens)
+JupyterLab's file browser is confined to the server's root, so the launcher pins it via a config file:
+`~/Library/Application Support/JupyterBioacoustic/config.json` (Windows: `%LOCALAPPDATA%\JupyterBioacoustic\config.json`):
+```json
+{ "root_dir": "~" }
+```
+- Default `~` = home. Within that root, JupyterLab restores the **last-used folder** on relaunch.
+- Set a preferred folder by editing the file, or — for non-coders — run the **"Set Start Folder"**
+  helper (`macos/set-start-folder.command` / `windows/set-start-folder.cmd`), a native folder picker
+  that writes the config. (A polished in-app settings panel is the planned successor.)
+
 ## Build locally
 ```bash
 # 1. icons (needs a rasterizer: brew install librsvg)
