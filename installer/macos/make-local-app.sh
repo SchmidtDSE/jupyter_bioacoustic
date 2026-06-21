@@ -36,6 +36,11 @@ fi
 chmod +x "$DEST/Contents/MacOS/launch" "$RES/payload/pixi"
 codesign -s - --deep --force "$DEST" >/dev/null 2>&1 || true   # ad-hoc: runs locally
 
+# Drop the folder-picker next to the app so you can test the "set start folder" UI.
+PICK="$(dirname "$DEST")/Set JupyterBioacoustic Folder.command"
+cp "$INSTALLER/macos/set-start-folder.command" "$PICK"; chmod +x "$PICK"
+
 echo "✓ built $DEST"
+echo "  Settings: '$(basename "$PICK")' (double-click to pick the start folder)."
 echo "  Open it from ~/Applications. First launch: right-click → Open (Gatekeeper),"
 echo "  then it sets up the env (a minute) and opens JupyterLab. Logs: ~/Library/Application Support/JupyterBioacoustic/launch.log"
