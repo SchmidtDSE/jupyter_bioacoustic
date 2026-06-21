@@ -37,4 +37,15 @@ if %AGE% GEQ 86400 (
   )
 )
 
-"%PIXI%" run --manifest-path "%ENV_DIR%\pixi.toml" lab
+rem --- root_dir from config.json (default %USERPROFILE%); JupyterLab restores last folder within it ---
+set "CONFIG=%APP_SUPPORT%\config.json"
+if not exist "%CONFIG%" (
+  >"%CONFIG%" echo {
+  >>"%CONFIG%" echo   "root_dir": "~"
+  >>"%CONFIG%" echo }
+)
+for /f "usebackq delims=" %%r in (`powershell -NoProfile -Command "$c=Get-Content -Raw '%CONFIG%' ^| ConvertFrom-Json; $r=$c.root_dir; if(-not $r -or $r -eq '~'){$env:USERPROFILE}elseif($r -match '^~[/\\]'){Join-Path $env:USERPROFILE $r.Substring(2)}else{$r}"`) do set "ROOT=%%r"
+if not exist "%ROOT%" mkdir "%ROOT%" 2>nul
+
+rem Pin root_dir + replicate jba lab's IOPub limit (base64 spectrograms).
+"%PIXI%" run --manifest-path "%ENV_DIR%\pixi.toml" python -m jupyter lab --ServerApp.root_dir="%ROOT%" --ServerApp.iopub_data_rate_limit=1e10
