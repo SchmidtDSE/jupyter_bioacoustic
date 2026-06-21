@@ -67,9 +67,44 @@ maybe_update() {
   fi
 }
 
+CONFIG="$APP_SUPPORT/config.json"
+
+# Write a default config on first run. root_dir = the folder the file browser
+# opens in AND its ceiling (JupyterLab can't go above it). "~" → home. Within
+# that root JupyterLab restores the last-used folder automatically on relaunch.
+_ensure_config() {
+  [ -f "$CONFIG" ] && return 0
+  mkdir -p "$APP_SUPPORT"
+  cat > "$CONFIG" <<'JSON'
+{
+  "root_dir": "~"
+}
+JSON
+}
+
+# Read root_dir from config.json (default ~), expanding a leading ~.
+_root_dir() {
+  local root=""
+  _ensure_config
+  root="$(sed -n 's/.*"root_dir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -1)"
+  [ -z "$root" ] && root="~"
+  case "$root" in
+    "~")   root="$HOME" ;;
+    "~/"*) root="$HOME/${root#\~/}" ;;
+  esac
+  printf '%s' "$root"
+}
+
 run_lab() {
-  log "launch jba lab"
-  exec "$PIXI" run --manifest-path "$ENV_DIR/pixi.toml" lab
+  local root; root="$(_root_dir)"
+  mkdir -p "$root" 2>/dev/null || root="$HOME"
+  log "launch jupyter lab (root=$root)"
+  # Bypass the `lab` task so we can pin root_dir; replicate jba lab's IOPub limit
+  # (needed for base64 spectrograms). JupyterLab restores the last folder within root.
+  exec "$PIXI" run --manifest-path "$ENV_DIR/pixi.toml" \
+    python -m jupyter lab \
+      --ServerApp.root_dir="$root" \
+      --ServerApp.iopub_data_rate_limit=1e10
 }
 
 bootstrap_and_launch() {
