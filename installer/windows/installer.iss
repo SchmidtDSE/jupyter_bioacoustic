@@ -28,10 +28,14 @@ Source: "..\manifest\pixi.toml";   DestDir: "{app}\env";   Flags: ignoreversion
 Source: "..\manifest\pixi.lock";   DestDir: "{app}\env";   Flags: ignoreversion skipifsourcedoesntexist
 Source: "launch.cmd";              DestDir: "{app}";       Flags: ignoreversion
 Source: "..\icon\build\AppIcon.ico"; DestDir: "{app}";     Flags: ignoreversion
+Source: "set-start-folder.cmd";    DestDir: "{app}";       Flags: ignoreversion
 
 [Icons]
 ; Start Menu shortcut (fallback if conda menuinst doesn't create one).
 Name: "{autoprograms}\Jupyter Bioacoustic"; Filename: "{app}\launch.cmd"; \
+  IconFilename: "{app}\AppIcon.ico"; WorkingDir: "{app}"
+; Interim "settings UI": pick the folder the app opens in.
+Name: "{autoprograms}\Jupyter Bioacoustic — Set Start Folder"; Filename: "{app}\set-start-folder.cmd"; \
   IconFilename: "{app}\AppIcon.ico"; WorkingDir: "{app}"
 
 [Run]
