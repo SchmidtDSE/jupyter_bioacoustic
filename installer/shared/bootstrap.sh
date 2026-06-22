@@ -163,9 +163,23 @@ run_lab() {
   idle_arg=""
   case "$idle" in ''|0|*[!0-9]*) ;; *) idle_arg="--ServerApp.shutdown_no_activity_timeout=$((idle*60))" ;; esac
 
-  log "launch jupyter lab (root=$root port=$port idle=${idle}m)"
+  # Isolate the app's Jupyter from the user-global dirs (~/Library/Jupyter, etc.).
+  # Otherwise a dev `develop.py` symlink in ~/Library/Jupyter/labextensions shadows
+  # the app's own labextension (wrong/stale bundle → 404 launcher tile). The app's
+  # own env share dir is always on the search path, so its extension is still found;
+  # JUPYTER_PREFER_ENV_PATH makes the env win over anything else.
+  local jdir="$APP_SUPPORT/jupyter"
+  mkdir -p "$jdir/config" "$jdir/data" "$jdir/runtime"
+
+  log "launch jupyter lab (root=$root port=$port idle=${idle}m, isolated jupyter dirs)"
   # exec the env python directly (not `pixi run`) so SIGTERM on Quit reaches jupyter.
-  exec env PATH="$bin:$PATH" JUPYTER_TOKEN="$token" \
+  exec env \
+    PATH="$bin:$PATH" \
+    JUPYTER_TOKEN="$token" \
+    JUPYTER_CONFIG_DIR="$jdir/config" \
+    JUPYTER_DATA_DIR="$jdir/data" \
+    JUPYTER_RUNTIME_DIR="$jdir/runtime" \
+    JUPYTER_PREFER_ENV_PATH=1 \
     "$bin/python" -m jupyter lab \
       --ServerApp.root_dir="$root" \
       --ServerApp.iopub_data_rate_limit=1e10 \
