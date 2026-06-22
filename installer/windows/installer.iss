@@ -27,7 +27,9 @@ Source: "payload\pixi.exe";        DestDir: "{app}";       Flags: ignoreversion
 Source: "..\manifest\pixi.toml";   DestDir: "{app}\env";   Flags: ignoreversion
 Source: "..\manifest\pixi.lock";   DestDir: "{app}\env";   Flags: ignoreversion skipifsourcedoesntexist
 Source: "launch.cmd";              DestDir: "{app}";       Flags: ignoreversion
+Source: "..\launcher\jba_launcher.py"; DestDir: "{app}";   Flags: ignoreversion
 Source: "..\icon\build\AppIcon.ico"; DestDir: "{app}";     Flags: ignoreversion
+Source: "..\icon\build\ico_64.png";  DestDir: "{app}"; DestName: "tray.png"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "set-start-folder.cmd";    DestDir: "{app}";       Flags: ignoreversion
 
 [Icons]
