@@ -46,6 +46,12 @@ else
   echo "iconutil not found (macOS only) — skipped .icns; PNGs are in $ICONSET" >&2
 fi
 
+# --- tray icon (menu bar / system tray): black outline mark, transparent bg ---
+if [ -f tray-a-outline.svg ]; then
+  rasterize tray-a-outline.svg 64 "$OUT/tray.png"
+  echo "wrote $OUT/tray.png"
+fi
+
 # --- Windows .ico ---
 for s in 16 32 48 64 256; do rasterize "$SVG" "$s" "$OUT/ico_${s}.png"; done
 if command -v magick >/dev/null 2>&1; then
