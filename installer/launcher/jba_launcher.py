@@ -20,6 +20,7 @@ License: BSD 3-Clause
 #
 # Imports
 #
+import atexit
 import json
 import os
 import secrets
@@ -73,6 +74,7 @@ class Launcher:
     def run(self) -> None:
         import pystray
         self._start()
+        atexit.register(self._stop)   # backstop: kill jupyter even on an unclean exit
         self._icon = pystray.Icon(
             "jupyter-bioacoustic", _make_icon(), "Jupyter Bioacoustic", menu=self._menu(pystray)
         )
