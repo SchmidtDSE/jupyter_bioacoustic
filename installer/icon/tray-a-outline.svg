@@ -1,7 +1,7 @@
 <!-- Tray icon variant A: black circle outline + black oscilloscope wave, transparent inside.
-     viewBox padded (-4..28) so the 24-unit glyph fills ~70% — leaving margin like other
-     menu-bar icons instead of filling the whole bar height. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 32 32" width="256" height="256">
+     viewBox padded (-5..29, 34 wide) so the 24-unit glyph fills ~71% — a bit more margin
+     than before (-4..28) to sit like other menu-bar icons rather than filling the bar height. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-5 -5 34 34" width="256" height="256">
   <g fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
     <path d="M2 12 C2 12 4 6 6 6 C8 6 8 18 10 18 C12 18 12 3 14 3 C16 3 16 21 18 21 C20 21 22 12 22 12" stroke-width="2.1"/>
     <circle cx="12" cy="12" r="11" stroke-width="2.2"/>
