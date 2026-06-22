@@ -21,7 +21,16 @@ _prompt_update() {
   osascript -e 'button returned of (display dialog "An update for Jupyter Bioacoustic is available. Update now?" buttons {"Later","Update"} default button "Update" with title "Jupyter Bioacoustic")' 2>/dev/null \
     | grep -q "Update"
 }
-export -f _notify_impl _prompt_update
+# First-run setup indicator: a dialog that stays up during `pixi install` and is
+# dismissed automatically when the install finishes (_setup_done kills it).
+_setup_start() {
+  osascript -e 'display dialog "Setting up Jupyter Bioacoustic — first run.
+
+Downloading the app (a few minutes). This happens only once; the app opens automatically when it is ready." with title "Jupyter Bioacoustic" buttons {"OK"} default button "OK" giving up after 1800' >/dev/null 2>&1 &
+  _SETUP_PID=$!
+}
+_setup_done() { [ -n "${_SETUP_PID:-}" ] && kill "$_SETUP_PID" 2>/dev/null; _SETUP_PID=""; return 0; }
+export -f _notify_impl _prompt_update _setup_start _setup_done
 
 # shellcheck disable=SC1091
 source "$RES/bootstrap.sh"

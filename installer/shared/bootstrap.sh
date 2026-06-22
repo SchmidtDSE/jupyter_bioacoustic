@@ -40,10 +40,17 @@ ensure_env() {
   [ -f "$ENV_DIR/pixi.toml" ] || cp "$PAYLOAD/pixi.toml" "$ENV_DIR/pixi.toml"
   [ -f "$ENV_DIR/pixi.lock" ] || cp "$PAYLOAD/pixi.lock" "$ENV_DIR/pixi.lock" 2>/dev/null || true
   if [ ! -d "$ENV_DIR/.pixi" ]; then
-    notify "Setting up JupyterBioacoustic (first run, this can take a minute)…"
     log "pixi install (first run)"
-    "$PIXI" install --manifest-path "$ENV_DIR/pixi.toml" >>"$LOG" 2>&1 \
-      || { notify "Setup failed — see $LOG"; log "pixi install FAILED"; exit 1; }
+    # Show a persistent "Setting up…" indicator (hook from the platform wrapper) that
+    # stays up for the whole multi-minute download; fall back to a one-shot notify.
+    command -v _setup_start >/dev/null 2>&1 && _setup_start \
+      || notify "Setting up JupyterBioacoustic (first run, a few minutes)…"
+    if "$PIXI" install --manifest-path "$ENV_DIR/pixi.toml" >>"$LOG" 2>&1; then
+      command -v _setup_done >/dev/null 2>&1 && _setup_done
+    else
+      command -v _setup_done >/dev/null 2>&1 && _setup_done
+      notify "Setup failed — see $LOG"; log "pixi install FAILED"; exit 1
+    fi
   fi
 }
 
