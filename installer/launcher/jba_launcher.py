@@ -92,6 +92,26 @@ class Launcher:
                     icon._status_item.button().setImage_(icon._icon_image)
             except Exception:
                 pass
+            self._hook_terminate()
+
+    def _hook_terminate(self) -> None:
+        # The app shows in the Dock; Dock → Quit / Cmd-Q terminate via Cocoa, which
+        # bypasses our menu Quit, so hook NSApplicationWillTerminate to stop jupyter.
+        try:
+            from Foundation import NSObject, NSNotificationCenter
+            import AppKit
+            launcher = self
+
+            class _Terminator(NSObject):
+                def onTerminate_(self, _note):
+                    launcher._stop()
+
+            self._terminator = _Terminator.alloc().init()
+            NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                self._terminator, b"onTerminate:",
+                AppKit.NSApplicationWillTerminateNotification, None)
+        except Exception:
+            pass
 
     def _menu(self, pystray):
         return pystray.Menu(
