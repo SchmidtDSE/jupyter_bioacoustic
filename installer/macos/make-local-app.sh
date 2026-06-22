@@ -21,7 +21,9 @@ rm -rf "$DEST"; mkdir -p "$(dirname "$DEST")"
 cp -R "$INSTALLER/macos/app/JupyterBioacoustic.app" "$DEST"
 RES="$DEST/Contents/Resources"; mkdir -p "$RES/payload"
 
-cp "$INSTALLER/shared/bootstrap.sh" "$RES/bootstrap.sh"
+cp "$INSTALLER/shared/bootstrap.sh"   "$RES/bootstrap.sh"
+cp "$INSTALLER/launcher/jba_launcher.py" "$RES/jba_launcher.py"   # the tray app
+cp "$INSTALLER/icon/build/ico_64.png" "$RES/tray.png" 2>/dev/null || true  # tray icon (else drawn)
 cp "$INSTALLER/manifest/pixi.toml"  "$RES/payload/pixi.toml"
 cp "$INSTALLER/manifest/pixi.lock"  "$RES/payload/pixi.lock" 2>/dev/null || true
 cp "$(command -v pixi)"             "$RES/payload/pixi"
