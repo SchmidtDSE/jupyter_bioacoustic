@@ -76,8 +76,20 @@ class Launcher:
         self._icon = pystray.Icon(
             "jupyter-bioacoustic", _make_icon(), "Jupyter Bioacoustic", menu=self._menu(pystray)
         )
-        self._icon.run()          # blocks on the menu-bar / tray loop (main thread)
-        self._stop()              # cleanup if the loop ever returns
+        self._icon.run(setup=self._on_ready)   # blocks on the menu-bar / tray loop (main thread)
+        self._stop()                           # cleanup if the loop ever returns
+
+    def _on_ready(self, icon) -> None:
+        icon.visible = True
+        # macOS: mark the status-bar image as a template so the OS renders it
+        # black/white to match its own menu-bar icons (battery, wifi, …).
+        if sys.platform == "darwin":
+            try:
+                if icon._icon_image is not None:
+                    icon._icon_image.setTemplate_(True)
+                    icon._status_item.button().setImage_(icon._icon_image)
+            except Exception:
+                pass
 
     def _menu(self, pystray):
         return pystray.Menu(
@@ -259,16 +271,42 @@ def _pick_folder() -> str:
     return out.stdout.strip()
 
 
+def _is_dark_menubar() -> bool:
+    """Best-effort: is the menu bar / taskbar dark (→ render the icon white)?"""
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"],
+                                 capture_output=True, text=True)
+            return "Dark" in out.stdout
+        if sys.platform.startswith("win"):
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+            return winreg.QueryValueEx(key, "SystemUsesLightTheme")[0] == 0
+    except Exception:
+        pass
+    return False
+
+
 def _make_icon():
-    """Tray image: the bundled PNG if given (JBA_ICON), else a drawn oscilloscope mark."""
+    """Tray image: the bundled black PNG (JBA_ICON) or a drawn fallback, inverted to
+    white on a dark menu bar / taskbar so the black mark stays visible."""
     from PIL import Image, ImageDraw
     if ICON_PNG and os.path.exists(ICON_PNG):
-        return Image.open(ICON_PNG)
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    blue = (137, 180, 250, 255)   # brand #89b4fa
-    d.ellipse((3, 3, 60, 60), outline=blue, width=4)
-    d.line([(10, 32), (20, 14), (28, 50), (38, 10), (46, 52), (54, 32)], fill=blue, width=3)
+        img = Image.open(ICON_PNG).convert("RGBA")
+    else:
+        img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.ellipse((3, 3, 60, 60), outline=(0, 0, 0, 255), width=3)
+        d.line([(10, 32), (20, 14), (28, 50), (38, 10), (46, 52), (54, 32)],
+               fill=(0, 0, 0, 255), width=4)
+    # macOS uses a template image (set in Launcher._on_ready) so the OS picks
+    # black/white itself; elsewhere there's no template, so invert on a dark bar.
+    if sys.platform != "darwin" and _is_dark_menubar():
+        alpha = img.split()[3]
+        white = Image.new("L", img.size, 255)
+        img = Image.merge("RGBA", (white, white, white, alpha))
     return img
 
 
