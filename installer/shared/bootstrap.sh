@@ -67,124 +67,19 @@ maybe_update() {
   fi
 }
 
-CONFIG="$APP_SUPPORT/config.json"
-SERVERFILE="$APP_SUPPORT/server.json"   # tracks the running app server (port/token/pid)
-
-# Write a default config on first run.
-#   root_dir                  folder the browser opens in + its ceiling ("~" = home)
-#   single_instance           re-clicking the app reuses the running server (new tab)
-#   shutdown_on_idle_minutes  auto-stop the server after N idle minutes (0 = never)
-# Within root_dir JupyterLab restores the last-used folder automatically on relaunch.
-_ensure_config() {
-  [ -f "$CONFIG" ] && return 0
-  mkdir -p "$APP_SUPPORT"
-  cat > "$CONFIG" <<'JSON'
-{
-  "root_dir": "~",
-  "single_instance": true,
-  "shutdown_on_idle_minutes": 30
-}
-JSON
-}
-
-# Read root_dir from config.json (default ~), expanding a leading ~.
-_root_dir() {
-  local root=""
-  _ensure_config
-  root="$(sed -n 's/.*"root_dir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -1)"
-  [ -z "$root" ] && root="~"
-  case "$root" in
-    "~")   root="$HOME" ;;
-    "~/"*) root="$HOME/${root#\~/}" ;;
-  esac
-  printf '%s' "$root"
-}
-
-# Read a scalar (bool/number/quoted) config value; falls back to $2.
-_config_get() {
-  local key="$1" def="$2" val
-  _ensure_config
-  val="$(sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$CONFIG" | head -1 | tr -d '[:space:]')"
-  [ -n "$val" ] && printf '%s' "$val" || printf '%s' "$def"
-}
-
-# First free TCP port from 8888 (matches the jba-lab numbering the user expects).
-_free_port() {
-  local p
-  for p in $(seq 8888 8999); do
-    (echo >"/dev/tcp/127.0.0.1/$p") 2>/dev/null || { printf '%s' "$p"; return; }
-  done
-  printf '8888'
-}
-
-_sf_num() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p" "$SERVERFILE"; }
-
-# Is the recorded app server still alive (pid running AND port accepting)?
-_server_alive() {
-  [ -f "$SERVERFILE" ] || return 1
-  local pid port
-  pid="$(_sf_num pid)"; port="$(_sf_num port)"
-  [ -n "$pid" ] && [ -n "$port" ] || return 1
-  kill -0 "$pid" 2>/dev/null || return 1
-  (echo >"/dev/tcp/127.0.0.1/$port") 2>/dev/null
-}
-
-_server_url() {
-  local port token
-  port="$(_sf_num port)"
-  token="$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SERVERFILE")"
-  printf 'http://localhost:%s/lab?token=%s' "$port" "$token"
-}
-
-# Launch (or reuse) the JupyterLab server. exec's the env's python directly so the
-# app process *is* jupyter — quitting the app (Cmd-Q / Dock → Quit) shuts it down,
-# and `single_instance` reuse means re-clicking opens a new tab, not a new server.
+# All runtime lifecycle — config, server start/stop, single-instance reuse, the
+# tray icon, Change-Folder, Quit, idle-shutdown, and Jupyter-dir isolation — lives
+# in the cross-platform Python launcher (installer/launcher/jba_launcher.py). The
+# shell only ensures the env exists, then hands off. The platform wrapper exports
+# JBA_LAUNCHER (path to jba_launcher.py) and optionally JBA_ICON (tray PNG).
 run_lab() {
-  local root single port token idle bin idle_arg
-  root="$(_root_dir)"; mkdir -p "$root" 2>/dev/null || root="$HOME"
-  single="$(_config_get single_instance true)"
-
-  # Singleton: if our server is already up, open a new tab to it and exit.
-  if [ "$single" = "true" ] && _server_alive; then
-    log "reuse running server on port $(_sf_num port)"
-    command -v _open_browser >/dev/null && _open_browser "$(_server_url)" || true
-    exit 0
-  fi
-
-  bin="$ENV_DIR/.pixi/envs/default/bin"
+  local bin="$ENV_DIR/.pixi/envs/default/bin"
   [ -x "$bin/python" ] || bin="$(dirname "$(ls "$ENV_DIR"/.pixi/envs/*/bin/python 2>/dev/null | head -1)")"
-
-  port="$(_free_port)"
-  token="$("$bin/python" -c 'import secrets;print(secrets.token_hex(16))' 2>/dev/null || echo "${RANDOM}${RANDOM}${RANDOM}")"
-  # Record BEFORE exec — exec keeps this PID, so "pid" == the running jupyter's PID.
-  printf '{ "port": %s, "token": "%s", "pid": %s }\n' "$port" "$token" "$$" > "$SERVERFILE"
-
-  idle="$(_config_get shutdown_on_idle_minutes 30)"
-  idle_arg=""
-  case "$idle" in ''|0|*[!0-9]*) ;; *) idle_arg="--ServerApp.shutdown_no_activity_timeout=$((idle*60))" ;; esac
-
-  # Isolate the app's Jupyter from the user-global dirs (~/Library/Jupyter, etc.).
-  # Otherwise a dev `develop.py` symlink in ~/Library/Jupyter/labextensions shadows
-  # the app's own labextension (wrong/stale bundle → 404 launcher tile). The app's
-  # own env share dir is always on the search path, so its extension is still found;
-  # JUPYTER_PREFER_ENV_PATH makes the env win over anything else.
-  local jdir="$APP_SUPPORT/jupyter"
-  mkdir -p "$jdir/config" "$jdir/data" "$jdir/runtime"
-
-  log "launch jupyter lab (root=$root port=$port idle=${idle}m, isolated jupyter dirs)"
-  # exec the env python directly (not `pixi run`) so SIGTERM on Quit reaches jupyter.
-  exec env \
-    PATH="$bin:$PATH" \
-    JUPYTER_TOKEN="$token" \
-    JUPYTER_CONFIG_DIR="$jdir/config" \
-    JUPYTER_DATA_DIR="$jdir/data" \
-    JUPYTER_RUNTIME_DIR="$jdir/runtime" \
-    JUPYTER_PREFER_ENV_PATH=1 \
-    "$bin/python" -m jupyter lab \
-      --ServerApp.root_dir="$root" \
-      --ServerApp.iopub_data_rate_limit=1e10 \
-      --ServerApp.port="$port" --ServerApp.port_retries=0 \
-      ${idle_arg:+$idle_arg}
+  log "hand off to jba_launcher (tray app)"
+  # exec so the launcher (and the jupyter child it manages) is the app's process.
+  exec env PATH="$bin:$PATH" \
+    JBA_APP_SUPPORT="$APP_SUPPORT" JBA_ENV_BIN="$bin" JBA_ICON="${JBA_ICON:-}" \
+    "$bin/python" "${JBA_LAUNCHER:?JBA_LAUNCHER not set}"
 }
 
 bootstrap_and_launch() {
