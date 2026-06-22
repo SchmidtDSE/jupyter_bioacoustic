@@ -26,7 +26,7 @@ cp "$INSTALLER/launcher/jba_launcher.py" "$RES/jba_launcher.py"   # the tray app
 cp "$INSTALLER/icon/build/tray.png" "$RES/tray.png" 2>/dev/null || true  # menu-bar icon (else drawn)
 cp "$INSTALLER/manifest/pixi.toml"  "$RES/payload/pixi.toml"
 cp "$INSTALLER/manifest/pixi.lock"  "$RES/payload/pixi.lock" 2>/dev/null || true
-cp "$(command -v pixi)"             "$RES/payload/pixi"
+cp "${PIXI_BIN:-$(command -v pixi)}" "$RES/payload/pixi"   # PIXI_BIN lets make-dist bundle a specific arch
 ( cd "$RES/payload" && shasum -a 256 pixi > pixi.sha256 )
 
 if [ -f "$INSTALLER/icon/build/AppIcon.icns" ]; then
