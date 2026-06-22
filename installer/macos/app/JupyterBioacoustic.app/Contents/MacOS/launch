@@ -11,14 +11,17 @@ export PAYLOAD="$RES/payload"
 
 mkdir -p "$APP_SUPPORT"
 
+# The cross-platform tray launcher + its icon (run by bootstrap.sh → run_lab).
+export JBA_LAUNCHER="$RES/jba_launcher.py"
+export JBA_ICON="$RES/tray.png"
+
 # Native helpers used by bootstrap.sh (optional hooks it probes for).
 _notify_impl() { osascript -e "display notification \"$1\" with title \"Jupyter Bioacoustic\"" >/dev/null 2>&1 || true; }
 _prompt_update() {
   osascript -e 'button returned of (display dialog "An update for Jupyter Bioacoustic is available. Update now?" buttons {"Later","Update"} default button "Update" with title "Jupyter Bioacoustic")' 2>/dev/null \
     | grep -q "Update"
 }
-_open_browser() { open "$1" >/dev/null 2>&1 || true; }   # reuse → new tab to the running server
-export -f _notify_impl _prompt_update _open_browser
+export -f _notify_impl _prompt_update
 
 # shellcheck disable=SC1091
 source "$RES/bootstrap.sh"
