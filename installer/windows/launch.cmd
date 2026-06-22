@@ -37,23 +37,12 @@ if %AGE% GEQ 86400 (
   )
 )
 
-rem --- config.json (default %USERPROFILE%); JupyterLab restores last folder within root ---
-rem NOTE: Windows singleton-reuse + quit-kills-server are still TODO (see installer_status.md);
-rem so far Windows gets root_dir + idle-shutdown. macOS has the full lifecycle.
-set "CONFIG=%APP_SUPPORT%\config.json"
-if not exist "%CONFIG%" (
-  >"%CONFIG%" echo {
-  >>"%CONFIG%" echo   "root_dir": "~",
-  >>"%CONFIG%" echo   "single_instance": true,
-  >>"%CONFIG%" echo   "shutdown_on_idle_minutes": 30
-  >>"%CONFIG%" echo }
-)
-for /f "usebackq delims=" %%r in (`powershell -NoProfile -Command "$c=Get-Content -Raw '%CONFIG%' ^| ConvertFrom-Json; $r=$c.root_dir; if(-not $r -or $r -eq '~'){$env:USERPROFILE}elseif($r -match '^~[/\\]'){Join-Path $env:USERPROFILE $r.Substring(2)}else{$r}"`) do set "ROOT=%%r"
-if not exist "%ROOT%" mkdir "%ROOT%" 2>nul
-
-rem Idle auto-shutdown (minutes -> seconds); empty if 0/unset.
-set "IDLE_ARG="
-for /f "usebackq delims=" %%m in (`powershell -NoProfile -Command "$c=Get-Content -Raw '%CONFIG%' ^| ConvertFrom-Json; $m=[int]($c.shutdown_on_idle_minutes); if($m -gt 0){\"--ServerApp.shutdown_no_activity_timeout=$($m*60)\"}"`) do set "IDLE_ARG=%%m"
-
-rem Pin root_dir + replicate jba lab's IOPub limit (base64 spectrograms).
-"%PIXI%" run --manifest-path "%ENV_DIR%\pixi.toml" python -m jupyter lab --ServerApp.root_dir="%ROOT%" --ServerApp.iopub_data_rate_limit=1e10 %IDLE_ARG%
+rem --- hand off to the cross-platform tray launcher (config/root/server/tray/quit
+rem      all live in jba_launcher.py). pythonw.exe = no console window; `start`
+rem      detaches so this cmd window closes and only the system-tray icon remains.
+rem      NOTE: not yet tested on Windows — macOS is the validated path.
+set "ENVROOT=%ENV_DIR%\.pixi\envs\default"
+set "JBA_APP_SUPPORT=%APP_SUPPORT%"
+set "JBA_ENV_BIN=%ENVROOT%"
+set "JBA_ICON=%~dp0tray.png"
+start "" "%ENVROOT%\pythonw.exe" "%~dp0jba_launcher.py"
