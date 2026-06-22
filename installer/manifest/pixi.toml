@@ -25,6 +25,10 @@ ffmpeg = "*"
 
 [pypi-dependencies]
 jupyter-bioacoustic = ">=0.9,<1.0"
+# Desktop tray launcher (menu-bar / system-tray icon → Open / Change Folder / Quit).
+# pystray pulls the OS backend (pyobjc on macOS, etc.); pillow draws the tray icon.
+pystray = "*"
+pillow = "*"
 
 [tasks]
 # `pixi run lab` == `jba lab` (sets the IOPub data-rate limit for base64 spectrograms).
