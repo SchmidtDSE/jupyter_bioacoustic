@@ -4,6 +4,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 32 32" width="256" height="256">
   <g fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
     <path d="M2 12 C2 12 4 6 6 6 C8 6 8 18 10 18 C12 18 12 3 14 3 C16 3 16 21 18 21 C20 21 22 12 22 12" stroke-width="2.1"/>
-    <circle cx="12" cy="12" r="11" stroke-width="1.5"/>
+    <circle cx="12" cy="12" r="11" stroke-width="2.2"/>
   </g>
 </svg>
