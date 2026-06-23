@@ -169,31 +169,33 @@ class Launcher:
     def _check_updates(self, *_args) -> None:
         import threading
         if self._updating:
-            _notify("An update is already in progress.")
+            _alert("An update is already in progress.")
             return
         threading.Thread(target=self._do_update_check, daemon=True).start()
 
     def _do_update_check(self) -> None:
         # Off the UI thread: probe with --dry-run, prompt, then stop → update → start so
-        # the new version is loaded (and no files are in use while updating).
+        # the new version is loaded (and no files are in use while updating). Outcomes use
+        # _alert (a modal dialog) so the user always sees the result.
         self._updating = True
         try:
             pixi, manifest = _pixi_bin(), APP_SUPPORT / "env" / "pixi.toml"
             if not (pixi and manifest.exists()):
-                _notify("Update check isn't available on this install.")
+                _alert("Update check isn't available on this install.")
                 return
             _notify("Checking for updates…")
             available = _update_available(pixi, manifest)
             if available is None:
-                _notify("Could not check for updates — check your connection.")
+                _alert("Could not check for updates — please check your internet connection.")
             elif not available:
-                _notify("Jupyter Bioacoustic is up to date.")
+                _alert("You're up to date — you have the latest version of Jupyter Bioacoustic.")
             elif _confirm_update():
                 _notify("Updating — the app will reopen when it's done…")
                 self._stop()
                 ok = _apply_update(pixi, manifest)
                 self._start()
-                _notify("Updated to the latest version." if ok else "Update failed — see the log.")
+                _alert("Updated to the latest version." if ok
+                       else "Update failed — see the log for details.")
         finally:
             self._updating = False
 
@@ -506,7 +508,7 @@ def _apply_update(pixi: Path, manifest: Path) -> bool:
 
 
 def _notify(msg: str) -> None:
-    """Best-effort native notification / message box."""
+    """Soft, non-blocking progress hint (a banner; may be suppressed by Focus/DND)."""
     title = "Jupyter Bioacoustic"
     try:
         if sys.platform == "darwin":
@@ -514,11 +516,32 @@ def _notify(msg: str) -> None:
                             f'display notification "{msg}" with title "{title}"'],
                            capture_output=True)
         elif sys.platform.startswith("win"):
+            # No silent toast without extra deps; just fall through to the alert path.
+            pass
+        else:
+            subprocess.run(["notify-send", title, msg], capture_output=True)
+    except Exception:
+        pass
+
+
+def _alert(msg: str) -> None:
+    """Blocking, always-visible message with an OK button — used for outcomes the user
+    must see (notifications can be silently suppressed)."""
+    title = "Jupyter Bioacoustic"
+    try:
+        if sys.platform == "darwin":
+            asmsg = msg.replace('"', '\\"')
+            subprocess.run(["osascript", "-e",
+                            f'display dialog "{asmsg}" with title "{title}" '
+                            'buttons {"OK"} default button "OK"'], capture_output=True)
+        elif sys.platform.startswith("win"):
             ps = ("Add-Type -AssemblyName System.Windows.Forms;"
                   f"[System.Windows.Forms.MessageBox]::Show('{msg}','{title}')")
             subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True)
         else:
-            subprocess.run(["notify-send", title, msg], capture_output=True)
+            if subprocess.run(["zenity", "--info", "--title", title, "--text", msg],
+                              capture_output=True).returncode != 0:
+                subprocess.run(["notify-send", title, msg], capture_output=True)
     except Exception:
         pass
 
