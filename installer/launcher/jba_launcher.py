@@ -82,6 +82,7 @@ class Launcher:
         self._cfg = cfg
         self._proc: Optional[subprocess.Popen] = None
         self._icon = None
+        self._updating = False
 
     def run(self) -> None:
         import pystray
@@ -129,6 +130,7 @@ class Launcher:
         return pystray.Menu(
             pystray.MenuItem(lambda _: self._status(), None, enabled=False),
             pystray.MenuItem("Open in Browser", self._open, default=True),
+            pystray.MenuItem("Check for Updates…", self._check_updates),
             pystray.MenuItem("Change Start Folder…", self._change_folder),
             pystray.MenuItem("Shut Down When Idle", self._idle_menu(pystray)),
             pystray.MenuItem(
@@ -163,6 +165,37 @@ class Launcher:
             webbrowser.open(_url(info))
         else:                      # server died (idle/crash) — restart on demand
             self._start()
+
+    def _check_updates(self, *_args) -> None:
+        import threading
+        if self._updating:
+            _notify("An update is already in progress.")
+            return
+        threading.Thread(target=self._do_update_check, daemon=True).start()
+
+    def _do_update_check(self) -> None:
+        # Off the UI thread: probe with --dry-run, prompt, then stop → update → start so
+        # the new version is loaded (and no files are in use while updating).
+        self._updating = True
+        try:
+            pixi, manifest = _pixi_bin(), APP_SUPPORT / "env" / "pixi.toml"
+            if not (pixi and manifest.exists()):
+                _notify("Update check isn't available on this install.")
+                return
+            _notify("Checking for updates…")
+            available = _update_available(pixi, manifest)
+            if available is None:
+                _notify("Could not check for updates — check your connection.")
+            elif not available:
+                _notify("Jupyter Bioacoustic is up to date.")
+            elif _confirm_update():
+                _notify("Updating — the app will reopen when it's done…")
+                self._stop()
+                ok = _apply_update(pixi, manifest)
+                self._start()
+                _notify("Updated to the latest version." if ok else "Update failed — see the log.")
+        finally:
+            self._updating = False
 
     def _change_folder(self, *_args) -> None:
         folder = _pick_folder()
@@ -436,6 +469,81 @@ def _pick_folder() -> str:
     out = subprocess.run(["zenity", "--file-selection", "--directory"],
                          capture_output=True, text=True)
     return out.stdout.strip()
+
+
+def _pixi_bin() -> Optional[Path]:
+    """The bundled pixi binary in the app-support dir, if present."""
+    p = APP_SUPPORT / ("pixi.exe" if sys.platform.startswith("win") else "pixi")
+    return p if p.exists() else None
+
+
+def _update_available(pixi: Path, manifest: Path) -> Optional[bool]:
+    """True/False if an update is pending within the version constraint; None on error.
+
+    Mirrors the bootstrap probe: `pixi update --dry-run` names the package iff it would
+    change it.
+    """
+    try:
+        out = subprocess.run([str(pixi), "update", "jupyter-bioacoustic",
+                              "--manifest-path", str(manifest), "--dry-run"],
+                             capture_output=True, text=True, timeout=180)
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return "jupyter-bioacoustic" in (out.stdout + out.stderr).lower()
+
+
+def _apply_update(pixi: Path, manifest: Path) -> bool:
+    """Run `pixi update jupyter-bioacoustic` within its constraint; True on success."""
+    try:
+        out = subprocess.run([str(pixi), "update", "jupyter-bioacoustic",
+                              "--manifest-path", str(manifest)],
+                             capture_output=True, text=True, timeout=1800)
+        return out.returncode == 0
+    except Exception:
+        return False
+
+
+def _notify(msg: str) -> None:
+    """Best-effort native notification / message box."""
+    title = "Jupyter Bioacoustic"
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["osascript", "-e",
+                            f'display notification "{msg}" with title "{title}"'],
+                           capture_output=True)
+        elif sys.platform.startswith("win"):
+            ps = ("Add-Type -AssemblyName System.Windows.Forms;"
+                  f"[System.Windows.Forms.MessageBox]::Show('{msg}','{title}')")
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True)
+        else:
+            subprocess.run(["notify-send", title, msg], capture_output=True)
+    except Exception:
+        pass
+
+
+def _confirm_update() -> bool:
+    """Yes/No update prompt; True only on an explicit confirm."""
+    title = "Jupyter Bioacoustic"
+    msg = "An update is available. Update now? The app will reopen."
+    try:
+        if sys.platform == "darwin":
+            script = (f'button returned of (display dialog "{msg}" with title "{title}" '
+                      'buttons {"Later", "Update"} default button "Update")')
+            out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+            return out.returncode == 0 and "Update" in out.stdout
+        if sys.platform.startswith("win"):
+            ps = ("Add-Type -AssemblyName System.Windows.Forms;"
+                  f"[System.Windows.Forms.MessageBox]::Show('{msg}','{title}','YesNo','Question')")
+            out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                                 capture_output=True, text=True)
+            return out.stdout.strip() == "Yes"
+        out = subprocess.run(["zenity", "--question", "--title", title, "--text", msg],
+                             capture_output=True)
+        return out.returncode == 0
+    except Exception:
+        return False
 
 
 def _confirm_uninstall() -> bool:
