@@ -25,6 +25,7 @@ import json
 import os
 import secrets
 import shlex
+import signal
 import socket
 import subprocess
 import sys
@@ -150,6 +151,7 @@ class Launcher:
     def _open_when_ready(self, port) -> None:
         if port and _wait_ready(int(port)):
             webbrowser.open(_url(_server_info()))
+        _dismiss_setup_splash()   # first-run splash stays up until the app actually opens
 
     def _open(self, *_args) -> None:
         info = _server_info()
@@ -227,6 +229,17 @@ def _load_config() -> dict:
     except Exception:
         pass
     return cfg
+
+
+def _dismiss_setup_splash() -> None:
+    """Kill the first-run install splash (PID handed off by the bootstrap), if any."""
+    pid = os.environ.get("JBA_SETUP_PID")
+    if not pid:
+        return
+    try:
+        os.kill(int(pid), signal.SIGTERM)
+    except (OSError, ValueError):
+        pass
 
 
 def _idle_minutes(value) -> int:
