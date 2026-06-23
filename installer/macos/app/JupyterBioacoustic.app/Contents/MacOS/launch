@@ -23,10 +23,17 @@ _prompt_update() {
 }
 # First-run setup indicator: a dialog that stays up during `pixi install` and is
 # dismissed automatically when the install finishes (_setup_done kills it).
+# Prefer the pretty JXA splash card (app icon + "Installing…" text); fall back to a
+# plain dialog if splash.js is missing.
 _setup_start() {
-  osascript -e 'display dialog "Setting up Jupyter Bioacoustic — first run.
+  local icon="$RES/AppIcon.icns"; [ -f "$icon" ] || icon="$JBA_ICON"
+  if [ -f "$RES/splash.js" ]; then
+    JBA_SPLASH_ICON="$icon" osascript -l JavaScript "$RES/splash.js" >/dev/null 2>&1 &
+  else
+    osascript -e 'display dialog "Setting up Jupyter Bioacoustic — first run.
 
 Downloading the app (a few minutes). This happens only once; the app opens automatically when it is ready." with title "Jupyter Bioacoustic" buttons {"OK"} default button "OK" giving up after 1800' >/dev/null 2>&1 &
+  fi
   _SETUP_PID=$!
 }
 _setup_done() { [ -n "${_SETUP_PID:-}" ] && kill "$_SETUP_PID" 2>/dev/null; _SETUP_PID=""; return 0; }
