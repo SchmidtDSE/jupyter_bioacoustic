@@ -148,6 +148,8 @@ downloaded environment.
 # macOS
 rm -rf ~/Library/Application\ Support/JupyterBioacoustic
 rm -rf /Applications/JupyterBioacoustic.app ~/Applications/JupyterBioacoustic.app
+rm -f  ~/Applications/"Set JupyterBioacoustic Folder.command" \
+       /Applications/"Set JupyterBioacoustic Folder.command"
 ```
 
 ```powershell
