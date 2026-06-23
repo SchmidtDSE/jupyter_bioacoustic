@@ -485,6 +485,10 @@ def _update_available(pixi: Path, manifest: Path) -> Optional[bool]:
     Mirrors the bootstrap probe: `pixi update --dry-run` names the package iff it would
     change it.
     """
+    # Test hook: `touch "$JBA_APP_SUPPORT/.jba-force-update"` to walk the whole update
+    # workflow once with no real release (the apply step is simulated; flag consumed there).
+    if (APP_SUPPORT / ".jba-force-update").exists():
+        return True
     try:
         out = subprocess.run([str(pixi), "update", "jupyter-bioacoustic",
                               "--manifest-path", str(manifest), "--dry-run"],
@@ -498,6 +502,13 @@ def _update_available(pixi: Path, manifest: Path) -> Optional[bool]:
 
 def _apply_update(pixi: Path, manifest: Path) -> bool:
     """Run `pixi update jupyter-bioacoustic` within its constraint; True on success."""
+    # Test hook (see _update_available): simulate a successful update and consume the flag,
+    # so the confirm → "updating" → restart → "Updated" flow runs without a real release.
+    flag = APP_SUPPORT / ".jba-force-update"
+    if flag.exists():
+        flag.unlink(missing_ok=True)
+        time.sleep(2)
+        return True
     try:
         out = subprocess.run([str(pixi), "update", "jupyter-bioacoustic",
                               "--manifest-path", str(manifest)],
