@@ -130,6 +130,7 @@ class Launcher:
         return pystray.Menu(
             pystray.MenuItem(lambda _: self._status(), None, enabled=False),
             pystray.MenuItem("Open in Browser", self._open, default=True),
+            pystray.MenuItem("Page blank or crashed? — Help", self._browser_help),
             pystray.MenuItem("Check for Updates…", self._check_updates),
             pystray.MenuItem("Change Start Folder…", self._change_folder),
             pystray.MenuItem("Shut Down When Idle", self._idle_menu(pystray)),
@@ -165,6 +166,13 @@ class Launcher:
             webbrowser.open(_url(info))
         else:                      # server died (idle/crash) — restart on demand
             self._start()
+
+    def _browser_help(self, *_args) -> None:
+        # The tray (and server) survive a browser-tab crash, so this is always reachable.
+        _alert("The app is still running — a blank or crashed (grey) browser tab is a "
+               "browser problem, not Jupyter Bioacoustic. Fully QUIT your browser and "
+               "reopen it, then choose \"Open in Browser\" here. This often happens right "
+               "after the browser auto-updates; if it keeps happening, try another browser.")
 
     def _check_updates(self, *_args) -> None:
         import threading
