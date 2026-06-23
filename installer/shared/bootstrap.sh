@@ -46,7 +46,8 @@ ensure_env() {
     command -v _setup_start >/dev/null 2>&1 && _setup_start \
       || notify "Setting up JupyterBioacoustic (first run, a few minutes)…"
     if "$PIXI" install --manifest-path "$ENV_DIR/pixi.toml" >>"$LOG" 2>&1; then
-      command -v _setup_done >/dev/null 2>&1 && _setup_done
+      :   # leave the splash up — the launcher dismisses it when the browser opens
+          # (passed forward as JBA_SETUP_PID in run_lab), so there's no gap.
     else
       command -v _setup_done >/dev/null 2>&1 && _setup_done
       notify "Setup failed — see $LOG"; log "pixi install FAILED"; exit 1
@@ -86,6 +87,7 @@ run_lab() {
   # exec so the launcher (and the jupyter child it manages) is the app's process.
   exec env PATH="$bin:$PATH" \
     JBA_APP_SUPPORT="$APP_SUPPORT" JBA_ENV_BIN="$bin" JBA_ICON="${JBA_ICON:-}" \
+    JBA_SETUP_PID="${_SETUP_PID:-}" \
     "$bin/python" "${JBA_LAUNCHER:?JBA_LAUNCHER not set}"
 }
 
