@@ -47,8 +47,16 @@ CONFIG: Path = APP_SUPPORT / "config.json"
 SERVERFILE: Path = APP_SUPPORT / "server.json"
 JDIR: Path = APP_SUPPORT / "jupyter"
 DEFAULT_CONFIG: dict = {"root_dir": "~", "single_instance": True, "shutdown_on_idle_minutes": False}
-# Tray "Shut Down When Idle" choices — label → config value (False = never shut down).
-IDLE_OPTIONS: list = [("Never", False), ("15 minutes", 15), ("30 minutes", 30), ("1 hour", 60)]
+# Tray "Shut Down When Idle" presets — label → config value in minutes (False = never).
+# A "Custom…" entry (handled separately) prompts for any value, e.g. 90m / 8h / 3d.
+IDLE_OPTIONS: list = [
+    ("Never", False),
+    ("1 hour", 60),
+    ("8 hours", 480),
+    ("1 day", 1440),
+    ("3 days", 4320),
+    ("1 week", 10080),
+]
 
 
 #
@@ -122,11 +130,7 @@ class Launcher:
             pystray.MenuItem(lambda _: self._status(), None, enabled=False),
             pystray.MenuItem("Open in Browser", self._open, default=True),
             pystray.MenuItem("Change Start Folder…", self._change_folder),
-            pystray.MenuItem(
-                "Shut Down When Idle",
-                pystray.Menu(*[self._idle_item(pystray, label, value)
-                               for label, value in IDLE_OPTIONS]),
-            ),
+            pystray.MenuItem("Shut Down When Idle", self._idle_menu(pystray)),
             pystray.MenuItem(
                 "Reuse Running App",
                 self._toggle_single_instance,
@@ -170,6 +174,17 @@ class Launcher:
         self._cfg = cfg
         self._restart()            # apply the new root immediately
 
+    def _idle_menu(self, pystray):
+        """The 'Shut Down When Idle' submenu: presets + a Custom… prompt, all radio items."""
+        items = [self._idle_item(pystray, label, value) for label, value in IDLE_OPTIONS]
+        items.append(pystray.MenuItem(
+            lambda _item: self._custom_label(),
+            self._set_idle_custom,
+            checked=lambda _item: self._idle_is_custom(),
+            radio=True,
+        ))
+        return pystray.Menu(*items)
+
     def _idle_item(self, pystray, label: str, value):
         """A radio item under 'Shut Down When Idle'; checked when it's the current setting."""
         return pystray.MenuItem(
@@ -179,6 +194,21 @@ class Launcher:
                                    == _idle_minutes(value)),
             radio=True,
         )
+
+    def _idle_is_custom(self) -> bool:
+        """True when the current idle value is set but matches none of the presets."""
+        cur = _idle_minutes(self._cfg.get("shutdown_on_idle_minutes"))
+        presets = {_idle_minutes(v) for _, v in IDLE_OPTIONS}
+        return cur > 0 and cur not in presets
+
+    def _custom_label(self) -> str:
+        cur = _idle_minutes(self._cfg.get("shutdown_on_idle_minutes"))
+        return f"Custom ({_fmt_idle(cur)})…" if self._idle_is_custom() else "Custom…"
+
+    def _set_idle_custom(self, *_args) -> None:
+        minutes = _pick_idle()
+        if minutes:
+            self._set_idle(minutes)
 
     def _set_idle(self, value) -> None:
         cfg = _load_config()
@@ -248,6 +278,54 @@ def _idle_minutes(value) -> int:
         return int(value) if value else 0
     except (TypeError, ValueError):
         return 0
+
+
+def _fmt_idle(minutes: int) -> str:
+    """Render minutes compactly for a menu label: 4320 -> '3d', 480 -> '8h', 90 -> '90m'."""
+    if minutes and minutes % 1440 == 0:
+        return f"{minutes // 1440}d"
+    if minutes and minutes % 60 == 0:
+        return f"{minutes // 60}h"
+    return f"{minutes}m"
+
+
+def _parse_idle(text: str) -> Optional[int]:
+    """Parse '3d' / '8h' / '90m' / '90' (bare = minutes) into minutes (>0), else None."""
+    text = (text or "").strip().lower()
+    if not text:
+        return None
+    mult = {"d": 1440, "h": 60, "m": 1}.get(text[-1])
+    num = text[:-1] if mult else text
+    try:
+        minutes = int(round(float(num) * (mult or 1)))
+    except ValueError:
+        return None
+    return minutes if minutes > 0 else None
+
+
+def _pick_idle() -> Optional[int]:
+    """Native text prompt for a custom idle timeout → minutes (or None on cancel/invalid)."""
+    prompt = ("Shut down JupyterLab after how long with no activity? Enter a number with a "
+              "unit - m (minutes), h (hours), or d (days). Examples: 90m, 8h, 3d.")
+    title = "Shut Down When Idle"
+    try:
+        if sys.platform == "darwin":
+            asmsg = prompt.replace('"', '\\"')
+            script = (f'text returned of (display dialog "{asmsg}" with title "{title}" '
+                      'default answer "3d")')
+            out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+            return _parse_idle(out.stdout) if out.returncode == 0 else None
+        if sys.platform.startswith("win"):
+            ps = ("Add-Type -AssemblyName Microsoft.VisualBasic;"
+                  f"[Microsoft.VisualBasic.Interaction]::InputBox('{prompt}','{title}','3d')")
+            out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                                 capture_output=True, text=True)
+            return _parse_idle(out.stdout)
+        out = subprocess.run(["zenity", "--entry", "--title", title, "--text", prompt,
+                              "--entry-text", "3d"], capture_output=True, text=True)
+        return _parse_idle(out.stdout) if out.returncode == 0 else None
+    except Exception:
+        return None
 
 
 def _expand(root: str) -> str:
