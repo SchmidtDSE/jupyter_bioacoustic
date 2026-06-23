@@ -397,6 +397,7 @@ def _spawn_cleanup() -> None:
     bundle = _app_bundle()
     if bundle is not None:
         targets.append(bundle)                    # macOS .app
+        targets.append(bundle.parent / "Set JupyterBioacoustic Folder.command")  # dev folder-picker
     if sys.platform.startswith("win"):
         shortcut = (Path(os.environ.get("APPDATA", "")) /
                     "Microsoft/Windows/Start Menu/Programs/Jupyter Bioacoustic.lnk")
