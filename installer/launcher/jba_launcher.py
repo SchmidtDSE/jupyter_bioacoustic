@@ -24,6 +24,7 @@ import atexit
 import json
 import os
 import secrets
+import shlex
 import socket
 import subprocess
 import sys
@@ -44,7 +45,9 @@ ICON_PNG: str = os.environ.get("JBA_ICON", "")
 CONFIG: Path = APP_SUPPORT / "config.json"
 SERVERFILE: Path = APP_SUPPORT / "server.json"
 JDIR: Path = APP_SUPPORT / "jupyter"
-DEFAULT_CONFIG: dict = {"root_dir": "~", "single_instance": True, "shutdown_on_idle_minutes": 30}
+DEFAULT_CONFIG: dict = {"root_dir": "~", "single_instance": True, "shutdown_on_idle_minutes": False}
+# Tray "Shut Down When Idle" choices — label → config value (False = never shut down).
+IDLE_OPTIONS: list = [("Never", False), ("15 minutes", 15), ("30 minutes", 30), ("1 hour", 60)]
 
 
 #
@@ -118,7 +121,18 @@ class Launcher:
             pystray.MenuItem(lambda _: self._status(), None, enabled=False),
             pystray.MenuItem("Open in Browser", self._open, default=True),
             pystray.MenuItem("Change Start Folder…", self._change_folder),
+            pystray.MenuItem(
+                "Shut Down When Idle",
+                pystray.Menu(*[self._idle_item(pystray, label, value)
+                               for label, value in IDLE_OPTIONS]),
+            ),
+            pystray.MenuItem(
+                "Reuse Running App",
+                self._toggle_single_instance,
+                checked=lambda _item: bool(self._cfg.get("single_instance", True)),
+            ),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Uninstall…", self._uninstall),
             pystray.MenuItem("Quit", self._quit),
         )
 
@@ -154,6 +168,41 @@ class Launcher:
         self._cfg = cfg
         self._restart()            # apply the new root immediately
 
+    def _idle_item(self, pystray, label: str, value):
+        """A radio item under 'Shut Down When Idle'; checked when it's the current setting."""
+        return pystray.MenuItem(
+            label,
+            lambda *_: self._set_idle(value),
+            checked=lambda _item: (_idle_minutes(self._cfg.get("shutdown_on_idle_minutes"))
+                                   == _idle_minutes(value)),
+            radio=True,
+        )
+
+    def _set_idle(self, value) -> None:
+        cfg = _load_config()
+        cfg["shutdown_on_idle_minutes"] = value
+        CONFIG.write_text(json.dumps(cfg, indent=2))
+        self._cfg = cfg
+        self._restart()            # the timeout is a server launch arg, so restart to apply
+
+    def _toggle_single_instance(self, *_args) -> None:
+        # Read only at launch in main(), so no restart — applies on the next launch.
+        cfg = _load_config()
+        cfg["single_instance"] = not cfg.get("single_instance", True)
+        CONFIG.write_text(json.dumps(cfg, indent=2))
+        self._cfg = cfg
+
+    def _uninstall(self, *_args) -> None:
+        # Confirm (default = Cancel), stop the server, then hand cleanup to a detached
+        # process that waits for us to exit before deleting (our interpreter lives inside
+        # the env we're removing). User data outside the app is never touched.
+        if not _confirm_uninstall():
+            return
+        self._stop()
+        _spawn_cleanup()
+        if self._icon is not None:
+            self._icon.stop()
+
     def _restart(self) -> None:
         _stop_proc(self._proc)
         self._start()
@@ -178,6 +227,14 @@ def _load_config() -> dict:
     except Exception:
         pass
     return cfg
+
+
+def _idle_minutes(value) -> int:
+    """Normalize a shutdown_on_idle_minutes config value to whole minutes (0 = never)."""
+    try:
+        return int(value) if value else 0
+    except (TypeError, ValueError):
+        return 0
 
 
 def _expand(root: str) -> str:
@@ -252,10 +309,7 @@ def _start_server(cfg: dict) -> tuple:
         "--ServerApp.iopub_data_rate_limit=1e10",   # base64 spectrograms
         f"--ServerApp.port={port}", "--ServerApp.port_retries=0",
     ]
-    try:
-        idle = int(cfg.get("shutdown_on_idle_minutes") or 0)
-    except (TypeError, ValueError):
-        idle = 0
+    idle = _idle_minutes(cfg.get("shutdown_on_idle_minutes"))
     if idle > 0:
         args.append(f"--ServerApp.shutdown_no_activity_timeout={idle * 60}")
     proc = subprocess.Popen(args, env=env)
@@ -291,6 +345,75 @@ def _pick_folder() -> str:
     out = subprocess.run(["zenity", "--file-selection", "--directory"],
                          capture_output=True, text=True)
     return out.stdout.strip()
+
+
+def _confirm_uninstall() -> bool:
+    """Native, scary, default-to-Cancel confirmation. True only on an explicit confirm."""
+    title = "Uninstall Jupyter Bioacoustic"
+    msg = (
+        "ARE YOU REALLY SURE YOU WANT TO DO THIS?\n\n"
+        "This permanently removes the Jupyter Bioacoustic application and the "
+        "environment it downloaded.\n\n"
+        "Your notebooks, data, annotations, and any files in your own folders are NOT "
+        "affected - only the app itself is removed. This cannot be undone."
+    )
+    try:
+        if sys.platform == "darwin":
+            asmsg = msg.replace('"', '\\"').replace("\n", "\\n")
+            script = (f'display dialog "{asmsg}" with title "{title}" '
+                      'buttons {"Cancel", "Delete Anyway"} default button "Cancel" '
+                      'with icon caution')
+            out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+            return out.returncode == 0 and "Delete Anyway" in out.stdout
+        if sys.platform.startswith("win"):
+            winmsg = msg.replace("\n", "`n")
+            ps = ("Add-Type -AssemblyName System.Windows.Forms;"
+                  f'[System.Windows.Forms.MessageBox]::Show("{winmsg}","{title}",'
+                  "'YesNo','Warning')")
+            out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                                 capture_output=True, text=True)
+            return out.stdout.strip() == "Yes"
+        out = subprocess.run(["zenity", "--question", "--title", title, "--text", msg],
+                             capture_output=True)
+        return out.returncode == 0
+    except Exception:
+        return False
+
+
+def _app_bundle() -> Optional[Path]:
+    """The enclosing macOS .app bundle this launcher runs from, if any."""
+    if sys.platform != "darwin":
+        return None
+    for parent in Path(__file__).resolve().parents:
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
+def _spawn_cleanup() -> None:
+    """Detached: wait for THIS process to exit, then delete the app + env (never user data)."""
+    pid = os.getpid()
+    targets = [APP_SUPPORT]                       # env, bundled pixi, config, logs, jupyter state
+    bundle = _app_bundle()
+    if bundle is not None:
+        targets.append(bundle)                    # macOS .app
+    if sys.platform.startswith("win"):
+        shortcut = (Path(os.environ.get("APPDATA", "")) /
+                    "Microsoft/Windows/Start Menu/Programs/Jupyter Bioacoustic.lnk")
+        targets.append(shortcut)
+        items = ",".join(f"'{t}'" for t in targets)
+        ps = (f"Wait-Process -Id {pid} -ErrorAction SilentlyContinue;"
+              "Start-Sleep -Milliseconds 500;"
+              f"foreach($p in @({items})){{Remove-Item -LiteralPath $p -Recurse -Force "
+              "-ErrorAction SilentlyContinue}")
+        flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
+                 | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        subprocess.Popen(["powershell", "-NoProfile", "-Command", ps],
+                         creationflags=flags, close_fds=True)
+    else:
+        rm = " ".join(shlex.quote(str(t)) for t in targets)
+        script = (f"while kill -0 {pid} 2>/dev/null; do sleep 0.3; done; rm -rf {rm}")
+        subprocess.Popen(["/bin/sh", "-c", script], start_new_session=True, close_fds=True)
 
 
 def _is_dark_menubar() -> bool:
