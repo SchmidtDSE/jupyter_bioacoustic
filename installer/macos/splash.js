@@ -21,12 +21,19 @@ ObjC.import('Cocoa');
   const scr = $.NSScreen.mainScreen.frame;
   const win = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer(
     $.NSMakeRect((scr.size.width - W) / 2, (scr.size.height - H) / 2, W, H),
-    $.NSWindowStyleMaskTitled, $.NSBackingStoreBuffered, false);
+    $.NSWindowStyleMaskTitled | $.NSWindowStyleMaskClosable,   // closable → standard red-X button
+    $.NSBackingStoreBuffered, false);
   win.setTitle('');
   win.setTitlebarAppearsTransparent(true);
   win.setTitleVisibility($.NSWindowTitleHidden);
   win.setLevel($.NSFloatingWindowLevel);
   win.setMovableByWindowBackground(true);
+
+  // Clicking the red-X closes the window AND ends this process (the install keeps
+  // running in the background; the launcher no longer needs to dismiss us).
+  $.NSNotificationCenter.defaultCenter.addObserverForNameObjectQueueUsingBlock(
+    $.NSWindowWillCloseNotification, win, $.NSOperationQueue.mainQueue,
+    function (_n) { app.terminate(null); });
 
   const cv = win.contentView;
 
