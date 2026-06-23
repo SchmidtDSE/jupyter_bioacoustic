@@ -165,6 +165,20 @@ untouched. (If you added the `jba` shell function above, delete it from your `~/
 PowerShell `$PROFILE`.)
 :::
 
+(install-troubleshooting)=
+### Troubleshooting: blank or crashed browser tab
+
+If the browser opens to a **blank or crashed (grey) page**, the app itself is fine — the menu-bar /
+system-tray icon is still running, and the problem is your browser's renderer (this commonly happens
+right after the browser **auto-updates in the background**). Fix it:
+
+1. **Fully quit your browser** (Cmd-Q on macOS — not just the window) and reopen it, then click the
+   tray icon → **Open in Browser** again. A clean relaunch loads the updated browser properly.
+2. If it persists, clear the browser's GPU cache (Chrome: quit, then remove
+   `~/Library/Application Support/Google/Chrome/*/GPUCache`), or open the app in a different browser.
+
+The tray menu's **"Page blank or crashed? — Help"** item shows these same steps.
+
 (install-requirements)=
 ## Requirements
 
