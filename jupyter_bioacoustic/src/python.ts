@@ -166,22 +166,36 @@ export function readOutputRows(path: string, ext: string): string {
   ].join('\n');
 }
 
+/**
+ * Append one row to the output file (see ``writeOutputRows``).
+ */
 export function writeOutputRow(
   path: string,
   values: Record<string, any>,
 ): string {
-  const outPath = escPy(path);
+  return writeOutputRows(path, [values]);
+}
+
+/**
+ * Append rows to the output file in ONE kernel call, so a multibox submit is saved
+ * all-or-nothing. Rows travel as JSON, so any column name or value is safe (quotes,
+ * newlines; NaN/Infinity become None). Python: ``_kernel_helpers.write_output_rows``.
+ */
+export function writeOutputRows(
+  path: string,
+  rows: Record<string, any>[],
+): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
-
-  const cols = Object.keys(values);
-  const rowDict =
-    `{\n${cols.map(c => `  '${c}': ${_pyRepr(values[c])}`).join(',\n')}\n}`;
-  const colsPy = `[${cols.map(c => `'${c}'`).join(',')}]`;
-
+  const cols: string[] = [];
+  for (const row of rows) {
+    for (const k of Object.keys(row)) if (!cols.includes(k)) cols.push(k);
+  }
+  const payload = escPy(JSON.stringify({ rows, cols }));
   return [
-    `${HELPERS} write_output_row as _write`,
-    `_row = ${rowDict}`,
-    `print(_write('${outPath}', _row, ${colsPy}, '${ext}'))`,
+    'import json as _j',
+    `${HELPERS} write_output_rows as _write_rows`,
+    `_p = _j.loads('${payload}')`,
+    `print(_write_rows('${escPy(path)}', _p['rows'], _p['cols'], '${escPy(ext)}'))`,
   ].join('\n');
 }
 
@@ -255,11 +269,4 @@ function _customVizCode(
     `_viz_entry = _BA_INSTANCE._visualizations[${vizIndex}]`,
     `print(_run_viz(_raw, _sr, _viz_entry, width=${resolutionW}${h}))`,
   ].join('\n');
-}
-
-function _pyRepr(val: any): string {
-  if (val === null || val === undefined) return 'None';
-  if (typeof val === 'boolean') return val ? 'True' : 'False';
-  if (typeof val === 'number') return String(val);
-  return `'${escPy(String(val)).replace(/\n/g, ' ')}'`;
 }
