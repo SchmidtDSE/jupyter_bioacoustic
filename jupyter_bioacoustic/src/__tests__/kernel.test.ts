@@ -6,8 +6,8 @@
 
 import { KernelBridge, acquireKernel, notebookSession } from '../kernel';
 
-/** A fake kernel whose requestExecute prints `name` to stdout. */
-function fakeKernel(name: string): any {
+/** A fake kernel whose requestExecute prints `name` to stdout (then any extra messages). */
+function fakeKernel(name: string, extra: any[] = []): any {
   return {
     name,
     requestExecute: () => {
@@ -15,6 +15,7 @@ function fakeKernel(name: string): any {
       // resolve on a later microtask, after the bridge has attached onIOPub
       future.done = Promise.resolve().then(() => {
         future.onIOPub?.({ header: { msg_type: 'stream' }, content: { name: 'stdout', text: name } });
+        for (const msg of extra) future.onIOPub?.(msg);
       });
       return future;
     },
@@ -55,6 +56,17 @@ describe('KernelBridge', () => {
     const a = fakePanel('A');
     const bridge = new KernelBridge({ kernel: fakeKernel('own'), session: a.sessionContext });
     expect(await bridge.exec('x')).toBe('own');
+  });
+
+  it('throws when Python raised after printing something', async () => {
+    const error = { header: { msg_type: 'error' }, content: { ename: 'KeyError', evalue: "'x'", traceback: ['tb'] } };
+    const bridge = new KernelBridge({ kernel: fakeKernel('partial output', [error]) });
+    await expect(bridge.exec('x')).rejects.toThrow("KeyError: 'x'");
+  });
+
+  it('keeps the result when Python only warned on stderr', async () => {
+    const warning = { header: { msg_type: 'stream' }, content: { name: 'stderr', text: 'UserWarning: ...' } };
+    expect(await new KernelBridge({ kernel: fakeKernel('ok', [warning]) }).exec('x')).toBe('ok');
   });
 
   it('throws without a kernel', async () => {
