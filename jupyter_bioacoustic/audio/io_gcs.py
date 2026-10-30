@@ -27,7 +27,6 @@ _GCS_URI_PREFIX: str = 'gs://'
 def read(src: str, dest: str | None = None, start_byte: int | None = None,
          end_byte: int | None = None, **kwargs: Any) -> bytes | str:
     """Read data from GCS blob with optional byte range."""
-    from google.cloud import storage
     bucket_name, blob_name = _parse_gcs_uri(src)
     _log.debug('GCS read: bucket=%s blob=%s byte_range=%s-%s', bucket_name,
                blob_name, start_byte, end_byte)
@@ -82,7 +81,6 @@ def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = Tr
 def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
           **kwargs: Any) -> str:
     """Write files to GCS."""
-    from google.cloud import storage
     bucket_name, prefix = _parse_gcs_uri(dest)
     client = kwargs.get('client') or _get_client(**kwargs)
     bucket = client.bucket(bucket_name)
@@ -119,13 +117,12 @@ def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
 
 def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
     """List files in GCS bucket prefix."""
-    from google.cloud import storage
     bucket_name, prefix = _parse_gcs_uri(path)
     _log.debug('GCS list_files: bucket=%s prefix=%s recursive=%s', bucket_name,
                prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
 
-    if not prefix.endswith('/'):
+    if prefix and not prefix.endswith('/'):    # '' = bucket root
         prefix += '/'
 
     list_kwargs = {'prefix': prefix}
@@ -146,14 +143,25 @@ _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 
 def _parse_gcs_uri(uri: str) -> tuple[str, str]:
-    path = uri.replace(_GCS_URI_PREFIX, '')
-    slash = path.index('/')
-    return path[:slash], path[slash + 1:]
+    """Split a GCS URI: ``gs://bucket/a/b`` -> ``('bucket', 'a/b')``; ``gs://bucket`` -> ``''``."""
+    path = uri[len(_GCS_URI_PREFIX):] if uri.startswith(_GCS_URI_PREFIX) else uri
+    bucket, _, blob = path.partition('/')
+    return bucket, blob
 
 
 def _get_client(project: str | None = None, credentials: Any | None = None,
                 **kwargs: Any) -> Any:
-    from google.cloud import storage
+    """A google-cloud-storage client (optionally for a project / with credentials).
+
+    Raises:
+        ImportError: If google-cloud-storage isn't installed.
+    """
+    try:
+        from google.cloud import storage
+    except ImportError as e:
+        raise ImportError(
+            "gs:// paths need google-cloud-storage: pip install 'jupyter-bioacoustic[gcs]'"
+        ) from e
     client_kwargs = {}
     if project:
         client_kwargs['project'] = project
