@@ -115,6 +115,15 @@ export class OutputSection extends CollapsibleSection {
     // Output index_column is free-form text (may differ from data columns)
   }
 
+  override reset(): void {
+    for (const el of [this._pathInput, this._indexColInput, this._uriInput, this._syncLabelInput]) {
+      el.value = '';
+    }
+    this._syncBtnCb.checked = false;
+    this._recursiveCb.checked = false;
+    this._secrets.reset();
+  }
+
   setData(data: Record<string, any>): void {
     if (data.path) this._pathInput.value = data.path;
     if (data.index_column) this._indexColInput.value = data.index_column;
