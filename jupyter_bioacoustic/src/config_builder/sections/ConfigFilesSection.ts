@@ -168,6 +168,17 @@ export class ConfigFilesSection extends CollapsibleSection {
     };
   }
 
+  override reset(): void {
+    this.setProjectPath('');
+    this.setConfigPath('');
+    this.setFormPath('');
+    this.setCheckedStates(true, true, true);
+    for (const ft of FILE_TYPES) {
+      this._fileLocked[ft] = false;
+      if (this._lockBtns[ft]) this._renderLockBtn(ft);
+    }
+  }
+
   setData(data: Record<string, any>): void {
     if (data.project_path) {
       this._projectPathInput.value = data.project_path;
