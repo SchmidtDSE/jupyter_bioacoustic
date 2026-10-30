@@ -83,3 +83,22 @@ describe('DataSection time columns', () => {
     expect(section.getData()).not.toHaveProperty('start_time');
   });
 });
+
+describe('AppSection display-columns drop on the empty area', () => {
+  function drop(area: HTMLElement, col: string): void {
+    const ev = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'dataTransfer', { value: { getData: () => col } });
+    area.dispatchEvent(ev);
+  }
+
+  it('adds the column once, to the current list, however often the area was emptied', () => {
+    const section: any = new AppSection();
+    section.setColumnOptions(['a', 'b', 'c']);
+    section.setData({ display_columns: [] });
+    section.setData({ display_columns: [] });          // each used to stack another stale handler
+    drop(section._dispChipsArea, 'a');
+    expect(section.getData().display_columns).toEqual(['a']);
+    drop(section._dispChipsArea, 'b');                 // not empty any more: area handler ignores it
+    expect(section.getData().display_columns).toEqual(['a']);
+  });
+});
