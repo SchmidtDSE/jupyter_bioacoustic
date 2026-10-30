@@ -92,6 +92,13 @@ export class DescriptionSection extends CollapsibleSection {
     return result;
   }
 
+  override reset(): void {
+    for (const el of [this._titleInput, this._textArea, this._pathInput, this._heightInput]) {
+      el.value = '';
+    }
+    this._openCb.checked = true;
+  }
+
   setData(data: Record<string, any>): void {
     if (data.description_height) this._heightInput.value = String(data.description_height);
     const d = data.description;
