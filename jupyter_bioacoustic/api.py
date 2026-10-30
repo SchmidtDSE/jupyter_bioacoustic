@@ -22,6 +22,7 @@ License: BSD 3-Clause
 
 from __future__ import annotations
 import yaml
+import contextlib
 import copy
 import json
 import logging
@@ -30,7 +31,7 @@ import re
 import uuid
 import warnings
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 from pprint import pprint
 from IPython import get_ipython
 from IPython.display import display, Javascript, HTML, Markdown
@@ -43,6 +44,7 @@ from ._validation import validate_config
 #
 _log = logging.getLogger('jupyter_bioacoustic.api')
 
+_DESCRIPTION_FILE_EXTS = ('.md', '.markdown', '.txt')
 _UNSET = object()
 _TEMPLATE_RE = re.compile(r'\[\[([^\]]+)\]\]')
 _DEFAULT_SEP = '||'
@@ -272,11 +274,15 @@ def _read_data(path: str) -> Any:
     elif ext in ('.jsonl', '.ndjson'):
         return pd.read_json(path, lines=True)
     elif ext == '.json':
-        return pd.read_json(path)
+        # a JSON document, or JSON Lines (the annotator writes .json outputs one row per line)
+        try:
+            return pd.read_json(path)
+        except ValueError:
+            return pd.read_json(path, lines=True)
     else:
         raise ValueError(
             f"Unsupported data file extension {ext!r}. "
-            f"Expected .csv, .parquet, .jsonl, or .ndjson."
+            f"Expected .csv, .parquet, .json, .jsonl, or .ndjson."
         )
 
 
@@ -472,44 +478,54 @@ def _read_data_from_sql(
     }
 
     has_credentials = False
-    if secrets:
-        for k, v in secrets.items():
-            if k.lower() in _DUCKDB_SET_KEYS:
-                conn.execute(f"SET {k} = '{v}'")
-                if k.lower() in (
-                    's3_access_key_id',
-                    's3_secret_access_key',
-                ):
-                    has_credentials = True
-            else:
-                os.environ[k] = str(v)
+    env_secrets = {}
+    for k, v in (secrets or {}).items():
+        if k.lower() in _DUCKDB_SET_KEYS:
+            # k is from the allow-list; the value is quoted as a SQL string literal
+            value = str(v).replace("'", "''")
+            conn.execute(f"SET {k} = '{value}'")
+            if k.lower() in ('s3_access_key_id', 's3_secret_access_key'):
+                has_credentials = True
+        else:
+            env_secrets[k] = str(v)
 
-    if (
-        re.search(r"s3://", query, re.IGNORECASE)
-        and not has_credentials
-    ):
-        try:
-            conn.execute(
-                "CREATE SECRET IF NOT EXISTS "
-                "(_type = 's3', "
-                "provider = 'credential_chain')"
-            )
-        except Exception as e:
-            _log.debug(
-                'duckdb: credential chain not '
-                'available: %s', e,
-            )
-
-    _log.info(
-        'executing SQL query (%d chars)', len(query),
-    )
-    result = conn.execute(query).df()
-    _log.info(
-        'SQL query returned %d rows, %d columns',
-        len(result), len(result.columns),
-    )
-    conn.close()
+    try:
+        # other secrets (e.g. AWS_PROFILE for the credential chain) are visible as environment
+        # variables only while the query runs, not for the rest of the kernel session
+        with _temporary_environ(env_secrets):
+            if re.search(r"s3://", query, re.IGNORECASE) and not has_credentials:
+                try:
+                    conn.execute(
+                        "CREATE SECRET IF NOT EXISTS "
+                        "(_type = 's3', provider = 'credential_chain')"
+                    )
+                except Exception as e:
+                    _log.debug('duckdb: credential chain not available: %s', e)
+            _log.info('executing SQL query (%d chars)', len(query))
+            result = conn.execute(query).df()
+    finally:
+        conn.close()
+    _log.info('SQL query returned %d rows, %d columns', len(result), len(result.columns))
     return result
+
+
+@contextlib.contextmanager
+def _temporary_environ(updates: dict[str, str]) -> Iterator[None]:
+    """Set environment variables for the duration of the block, then restore them.
+
+    Args:
+        updates: Variables to set.
+    """
+    saved = {k: os.environ.get(k) for k in updates}
+    os.environ.update(updates)
+    try:
+        yield
+    finally:
+        for k, old in saved.items():
+            if old is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = old
 
 
 def _resolve_data_config(
@@ -1135,8 +1151,9 @@ class BioacousticAnnotator:
             output_secrets: Auth for sync uploads.
             output_index_column: Column name for the row identifier
                 in the output file. Defaults to ``data_index_column``.
-            description: Description panel config — True, string (markdown
-                text), file path, or dict.
+            description: Description panel — a dict (``title``, ``text``,
+                ``path``, ``open``, ``height``), markdown text, or a path to a
+                ``.md``/``.markdown``/``.txt`` file.
             description_title: Description panel title.
             description_text: Description panel markdown text.
             description_path: Path to a ``.md`` file for description.
@@ -1297,6 +1314,8 @@ class BioacousticAnnotator:
         )
 
         raw_data = resolve(data, 'data', _UNSET)
+        if isinstance(raw_data, dict):
+            raw_data = dict(raw_data)   # it may be the caller's / a config file's dict
         raw_data_value = resolve(
             data_value, 'data_value', None,
         )
@@ -1993,6 +2012,8 @@ class BioacousticAnnotator:
         audio_response_index, raw_global_secrets,
     ):
         raw_audio = resolve(audio, 'audio', _UNSET)
+        if isinstance(raw_audio, dict):
+            raw_audio = dict(raw_audio)   # it may be the caller's / a config file's dict
         raw_audio_value = resolve(
             audio_value, 'audio_value', None,
         )
@@ -2330,6 +2351,16 @@ class BioacousticAnnotator:
         raw_desc_open = resolve(
             description_open, 'description_open', None,
         )
+        if isinstance(raw_desc, str):
+            # a bare string is a file path when it looks like one, else markdown text
+            looks_like_path = ('\n' not in raw_desc and raw_desc.strip().lower().endswith(
+                _DESCRIPTION_FILE_EXTS))
+            raw_desc = {'path' if looks_like_path else 'text': raw_desc.strip()}
+        elif raw_desc is not None and raw_desc is not False and not isinstance(raw_desc, dict):
+            warnings.warn(
+                f'description={raw_desc!r} has no text to show; pass markdown text, a .md '
+                'file path, or a dict (title/text/path/open/height)'
+            )
         if isinstance(raw_desc, dict):
             raw_desc_title = (
                 raw_desc_title
