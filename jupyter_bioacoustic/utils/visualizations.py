@@ -35,9 +35,9 @@ from __future__ import annotations
 
 import io
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.use('Agg')
+import matplotlib.pyplot as plt   # only for plot(), which shows a figure in the notebook
+# Figure (not pyplot) renders PNGs off-screen without switching the user's backend
+from matplotlib.figure import Figure
 
 #
 # Constants
@@ -240,7 +240,7 @@ def waveform(mono: np.ndarray, sr: int, width: int) -> dict:
     Returns:
         Visualization dict with 'png_bytes'.
     """
-    fig = plt.figure(figsize=(width / DEFAULT_DPI, DEFAULT_WAVEFORM_HEIGHT), dpi=DEFAULT_DPI)
+    fig = Figure(figsize=(width / DEFAULT_DPI, DEFAULT_WAVEFORM_HEIGHT), dpi=DEFAULT_DPI)
     ax = fig.add_axes([0, 0, 1, 1])
     t = np.linspace(0, len(mono) / sr, len(mono))
     ax.plot(t, mono, color=WAVEFORM_COLOR, linewidth=DEFAULT_LINE_WIDTH)
@@ -252,7 +252,6 @@ def waveform(mono: np.ndarray, sr: int, width: int) -> dict:
     fig.patch.set_facecolor(BACKGROUND_COLOR)
     buf = io.BytesIO()
     fig.savefig(buf, format='png', dpi=DEFAULT_DPI, bbox_inches='tight', pad_inches=0)
-    plt.close(fig)
 
     return {
         'png_bytes': buf.getvalue(),
@@ -401,13 +400,12 @@ def _render_png(S: np.ndarray, width: int = 2000, height: int | None = None,
     S_db = np.clip(S_db, S_db.max() - dynamic_range_db, S_db.max())
     S_norm = (S_db - S_db.min()) / max(float(S_db.max() - S_db.min()), 1e-10)
 
-    fig = plt.figure(figsize=(width / DEFAULT_DPI, height / DEFAULT_DPI), dpi=DEFAULT_DPI)
+    fig = Figure(figsize=(width / DEFAULT_DPI, height / DEFAULT_DPI), dpi=DEFAULT_DPI)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.imshow(S_norm, aspect='auto', cmap=cmap, origin='lower', interpolation='bilinear')
     ax.set_axis_off()
     buf = io.BytesIO()
     fig.savefig(buf, format='png', dpi=DEFAULT_DPI, bbox_inches='tight', pad_inches=0)
-    plt.close(fig)
     return buf.getvalue()
 
 
