@@ -1,5 +1,6 @@
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
+import { numberOr } from '../../util';
 import { CollapsibleSection } from './CollapsibleSection';
 import { FORM_ADD_HINT, FORM_ADD_ITEMS_HINT } from '../text';
 import { ElementType, deserializeElement, serializeElement } from '../formSerialization';
@@ -982,9 +983,9 @@ export class FormSection extends CollapsibleSection {
 
     const update = () => {
       cfg.items = {
-        min: parseInt(minInp.value) || 1,
-        max: parseInt(maxInp.value) || 10,
-        step: parseInt(stepInp.value) || 1,
+        min: numberOr(minInp.value, 1),
+        max: numberOr(maxInp.value, 10),
+        step: numberOr(stepInp.value, 1) > 0 ? numberOr(stepInp.value, 1) : 1,
       };
       this._emitChanged();
     };
