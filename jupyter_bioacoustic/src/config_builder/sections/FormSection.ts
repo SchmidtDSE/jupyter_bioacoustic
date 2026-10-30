@@ -2,14 +2,11 @@ import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
 import { FORM_ADD_HINT, FORM_ADD_ITEMS_HINT } from '../text';
+import { ElementType, deserializeElement, serializeElement } from '../formSerialization';
 
 const ALL_ANNOTATION_TOOLS = [
   'time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration',
 ];
-
-type ElementType = 'title' | 'select' | 'textbox' | 'checkbox' | 'number' |
-  'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' |
-  'break' | 'line' | 'text';
 
 interface FormElement {
   type: ElementType;
@@ -1149,131 +1146,46 @@ export class FormSection extends CollapsibleSection {
     this._emitChanged();
   }
 
+  /**
+   * The form YAML for the current elements. Title / annotation / pass_value / fixed_value
+   * cards placed before the first user input are top-level keys; everything else goes in
+   * the ``form:`` list. Every element (incl. dynamic forms) uses ``serializeElement``.
+   */
   getData(): Record<string, any> {
     const USER_INPUT_TYPES: Set<string> = new Set(['select', 'textbox', 'checkbox', 'number']);
+    const TOP_LEVEL_TYPES: Set<string> = new Set(['title', 'annotation', 'pass_value', 'fixed_value']);
     const result: Record<string, any> = {};
     const formList: any[] = [];
-    let submissionButtons: Record<string, any> | null = null;
+    let submissionButtons: any = null;
     let seenUserInput = false;
 
     for (const elem of this._elements) {
-      const cfg = { ...elem.config };
-
+      const val = serializeElement(elem.type, elem.config);
       if (elem.type === 'submission_buttons') {
-        const sb: Record<string, any> = {};
-        if (cfg.line) sb.line = true;
-        if (cfg.previous) {
-          if (cfg.previous_label) {
-            sb.previous = {
-              label: cfg.previous_label,
-              icon: cfg.show_icon !== false
-            };
-          } else {
-            sb.previous = true;
-          }
-        }
-        if (cfg.next_label) {
-          sb.next = {
-            label: cfg.next_label,
-            icon: cfg.show_icon !== false
-          };
-        } else if (cfg.next) {
-          sb.next = true;
-        }
-        if (cfg.submit_label) {
-          sb.submit = {
-            label: cfg.submit_label,
-            icon: cfg.show_icon !== false
-          };
-        } else if (cfg.submit) {
-          sb.submit = true;
-        }
-        submissionButtons = sb;
+        submissionButtons = val;
         continue;
       }
-
       if (USER_INPUT_TYPES.has(elem.type)) seenUserInput = true;
-
-      const serialized = this._serializeElement(elem.type, cfg);
-      if (serialized === null) continue;
-
-      const isSpecial = elem.type === 'title' || elem.type === 'annotation' ||
-        elem.type === 'pass_value' || elem.type === 'fixed_value';
-      const hasWrapper = typeof serialized === 'object' && serialized !== null &&
-        !Array.isArray(serialized) && '__key' in serialized;
-      const val = hasWrapper ? serialized.__val : serialized;
-
-      if (!seenUserInput && isSpecial) {
+      if (!seenUserInput && TOP_LEVEL_TYPES.has(elem.type)) {
         result[elem.type] = val;
       } else {
         formList.push({ [elem.type]: val });
       }
     }
-
     if (formList.length > 0) result.form = formList;
     if (submissionButtons) result.submission_buttons = submissionButtons;
 
     if (this._dynForms.length > 0) {
       const dynDict: Record<string, any[]> = {};
       for (const df of this._dynForms) {
-        const elems: any[] = [];
-        for (const fe of df.elements) {
-          const cfg = { ...fe.config };
-          const cleaned: Record<string, any> = {};
-          for (const [k, v] of Object.entries(cfg)) {
-            if (v !== undefined && v !== null && v !== '' && v !== false) {
-              cleaned[k] = v;
-            }
-          }
-          elems.push({ [fe.type]: cleaned });
-        }
-        dynDict[df.name] = elems;
+        dynDict[df.name] = df.elements.map(fe => ({ [fe.type]: serializeElement(fe.type, fe.config) }));
       }
       result.dynamic_forms = dynDict;
     }
-
     return result;
   }
 
-  private _serializeElement(type: ElementType, cfg: Record<string, any>): any {
-    if (type === 'title') {
-      if (cfg.progress_tracker) {
-        return { __key: 'title', __val: { value: cfg.value || '', progress_tracker: true } };
-      }
-      return { __key: 'title', __val: cfg.value || '' };
-    }
-
-    if (type === 'pass_value') {
-      return { __key: 'pass_value', __val: { source_column: cfg.source_column || '', column: cfg.column || '' } };
-    }
-
-    if (type === 'fixed_value') {
-      return { __key: 'fixed_value', __val: { column: cfg.column || '', value: cfg.value || '' } };
-    }
-
-    if (type === 'annotation') {
-      const annot: Record<string, any> = {};
-      if (cfg.start_time_col) annot.start_time = { column: cfg.start_time_col, source_value: 'start_time' };
-      if (cfg.end_time_col) annot.end_time = { column: cfg.end_time_col, source_value: 'end_time' };
-      if (cfg.min_freq_col) annot.min_frequency = { column: cfg.min_freq_col };
-      if (cfg.max_freq_col) annot.max_frequency = { column: cfg.max_freq_col };
-      if (cfg.tools) annot.tools = cfg.tools;
-      if (cfg.form) annot.form = cfg.form;
-      return { __key: 'annotation', __val: annot };
-    }
-
-    if (type === 'break' || type === 'line') return true;
-    if (type === 'text') return cfg.value || '';
-
-    const cleaned: Record<string, any> = {};
-    for (const [k, v] of Object.entries(cfg)) {
-      if (v !== undefined && v !== null && v !== '' && v !== false) {
-        cleaned[k] = v;
-      }
-    }
-    return cleaned;
-  }
-
+  /** Rebuild the cards from form YAML (every element goes through ``deserializeElement``). */
   setData(data: Record<string, any>): void {
     this._elements = [];
     this._listEl.innerHTML = '';
@@ -1282,77 +1194,26 @@ export class FormSection extends CollapsibleSection {
       this._dynFormsContainer.removeChild(this._dynFormsContainer.lastChild!);
     }
 
-    if (data.title !== undefined) {
-      const titleCfg = typeof data.title === 'string'
-        ? { value: data.title }
-        : { value: data.title?.value || '', progress_tracker: !!data.title?.progress_tracker };
-      this._addElement('title', titleCfg);
-    }
-
-    if (data.pass_value) {
-      this._addElement('pass_value', { ...data.pass_value });
-    }
-
-    if (data.fixed_value) {
-      this._addElement('fixed_value', { ...data.fixed_value });
-    }
-
-    if (data.annotation) {
-      const a = data.annotation;
-      const cfg: Record<string, any> = {};
-      if (a.start_time) cfg.start_time_col = a.start_time?.column || a.start_time;
-      if (a.end_time) cfg.end_time_col = a.end_time?.column || a.end_time;
-      if (a.min_frequency) cfg.min_freq_col = a.min_frequency?.column || a.min_frequency;
-      if (a.max_frequency) cfg.max_freq_col = a.max_frequency?.column || a.max_frequency;
-      if (a.tools) cfg.tools = a.tools;
-      if (a.form) cfg.form = a.form;
-      this._addElement('annotation', cfg);
+    for (const key of ['title', 'pass_value', 'fixed_value', 'annotation'] as ElementType[]) {
+      if (data[key] !== undefined && data[key] !== null) {
+        this._addElement(key, deserializeElement(key, data[key]));
+      }
     }
 
     if (Array.isArray(data.form)) {
       for (const item of data.form) {
         if (!item || typeof item !== 'object') continue;
-        const [type] = Object.keys(item);
-        const cfg = typeof item[type] === 'object' && item[type] !== null ? { ...item[type] } : { value: item[type] };
-        this._addElement(type as ElementType, cfg);
+        const [type] = Object.keys(item) as ElementType[];
+        this._addElement(type, deserializeElement(type, item[type]));
       }
     } else {
-      for (const key of ['select', 'textbox', 'checkbox', 'number']) {
-        if (data[key]) {
-          const cfg = typeof data[key] === 'object' ? { ...data[key] } : { value: data[key] };
-          this._addElement(key as ElementType, cfg);
-        }
+      for (const key of ['select', 'textbox', 'checkbox', 'number'] as ElementType[]) {
+        if (data[key]) this._addElement(key, deserializeElement(key, data[key]));
       }
     }
 
     if (data.submission_buttons) {
-      const sb = data.submission_buttons;
-      const cfg: Record<string, any> = {};
-      if (sb.line) cfg.line = true;
-
-      // Handle icon setting from any button
-      const hasIcon = sb.previous?.icon !== false || sb.next?.icon !== false || sb.submit?.icon !== false;
-      cfg.show_icon = hasIcon;
-
-      if (sb.previous) {
-        cfg.previous = true;
-        if (typeof sb.previous === 'object' && sb.previous.label) {
-          cfg.previous_label = sb.previous.label;
-        }
-      }
-      if (sb.next) {
-        cfg.next = true;
-        if (typeof sb.next === 'object' && sb.next.label) {
-          cfg.next_label = sb.next.label;
-        }
-      }
-      if (sb.submit) {
-        cfg.submit = true;
-        if (typeof sb.submit === 'object' && sb.submit.label) {
-          cfg.submit_label = sb.submit.label;
-        }
-      }
-      this._addElement('submission_buttons', cfg);
+      this._addElement('submission_buttons', deserializeElement('submission_buttons', data.submission_buttons));
     }
 
     const dynForms = data.dynamic_forms;
@@ -1362,9 +1223,8 @@ export class FormSection extends CollapsibleSection {
         if (Array.isArray(elems)) {
           for (const el of elems) {
             if (el && typeof el === 'object') {
-              const [type] = Object.keys(el);
-              const cfg = typeof el[type] === 'object' && el[type] !== null ? { ...el[type] } : { value: el[type] };
-              feList.push({ type: type as ElementType, config: cfg, el: document.createElement('div') });
+              const [type] = Object.keys(el) as ElementType[];
+              feList.push({ type, config: deserializeElement(type, el[type]), el: document.createElement('div') });
             }
           }
         }
