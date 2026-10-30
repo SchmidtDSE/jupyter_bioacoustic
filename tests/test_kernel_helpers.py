@@ -28,6 +28,7 @@ from jupyter_bioacoustic._kernel_helpers import (
     count_output_rows,
     read_output_rows,
     write_output_row,
+    write_output_rows,
     delete_output_row,
     load_select_items,
     save_png,
@@ -317,6 +318,48 @@ class TestWriteOutputRow:
         p.write_text('')
         write_output_row(str(p), {'a': '1'}, ['a'], 'csv')
         assert p.read_text().splitlines() == ['a', '1']
+
+
+class TestWriteOutputRows:
+    """H11: a multibox submit writes all its rows in one call."""
+
+    def test_csv_rows_with_differing_keys(self, tmp_path):
+        p = str(tmp_path / 'boxes.csv')
+        write_output_rows(p, [{'id': '1', 'box': 'a'}, {'id': '1', 'box': 'b', 'note': 'x'}],
+                          ['id', 'box'], 'csv')
+        with open(p) as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        assert reader.fieldnames == ['id', 'box', 'note']
+        assert rows == [{'id': '1', 'box': 'a', 'note': ''}, {'id': '1', 'box': 'b', 'note': 'x'}]
+
+    def test_csv_append_many(self, tmp_path):
+        p = str(tmp_path / 'boxes.csv')
+        write_output_row(p, {'id': '0'}, ['id'], 'csv')
+        write_output_rows(p, [{'id': '1'}, {'id': '2'}], ['id'], 'csv')
+        with open(p) as f:
+            assert [r['id'] for r in csv.DictReader(f)] == ['0', '1', '2']
+
+    def test_jsonl(self, tmp_path):
+        rows = [{'id': 1, 'v': 'a'}, {'id': 2, 'v': 'b'}]
+        j = str(tmp_path / 'o.jsonl')
+        write_output_rows(j, rows, ['id', 'v'], 'jsonl')
+        with open(j) as f:
+            assert [json.loads(line) for line in f] == rows
+
+    def test_parquet(self, tmp_path):
+        pytest.importorskip('pyarrow')
+        rows = [{'id': 1, 'v': 'a'}, {'id': 2, 'v': 'b'}]
+        pq = str(tmp_path / 'o.parquet')
+        write_output_rows(pq, rows, ['id', 'v'], 'parquet')
+        write_output_rows(pq, rows, ['id', 'v'], 'parquet')
+        import pandas as pd
+        assert len(pd.read_parquet(pq)) == 4
+
+    def test_empty_rows_is_noop(self, tmp_path):
+        p = tmp_path / 'none.csv'
+        assert write_output_rows(str(p), [], ['id'], 'csv') == 'ok'
+        assert not p.exists()
 
 
 #
