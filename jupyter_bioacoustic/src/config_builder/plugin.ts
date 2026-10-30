@@ -8,7 +8,9 @@ import { Message } from '@lumino/messaging';
 import { Widget } from '@lumino/widgets';
 
 import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles';
-import { KernelBridge } from '../kernel';
+import {
+  KernelBridge, KernelSource, acquireKernel, execInKernel, notebookSession,
+} from '../kernel';
 import { escPy, showDialog } from '../util';
 import { ConfigPanel } from './ConfigPanel';
 import { setupAnnotatorFromProject } from './python';
@@ -22,14 +24,16 @@ class ConfigBuilderWidget extends Widget {
   private _titleEl!: HTMLSpanElement;
   private _browserPath: string;
 
-  constructor(tracker: INotebookTracker, directKernel?: any, cwd?: string, browserPath?: string) {
+  /**
+   * @param source - The kernel or notebook session this builder talks to (fixed for its lifetime).
+   * @param ownsKernel - Shut ``source.kernel`` down when the builder is closed.
+   * @param cwd - Kernel working directory the builder was opened in.
+   * @param browserPath - File-browser path at open time (relative to the server root).
+   */
+  constructor(source: KernelSource, ownsKernel = false, cwd?: string, browserPath?: string) {
     super();
-    this._kernelBridge = new KernelBridge(
-      directKernel ? null : tracker,
-      directKernel,
-      cwd,
-    );
-    this._ownedKernel = directKernel ?? null;
+    this._kernelBridge = new KernelBridge(source, cwd);
+    this._ownedKernel = ownsKernel ? source.kernel ?? null : null;
     this._browserPath = browserPath || '';
     this.id = `jp-config-builder-${_builderCounter++}`;
     this.title.label = 'Config Builder';
@@ -186,35 +190,6 @@ class ConfigBuilderWidget extends Widget {
   }
 }
 
-function escPyLocal(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-async function startKernel(app: JupyterFrontEnd): Promise<any | null> {
-  try {
-    return await app.serviceManager.kernels.startNew({ name: 'python3' });
-  } catch (e) {
-    console.error('config-builder: failed to start kernel', e);
-    return null;
-  }
-}
-
-function getExistingKernel(tracker: INotebookTracker): any | null {
-  return tracker.currentWidget?.sessionContext?.session?.kernel ?? null;
-}
-
-async function execInKernel(kernel: any, code: string): Promise<string> {
-  const future = kernel.requestExecute({ code });
-  let error = '';
-  future.onIOPub = (msg: any) => {
-    if (msg.header?.msg_type === 'error') {
-      error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
-    }
-  };
-  await future.done;
-  return error;
-}
-
 const builderIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
   <polyline points="14 2 14 8 20 8"/>
@@ -242,7 +217,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
     (window as any)._bioacousticOpenConfigBuilder = (divId: string) => {
       const container = document.getElementById(divId);
       if (!container) return;
-      const widget = new ConfigBuilderWidget(tracker);
+      const widget = new ConfigBuilderWidget({ session: notebookSession(tracker, container) });
       widget.node.style.cssText += `position:absolute;inset:0;`;
       Widget.attach(widget, container);
     };
@@ -251,12 +226,12 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
       label: 'Bioacoustic Config Builder',
       icon: builderIcon,
       execute: async () => {
-        const kernel = getExistingKernel(tracker) ?? await startKernel(app);
-        if (!kernel) {
+        const acquired = await acquireKernel(app, tracker);
+        if (!acquired) {
           void showDialog({ title: 'Error', body: 'Failed to start a Python kernel.' });
           return;
         }
-        const ownsKernel = !getExistingKernel(tracker);
+        const { kernel, owns: ownsKernel } = acquired;
 
         const browserPath = fileBrowser?.model.path || '';
         const serverRoot = PageConfig.getOption('serverRoot');
@@ -265,7 +240,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
           : serverRoot;
         const error = await execInKernel(kernel, [
           `import os as _os`,
-          `_os.chdir(_os.path.expanduser('${escPyLocal(cwd)}'))`,
+          `_os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,
           `from jupyter_bioacoustic.config_builder import ConfigBuilder`,
           `_cb = ConfigBuilder()`,
           `_cb.setup()`,
@@ -277,12 +252,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
           return;
         }
 
-        const widget = new ConfigBuilderWidget(
-          tracker,
-          ownsKernel ? kernel : undefined,
-          cwd,
-          browserPath,
-        );
+        const widget = new ConfigBuilderWidget(acquired.source, ownsKernel, cwd, browserPath);
         app.shell.add(widget, 'main');
         app.shell.activateById(widget.id);
       }
