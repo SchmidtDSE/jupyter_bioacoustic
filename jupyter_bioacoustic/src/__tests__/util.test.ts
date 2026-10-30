@@ -132,3 +132,13 @@ describe('resolveTemplate', () => {
     expect(resolveTemplate('[[missing]]', row)).toBe('[[missing]]');
   });
 });
+
+describe('numberOr', () => {
+  const { numberOr } = require('../util');
+  it('keeps 0 and decimals', () => {
+    expect([numberOr('0', 1), numberOr('0.5', 1), numberOr('-2', 1)]).toEqual([0, 0.5, -2]);
+  });
+  it('falls back for blank or non-numbers', () => {
+    expect([numberOr('', 7), numberOr('  ', 7), numberOr('abc', 7)]).toEqual([7, 7, 7]);
+  });
+});
