@@ -13,16 +13,18 @@ from __future__ import annotations
 
 import base64
 import csv
+import hashlib
 import io
 import json
 import logging
 import os
-from typing import Any, Callable, Optional
+import tempfile
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator, Optional
 
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+# Figure (not pyplot): render PNGs off-screen without switching the user's matplotlib backend
+from matplotlib.figure import Figure
 import soundfile as sf
 
 from .audio import _shared as _audio_shared
@@ -87,7 +89,7 @@ def build_spectrogram(
     S_norm = _normalize_db(S)
 
     fig_h = (height / _DPI) if height else _DEFAULT_FIG_HEIGHT
-    fig = plt.figure(figsize=(width / _DPI, fig_h), dpi=_DPI)
+    fig = Figure(figsize=(width / _DPI, fig_h), dpi=_DPI)
     ax = fig.add_axes([0, 0, 1, 1])
     ax.imshow(
         S_norm, aspect='auto', cmap='magma',
@@ -97,7 +99,6 @@ def build_spectrogram(
     pb = io.BytesIO()
     fig.savefig(pb, format='png', dpi=_DPI, bbox_inches='tight',
                 pad_inches=0)
-    plt.close(fig)
 
     wav_b64 = _encode_wav(mono, sr)
 
@@ -248,6 +249,9 @@ def write_output_rows(
     doesn't (the form gained a field mid-project), the file is rewritten with the combined
     header and existing rows get blanks in the new columns.
 
+    Holds the file's lock for the whole read-modify-write, so annotators in other kernels
+    writing the same file can't interleave or lose rows; full rewrites are atomic.
+
     Args:
         path: Output file path.
         rows: Rows to append (e.g. one per multibox box).
@@ -264,29 +268,18 @@ def write_output_rows(
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
-
-        if ext == 'csv':
-            header = _csv_header(path)
-            if header is None:
-                fieldnames = list(dict.fromkeys(list(columns) + row_keys))
-                _write_csv(path, fieldnames, rows)
-            elif any(k not in header for k in row_keys):
-                with open(path, newline='') as f:
-                    existing = list(csv.DictReader(f))
-                fieldnames = list(dict.fromkeys(header + row_keys))
-                _write_csv(path, fieldnames, existing + rows)
+        with _file_lock(path):
+            if ext == 'csv':
+                _append_csv(path, rows, list(dict.fromkeys(list(columns) + row_keys)))
+            elif ext == 'parquet':
+                import pandas as pd
+                new = pd.DataFrame(rows)
+                if os.path.exists(path):
+                    new = pd.concat([pd.read_parquet(path), new], ignore_index=True)
+                _replace_atomically(path, lambda tmp: new.to_parquet(tmp, index=False))
             else:
-                with open(path, 'a', newline='') as f:
-                    csv.DictWriter(f, fieldnames=header).writerows(rows)
-        elif ext == 'parquet':
-            import pandas as pd
-            new = pd.DataFrame(rows)
-            if os.path.exists(path):
-                new = pd.concat([pd.read_parquet(path), new], ignore_index=True)
-            new.to_parquet(path, index=False)
-        else:
-            with open(path, 'a') as f:
-                f.write(''.join(json.dumps(row) + '\n' for row in rows))
+                with open(path, 'a') as f:
+                    f.write(''.join(json.dumps(row) + '\n' for row in rows))
         return 'ok'
     except Exception:
         _log.exception('write_output_rows failed for %s', path)
@@ -298,7 +291,7 @@ def delete_output_row(
     match_fn: Callable[[dict[str, Any]], bool],
     ext: str,
 ) -> str:
-    """Delete rows matching ``match_fn`` from an output file.
+    """Delete rows matching ``match_fn`` from an output file (locked, atomic rewrite).
 
     CSV keeps its header even when every row is deleted.
 
@@ -311,24 +304,23 @@ def delete_output_row(
         ``'ok'`` on success.
     """
     try:
-        if ext == 'csv':
-            with open(path, newline='') as f:
-                reader = csv.DictReader(f)
-                rows = list(reader)
-                fieldnames = list(reader.fieldnames or [])
-            _write_csv(path, fieldnames, [r for r in rows if not match_fn(r)])
-        elif ext == 'parquet':
-            import pandas as pd
-            df = pd.read_parquet(path)
-            df = df[~df.apply(match_fn, axis=1)]
-            df.to_parquet(path, index=False)
-        else:
-            with open(path) as f:
-                rows = [json.loads(line) for line in f if line.strip()]
-            keep = [r for r in rows if not match_fn(r)]
-            with open(path, 'w') as f:
-                for r in keep:
-                    f.write(json.dumps(r) + '\n')
+        with _file_lock(path):
+            if ext == 'csv':
+                with open(path, newline='') as f:
+                    reader = csv.DictReader(f)
+                    rows = list(reader)
+                    fieldnames = list(reader.fieldnames or [])
+                _write_csv(path, fieldnames, [r for r in rows if not match_fn(r)])
+            elif ext == 'parquet':
+                import pandas as pd
+                df = pd.read_parquet(path)
+                df = df[~df.apply(match_fn, axis=1)]
+                _replace_atomically(path, lambda tmp: df.to_parquet(tmp, index=False))
+            else:
+                with open(path) as f:
+                    rows = [json.loads(line) for line in f if line.strip()]
+                text = ''.join(json.dumps(r) + '\n' for r in rows if not match_fn(r))
+                _replace_atomically(path, lambda tmp: _write_text(tmp, text))
         return 'ok'
     except Exception:
         _log.exception('delete_output_row failed for %s', path)
@@ -396,24 +388,101 @@ def _csv_header(path: str) -> Optional[list[str]]:
         return next(csv.reader(f), None)
 
 
+@contextmanager
+def _file_lock(path: str) -> Iterator[None]:
+    """Hold an exclusive lock for ``path`` (other kernels on this machine wait).
+
+    The lock file lives in the temp dir, keyed by the output's absolute path, so nothing
+    extra appears next to the output (or gets synced with it).
+
+    Args:
+        path: The file being read-modified-written.
+    """
+    key = hashlib.md5(os.path.abspath(path).encode()).hexdigest()
+    lock_dir = os.path.join(tempfile.gettempdir(), 'jba_locks')
+    os.makedirs(lock_dir, exist_ok=True)
+    with open(os.path.join(lock_dir, f'{key}.lock'), 'a+') as f:
+        if os.name == 'nt':
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == 'nt':
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _replace_atomically(path: str, write: Callable[[str], None]) -> None:
+    """Write a whole file via ``write(tmp_path)``, then rename it over ``path``.
+
+    Readers see either the old or the new file, never a half-written one.
+
+    Args:
+        path: Destination file.
+        write: Writes the complete new contents to the given temp path.
+    """
+    tmp = f'{path}.{os.getpid()}.tmp'
+    try:
+        write(tmp)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def _write_text(path: str, text: str) -> None:
+    """Write ``text`` to ``path``."""
+    with open(path, 'w') as f:
+        f.write(text)
+
+
+def _append_csv(path: str, rows: list[dict[str, Any]], new_file_columns: list[str]) -> None:
+    """Append rows to a CSV (caller holds the lock).
+
+    A missing/empty file gets ``new_file_columns`` as its header. Rows with columns the file
+    lacks trigger a rewrite with the combined header (existing rows get blanks).
+
+    Args:
+        path: CSV file path.
+        rows: Rows to append.
+        new_file_columns: Header for a new file.
+    """
+    header = _csv_header(path)
+    if header is None:
+        _write_csv(path, new_file_columns, rows)
+        return
+    extra = [k for k in dict.fromkeys(k for row in rows for k in row) if k not in header]
+    if extra:
+        with open(path, newline='') as f:
+            existing = list(csv.DictReader(f))
+        _write_csv(path, header + extra, existing + rows)
+    else:
+        with open(path, 'a', newline='') as f:
+            csv.DictWriter(f, fieldnames=header).writerows(rows)
+
+
 def _write_csv(path: str, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:
-    """Write a whole CSV (header + rows) atomically: temp file, then rename over ``path``.
+    """Write a whole CSV (header + rows) atomically.
 
     Args:
         path: CSV file path.
         fieldnames: Header columns (missing values are written blank).
         rows: Rows to write.
     """
-    tmp = f'{path}.{os.getpid()}.tmp'
-    try:
+    def write(tmp: str) -> None:
         with open(tmp, 'w', newline='') as f:
             w = csv.DictWriter(f, fieldnames=fieldnames)
             w.writeheader()
             w.writerows(rows)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
+
+    _replace_atomically(path, write)
 
 
 def _safe_float(val: Any, default: float = float('nan')) -> float:
