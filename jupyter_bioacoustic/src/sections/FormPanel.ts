@@ -128,6 +128,9 @@ export class FormPanel {
   private _syncBtn: HTMLButtonElement | null = null;
   private _selectedIdx = -1;
   private _submitting = false;
+  /** Async form-structure work (rebuilds) runs one job at a time, in call order. */
+  private _formWork: Promise<void> = Promise.resolve();
+  private _formWorkPending = 0;
   private _filteredLength = 0;
 
   constructor(private _kernel: KernelBridge) {
@@ -296,7 +299,12 @@ export class FormPanel {
       this._showingReviewedView = false;
       this._reviewedTool = '';
       this._reviewedMultiboxEntries = [];
-      void this.build().then(() => this._applyRow(row));
+      void this._enqueue(async () => {
+        await this.build();
+        this._applyRow(row);
+      });
+    } else if (this._formWorkPending > 0) {
+      void this._enqueue(() => this._applyRow(row));     // after the queued rebuilds, in order
     } else {
       this._applyRow(row);
     }
@@ -1169,15 +1177,46 @@ export class FormPanel {
       this._multiboxContainer.style.cssText =
         `display:flex;flex-direction:column;gap:6px;overflow-y:auto;`;
       container.appendChild(this._multiboxContainer);
-      // Build initial single-form view (will switch to multibox cards when tool changes)
-      await this._rebuildAnnotFormUI();
+      // Build initial single-form view (will switch to multibox cards when tool changes).
+      // Direct, not queued: build() may itself be running inside the queue.
+      await this._renderAnnotFormUI();
     }
   }
 
   // ─── Private: multibox UI ──────────────────────────────────
 
-  private async _rebuildAnnotFormUI(): Promise<void> {
+  /** Re-render the annotation form area (queued: rebuilds await the kernel and must not overlap). */
+  private _rebuildAnnotFormUI(): Promise<void> {
+    return this._enqueue(() => this._renderAnnotFormUI());
+  }
+
+  /** Run ``work`` after all previously queued form work, one job at a time. */
+  private _enqueue(work: () => void | Promise<void>): Promise<void> {
+    this._formWorkPending++;
+    this._formWork = this._formWork
+      .then(work)
+      .catch(e => console.error('[JBA] form update failed:', e))
+      .finally(() => { this._formWorkPending--; });
+    return this._formWork;
+  }
+
+  /** Drop the registrations of inputs that live inside ``container`` (it's about to be rebuilt). */
+  private _forgetInputsIn(container: HTMLElement): void {
+    const inside = (el: Node | undefined) => !!el && container.contains(el);
+    for (const [col, el] of this._inputRefs) {
+      if (inside(el)) {
+        this._inputRefs.delete(col);
+        this._inputInitial.delete(col);
+      }
+    }
+    this._requiredInputs = this._requiredInputs.filter(r => !inside(r.el));
+    this._sourceValueFields = this._sourceValueFields.filter(f => this._inputRefs.has(f.col));
+    this._templateElements = this._templateElements.filter(t => !inside(t.el));
+  }
+
+  private async _renderAnnotFormUI(): Promise<void> {
     if (!this._multiboxContainer) return;
+    this._forgetInputsIn(this._multiboxContainer);
     this._multiboxContainer.innerHTML = '';
 
     // Non-multibox mode: show a single form instance
@@ -1499,7 +1538,9 @@ export class FormPanel {
     // Clear multibox state
     this._multiboxEntries = [];
     this._activeBoxIndex = -1;
-    void this._rebuildAnnotFormUI();
+    // multibox: clear the box cards. The single annotation sub-form is NOT rebuilt per row
+    // (that re-registered its inputs every row); its inputs are reset below like the rest.
+    if (this.isMultiboxMode()) void this._rebuildAnnotFormUI();
 
     // Hide all named form sections
     for (const sectionEl of this._namedSections.values()) {
@@ -2018,8 +2059,10 @@ export class FormPanel {
     await this.loadOutputFileProgress();
 
     // Rebuild the form and show it
-    await this.build();
-    this._applyRow(row);
+    await this._enqueue(async () => {
+      await this.build();
+      this._applyRow(row);
+    });
     this.statusChanged.emit({ message: `✓ Review deleted for clip ${rowIdx}`, error: false });
 
     void this._kernel.exec(
