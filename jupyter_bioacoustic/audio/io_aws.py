@@ -174,7 +174,7 @@ def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
     _log.debug('S3 list_files: bucket=%s prefix=%s recursive=%s', bucket, prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
 
-    if not prefix.endswith(PATH_SEPARATOR):
+    if prefix and not prefix.endswith(PATH_SEPARATOR):    # '' = bucket root
         prefix += PATH_SEPARATOR
 
     results = []
@@ -199,10 +199,10 @@ _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 
 def _parse_s3_uri(uri: str) -> tuple[str, str]:
-    """Parse an S3 URI into bucket and key components."""
-    path = uri.replace(S3_SCHEME, '')
-    slash = path.index(PATH_SEPARATOR)
-    return path[:slash], path[slash + 1:]
+    """Split an S3 URI: ``s3://bucket/a/b`` -> ``('bucket', 'a/b')``; ``s3://bucket`` -> key ``''``."""
+    path = uri[len(S3_SCHEME):] if uri.startswith(S3_SCHEME) else uri
+    bucket, _, key = path.partition(PATH_SEPARATOR)
+    return bucket, key
 
 
 def _get_client(
