@@ -954,22 +954,16 @@ export class FormPanel {
 
   private async _onSync(): Promise<void> {
     if (!this._syncBtn) return;
-    const label = this._syncBtn.textContent ?? 'Sync';
-    this._syncBtn.disabled = true;
-    this._syncBtn.textContent = 'Syncing…';
-    this._syncBtn.style.opacity = '0.4';
+    this.setSyncBusy(true);
     this.syncRequested.emit(void 0);
   }
 
-  _resetSyncBtnLabel(): void {
-      this._syncBtn.textContent = this._syncConfig.button ?? 'Sync';
-  }
-
-  _enableSyncBtn(): void {
+  /** Show the sync button busy ("Syncing…", disabled) or ready; the widget calls this when a sync ends. */
+  setSyncBusy(busy: boolean): void {
     if (!this._syncBtn) return;
-    this._resetSyncBtnLabel()
-    this._syncBtn.disabled = false;
-    this._syncBtn.style.opacity = '1';
+    this._syncBtn.disabled = busy;
+    this._syncBtn.style.opacity = busy ? '0.4' : '1';
+    this._syncBtn.textContent = busy ? 'Syncing…' : (this._syncConfig.button ?? 'Sync');
   }
 
   private async _buildAnnotationElement(config: any, container: HTMLElement): Promise<void> {
@@ -1960,7 +1954,7 @@ export class FormPanel {
     }
     void this._refreshAccuracy().then(() => this._updateProgress());
     void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
-    this._enableSyncBtn();
+    this.setSyncBusy(false);
     this.submitted.emit(multibox ? { _multibox: true, count: rows.length } : rows[0]);
   }
 
