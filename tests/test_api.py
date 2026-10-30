@@ -1144,3 +1144,57 @@ class TestAnnotatorSort:
         assert ba._sort_order == 'desc'
         # valid keys — no unknown-key errors
         assert ba.validate()['valid']
+
+
+#
+# BioacousticAnnotator — extra kwargs never leak between sessions (H2)
+#
+class TestAnnotatorFixedKwargs:
+
+    def _form(self):
+        return {'form': [{'textbox': {'label': 'notes'}}]}
+
+    def test_caller_form_dict_not_mutated(self, tmp_path):
+        form = self._form()
+        BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', data_index_column='id',
+            output=str(tmp_path / 'out.csv'), form_config=form, reviewer='alice',
+        )
+        assert form == self._form()
+
+    def test_reused_form_dict_gets_each_sessions_kwargs(self, tmp_path):
+        form = self._form()
+        common = dict(data=_make_df(), audio='audio_path', data_index_column='id',
+                      output=str(tmp_path / 'out.csv'), form_config=form)
+        alice = BioacousticAnnotator(**common, reviewer='alice')
+        bob = BioacousticAnnotator(**common, reviewer='bob')
+        values = lambda ba: [e['fixed_value']['value'] for e in ba._form_config['_fixed_kwargs']]
+        assert values(alice) == ['alice']
+        assert values(bob) == ['bob']
+
+
+#
+# BioacousticAnnotator — visualization metadata index (H3)
+#
+class TestAnnotatorVisualizationIndex:
+
+    def _viz(self, visualizations):
+        return BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', visualizations=visualizations,
+        )
+
+    def test_index_is_position_in_visualizations(self):
+        def custom(raw, sr):
+            return raw
+        with pytest.warns(UserWarning, match='Ignoring visualization'):
+            ba = self._viz(['mel', {'label': 'no fn'}, custom, 'linear'])
+        assert [m['label'] for m in ba._viz_meta] == ['Mel', 'custom', 'Linear']
+        for meta in ba._viz_meta:
+            assert ba._visualizations[meta['index']]['label'] == meta['label']
+
+    def test_meta_has_no_function(self):
+        def custom(raw, sr):
+            return raw
+        ba = self._viz([custom])
+        assert ba._viz_meta == [{'type': 'custom', 'label': 'custom', 'index': 0}]
+        json.dumps(ba._viz_meta)                       # sent to the frontend as JSON
