@@ -71,3 +71,25 @@ describe('FormPanel submit (H11)', () => {
     expect(rows.every(r => r.notes === 'n')).toBe(true);
   });
 });
+
+describe('FormPanel sync button', () => {
+  it('is busy while syncing and usable again afterwards', async () => {
+    const k = fakeKernel();
+    const p = new FormPanel(k.kernel);
+    p.setContext({
+      formConfig: { form: [{ textbox: { label: 'notes' } }] }, rows: [ROW], duplicateEntries: true,
+      outputPath: 'out.csv', dataIndexCol: 'id', outputIndexCol: 'id',
+      syncConfig: { uri: 's3://b/out/', button: 'Push' },
+    });
+    await p.build();
+    const btn = (p as any)._syncBtn as HTMLButtonElement;
+    let requested = 0;
+    p.syncRequested.connect(() => requested++);
+    btn.click();
+    await Promise.resolve();
+    expect(requested).toBe(1);
+    expect([btn.disabled, btn.textContent]).toEqual([true, 'Syncing…']);
+    p.setSyncBusy(false);                                // what the widget does when sync ends
+    expect([btn.disabled, btn.textContent, btn.style.opacity]).toEqual([false, 'Push', '1']);
+  });
+});
