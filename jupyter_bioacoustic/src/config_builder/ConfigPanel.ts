@@ -308,15 +308,10 @@ export class ConfigPanel {
     if (!section) return;
 
     let data = section.getData();
-    let pySection = sectionName;
     const uiTarget = section.getTarget();
     const target = uiTarget === 'form' ? 'form_config' : uiTarget;
     this._dbg('sectionChanged', sectionName, data, 'target=', target);
     this._setStatus('Updating…');
-
-    if (sectionName === 'description') {
-      pySection = 'project';
-    }
 
     if (sectionName === 'output') {
       try {
@@ -332,7 +327,7 @@ export class ConfigPanel {
     }
 
     try {
-      const raw = await this._kernel.exec(updateSection(pySection, data, target));
+      const raw = await this._kernel.exec(updateSection(sectionName, data, target));
       const state = JSON.parse(extractJson(raw));
       this._applyStatePartial(state, sectionName);
       void this._updateSummary();
@@ -779,6 +774,7 @@ export class ConfigPanel {
         if (targets.output) this._output.setTarget(targets.output);
         if (targets.app) this._app.setTarget(targets.app);
         if (targets.form) this._form.setTarget(targets.form === 'form_config' ? 'form' : targets.form);
+        if (targets.description) this._description.setTarget(targets.description);
       }
 
       void this._updateSummary();
