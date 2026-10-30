@@ -35,14 +35,28 @@ if /i not "%SRC%"=="%APP_SUPPORT%\" (
 )
 
 rem --- stage the manifest+lock (zip: flat next to launch.cmd; installer: env\) ---
-if not exist "%ENV_DIR%\pixi.toml" (
-  if exist "%SRC%pixi.toml" (
-    copy /y "%SRC%pixi.toml" "%ENV_DIR%\pixi.toml" >nul
-  ) else if exist "%SRC%env\pixi.toml" (
-    copy /y "%SRC%env\pixi.toml" "%ENV_DIR%\pixi.toml" >nul
+rem      A newer installer whose pixi.toml differs from the installed one (new version band,
+rem      new dependency) replaces the manifest AND lock and reinstalls (REINSTALL=1). When the
+rem      manifest is unchanged the installed lock is kept: in-band updates rewrite it.
+set "PAYLOAD_TOML="
+set "PAYLOAD_LOCK="
+if exist "%SRC%pixi.toml" (
+  set "PAYLOAD_TOML=%SRC%pixi.toml"
+  set "PAYLOAD_LOCK=%SRC%pixi.lock"
+) else if exist "%SRC%env\pixi.toml" (
+  set "PAYLOAD_TOML=%SRC%env\pixi.toml"
+  set "PAYLOAD_LOCK=%SRC%env\pixi.lock"
+)
+set "REINSTALL=0"
+if defined PAYLOAD_TOML (
+  fc /b "%PAYLOAD_TOML%" "%ENV_DIR%\pixi.toml" >nul 2>&1
+  if errorlevel 1 (
+    if exist "%ENV_DIR%\.pixi" set "REINSTALL=1"
+    copy /y "%PAYLOAD_TOML%" "%ENV_DIR%\pixi.toml" >nul
+    if exist "%ENV_DIR%\pixi.lock" del /q "%ENV_DIR%\pixi.lock"
+    if exist "%PAYLOAD_LOCK%" copy /y "%PAYLOAD_LOCK%" "%ENV_DIR%\pixi.lock" >nul
   )
 )
-if not exist "%ENV_DIR%\pixi.lock" if exist "%SRC%pixi.lock" copy /y "%SRC%pixi.lock" "%ENV_DIR%\pixi.lock" >nul
 
 if not exist "%PIXI%" (
   echo Could not find pixi.exe ^(expected next to this file or already installed^). >&2
@@ -57,8 +71,10 @@ if not exist "%SHORTCUT%" (
   powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:SHORTCUT); $s.TargetPath=$env:APP_SUPPORT+'\launch.cmd'; $s.WorkingDirectory=$env:APP_SUPPORT; if(Test-Path ($env:APP_SUPPORT+'\AppIcon.ico')){$s.IconLocation=$env:APP_SUPPORT+'\AppIcon.ico'}; $s.Save()" 2>>"%LOG%"
 )
 
-rem --- first-run env install (installer normally did this already; safety-net/retry) ---
-if not exist "%ENV_DIR%\.pixi" (
+rem --- env install: first run (installer normally did this already; safety-net/retry), or a
+rem      refresh after the installer's manifest changed ---
+if not exist "%ENV_DIR%\.pixi" set "REINSTALL=1"
+if "%REINSTALL%"=="1" (
   echo Setting up JupyterBioacoustic, this can take a few minutes...
   "%PIXI%" install --manifest-path "%ENV_DIR%\pixi.toml" >>"%LOG%" 2>&1
   if errorlevel 1 (
