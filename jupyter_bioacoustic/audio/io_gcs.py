@@ -10,13 +10,14 @@ import os
 import logging
 from typing import Any
 
+import numpy as np
+
 from . import _shared
 
 #
 # Constants
 #
 
-_DEFAULT_HEADER_SIZE: int = 4095
 _GCS_URI_PREFIX: str = 'gs://'
 
 #
@@ -52,41 +53,30 @@ def read(src: str, dest: str | None = None, start_byte: int | None = None,
 
 
 def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = True,
-                 **kwargs: Any) -> Any:
-    """Read audio segment from GCS blob."""
-    from google.cloud import storage
+                 fallback: bool = True, **kwargs: Any) -> tuple[np.ndarray, int]:
+    """Read a time segment from a GCS audio blob.
+
+    Args:
+        path: gs:// URI of the audio file.
+        start_sec: Start time in seconds.
+        dur_sec: Duration in seconds.
+        partial: Read just the segment's bytes (FLAC/WAV) instead of the whole file.
+        fallback: If the partial read fails (or the format can't be range-read), download the
+            whole file into the local cache instead. If False, raise instead.
+        **kwargs: Additional arguments including client, project and credentials.
+
+    Returns:
+        (raw, sample_rate) where raw is float32 of shape (n_samples, channels).
+    """
     bucket_name, blob_name = _parse_gcs_uri(path)
     client = kwargs.get('client') or _get_client(**kwargs)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-
-    if partial:
-        _log.debug('GCS partial read: %s  start=%.1fs dur=%.1fs', path,
-                   start_sec, dur_sec)
-        try:
-            result = _shared.read_remote_partial(
-                start_sec, dur_sec,
-                get_header=lambda: blob.download_as_bytes(start=0,
-                                                          end=_DEFAULT_HEADER_SIZE),
-                get_size=lambda: _blob_size(blob),
-                get_range=lambda sb, eb: blob.download_as_bytes(start=sb,
-                                                                end=eb),
-            )
-            _log.debug('GCS partial read succeeded: %s', path)
-            return result
-        except Exception as e:
-            msg = (f'Partial download failed ({type(e).__name__}: {e}). '
-                   f'Falling back to full download')
-            _log.warning(msg)
-            _shared.last_warning = msg
-
-    _log.debug('GCS full download: %s', path)
-    cache = _shared.cache_path(path)
-    if not os.path.exists(cache):
-        _log.debug('GCS downloading full file to cache: %s', cache)
-        blob.download_to_filename(cache)
-    from . import io_local
-    return io_local.read_segment(cache, start_sec, dur_sec)
+    blob = client.bucket(bucket_name).blob(blob_name)
+    return _shared.read_segment_remote(
+        path, start_sec, dur_sec, partial=partial, fallback=fallback,
+        get_size=lambda: _blob_size(blob),
+        get_range=lambda sb, eb: blob.download_as_bytes(start=sb, end=eb),
+        download_to=blob.download_to_filename,
+    )
 
 
 def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
