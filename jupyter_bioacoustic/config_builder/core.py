@@ -13,8 +13,8 @@ import json
 import logging
 import os
 import re
-
 import uuid
+from typing import Any
 
 from IPython import get_ipython
 from IPython.display import display, HTML
@@ -58,9 +58,17 @@ APP_KEYS = frozenset({
     'spectrogram_resolution', 'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
     'info_card_height', 'form_panel_height',
-    'description',
     'secrets',
 })
+DESCRIPTION_KEY = 'description'
+DESCRIPTION_FLAT_KEYS = ('description_title', 'description_text', 'description_path',
+                         'description_open', 'description_height')
+# keys a split data/audio/output section writes to the project file (the rest go to config)
+PROJECT_KEYS_BY_SECTION = {
+    'data': DATA_PROJECT_KEYS,
+    'audio': AUDIO_PROJECT_KEYS,
+    'output': OUTPUT_PROJECT_KEYS,
+}
 
 #
 # Internal helpers
@@ -116,6 +124,10 @@ def _to_cwd_relative(resolved: str) -> str:
 #
 class ConfigBuilder:
     def __init__(self) -> None:
+        self._reset()
+
+    def _reset(self) -> None:
+        """Clear all configuration state (a fresh, empty builder)."""
         self._project = {}
         self._config = {}
         self._form_config = {}
@@ -126,6 +138,7 @@ class ConfigBuilder:
             'output': 'split',
             'app': 'config',
             'form': 'form_config',
+            'description': 'project',
         }
         self._saved_path = None
         self._dirty = False
@@ -179,22 +192,13 @@ class ConfigBuilder:
                     self._project['output'] = out
                 elif 'output' in self._project and isinstance(self._project['output'], dict):
                     self._project['output'].pop('path', None)
-            desc_dict = {}
-            if 'description' in data and isinstance(data['description'], dict):
-                for k, v in data['description'].items():
-                    if v is not None and v != '' and v != []:
-                        desc_dict[k] = v
-            for k in ('description_title', 'description_text', 'description_path',
-                       'description_open', 'description_height'):
-                if k in data:
-                    val = data[k]
-                    if val is not None and val != '' and val != []:
-                        desc_dict[k.replace('description_', '')] = val
-            if desc_dict:
-                self._project['description'] = desc_dict
-            elif 'description' in self._project:
-                del self._project['description']
-            self._config.pop('description', None)
+            # legacy: description used to arrive with the project section. Only touch it when
+            # the payload carries it (file paths / locks / names must not clear it)
+            if DESCRIPTION_KEY in data or any(k in data for k in DESCRIPTION_FLAT_KEYS):
+                self._set_description(data)
+
+        elif section == 'description':
+            self._set_description(data)
 
         elif section == 'data':
             data_dict = {}
@@ -304,9 +308,7 @@ class ConfigBuilder:
                 for d in (self._project, self._config):
                     if section in d:
                         combined.update(d.pop(section))
-                split_keys = (DATA_PROJECT_KEYS if section == 'data'
-                              else AUDIO_PROJECT_KEYS if section == 'audio'
-                              else frozenset())
+                split_keys = PROJECT_KEYS_BY_SECTION[section]
                 proj_part = {k: v for k, v in combined.items() if k in split_keys}
                 conf_part = {k: v for k, v in combined.items() if k not in split_keys}
                 if proj_part:
@@ -336,6 +338,32 @@ class ConfigBuilder:
     def save(self, path: str | None = None, config_type: str = 'project') -> dict:
         """Save configuration files."""
         return self.save_all()
+
+    def _set_description(self, data: dict) -> None:
+        """Replace the description from a Description-section payload.
+
+        Absent or empty fields mean "cleared": an empty payload removes the description. It is
+        stored in ``_project``; ``_build_file_contents`` writes it to the file chosen by the
+        ``description`` section target.
+
+        Args:
+            data: ``{'description': {title, text, path, open}}`` and/or flat
+                ``description_*`` keys.
+        """
+        def present(v: Any) -> bool:
+            return v is not None and v != '' and v != []
+
+        desc = {}
+        if isinstance(data.get(DESCRIPTION_KEY), dict):
+            desc.update({k: v for k, v in data[DESCRIPTION_KEY].items() if present(v)})
+        for k in DESCRIPTION_FLAT_KEYS:
+            if present(data.get(k)):
+                desc[k[len('description_'):]] = data[k]
+        self._config.pop(DESCRIPTION_KEY, None)
+        if desc:
+            self._project[DESCRIPTION_KEY] = desc
+        else:
+            self._project.pop(DESCRIPTION_KEY, None)
 
     def _build_file_contents(self) -> dict:
         name = self._project.get('project_name', 'config')
@@ -370,6 +398,11 @@ class ConfigBuilder:
                     proj_data[k] = v
                 else:
                     conf_data[k] = v
+            elif k == DESCRIPTION_KEY:
+                if self._section_targets.get(DESCRIPTION_KEY, 'project') == 'config':
+                    conf_data[k] = v
+                else:
+                    proj_data[k] = v
             elif k in APP_KEYS:
                 if self._section_targets.get('app', 'project') == 'project':
                     proj_data[k] = v
@@ -384,6 +417,11 @@ class ConfigBuilder:
                 if t == 'split':
                     conf_data[k] = v
                 elif t == 'config':
+                    conf_data[k] = v
+                else:
+                    proj_data[k] = v
+            elif k == DESCRIPTION_KEY:
+                if self._section_targets.get(DESCRIPTION_KEY, 'project') == 'config':
                     conf_data[k] = v
                 else:
                     proj_data[k] = v
@@ -736,6 +774,9 @@ class ConfigBuilder:
         with open(path) as f:
             data = yaml.safe_load(f) or {}
 
+        # loading replaces the builder's state (it used to merge into it: loading B after A
+        # kept A's keys and saved them into B)
+        self._reset()
         base_dir = os.path.dirname(path) or '.'
         detected = 'config'
         loaded_paths = {'loaded': path}
@@ -892,6 +933,8 @@ class ConfigBuilder:
                 self._project['form_enabled'] = False
 
         self._dirty = False
+        in_config_only = DESCRIPTION_KEY in self._config and DESCRIPTION_KEY not in self._project
+        self._section_targets[DESCRIPTION_KEY] = 'config' if in_config_only else 'project'
         _log.debug('load_config result: detected=%s loaded_paths=%s', detected, loaded_paths)
         state = self._get_state()
         state['detected_type'] = detected
@@ -949,9 +992,7 @@ class ConfigBuilder:
         template = self.load_template(name)
         sections = build_template_config(template, scope, values or {})
 
-        self._project = {}
-        self._config = {}
-        self._form_config = {}
+        self._reset()
         if 'project' in sections:
             self._project.update(sections['project'])
         if 'config' in sections:
