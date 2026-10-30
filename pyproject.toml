@@ -41,6 +41,7 @@ Homepage = "https://github.com/SchmidtDSE/jupyter_bioacoustic"
 Documentation = "https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki"
 
 [project.optional-dependencies]
+gcs = ["google-cloud-storage"]   # gs:// audio and outputs
 demo = [
     "ipyleaflet",
     "shapely",
