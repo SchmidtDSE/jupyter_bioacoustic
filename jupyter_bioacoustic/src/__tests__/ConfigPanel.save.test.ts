@@ -76,3 +76,19 @@ describe('ConfigPanel save', () => {
     expect([withYamlExt('a'), withYamlExt('a.yaml'), withYamlExt('a.YML')]).toEqual(['a.yaml', 'a.yaml', 'a.YML']);
   });
 });
+
+describe('ConfigPanel resize handle', () => {
+  it('leaves no document listeners behind', async () => {
+    const add = jest.spyOn(document, 'addEventListener');
+    const remove = jest.spyOn(document, 'removeEventListener');
+    const panel = new ConfigPanel(fakeKernel([], {}));
+    const moves = () => add.mock.calls.filter(c => c[0] === 'mousemove').length
+      - remove.mock.calls.filter(c => c[0] === 'mousemove').length;
+    expect(moves()).toBe(0);                                  // nothing registered up front
+    const handle = panel.element.children[1] as HTMLElement;
+    handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 100 }));
+    expect(moves()).toBe(1);                                  // only while dragging
+    document.dispatchEvent(new MouseEvent('mouseup'));
+    expect(moves()).toBe(0);
+  });
+});
