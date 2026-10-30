@@ -298,6 +298,19 @@ export class DataSection extends CollapsibleSection {
     return result;
   }
 
+  override reset(): void {
+    this._sourceType.value = 'path';
+    this._pathInput.value = '';
+    this._indexColInput.value = '';
+    this._indexColSelect.value = '';
+    this._durationInput.value = '';
+    this._detectedCols = [];
+    this._rebuildTimeSelects();
+    this._secrets.reset();
+    this.setLoadStatus(null);
+    this._updateValueUI();
+  }
+
   setData(data: Record<string, any>): void {
     // Current form: source_type + value. Legacy form: an explicit
     // path/url/sql/api key (still loadable).
