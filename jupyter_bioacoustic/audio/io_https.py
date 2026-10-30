@@ -7,9 +7,10 @@ License: BSD 3-Clause
 """
 from __future__ import annotations
 
-import os
 import logging
 from typing import Any, Optional, Union
+
+import numpy as np
 
 from . import _shared
 
@@ -20,7 +21,6 @@ from . import _shared
 DEFAULT_TIMEOUT = 120
 RANGE_REQUEST_TIMEOUT = 30
 CHUNK_SIZE = 8192
-HEADER_RANGE_SIZE = 4095
 LOG_URL_MAX_LEN = 80
 
 
@@ -86,60 +86,30 @@ def read_segment(
     start_sec: float,
     dur_sec: float,
     partial: bool = True,
+    fallback: bool = True,
     **kwargs: Any,
-) -> Any:
+) -> tuple[np.ndarray, int]:
     """Read a time segment from an audio file over HTTPS.
 
     Args:
         path: URL to the audio file.
         start_sec: Start time in seconds.
         dur_sec: Duration in seconds.
-        partial: Attempt partial download optimisation.
+        partial: Read just the segment's bytes (FLAC/WAV) instead of the whole file. Needs a
+            server that honours Range requests (HTTP 206).
+        fallback: If the partial read fails (or the format can't be range-read), download the
+            whole file into the local cache instead. If False, raise instead.
 
     Returns:
         (raw, sr) audio segment.
     """
-    import requests
-
     rk = _request_kwargs(kwargs)
-    if partial:
-        _log.debug(
-            'HTTPS partial read: %s  '
-            'start=%.1fs dur=%.1fs',
-            path[:LOG_URL_MAX_LEN], start_sec, dur_sec,
-        )
-        try:
-            result = _read_partial(
-                path, start_sec, dur_sec, rk,
-            )
-            _log.debug(
-                'HTTPS partial read succeeded: %s',
-                path[:LOG_URL_MAX_LEN],
-            )
-            return result
-        except Exception as e:
-            msg = (
-                f'Partial download failed '
-                f'({type(e).__name__}: {e}). '
-                f'Falling back to full download'
-            )
-            _log.warning(msg)
-            _shared.last_warning = msg
-
-    _log.debug(
-        'HTTPS full download: %s',
-        path[:LOG_URL_MAX_LEN],
+    return _shared.read_segment_remote(
+        path, start_sec, dur_sec, partial=partial, fallback=fallback,
+        get_size=lambda: _get_size(path, rk),
+        get_range=lambda sb, eb: _get_range(path, rk, sb, eb),
+        download_to=lambda dest: read(path, dest=dest, **kwargs),
     )
-    cache = _shared.cache_path(path)
-    if not os.path.exists(cache):
-        import requests as req
-        resp = req.get(path, stream=True, **rk)
-        resp.raise_for_status()
-        with open(cache, 'wb') as f:
-            for chunk in resp.iter_content(CHUNK_SIZE):
-                f.write(chunk)
-    from . import io_local
-    return io_local.read_segment(cache, start_sec, dur_sec)
 
 
 def write(
@@ -195,76 +165,54 @@ def _request_kwargs(
     return rk
 
 
-def _read_partial(
-    path: str,
-    start_sec: float,
-    dur_sec: float,
-    rk: dict[str, Any],
-) -> Any:
-    """Perform partial byte-range download."""
+def _get_size(path: str, rk: dict[str, Any]) -> int:
+    """Total size of the resource at ``path`` in bytes (HEAD, else a 1-byte Range GET).
+
+    Args:
+        path: URL.
+        rk: Request kwargs from ``_request_kwargs`` (auth/headers are sent).
+
+    Returns:
+        Size in bytes.
+
+    Raises:
+        ValueError: If the server reports neither Content-Length nor Content-Range.
+    """
     import requests
+    common = {k: rk[k] for k in ('verify', 'cookies', 'auth') if k in rk}
+    r = requests.head(path, headers=rk.get('headers', {}), timeout=RANGE_REQUEST_TIMEOUT,
+                      allow_redirects=True, **common)
+    r.raise_for_status()
+    length = r.headers.get('Content-Length')
+    if length:
+        return int(length)
+    r = requests.get(path, headers={**rk.get('headers', {}), 'Range': 'bytes=0-0'},
+                     timeout=RANGE_REQUEST_TIMEOUT, **common)
+    content_range = r.headers.get('Content-Range', '')
+    if '/' in content_range:
+        return int(content_range.split('/')[-1])
+    raise ValueError('Cannot determine file size')
 
-    def get_header() -> bytes:
-        h = dict(rk.get('headers', {}))
-        h['Range'] = f'bytes=0-{HEADER_RANGE_SIZE}'
-        r = requests.get(
-            path, headers=h,
-            timeout=rk.get('timeout', DEFAULT_TIMEOUT),
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        r.raise_for_status()
-        if r.status_code != 206:
-            raise ValueError(
-                f'Server returned {r.status_code} '
-                f'instead of 206'
-            )
-        return r.content
 
-    def get_size() -> int:
-        r = requests.head(
-            path, timeout=RANGE_REQUEST_TIMEOUT,
-            allow_redirects=True,
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        r.raise_for_status()
-        length = r.headers.get('Content-Length')
-        if length:
-            return int(length)
-        r2 = requests.get(
-            path, headers={'Range': 'bytes=0-0'},
-            timeout=RANGE_REQUEST_TIMEOUT,
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        cr = r2.headers.get('Content-Range', '')
-        if '/' in cr:
-            return int(cr.split('/')[-1])
-        raise ValueError('Cannot determine file size')
+def _get_range(path: str, rk: dict[str, Any], start_byte: int, end_byte: int) -> bytes:
+    """Fetch bytes ``start_byte..end_byte`` (inclusive) of ``path``.
 
-    def get_range(sb: int, eb: int) -> bytes:
-        h = dict(rk.get('headers', {}))
-        h['Range'] = f'bytes={sb}-{eb}'
-        r = requests.get(
-            path, headers=h,
-            timeout=rk.get('timeout', DEFAULT_TIMEOUT),
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        r.raise_for_status()
-        if r.status_code != 206:
-            raise ValueError(
-                f'Server returned {r.status_code} '
-                f'instead of 206'
-            )
-        return r.content
+    Args:
+        path: URL.
+        rk: Request kwargs from ``_request_kwargs``.
+        start_byte: First byte.
+        end_byte: Last byte (inclusive).
 
-    return _shared.read_remote_partial(
-        start_sec, dur_sec,
-        get_header, get_size, get_range,
-    )
+    Returns:
+        The bytes.
+
+    Raises:
+        ValueError: If the server ignores the Range header (anything but HTTP 206).
+    """
+    import requests
+    headers = {**rk.get('headers', {}), 'Range': f'bytes={start_byte}-{end_byte}'}
+    r = requests.get(path, **{**rk, 'headers': headers})
+    r.raise_for_status()
+    if r.status_code != 206:
+        raise ValueError(f'Server returned {r.status_code} instead of 206')
+    return r.content
