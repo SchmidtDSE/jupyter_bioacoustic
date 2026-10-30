@@ -69,9 +69,21 @@ def read_segment(
     start_sec: float,
     dur_sec: float,
     partial: bool = True,
+    fallback: bool = True,
     **kwargs: Any,
 ) -> Any:
     """Read a decoded audio segment from any source.
+
+    Args:
+        path: Local path or s3:// / gs:// / http(s):// URI.
+        start_sec: Start time in seconds.
+        dur_sec: Duration in seconds.
+        partial: For remote files, read just the segment's bytes (FLAC and WAV) instead of
+            downloading the whole file.
+        fallback: For remote files, if the partial read fails (or the format can't be
+            range-read), download the whole file into the local cache instead. If False,
+            raise instead.
+        **kwargs: Backend options (client, credentials, platform, ...).
 
     Returns:
         (raw, sr): raw is 2-D float32 numpy array,
@@ -89,7 +101,7 @@ def read_segment(
     )
     return handler.read_segment(
         path, start_sec, dur_sec,
-        partial=partial, **kwargs,
+        partial=partial, fallback=fallback, **kwargs,
     )
 
 
