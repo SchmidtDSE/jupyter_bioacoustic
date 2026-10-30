@@ -728,6 +728,9 @@ export class ConfigPanel {
       this._savedPath = state.saved_path || '';
       this._yamlPanel.updateYaml(this._yamls);
 
+      // loading replaces everything: clear every section first (setData only adds)
+      for (const section of this._sections.values()) section.reset();
+
       if (state.project) {
         const proj = state.project || {};
         const conf = state.config || {};
