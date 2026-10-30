@@ -1,7 +1,7 @@
 import {
   readKernelVars, readAudio, buildSpectrogram,
   spectrogramPipeline, loadSelectItems,
-  countOutputRows, readOutputRows, writeOutputRow, deleteOutputRow,
+  countOutputRows, readOutputRows, writeOutputRow, writeOutputRows, deleteOutputRow,
   savePng, syncOutput,
   resolveOutputTemplates,
 } from '../python';
@@ -157,28 +157,50 @@ describe('spectrogramPipeline', () => {
   });
 });
 
-describe('writeOutputRow', () => {
-  test('includes column names and values', () => {
-    const code = writeOutputRow('/out.csv', { species: 'owl', count: 3 });
-    expect(code).toContain("'species'");
-    expect(code).toContain("'owl'");
-    expect(code).toContain('3');
+describe('writeOutputRows', () => {
+  // The generated code is RUN in Python (the env with jupyter_bioacoustic) and the file read
+  // back: column names / values with quotes, backslashes, newlines and NaN must round-trip.
+  const { spawnSync } = require('child_process');
+  const fs = require('fs');
+  const os = require('os');
+  const nodePath = require('path');
+  const python = process.env.JBA_TEST_PYTHON || 'python';
+  const probe = spawnSync(python, ['-c', 'import jupyter_bioacoustic._kernel_helpers']);
+  const runIt = probe.status === 0 ? test : test.skip;
+
+  function run(code: string): string {
+    const r = spawnSync(python, ['-c', code], { encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(r.stderr);
+    return r.stdout.trim();
+  }
+
+  runIt('writes awkward names and values exactly (jsonl)', () => {
+    const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'jba-'));
+    const out = nodePath.join(dir, "it's out.jsonl");
+    const rows = [
+      { "it's": 'owl', 'a"b': 'line1\nline2', 'back\\slash': true, n: NaN },
+      { "it's": 'wren', 'a"b': "o'k", 'back\\slash': false, n: 2.5 },
+    ];
+    expect(run(writeOutputRows(out, rows))).toBe('ok');
+    const written = fs.readFileSync(out, 'utf8').trim().split('\n').map((l: string) => JSON.parse(l));
+    expect(written).toEqual([
+      { "it's": 'owl', 'a"b': 'line1\nline2', 'back\\slash': true, n: null },
+      { "it's": 'wren', 'a"b': "o'k", 'back\\slash': false, n: 2.5 },
+    ]);
   });
 
-  test('handles null values as None', () => {
-    const code = writeOutputRow('/out.csv', { col: null });
-    expect(code).toContain('None');
+  runIt('single-row helper writes a csv header + row', () => {
+    const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'jba-'));
+    const out = nodePath.join(dir, 'out.csv');
+    expect(run(writeOutputRow(out, { species: 'owl', count: 3 }))).toBe('ok');
+    expect(fs.readFileSync(out, 'utf8').trim().split(/\r?\n/)).toEqual(['species,count', 'owl,3']);
   });
 
-  test('handles boolean values', () => {
-    const code = writeOutputRow('/out.csv', { valid: true, bad: false });
-    expect(code).toContain('True');
-    expect(code).toContain('False');
-  });
-
-  test('extracts extension from path', () => {
-    const code = writeOutputRow('/data/out.jsonl', { a: 1 });
+  test('passes the extension and all columns', () => {
+    const code = writeOutputRows('/data/out.jsonl', [{ a: 1 }, { b: 2 }]);
     expect(code).toContain("'jsonl'");
+    expect(code).toContain('write_output_rows');
+    expect(code).toContain('"cols":["a","b"]');
   });
 });
 
