@@ -84,6 +84,8 @@ export class FormPanel {
   private _namedSections: Map<string, HTMLDivElement> = new Map();
   private _requiredInputs: Array<{ col: string; el: HTMLElement }> = [];
   private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
+  /** Each input's state right after build (value, or checked for checkboxes): restored per row. */
+  private _inputInitial: Map<string, string | boolean> = new Map();
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
   private _templateElements: Array<{ el: HTMLElement | Text; template: string }> = [];
@@ -196,6 +198,7 @@ export class FormPanel {
     this._namedSections.clear();
     this._requiredInputs = [];
     this._inputRefs.clear();
+    this._inputInitial.clear();
     this._sourceValueFields = [];
     this._passValueDefs = [];
     this._templateElements = [];
@@ -588,6 +591,7 @@ export class FormPanel {
         inp.addEventListener('input', () => { this._formValues[col] = inp.value; this._validateForm(); });
         inputEl = inp;
       }
+      inputEl.value = cfg.default == null ? '' : String(cfg.default);
       this._formValues[col] = cfg.default ?? '';
 
     } else if (type === 'select') {
@@ -739,8 +743,9 @@ export class FormPanel {
         if (addBtn) wrapper.appendChild(addBtn);
 
         // Replace the simple select with the wrapper in the label
+        if (cfg.default != null) sel.value = String(cfg.default);
         this._formValues[col] = cfg.default ?? selectedDefault;
-        this._inputRefs.set(col, sel);
+        this._registerInput(col, sel);
         if (cfg.source_value) this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
         if (required) this._requiredInputs.push({ col, el: sel });
         lbl.appendChild(wrapper);
@@ -752,6 +757,7 @@ export class FormPanel {
         return;
       }
 
+      if (cfg.default != null) sel.value = String(cfg.default);
       this._formValues[col] = cfg.default ?? selectedDefault;
       for (const sn of allFormSections) pendingFormSections.push(sn);
       inputEl = sel;
@@ -807,7 +813,7 @@ export class FormPanel {
       this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
     }
     if (required) this._requiredInputs.push({ col, el: inputEl });
-    this._inputRefs.set(col, inputEl);
+    this._registerInput(col, inputEl);
     lbl.appendChild(inputEl);
     container.appendChild(lbl);
     if (type === 'checkbox') {
@@ -1483,6 +1489,16 @@ export class FormPanel {
 
   // ─── Private: value management ─────────────────────────────
 
+  /** Track an input and remember its just-built state, which ``_applyRow`` restores. */
+  private _registerInput(
+    col: string,
+    el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+  ): void {
+    this._inputRefs.set(col, el);
+    const isCheckbox = el instanceof HTMLInputElement && el.type === 'checkbox';
+    this._inputInitial.set(col, isCheckbox ? (el as HTMLInputElement).checked : el.value);
+  }
+
   private _applyRow(row: Detection): void {
     this._currentRow = row;
     // Clear multibox state
@@ -1495,14 +1511,17 @@ export class FormPanel {
       sectionEl.style.display = 'none';
     }
 
-    // Reset all tracked inputs to empty
+    // Reset every input to its state right after build (defaults, selected:: items, number
+    // values, checkbox checked/unchecked values). Firing the input's own event recomputes
+    // _formValues and re-shows any form section the default reveals, exactly as at build.
     for (const [col, el] of this._inputRefs) {
+      const initial = this._inputInitial.get(col);
       if (el instanceof HTMLInputElement && el.type === 'checkbox') {
-        el.checked = false;
-        this._formValues[col] = false;
+        el.checked = initial === true;
+        el.dispatchEvent(new Event('change'));
       } else {
-        (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value = '';
-        this._formValues[col] = '';
+        el.value = typeof initial === 'string' ? initial : '';
+        el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input'));
       }
     }
 
