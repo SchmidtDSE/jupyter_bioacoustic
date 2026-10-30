@@ -401,3 +401,52 @@ class _FakeS3:
 def _remove_cache(uri):
     if os.path.exists(_shared.cache_path(uri)):
         os.remove(_shared.cache_path(uri))
+
+
+#
+# bucket-root listing and URI parsing (S3 / GCS)
+#
+class TestBucketRoot:
+
+    def test_parse_uris(self):
+        assert io_aws._parse_s3_uri('s3://b/a/k.flac') == ('b', 'a/k.flac')
+        assert io_aws._parse_s3_uri('s3://b/') == ('b', '')
+        assert io_aws._parse_s3_uri('s3://b') == ('b', '')
+        assert io_gcs._parse_gcs_uri('gs://b/a/k.flac') == ('b', 'a/k.flac')
+        assert io_gcs._parse_gcs_uri('gs://b') == ('b', '')
+
+    def test_s3_lists_bucket_root(self):
+        keys = ['a.flac', 'b.flac', 'sub/c.flac']
+
+        class Paginator:
+            def paginate(self, Bucket, Prefix, Delimiter=None):
+                found = [k for k in keys if k.startswith(Prefix)]
+                if Delimiter:
+                    found = [k for k in found if Delimiter not in k[len(Prefix):]]
+                yield {'Contents': [{'Key': k} for k in found]}
+
+        client = type('C', (), {'get_paginator': lambda self, name: Paginator()})()
+        assert io_aws.list_files('s3://b/', client=client) == ['s3://b/a.flac', 's3://b/b.flac']
+        assert io_aws.list_files('s3://b', recursive=True, client=client) == [
+            's3://b/a.flac', 's3://b/b.flac', 's3://b/sub/c.flac']
+
+    def test_gcs_lists_bucket_root(self):
+        names = ['a.flac', 'sub/c.flac']
+
+        class Client:
+            def list_blobs(self, bucket, prefix, delimiter=None):
+                found = [n for n in names if n.startswith(prefix)]
+                if delimiter:
+                    found = [n for n in found if delimiter not in n[len(prefix):]]
+                return [type('Blob', (), {'name': n})() for n in found]
+
+        assert io_gcs.list_files('gs://b/', client=Client()) == ['gs://b/a.flac']
+
+    def test_gcs_without_package_explains_the_extra(self):
+        try:
+            import google.cloud.storage  # noqa: F401
+            pytest.skip('google-cloud-storage is installed')
+        except ImportError:
+            pass
+        with pytest.raises(ImportError, match=r"jupyter-bioacoustic\[gcs\]"):
+            io_gcs._get_client()
