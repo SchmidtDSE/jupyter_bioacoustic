@@ -376,10 +376,14 @@ export class FormPanel {
     }
   }
 
+  /** Move one bound of box ``index`` (edge drag); the active box's inputs follow. */
   updateMultiboxBounds(index: number, field: 'startTime' | 'endTime' | 'minFreq' | 'maxFreq', value: number): void {
     const entry = this._multiboxEntries[index];
     if (!entry) return;
     entry[field] = value;
+    if (index === this._activeBoxIndex && this._annotConfig?.[field]) {
+      this._setAnnotValueInternal(field, value, false);
+    }
     this.annotationChanged.emit(void 0);
   }
 
