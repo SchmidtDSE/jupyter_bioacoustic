@@ -222,11 +222,7 @@ def write_output_row(
     columns: list[str],
     ext: str,
 ) -> str:
-    """Append a single row to an output file.
-
-    CSV: a missing or empty file gets a header first. If the row has columns the file doesn't
-    (the form gained a field mid-project), the file is rewritten with the combined header and
-    existing rows get blanks in the new columns.
+    """Append a single row to an output file (see ``write_output_rows``).
 
     Args:
         path: Output file path.
@@ -237,6 +233,33 @@ def write_output_row(
     Returns:
         ``'ok'`` on success.
     """
+    return write_output_rows(path, [row_dict], columns, ext)
+
+
+def write_output_rows(
+    path: str,
+    rows: list[dict[str, Any]],
+    columns: list[str],
+    ext: str,
+) -> str:
+    """Append rows to an output file in one write: all of them, or none if it fails.
+
+    CSV: a missing or empty file gets a header first. If the rows have columns the file
+    doesn't (the form gained a field mid-project), the file is rewritten with the combined
+    header and existing rows get blanks in the new columns.
+
+    Args:
+        path: Output file path.
+        rows: Rows to append (e.g. one per multibox box).
+        columns: Column order for a new file (row keys not listed are appended).
+        ext: ``'csv'``, ``'parquet'``, or anything else for JSON Lines.
+
+    Returns:
+        ``'ok'`` on success.
+    """
+    if not rows:
+        return 'ok'
+    row_keys = [k for row in rows for k in row]
     try:
         d = os.path.dirname(path)
         if d:
@@ -245,32 +268,28 @@ def write_output_row(
         if ext == 'csv':
             header = _csv_header(path)
             if header is None:
-                fieldnames = list(columns) + [k for k in row_dict if k not in columns]
-                _write_csv(path, fieldnames, [row_dict])
-            elif any(k not in header for k in row_dict):
+                fieldnames = list(dict.fromkeys(list(columns) + row_keys))
+                _write_csv(path, fieldnames, rows)
+            elif any(k not in header for k in row_keys):
                 with open(path, newline='') as f:
-                    rows = list(csv.DictReader(f))
-                fieldnames = header + [k for k in row_dict if k not in header]
-                _write_csv(path, fieldnames, rows + [row_dict])
+                    existing = list(csv.DictReader(f))
+                fieldnames = list(dict.fromkeys(header + row_keys))
+                _write_csv(path, fieldnames, existing + rows)
             else:
                 with open(path, 'a', newline='') as f:
-                    csv.DictWriter(f, fieldnames=header).writerow(row_dict)
+                    csv.DictWriter(f, fieldnames=header).writerows(rows)
         elif ext == 'parquet':
             import pandas as pd
-            new = pd.DataFrame([row_dict])
+            new = pd.DataFrame(rows)
             if os.path.exists(path):
-                existing = pd.read_parquet(path)
-                pd.concat(
-                    [existing, new], ignore_index=True,
-                ).to_parquet(path, index=False)
-            else:
-                new.to_parquet(path, index=False)
+                new = pd.concat([pd.read_parquet(path), new], ignore_index=True)
+            new.to_parquet(path, index=False)
         else:
             with open(path, 'a') as f:
-                f.write(json.dumps(row_dict) + '\n')
+                f.write(''.join(json.dumps(row) + '\n' for row in rows))
         return 'ok'
     except Exception:
-        _log.exception('write_output_row failed for %s', path)
+        _log.exception('write_output_rows failed for %s', path)
         raise
 
 
