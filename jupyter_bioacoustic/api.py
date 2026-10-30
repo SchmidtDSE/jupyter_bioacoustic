@@ -22,6 +22,7 @@ License: BSD 3-Clause
 
 from __future__ import annotations
 import yaml
+import copy
 import json
 import logging
 import os
@@ -1598,13 +1599,13 @@ class BioacousticAnnotator:
         )
         self._init_kwargs = dict(kwargs)
         if kwargs:
-            if raw_form is None:
-                raw_form = {}
-            fv_list = [
+            # copy: the form dict may be the caller's (or a config file's) and is reused across
+            # annotators; writing this session's kwargs into it leaked them into later sessions
+            raw_form = copy.deepcopy(raw_form) if raw_form is not None else {}
+            raw_form['_fixed_kwargs'] = [
                 {'fixed_value': {'column': k, 'value': v}}
                 for k, v in kwargs.items()
             ]
-            raw_form.setdefault('_fixed_kwargs', fv_list)
         self._form_config = raw_form
 
         self._duplicate_entries = resolve(
@@ -2248,76 +2249,60 @@ class BioacousticAnnotator:
         )
         for i, v in enumerate(viz_list):
             if isinstance(v, str):
-                self._add_viz_str(
-                    v, i, _VIZ_REGISTRY,
-                )
+                self._add_viz_str(v, _VIZ_REGISTRY)
             elif callable(v):
-                label = getattr(
-                    v, '__name__', f'custom_{i}',
+                label = getattr(v, '__name__', f'custom_{i}')
+                self._add_viz({'type': 'custom', 'fn': v, 'label': label})
+            elif isinstance(v, dict) and callable(v.get('fn')):
+                label = v.get('label', getattr(v['fn'], '__name__', f'custom_{i}'))
+                self._add_viz({'type': 'custom', 'fn': v['fn'], 'label': label})
+            else:
+                warnings.warn(
+                    f'Ignoring visualization {v!r}: expected a name, a callable, '
+                    f"or a dict with a callable 'fn'"
                 )
-                self._visualizations.append(
-                    {'type': 'custom', 'fn': v,
-                     'label': label},
-                )
-                self._viz_meta.append(
-                    {'type': 'custom', 'label': label,
-                     'index': i},
-                )
-            elif (
-                isinstance(v, dict)
-                and 'fn' in v
-                and callable(v['fn'])
-            ):
-                label = v.get(
-                    'label',
-                    getattr(
-                        v['fn'], '__name__',
-                        f'custom_{i}',
-                    ),
-                )
-                self._visualizations.append(
-                    {'type': 'custom', 'fn': v['fn'],
-                     'label': label},
-                )
-                self._viz_meta.append(
-                    {'type': 'custom', 'label': label,
-                     'index': i},
-                )
+
+    def _add_viz(self, entry: dict[str, Any]) -> None:
+        """Register a visualization and its frontend metadata.
+
+        The metadata ``index`` is the entry's position in ``self._visualizations``: the frontend
+        sends it back to pick the renderer (``_BA_INSTANCE._visualizations[index]``), so it must
+        not be the position in the user's list (skipped entries would shift it).
+
+        Args:
+            entry: ``{'type': 'builtin', 'key', 'label', 'freq_scale'}`` or
+                ``{'type': 'custom', 'fn', 'label'}``.
+        """
+        meta = {k: v for k, v in entry.items() if k != 'fn'}
+        meta['index'] = len(self._visualizations)
+        self._visualizations.append(entry)
+        self._viz_meta.append(meta)
 
     def _add_viz_str(
         self,
         v: str,
-        i: int,
-        registry: dict,
+        registry: dict[str, Any],
     ) -> None:
+        """Register a visualization given by name (builtin or from ``registry``).
+
+        Args:
+            v: Visualization name.
+            registry: Custom renderers by name (``utils.visualizations.REGISTRY``).
+
+        Raises:
+            ValueError: If the name is unknown.
+        """
         if v in ('linear', 'plain', 'mel'):
-            key = (
-                'linear'
-                if v in ('plain', 'linear')
-                else 'mel'
-            )
-            fs = 'mel' if key == 'mel' else 'linear'
-            label = key.replace('_', ' ').title()
-            self._visualizations.append({
-                'type': 'builtin', 'key': key,
-                'label': label, 'freq_scale': fs,
-            })
-            self._viz_meta.append({
-                'type': 'builtin', 'key': key,
-                'label': label, 'freq_scale': fs,
-                'index': i,
+            key = 'linear' if v in ('plain', 'linear') else 'mel'
+            self._add_viz({
+                'type': 'builtin', 'key': key, 'label': key.title(),
+                'freq_scale': 'mel' if key == 'mel' else 'linear',
             })
         elif v in registry:
-            fn = registry[v]
-            label = v.replace('_', ' ').title()
-            self._visualizations.append(
-                {'type': 'custom', 'fn': fn,
-                 'label': label},
-            )
-            self._viz_meta.append(
-                {'type': 'custom', 'label': label,
-                 'index': i},
-            )
+            self._add_viz({
+                'type': 'custom', 'fn': registry[v],
+                'label': v.replace('_', ' ').title(),
+            })
         else:
             raise ValueError(
                 f"Unknown visualization '{v}'. "
