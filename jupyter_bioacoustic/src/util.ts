@@ -4,6 +4,25 @@
 import { COLORS, btnStyle } from './styles';
 
 /** Format a time in seconds as "m:ss.cc" or "h:mm:ss.cc" if >= 1 hour. */
+/**
+ * Stop JupyterLab keyboard shortcuts from firing for keys typed inside ``node``. Used for
+ * widgets shown inline in a notebook output: there, with a canvas / select / checkbox
+ * focused, notebook command-mode shortcuts would otherwise run (``d d`` deletes the cell,
+ * ``0 0`` restarts the kernel).
+ *
+ * JupyterLab handles shortcuts in the capture phase (before the widget sees the key), so
+ * the only off-switch is Lumino's ``data-lm-suppress-shortcuts`` attribute — and Lumino
+ * only honours it on the focused element itself (it stops at the first element matching a
+ * binding's selector). So every element that receives focus inside ``node`` is marked.
+ */
+export function suppressNotebookShortcuts(node: HTMLElement): void {
+  const mark = (el: EventTarget | null) => {
+    if (el instanceof HTMLElement) el.setAttribute('data-lm-suppress-shortcuts', 'true');
+  };
+  mark(node);
+  node.addEventListener('focusin', e => mark(e.target));
+}
+
 export function fmtTime(s: number): string {
   const sign = s < 0 ? '-' : '';
   const abs = Math.abs(s);
