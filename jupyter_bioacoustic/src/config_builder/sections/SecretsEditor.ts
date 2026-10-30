@@ -131,6 +131,15 @@ export class SecretsEditor {
     return valid.map(e => ({ key: e.key, value: e.value }));
   }
 
+  /** Back to the empty, not-opted-out state. */
+  reset(): void {
+    this._optedOut = false;
+    if (this._optOutCb) this._optOutCb.checked = false;
+    this._listEl.style.display = 'flex';
+    this._entries = [];
+    this._rebuild();
+  }
+
   setData(data: any): void {
     if (data === false) {
       this._optedOut = true;
