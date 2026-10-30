@@ -389,10 +389,10 @@ class BioacousticWidget extends Widget {
     try {
       await this._kernelBridge.exec(syncOutput());
       this._setStatus('✓ Sync complete');
-      this._form._resetSyncBtnLabel()
     } catch (e: any) {
       this._setStatus(`❌ Sync failed: ${String(e.message ?? e)}`, true);
-      this._form._enableSyncBtn();
+    } finally {
+      this._form.setSyncBusy(false);     // re-syncing is always allowed (it re-uploads)
     }
   }
 
