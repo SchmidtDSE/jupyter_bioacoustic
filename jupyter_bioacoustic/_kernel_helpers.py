@@ -224,6 +224,16 @@ def write_output_row(
 ) -> str:
     """Append a single row to an output file.
 
+    CSV: a missing or empty file gets a header first. If the row has columns the file doesn't
+    (the form gained a field mid-project), the file is rewritten with the combined header and
+    existing rows get blanks in the new columns.
+
+    Args:
+        path: Output file path.
+        row_dict: The row to append.
+        columns: Column order for a new file (row keys not listed are appended).
+        ext: ``'csv'``, ``'parquet'``, or anything else for JSON Lines.
+
     Returns:
         ``'ok'`` on success.
     """
@@ -233,18 +243,18 @@ def write_output_row(
             os.makedirs(d, exist_ok=True)
 
         if ext == 'csv':
-            exists = os.path.exists(path)
-            if exists:
-                with open(path, newline='') as rf:
-                    reader = csv.reader(rf)
-                    existing_cols = next(reader, None)
-                if existing_cols:
-                    columns = existing_cols
-            with open(path, 'a', newline='') as f:
-                w = csv.DictWriter(f, fieldnames=columns)
-                if not exists:
-                    w.writeheader()
-                w.writerow(row_dict)
+            header = _csv_header(path)
+            if header is None:
+                fieldnames = list(columns) + [k for k in row_dict if k not in columns]
+                _write_csv(path, fieldnames, [row_dict])
+            elif any(k not in header for k in row_dict):
+                with open(path, newline='') as f:
+                    rows = list(csv.DictReader(f))
+                fieldnames = header + [k for k in row_dict if k not in header]
+                _write_csv(path, fieldnames, rows + [row_dict])
+            else:
+                with open(path, 'a', newline='') as f:
+                    csv.DictWriter(f, fieldnames=header).writerow(row_dict)
         elif ext == 'parquet':
             import pandas as pd
             new = pd.DataFrame([row_dict])
@@ -271,19 +281,23 @@ def delete_output_row(
 ) -> str:
     """Delete rows matching ``match_fn`` from an output file.
 
+    CSV keeps its header even when every row is deleted.
+
+    Args:
+        path: Output file path.
+        match_fn: Returns True for rows to delete.
+        ext: ``'csv'``, ``'parquet'``, or anything else for JSON Lines.
+
     Returns:
         ``'ok'`` on success.
     """
     try:
         if ext == 'csv':
-            with open(path) as f:
-                rows = list(csv.DictReader(f))
-            keep = [r for r in rows if not match_fn(r)]
-            with open(path, 'w', newline='') as f:
-                if keep:
-                    w = csv.DictWriter(f, fieldnames=keep[0].keys())
-                    w.writeheader()
-                    w.writerows(keep)
+            with open(path, newline='') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+                fieldnames = list(reader.fieldnames or [])
+            _write_csv(path, fieldnames, [r for r in rows if not match_fn(r)])
         elif ext == 'parquet':
             import pandas as pd
             df = pd.read_parquet(path)
@@ -348,6 +362,41 @@ def save_png(path: str, b64_data: str) -> str:
 #
 # Internal
 #
+def _csv_header(path: str) -> Optional[list[str]]:
+    """The header row of a CSV file, or None if the file is missing or empty.
+
+    Args:
+        path: CSV file path.
+
+    Returns:
+        Column names, or None.
+    """
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return None
+    with open(path, newline='') as f:
+        return next(csv.reader(f), None)
+
+
+def _write_csv(path: str, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:
+    """Write a whole CSV (header + rows) atomically: temp file, then rename over ``path``.
+
+    Args:
+        path: CSV file path.
+        fieldnames: Header columns (missing values are written blank).
+        rows: Rows to write.
+    """
+    tmp = f'{path}.{os.getpid()}.tmp'
+    try:
+        with open(tmp, 'w', newline='') as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader()
+            w.writerows(rows)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
 def _safe_float(val: Any, default: float = float('nan')) -> float:
     """Convert *val* to float, returning *default* on failure."""
     try:
