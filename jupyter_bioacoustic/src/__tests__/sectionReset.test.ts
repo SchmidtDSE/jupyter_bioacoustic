@@ -64,3 +64,22 @@ describe('section reset (H7)', () => {
     expect(section.getData()).toEqual({ path: 'b.csv' });
   });
 });
+
+describe('DataSection time columns', () => {
+  it('keeps a custom start/end mapping through load and column detection', () => {
+    const section = new DataSection();
+    section.setData({ source_type: 'path', value: 'd.csv', start_time: 'begin', end_time: 'stop' });
+    expect(section.getData()).toMatchObject({ start_time: 'begin', end_time: 'stop' });
+    section.setDetectedColumns(['id', 'begin', 'stop', 'label']);
+    expect(section.getData()).toMatchObject({ start_time: 'begin', end_time: 'stop' });
+    section.setDetectedColumns(['id', 'label']);            // a file without those columns
+    expect(section.getData()).toMatchObject({ start_time: 'begin', end_time: 'stop' });
+  });
+
+  it('defaults stay implicit', () => {
+    const section = new DataSection();
+    section.setData({ source_type: 'path', value: 'd.csv' });
+    section.setDetectedColumns(['start_time', 'end_time']);
+    expect(section.getData()).not.toHaveProperty('start_time');
+  });
+});
