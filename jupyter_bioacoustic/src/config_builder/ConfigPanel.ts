@@ -237,27 +237,24 @@ export class ConfigPanel {
       `width:3px;height:28px;border-radius:2px;background:${COLORS.overlay};`;
     handle.appendChild(grip);
 
-    let dragging = false;
-    let startX = 0;
-    let startW = 0;
+    // document listeners exist only during a drag (they used to stay registered for every
+    // builder ever opened, keeping closed panels alive)
     handle.addEventListener('mousedown', (e) => {
-      dragging = true;
-      startX = e.clientX;
-      startW = this._yamlPanel.element.offsetWidth;
+      const startX = e.clientX;
+      const startW = this._yamlPanel.element.offsetWidth;
       this._yamlPanel.element.style.transition = 'none';
       e.preventDefault();
-    });
-    document.addEventListener('mousemove', (e) => {
-      if (!dragging) return;
-      const delta = startX - e.clientX;
-      const newW = Math.max(200, Math.min(800, startW + delta));
-      this._yamlPanel.element.style.width = `${newW}px`;
-    });
-    document.addEventListener('mouseup', () => {
-      if (dragging) {
-        dragging = false;
+      const onMove = (ev: MouseEvent) => {
+        const newW = Math.max(200, Math.min(800, startW + (startX - ev.clientX)));
+        this._yamlPanel.element.style.width = `${newW}px`;
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
         this._yamlPanel.element.style.transition = '';
-      }
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     });
 
     this.element.append(left, handle, this._yamlPanel.element);
