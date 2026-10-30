@@ -483,6 +483,26 @@ export class AppSection extends CollapsibleSection {
     this._emitChanged();
   }
 
+  override reset(): void {
+    for (const el of [
+      this._projectNameInput, this._dispTextInput, this._titleInput, this._textInput,
+      this._sortInput, this._bufferInput, this._captureDirInput, this._widthInput,
+      this._clipTableHeightInput, this._playerHeightInput, this._infoCardHeightInput,
+      this._formPanelHeightInput, this._captureHeightInput,
+    ]) {
+      el.value = '';
+    }
+    this._sortSelect.value = '';
+    this._sortOrderSelect.value = 'asc';
+    this._duplicateCb.checked = false;
+    this._captureCb.checked = true;
+    this._dispCols = [];
+    this._dispColsSet = false;
+    if (this._availableCols.length > 0) this._rebuildChips(this._dispChipsArea, this._dispCols);
+    this._rebuildPicker(this._dispPickerArea, this._dispCols);
+    this._secrets.reset();
+  }
+
   setData(data: Record<string, any>): void {
     if (data.project_name !== undefined) this._projectNameInput.value = data.project_name;
     if ('display_columns' in data && Array.isArray(data.display_columns)) {
