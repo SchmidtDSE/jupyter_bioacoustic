@@ -14,7 +14,7 @@ import {
   injectGlobalStyles,
 } from './styles';
 import { Detection } from './types';
-import { showDialog } from './util';
+import { showDialog, suppressNotebookShortcuts } from './util';
 import { LAUNCHER, PROJECT_PICKER, DIALOG, TOOLTIP } from './text';
 import {
   KernelBridge, KernelSource, acquireKernel, execInKernel, notebookSession,
@@ -915,6 +915,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
       if (!container) return;
       const widget = new BioacousticWidget({ session: notebookSession(tracker, container) });
       widget.node.style.cssText += `position:absolute;inset:0;`;
+      suppressNotebookShortcuts(widget.node);
       Widget.attach(widget, container);
     };
 
