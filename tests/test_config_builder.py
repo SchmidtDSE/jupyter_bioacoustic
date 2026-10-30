@@ -575,3 +575,93 @@ class TestListFiles:
         by_name = {r['name']: r for r in result}
         assert by_name['subdir']['is_dir'] is True
         assert by_name['file.txt']['is_dir'] is False
+
+
+#
+# description: its own section + target (H6)
+#
+class TestDescriptionSection:
+
+    DESC = {'description': {'title': 'About', 'text': 'Read me'}}
+
+    def test_project_section_updates_keep_description(self):
+        """Toggling a file checkbox / lock / path must not wipe the description."""
+        cb = ConfigBuilder()
+        cb.update_section('description', self.DESC)
+        cb.update_section('project', {'project_enabled': True, 'project_locked': True,
+                                      'project_path': 'p.yaml'})
+        assert cb._project['description'] == {'title': 'About', 'text': 'Read me'}
+
+    def test_empty_description_payload_clears_it(self):
+        cb = ConfigBuilder()
+        cb.update_section('description', self.DESC)
+        cb.update_section('description', {})
+        assert 'description' not in cb._project
+        assert 'description' not in cb._build_file_contents()['project_cfg']
+
+    def test_legacy_project_payload_with_description_still_works(self):
+        cb = ConfigBuilder()
+        cb.update_section('project', {'description_title': 'Legacy'})
+        assert cb._project['description'] == {'title': 'Legacy'}
+
+    def test_target_routes_description_to_chosen_file(self):
+        cb = ConfigBuilder()
+        cb.update_section('description', self.DESC, target='config')
+        files = cb._build_file_contents()
+        assert 'description' in files['config_cfg']
+        assert 'description' not in files['project_cfg']
+        cb.set_section_target('description', 'project')
+        files = cb._build_file_contents()
+        assert 'description' in files['project_cfg']
+        assert 'description' not in files['config_cfg']
+
+    def test_description_independent_of_app_target(self):
+        cb = ConfigBuilder()
+        cb.update_section('description', self.DESC)               # default target: project
+        cb.set_section_target('app', 'config')
+        assert 'description' in cb._build_file_contents()['project_cfg']
+
+
+#
+# load_config replaces state (H7)
+#
+class TestLoadConfigReplacesState:
+
+    def _write(self, tmp_path, name, text):
+        p = tmp_path / name
+        p.write_text(text)
+        return str(p)
+
+    def test_second_load_drops_first_files_keys(self, tmp_path):
+        a = self._write(tmp_path, 'a.yaml',
+                        'data: {path: a.csv}\naudio: {column: f}\nsort: x\n'
+                        'description: {title: A}\n')
+        b = self._write(tmp_path, 'b.yaml', 'capture: true\n')
+        cb = ConfigBuilder()
+        cb.load_config(a, 'config')
+        cb.load_config(b, 'config')
+        merged = cb.get_merged_config()
+        assert merged.get('capture') is True
+        for stale in ('data', 'audio', 'sort', 'description'):
+            assert stale not in merged
+
+    def test_load_infers_description_target(self, tmp_path):
+        cfg = self._write(tmp_path, 'c.yaml', 'description: {title: In config}\n')
+        proj = self._write(tmp_path, 'p.yaml', 'project_name: P\nconfig: c.yaml\n')
+        cb = ConfigBuilder()
+        state = cb.load_config(proj)
+        assert state['section_targets']['description'] == 'config'
+        assert cb._build_file_contents()['config_cfg']['description'] == {'title': 'In config'}
+
+
+#
+# set_section_target output split routing
+#
+class TestOutputSplitTarget:
+
+    def test_split_sends_project_keys_to_project(self):
+        cb = ConfigBuilder()
+        cb.update_section('output', {'path': 'out.csv', 'index_column': 'id'}, target='config')
+        cb.set_section_target('output', 'split')
+        assert cb._project['output'] == {'path': 'out.csv'}
+        assert cb._config['output'] == {'index_column': 'id'}
