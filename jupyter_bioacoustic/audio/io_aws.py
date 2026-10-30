@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import os
 import logging
-from typing import Optional, Any, Union
+from typing import Any, Optional, Union
+
+import numpy as np
 
 from . import _shared
 
 #
 # Constants
 #
-DEFAULT_HEADER_BYTES = 4095
 S3_SCHEME = 's3://'
 PATH_SEPARATOR = '/'
 
@@ -71,54 +72,33 @@ def read_segment(
     start_sec: float,
     dur_sec: float,
     partial: bool = True,
+    fallback: bool = True,
     **kwargs: Any
-) -> Any:
+) -> tuple[np.ndarray, int]:
     """Read a time segment from an S3 audio file.
 
     Args:
         path: S3 URI of the audio file
         start_sec: Start time in seconds
         dur_sec: Duration in seconds
-        partial: Whether to attempt partial download optimization
+        partial: Read just the segment's bytes (FLAC/WAV) instead of the whole file
+        fallback: If the partial read fails (or the format can't be range-read), download the
+            whole file into the local cache instead. If False, raise instead.
         **kwargs: Additional arguments including client and AWS credentials
 
     Returns:
-        Audio data for the specified segment
+        (raw, sample_rate) where raw is float32 of shape (n_samples, channels)
     """
     bucket, key = _parse_s3_uri(path)
     client = kwargs.get('client') or _get_client(**kwargs)
-    if partial:
-        _log.debug('S3 partial read: %s  start=%.1fs dur=%.1fs', path, start_sec, dur_sec)
-        try:
-            result = _shared.read_remote_partial(
-                start_sec, dur_sec,
-                get_header=lambda: client.get_object(
-                    Bucket=bucket, Key=key, Range=f'bytes=0-{DEFAULT_HEADER_BYTES}'
-                )['Body'].read(),
-                get_size=lambda: client.head_object(
-                    Bucket=bucket, Key=key
-                )['ContentLength'],
-                get_range=lambda sb, eb: client.get_object(
-                    Bucket=bucket, Key=key, Range=f'bytes={sb}-{eb}'
-                )['Body'].read(),
-            )
-            _log.debug('S3 partial read succeeded: %s', path)
-            return result
-        except Exception as e:
-            msg = (f'Partial download failed ({type(e).__name__}: {e}). '
-                   f'Falling back to full download')
-            _log.warning(msg)
-            _shared.last_warning = msg
-
-    _log.debug('S3 full download: %s', path)
-    cache = _shared.cache_path(path)
-    if not os.path.exists(cache):
-        _log.debug('S3 downloading full file to cache: %s', cache)
-        client.download_file(bucket, key, cache)
-    else:
-        _log.debug('S3 using cached file: %s', cache)
-    from . import io_local
-    return io_local.read_segment(cache, start_sec, dur_sec)
+    return _shared.read_segment_remote(
+        path, start_sec, dur_sec, partial=partial, fallback=fallback,
+        get_size=lambda: client.head_object(Bucket=bucket, Key=key)['ContentLength'],
+        get_range=lambda sb, eb: client.get_object(
+            Bucket=bucket, Key=key, Range=f'bytes={sb}-{eb}'
+        )['Body'].read(),
+        download_to=lambda dest: client.download_file(bucket, key, dest),
+    )
 
 
 def write(
