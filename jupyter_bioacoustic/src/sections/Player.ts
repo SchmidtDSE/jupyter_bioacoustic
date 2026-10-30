@@ -297,8 +297,8 @@ export class Player {
       const fMaxKhz = parseFloat(this._viewFreqMaxDisplay.value);
       const fRange = this._freqMax - this._freqMin;
       if (!isNaN(fMinKhz) && !isNaN(fMaxKhz) && fMaxKhz > fMinKhz && fRange > 0) {
-        this._viewYMin = Math.max(0, (fMinKhz * 1000 - this._freqMin) / fRange);
-        this._viewYMax = Math.min(1, (fMaxKhz * 1000 - this._freqMin) / fRange);
+        this._viewYMin = Math.max(0, this._freqToFrac(fMinKhz * 1000));
+        this._viewYMax = Math.min(1, this._freqToFrac(fMaxKhz * 1000));
       }
       this._updateCursorForZoom();
       this._renderFrame();
@@ -752,6 +752,11 @@ export class Player {
     return (fMax - fMin) > 0 ? (f - fMin) / (fMax - fMin) : 0;
   }
 
+  /** The frequencies (Hz) at the bottom and top of the current vertical view, on its scale. */
+  private _visibleFreqRange(): [number, number] {
+    return [this._fracToFreq(this._viewYMin), this._fracToFreq(this._viewYMax)];
+  }
+
   /** Inverse: map 0..1 fraction to frequency based on the current freq scale. */
   private _fracToFreq(frac: number): number {
     const fMin = this._freqMin, fMax = this._freqMax;
@@ -780,10 +785,13 @@ export class Player {
     return fMin + frac * (fMax - fMin);
   }
 
-  /** Convert frequency to screen Y, accounting for zoom and padding. */
-  private _freqToY(f: number): number {
-    const H = this._canvas.height;
-    const padY = Player.SPEC_PAD_Y;
+  /**
+   * Convert frequency to Y on a canvas, accounting for zoom and padding. Defaults to the
+   * on-screen canvas; capture passes its own height and no padding.
+   */
+  private _freqToY(f: number, canvasH?: number, padYOverride?: number): number {
+    const H = canvasH ?? this._canvas.height;
+    const padY = padYOverride ?? Player.SPEC_PAD_Y;
     const specH = H - 2 * padY;
     const frac = this._freqToFrac(f);
     const viewFrac = (frac - this._viewYMin) / (this._viewYMax - this._viewYMin);
@@ -1240,13 +1248,16 @@ export class Player {
     this._signalTimeDisplay.textContent = parts.length ? `⏱ ${parts.join(' ')}` : '';
   }
 
-  private _renderAnnotation(ctx: CanvasRenderingContext2D, W: number, H: number, axisW?: number): void {
+  private _renderAnnotation(
+    ctx: CanvasRenderingContext2D, W: number, H: number, axisW?: number, padY?: number,
+  ): void {
     const ac = this._form.getAnnotConfig();
     if (!ac || this._segDuration === 0) return;
     const reviewed = this._form.isShowingReviewedView();
     const tool = reviewed ? this._form.getReviewedTool() : this._form.getActiveTool();
     const ax = axisW ?? Player.AXIS_W;
     const tx = (t: number) => this._timeToX(t, W, ax);
+    const ty = (f: number) => this._freqToY(f, H, padY);
 
     if (tool === 'time_select') {
       const st = ac.startTime?.col ? this._form.getFormValue(ac.startTime.col) : null;
@@ -1288,7 +1299,7 @@ export class Player {
       const fhi = ac.maxFreq?.col ? this._form.getFormValue(ac.maxFreq.col) : null;
       if (st == null || et == null || flo == null || fhi == null) return;
       const sx = tx(st), ex = tx(et);
-      const yhi = this._freqToY(fhi), ylo = this._freqToY(flo);
+      const yhi = ty(fhi), ylo = ty(flo);
       ctx.fillStyle = 'rgba(137,180,250,0.1)';
       ctx.fillRect(sx, yhi, ex - sx, ylo - yhi);
       ctx.strokeStyle = 'rgba(137,180,250,0.85)'; ctx.lineWidth = 2;
@@ -1319,8 +1330,8 @@ export class Player {
       entries.forEach((entry, i) => {
         const sx = tx(entry.startTime);
         const ex = tx(entry.endTime);
-        const yhi = this._freqToY(entry.maxFreq);
-        const ylo = this._freqToY(entry.minFreq);
+        const yhi = ty(entry.maxFreq);
+        const ylo = ty(entry.minFreq);
         const isActive = i === activeIdx;
         // Fill
         ctx.fillStyle = isActive ? `${entry.color}20` : `${entry.color}0a`;
@@ -1357,8 +1368,7 @@ export class Player {
     ctx.fillRect(0, 0, AXIS_W, H);
 
     // Compute visible freq range
-    const fMin = this._freqMin + this._viewYMin * (this._freqMax - this._freqMin);
-    const fMax = this._freqMin + this._viewYMax * (this._freqMax - this._freqMin);
+    const [fMin, fMax] = this._visibleFreqRange();
     const fRange = fMax - fMin;
 
     // Choose nice tick interval (in Hz)
@@ -1596,8 +1606,7 @@ export class Player {
     if (this._segDuration === 0) return;
     const tMin = this._segLoadStart + this._viewXMin * this._segDuration;
     const tMax = this._segLoadStart + this._viewXMax * this._segDuration;
-    const fMin = this._viewYMin * (this._freqMax - this._freqMin) + this._freqMin;
-    const fMax = this._viewYMax * (this._freqMax - this._freqMin) + this._freqMin;
+    const [fMin, fMax] = this._visibleFreqRange();
     // Only update inputs that aren't focused (avoid overwriting user edits)
     if (document.activeElement !== this._viewTimeMinDisplay) this._viewTimeMinDisplay.value = tMin.toFixed(2);
     if (document.activeElement !== this._viewTimeMaxDisplay) this._viewTimeMaxDisplay.value = tMax.toFixed(2);
@@ -1710,7 +1719,7 @@ export class Player {
       if (bufRight < W) { const rx = Math.ceil(bufRight); ctx.fillRect(rx, 0, W - rx, H); }
     }
 
-    this._renderAnnotation(ctx, W, H, 0);
+    this._renderAnnotation(ctx, W, H, 0, 0);   // capture canvas: no axis, no padding
 
     let dataUrl: string;
     try {
