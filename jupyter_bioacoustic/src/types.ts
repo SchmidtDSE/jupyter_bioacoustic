@@ -45,6 +45,9 @@ export interface FixedDurationConfig {
 }
 
 
+/** The four annotation bounds a box or time selection can set. */
+export type AnnotField = 'startTime' | 'endTime' | 'minFreq' | 'maxFreq';
+
 export interface AnnotConfig {
   startTime?: { col: string; sourceValue?: string };
   endTime?: { col: string; sourceValue?: string };
