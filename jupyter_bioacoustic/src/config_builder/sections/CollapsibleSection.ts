@@ -304,4 +304,11 @@ export abstract class CollapsibleSection {
   abstract getData(): Record<string, any>;
 
   abstract setData(data: Record<string, any>): void;
+
+  /**
+   * Put every field back to its just-constructed state. Called before loading another file:
+   * ``setData`` only fills the keys present in the new file, so without a reset the previous
+   * file's values stayed on screen (and were sent back to the kernel on the next edit).
+   */
+  reset(): void {}
 }
