@@ -1269,3 +1269,28 @@ class TestSqlSecrets:
         )
         assert df['a'].tolist() == [1]
         assert 'JBA_SQL_SECRET' not in os.environ
+
+
+#
+# source overrides don't mutate the caller's / config file's dicts (A6)
+#
+class TestAnnotatorNoDictMutation:
+
+    def test_callers_data_and_audio_dicts_unchanged(self, tmp_path):
+        a, b = tmp_path / 'a.csv', tmp_path / 'b.csv'
+        _make_df().to_csv(a, index=False)
+        _make_df().to_csv(b, index=False)
+        data = {'path': str(a), 'start_time': 'start_time'}
+        audio = {'path': 'x.flac', 'prefix': 'p/'}
+        BioacousticAnnotator(data=data, data_path=str(b), audio=audio, audio_column='audio_path')
+        assert data == {'path': str(a), 'start_time': 'start_time'}
+        assert audio == {'path': 'x.flac', 'prefix': 'p/'}
+
+    def test_config_property_shows_the_file(self, tmp_path):
+        a, b = tmp_path / 'a.csv', tmp_path / 'b.csv'
+        _make_df().to_csv(a, index=False)
+        _make_df().to_csv(b, index=False)
+        cfg = tmp_path / 'c.yaml'
+        cfg.write_text(f'data: {{path: {a}}}\naudio: {{column: audio_path}}\n')
+        ba = BioacousticAnnotator(config=str(cfg), data_path=str(b))
+        assert ba.config['data'] == {'path': str(a)}
