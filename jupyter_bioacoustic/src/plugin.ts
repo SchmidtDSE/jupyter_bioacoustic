@@ -16,7 +16,9 @@ import {
 import { Detection } from './types';
 import { showDialog } from './util';
 import { LAUNCHER, PROJECT_PICKER, DIALOG, TOOLTIP } from './text';
-import { KernelBridge } from './kernel';
+import {
+  KernelBridge, KernelSource, acquireKernel, execInKernel, notebookSession,
+} from './kernel';
 import { readKernelVars, syncOutput, validateFormConfig } from './python';
 import { FormPanel } from './sections/FormPanel';
 import { Player } from './sections/Player';
@@ -51,13 +53,14 @@ class BioacousticWidget extends Widget {
   private _form!: FormPanel;
   private _description!: DescriptionPanel;
 
-  constructor(tracker: INotebookTracker, directKernel?: any, ownsKernel = true) {
+  /**
+   * @param source - The kernel or notebook session this widget talks to (fixed for its lifetime).
+   * @param ownsKernel - Shut ``source.kernel`` down when the widget is closed.
+   */
+  constructor(source: KernelSource, ownsKernel = false) {
     super();
-    this._kernelBridge = new KernelBridge(
-      directKernel ? null : tracker,
-      directKernel,
-    );
-    this._ownedKernel = (ownsKernel && directKernel) ? directKernel : null;
+    this._kernelBridge = new KernelBridge(source);
+    this._ownedKernel = ownsKernel ? source.kernel ?? null : null;
     this.id = `jp-bioacoustic-${_counter++}`;
     this.title.label = DEFAULT_TITLE;
     this.title.closable = true;
@@ -883,32 +886,6 @@ function createLoadingWidget(): Widget {
   return w;
 }
 
-async function startKernel(app: JupyterFrontEnd): Promise<any | null> {
-  try {
-    const kernel = await app.serviceManager.kernels.startNew({ name: 'python3' });
-    return kernel;
-  } catch (e) {
-    console.error('bioacoustic: failed to start kernel', e);
-    return null;
-  }
-}
-
-function getExistingKernel(tracker: INotebookTracker): any | null {
-  return tracker.currentWidget?.sessionContext?.session?.kernel ?? null;
-}
-
-async function execInKernel(kernel: any, code: string): Promise<string> {
-  const future = kernel.requestExecute({ code });
-  let error = '';
-  future.onIOPub = (msg: any) => {
-    if (msg.header?.msg_type === 'error') {
-      error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
-    }
-  };
-  await future.done;
-  return error;
-}
-
 const bioacousticIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
   <path d="M2 12 C2 12 4 6 6 6 C8 6 8 18 10 18 C12 18 12 3 14 3 C16 3 16 21 18 21 C20 21 22 12 22 12"/>
   <circle cx="12" cy="12" r="11" stroke-width="1"/>
@@ -936,13 +913,13 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
     (window as any)._bioacousticOpenInline = (divId: string) => {
       const container = document.getElementById(divId);
       if (!container) return;
-      const widget = new BioacousticWidget(tracker);
+      const widget = new BioacousticWidget({ session: notebookSession(tracker, container) });
       widget.node.style.cssText += `position:absolute;inset:0;`;
       Widget.attach(widget, container);
     };
 
     (window as any)._bioacousticOpenWithKernel = (directKernel: any, ownsKernel = true) => {
-      const widget = new BioacousticWidget(tracker, directKernel, ownsKernel);
+      const widget = new BioacousticWidget({ kernel: directKernel }, ownsKernel);
       app.shell.add(widget, 'main');
       app.shell.activateById(widget.id);
     };
@@ -950,7 +927,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
     app.commands.addCommand('bioacoustic:open', {
       label: 'Open Bioacoustic Reviewer',
       execute: () => {
-        const widget = new BioacousticWidget(tracker);
+        const widget = new BioacousticWidget({ session: notebookSession(tracker) });
         app.shell.add(widget, 'main', { mode: 'split-right' });
         app.shell.activateById(widget.id);
       }
@@ -968,13 +945,13 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
         app.shell.add(placeholder, 'main');
         app.shell.activateById(placeholder.id);
 
-        const kernel = getExistingKernel(tracker) ?? await startKernel(app);
-        if (!kernel) {
+        const acquired = await acquireKernel(app, tracker);
+        if (!acquired) {
           placeholder.dispose();
           void showDialog({ title: 'Error', body: DIALOG.kernelFailed });
           return;
         }
-        const ownsKernel = !getExistingKernel(tracker);
+        const { kernel, owns: ownsKernel } = acquired;
 
         const serverRoot = PageConfig.getOption('serverRoot');
         const workDir = browserPath
@@ -1006,10 +983,7 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
           return;
         }
 
-        const widget = new BioacousticWidget(
-          tracker,
-          ownsKernel ? kernel : undefined,
-        );
+        const widget = new BioacousticWidget(acquired.source, ownsKernel);
         app.shell.add(widget, 'main');
         app.shell.activateById(widget.id);
       }
@@ -1028,9 +1002,9 @@ export const bioacousticPlugin: JupyterFrontEndPlugin<void> = {
           () => app.commands.execute('bioacoustic:open-project'),
           () => app.commands.execute('bioacoustic:open-config-builder'),
           async () => {
-            const kernel = getExistingKernel(tracker) ?? await startKernel(app);
-            if (!kernel) { void showDialog({ title: 'Error', body: DIALOG.kernelFailed }); return; }
-            const ownsKernel = !getExistingKernel(tracker);
+            const acquired = await acquireKernel(app, tracker);
+            if (!acquired) { void showDialog({ title: 'Error', body: DIALOG.kernelFailed }); return; }
+            const { kernel, owns: ownsKernel } = acquired;
             const code = [
               `import os as _os; _os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,
               `from jupyter_bioacoustic.config_builder.notebook import copy_starter_notebook`,
