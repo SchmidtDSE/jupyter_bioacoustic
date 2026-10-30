@@ -11,7 +11,7 @@ import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles'
 import {
   KernelBridge, KernelSource, acquireKernel, execInKernel, notebookSession,
 } from '../kernel';
-import { escPy, showDialog } from '../util';
+import { escPy, showDialog, suppressNotebookShortcuts } from '../util';
 import { ConfigPanel } from './ConfigPanel';
 import { setupAnnotatorFromProject } from './python';
 
@@ -219,6 +219,7 @@ export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
       if (!container) return;
       const widget = new ConfigBuilderWidget({ session: notebookSession(tracker, container) });
       widget.node.style.cssText += `position:absolute;inset:0;`;
+      suppressNotebookShortcuts(widget.node);
       Widget.attach(widget, container);
     };
 
