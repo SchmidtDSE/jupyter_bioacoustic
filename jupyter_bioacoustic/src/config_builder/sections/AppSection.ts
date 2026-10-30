@@ -46,6 +46,7 @@ export class AppSection extends CollapsibleSection {
     });
     this._dispChipsArea = this._makeChipsArea();
     this._dispChipsArea.style.display = 'none';
+    this._attachEmptyAreaDrop(this._dispChipsArea);
     this._dispPickerArea = this._makePickerArea();
     const dispWrap = this._makeColumnGroupWrapper();
     dispWrap.append(
@@ -272,6 +273,33 @@ export class AppSection extends CollapsibleSection {
     }
   }
 
+  /**
+   * Dropping a column on the EMPTY chips area adds it. Attached once (it used to be re-added on
+   * every empty rebuild, stacking handlers that held stale copies of the list).
+   */
+  private _attachEmptyAreaDrop(area: HTMLDivElement): void {
+    const isEmpty = () => this._dispCols.length === 0;
+    area.addEventListener('dragover', (e) => {
+      if (!isEmpty()) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      area.style.background = COLORS.bgSurface1;
+    });
+    area.addEventListener('dragleave', () => { area.style.background = ''; });
+    area.addEventListener('drop', (e) => {
+      if (!isEmpty()) return;
+      e.preventDefault();
+      area.style.background = '';
+      const col = e.dataTransfer?.getData('text/plain');
+      if (!col) return;
+      this._dispColsSet = true;
+      this._dispCols.push(col);
+      this._rebuildChips(area, this._dispCols);
+      this._rebuildPicker(this._dispPickerArea, this._dispCols);
+      this._emitChanged();
+    });
+  }
+
   private _rebuildChips(area: HTMLDivElement, selected: string[]): void {
     area.innerHTML = '';
 
@@ -280,29 +308,7 @@ export class AppSection extends CollapsibleSection {
       hint.textContent = '(none)';
       hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;`;
       area.appendChild(hint);
-
-      // Add drop zone for empty state
-      area.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.dataTransfer!.dropEffect = 'copy';
-        area.style.background = COLORS.bgSurface1;
-      });
-      area.addEventListener('dragleave', () => {
-        area.style.background = '';
-      });
-      area.addEventListener('drop', (e) => {
-        e.preventDefault();
-        area.style.background = '';
-        const col = e.dataTransfer!.getData('text/plain');
-        if (col && !selected.includes(col)) {
-          this._dispColsSet = true;
-          selected.push(col);
-          this._rebuildChips(area, selected);
-          this._rebuildPicker(this._dispPickerArea, selected);
-          this._emitChanged();
-        }
-      });
-      return;
+      return;      // dropping on the empty area: see _attachEmptyAreaDrop
     }
 
     // Create container for chips with drop zones
