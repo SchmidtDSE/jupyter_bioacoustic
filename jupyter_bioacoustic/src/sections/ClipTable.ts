@@ -150,8 +150,16 @@ export class ClipTable {
     this.refresh();
   }
 
+  /**
+   * Re-apply filters / sort / view mode and redraw. The selection follows its ROW, not its
+   * position: after filtering or sorting, ``selectedIdx`` points at the same clip (or -1 if
+   * it is no longer listed), so Prev/Next and the highlight stay on the clip being reviewed.
+   */
   refresh(): void {
+    const selectedRow = this._filtered[this._selectedIdx];
     this._applyFilterAndSort();
+    this._selectedIdx = selectedRow ? this._filtered.indexOf(selectedRow) : -1;
+    this._highlightIdx = -1;
     this._renderTable();
   }
 
