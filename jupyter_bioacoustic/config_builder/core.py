@@ -378,9 +378,11 @@ class ConfigBuilder:
         config_locked = bool(self._project.get('config_locked', False))
         form_locked = bool(self._project.get('form_locked', False))
 
-        p_path = self._project.get('project_path') or f'{DEFAULT_PROJECT_DIR}/{slug}.yaml'
-        c_path = self._project.get('config_path') or f'{DEFAULT_CONFIG_DIR}/{slug}.yaml'
-        f_path = self._project.get('form_path') or f'{DEFAULT_FORM_DIR}/{slug}.yaml'
+        # the extension is added here, once, so the project's config:/form_config: references
+        # name the files exactly as they are saved (e.g. 'cfgs/foo' -> 'cfgs/foo.yaml')
+        p_path = _ensure_ext(self._project.get('project_path') or f'{DEFAULT_PROJECT_DIR}/{slug}')
+        c_path = _ensure_ext(self._project.get('config_path') or f'{DEFAULT_CONFIG_DIR}/{slug}')
+        f_path = _ensure_ext(self._project.get('form_path') or f'{DEFAULT_FORM_DIR}/{slug}')
 
         form_cfg = dict(self._form_config) if self._form_config else {}
 
@@ -588,23 +590,30 @@ class ConfigBuilder:
                 results.append({'name': e, 'is_dir': False})
         return results
 
-    def read_columns(self, filepath: str) -> list:
-        """Read column names from a data file."""
+    def read_columns(self, filepath: str) -> list[str]:
+        """Read column names from a local data file (.csv, .tsv, .parquet, .json, .jsonl, .ndjson).
+
+        Args:
+            filepath: Local file path.
+
+        Returns:
+            Column names, or ``[]`` if the file can't be read (logged).
+        """
+        import pandas as pd
         _log.debug('read_columns: %s', filepath)
         ext = os.path.splitext(filepath)[1].lower()
         try:
-            if ext == '.csv':
-                import pandas as pd
-                df = pd.read_csv(filepath, nrows=0)
-                return list(df.columns)
-            elif ext == '.parquet':
-                import pandas as pd
-                df = pd.read_parquet(filepath, columns=[])
-                return list(df.columns)
-            elif ext in ('.json', '.jsonl'):
-                import pandas as pd
-                df = pd.read_json(filepath, lines=(ext == '.jsonl'), nrows=1)
-                return list(df.columns)
+            if ext in ('.csv', '.tsv'):
+                return list(pd.read_csv(filepath, sep='\t' if ext == '.tsv' else ',', nrows=0).columns)
+            if ext == '.parquet':
+                import pyarrow.parquet as pq        # schema only: doesn't read the data
+                names = pq.read_schema(filepath).names
+                return [n for n in names if not n.startswith('__index_level_')]
+            if ext in ('.jsonl', '.ndjson'):
+                return list(pd.read_json(filepath, lines=True, nrows=1).columns)
+            if ext == '.json':
+                from ..api import _read_data        # a JSON document or JSON Lines
+                return list(_read_data(filepath).columns)
         except Exception as e:
             _log.warning('read_columns failed for %s: %s', filepath, e)
         return []
