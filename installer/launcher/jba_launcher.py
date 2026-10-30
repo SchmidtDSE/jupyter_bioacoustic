@@ -292,6 +292,38 @@ class Launcher:
         SERVERFILE.unlink(missing_ok=True)
 
 
+def _ps_str(text: str) -> str:
+    """Return ``text`` as a PowerShell single-quoted string literal.
+
+    Single-quoted strings expand nothing; a quote inside is written twice. PowerShell also
+    treats the curly quotes U+2018-U+201B as single quotes, so those are doubled too.
+    Unescaped, a message like "You're up to date" broke the command and the dialog
+    silently never appeared.
+
+    Args:
+        text: Any text (newlines are fine).
+
+    Returns:
+        The quoted literal, e.g. ``'You''re up to date'``.
+    """
+    for quote in ("'", "\u2018", "\u2019", "\u201a", "\u201b"):
+        text = text.replace(quote, quote * 2)
+    return f"'{text}'"
+
+
+def _as_str(text: str) -> str:
+    """Return ``text`` as an AppleScript double-quoted string literal.
+
+    Args:
+        text: Any text.
+
+    Returns:
+        The quoted literal with backslashes, double quotes and newlines escaped.
+    """
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
 def _load_config() -> dict:
     cfg = dict(DEFAULT_CONFIG)
     if not CONFIG.exists():
@@ -353,14 +385,14 @@ def _pick_idle() -> Optional[int]:
     title = "Shut Down When Idle"
     try:
         if sys.platform == "darwin":
-            asmsg = prompt.replace('"', '\\"')
-            script = (f'text returned of (display dialog "{asmsg}" with title "{title}" '
-                      'default answer "3d")')
+            script = (f'text returned of (display dialog {_as_str(prompt)} '
+                      f'with title {_as_str(title)} default answer "3d")')
             out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
             return _parse_idle(out.stdout) if out.returncode == 0 else None
         if sys.platform.startswith("win"):
             ps = ("Add-Type -AssemblyName Microsoft.VisualBasic;"
-                  f"[Microsoft.VisualBasic.Interaction]::InputBox('{prompt}','{title}','3d')")
+                  f"[Microsoft.VisualBasic.Interaction]::InputBox({_ps_str(prompt)},"
+                  f"{_ps_str(title)},'3d')")
             out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                                  capture_output=True, text=True)
             return _parse_idle(out.stdout)
@@ -532,7 +564,7 @@ def _notify(msg: str) -> None:
     try:
         if sys.platform == "darwin":
             subprocess.run(["osascript", "-e",
-                            f'display notification "{msg}" with title "{title}"'],
+                            f'display notification {_as_str(msg)} with title {_as_str(title)}'],
                            capture_output=True)
         elif sys.platform.startswith("win"):
             # No silent toast without extra deps; just fall through to the alert path.
@@ -549,13 +581,12 @@ def _alert(msg: str) -> None:
     title = "Jupyter Bioacoustic"
     try:
         if sys.platform == "darwin":
-            asmsg = msg.replace('"', '\\"')
             subprocess.run(["osascript", "-e",
-                            f'display dialog "{asmsg}" with title "{title}" '
+                            f'display dialog {_as_str(msg)} with title {_as_str(title)} '
                             'buttons {"OK"} default button "OK"'], capture_output=True)
         elif sys.platform.startswith("win"):
             ps = ("Add-Type -AssemblyName System.Windows.Forms;"
-                  f"[System.Windows.Forms.MessageBox]::Show('{msg}','{title}')")
+                  f"[System.Windows.Forms.MessageBox]::Show({_ps_str(msg)},{_ps_str(title)})")
             subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True)
         else:
             if subprocess.run(["zenity", "--info", "--title", title, "--text", msg],
@@ -571,13 +602,15 @@ def _confirm_update() -> bool:
     msg = "An update is available. Update now? The app will reopen."
     try:
         if sys.platform == "darwin":
-            script = (f'button returned of (display dialog "{msg}" with title "{title}" '
+            script = (f'button returned of (display dialog {_as_str(msg)} '
+                      f'with title {_as_str(title)} '
                       'buttons {"Later", "Update"} default button "Update")')
             out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
             return out.returncode == 0 and "Update" in out.stdout
         if sys.platform.startswith("win"):
             ps = ("Add-Type -AssemblyName System.Windows.Forms;"
-                  f"[System.Windows.Forms.MessageBox]::Show('{msg}','{title}','YesNo','Question')")
+                  f"[System.Windows.Forms.MessageBox]::Show({_ps_str(msg)},{_ps_str(title)},"
+                  "'YesNo','Question')")
             out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                                  capture_output=True, text=True)
             return out.stdout.strip() == "Yes"
@@ -600,16 +633,14 @@ def _confirm_uninstall() -> bool:
     )
     try:
         if sys.platform == "darwin":
-            asmsg = msg.replace('"', '\\"').replace("\n", "\\n")
-            script = (f'display dialog "{asmsg}" with title "{title}" '
+            script = (f'display dialog {_as_str(msg)} with title {_as_str(title)} '
                       'buttons {"Cancel", "Delete Anyway"} default button "Cancel" '
                       'with icon caution')
             out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
             return out.returncode == 0 and "Delete Anyway" in out.stdout
         if sys.platform.startswith("win"):
-            winmsg = msg.replace("\n", "`n")
             ps = ("Add-Type -AssemblyName System.Windows.Forms;"
-                  f'[System.Windows.Forms.MessageBox]::Show("{winmsg}","{title}",'
+                  f"[System.Windows.Forms.MessageBox]::Show({_ps_str(msg)},{_ps_str(title)},"
                   "'YesNo','Warning')")
             out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                                  capture_output=True, text=True)
@@ -643,7 +674,7 @@ def _spawn_cleanup() -> None:
         shortcut = (Path(os.environ.get("APPDATA", "")) /
                     "Microsoft/Windows/Start Menu/Programs/Jupyter Bioacoustic.lnk")
         targets.append(shortcut)
-        items = ",".join(f"'{t}'" for t in targets)
+        items = ",".join(_ps_str(str(t)) for t in targets)
         ps = (f"Wait-Process -Id {pid} -ErrorAction SilentlyContinue;"
               "Start-Sleep -Milliseconds 500;"
               f"foreach($p in @({items})){{Remove-Item -LiteralPath $p -Recurse -Force "
