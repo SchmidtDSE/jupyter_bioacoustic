@@ -38,6 +38,8 @@ _LAUNCHER: Path = _REPO / "installer" / "launcher" / "jba_launcher.py"
 _SHELL_SCRIPTS = [
     _REPO / "installer" / "shared" / "bootstrap.sh",
     _REPO / "installer" / "macos" / "make-dist.sh",
+    _REPO / "installer" / "macos" / "assemble-app.sh",
+    _REPO / "installer" / "macos" / "build-pkg.sh",
     _REPO / "installer" / "macos" / "make-local-app.sh",
     _REPO / "installer" / "windows" / "make-dist-win.sh",
     _REPO / "installer" / "icon" / "make-icons.sh",
@@ -157,3 +159,124 @@ def test_shell_scripts_parse(script):
         pytest.skip(f"{script.name} not present")
     result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+# Text that broke the native dialogs before quoting was added (H16): apostrophes in
+# "You're up to date", user paths like O'Brien, curly quotes, newlines, and characters
+# PowerShell/AppleScript would otherwise interpret.
+_DIALOG_TEXTS = [
+    "You're up to date",
+    "C:\\Users\\O'Brien\\AppData",
+    'say "hi" \\ back',
+    "curly \u2018quotes\u2019 and \u2019",
+    "line1\nline2",
+    "$env:HOME `n ${x}",
+]
+
+
+@pytest.mark.parametrize("text", _DIALOG_TEXTS)
+def test_ps_str_doubles_every_quote(text):
+    literal = jl._ps_str(text)
+    assert literal[0] == literal[-1] == "'"
+    inner = literal[1:-1]
+    for quote in ("'", "\u2018", "\u2019", "\u201a", "\u201b"):
+        assert quote not in inner.replace(quote * 2, "")
+        inner = inner.replace(quote * 2, quote)
+    assert inner == text
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None and shutil.which("powershell") is None,
+                    reason="PowerShell not available")
+@pytest.mark.parametrize("text", _DIALOG_TEXTS)
+def test_ps_str_round_trips_through_powershell(text):
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    out = subprocess.run([shell, "-NoProfile", "-Command",
+                          f"[Console]::Out.Write({jl._ps_str(text)})"],
+                         capture_output=True, text=True)
+    assert out.stdout == text, out.stderr
+
+
+@pytest.mark.skipif(shutil.which("osascript") is None, reason="AppleScript (macOS) only")
+@pytest.mark.parametrize("text", _DIALOG_TEXTS)
+def test_as_str_round_trips_through_applescript(text):
+    out = subprocess.run(["osascript", "-e", f"return {jl._as_str(text)}"],
+                         capture_output=True, text=True)
+    assert out.stdout.rstrip("\n") == text, out.stderr
+
+
+_FAKE_PIXI = """#!/bin/sh
+# fake pixi: record the call; `install` creates the env dir
+echo "$*" >> "$(dirname "$0")/calls.log"
+case "$1" in install) mkdir -p "$(dirname "$3")/.pixi" ;; esac
+"""
+
+
+def _make_payload(dir_: Path, manifest: str, lock: str, pixi_tag: str = "v1") -> Path:
+    dir_.mkdir(parents=True, exist_ok=True)
+    (dir_ / "pixi.toml").write_text(manifest)
+    (dir_ / "pixi.lock").write_text(lock)
+    (dir_ / "pixi").write_text(_FAKE_PIXI + f"# {pixi_tag}\n")
+    (dir_ / "pixi").chmod(0o755)
+    subprocess.run(["sh", "-c", "shasum -a 256 pixi > pixi.sha256"], cwd=dir_, check=True)
+    return dir_
+
+
+def _bootstrap(app_support: Path, payload: Path) -> list:
+    """Run bootstrap.sh's ensure_pixi + ensure_env; return the fake pixi's calls."""
+    script = (f'source "{_REPO / "installer" / "shared" / "bootstrap.sh"}"; '
+              "ensure_pixi; ensure_env")
+    env = {**os.environ, "APP_SUPPORT": str(app_support), "PAYLOAD": str(payload)}
+    subprocess.run(["bash", "-c", script], env=env, check=True)
+    calls = app_support / "calls.log"
+    lines = calls.read_text().splitlines() if calls.exists() else []
+    calls.unlink(missing_ok=True)
+    return lines
+
+
+@pytest.mark.skipif(shutil.which("bash") is None or shutil.which("shasum") is None,
+                    reason="bash + shasum needed")
+def test_bootstrap_refreshes_changed_installer_payload(tmp_path):
+    """H17: a newer installer's manifest / pixi reach existing installs; the in-band lock
+    (rewritten by Check for Updates) survives when the manifest is unchanged."""
+    app = tmp_path / "support"
+    env_dir = app / "env"
+
+    v1 = _make_payload(tmp_path / "v1", "band = '>=0.9,<1.0'\n", "lock v1\n")
+    calls = _bootstrap(app, v1)                               # first run
+    assert [c.split()[0] for c in calls] == ["install"]
+    assert (env_dir / "pixi.lock").read_text() == "lock v1\n"
+
+    (env_dir / "pixi.lock").write_text("lock updated in-band\n")
+    assert _bootstrap(app, v1) == []                          # relaunch: nothing to do
+    assert (env_dir / "pixi.lock").read_text() == "lock updated in-band\n"
+
+    v2 = _make_payload(tmp_path / "v2", "band = '>=1.0,<2.0'\n", "lock v2\n")
+    calls = _bootstrap(app, v2)                               # new installer, new band
+    assert [c.split()[0] for c in calls] == ["install"]
+    assert (env_dir / "pixi.toml").read_text() == "band = '>=1.0,<2.0'\n"
+    assert (env_dir / "pixi.lock").read_text() == "lock v2\n"
+
+    v3 = _make_payload(tmp_path / "v3", "band = '>=1.0,<2.0'\n", "lock v2\n", pixi_tag="v3")
+    assert _bootstrap(app, v3) == []                          # same manifest, new pixi
+    assert (app / "pixi").read_text().endswith("# v3\n")
+
+
+@pytest.mark.skipif(shutil.which("bash") is None or shutil.which("shasum") is None,
+                    reason="bash + shasum needed")
+def test_assembled_app_has_everything_launch_needs(tmp_path):
+    """H15: the signed .pkg used to stage the .app without the tray launcher / splash."""
+    fake_pixi = tmp_path / "pixi"
+    fake_pixi.write_text("#!/bin/sh\n")
+    fake_pixi.chmod(0o755)
+    app = tmp_path / "out" / "JupyterBioacoustic.app"
+    subprocess.run(["bash", str(_REPO / "installer" / "macos" / "assemble-app.sh"), str(app)],
+                   env={**os.environ, "PIXI_BIN": str(fake_pixi)}, check=True,
+                   capture_output=True)
+    res = app / "Contents" / "Resources"
+    launch = (app / "Contents" / "MacOS" / "launch").read_text()
+    for name in ("bootstrap.sh", "jba_launcher.py", "splash.js"):
+        assert f'$RES/{name}' in launch                     # the launch script uses it...
+        assert (res / name).is_file()                       # ...and it's in the bundle
+    for name in ("pixi", "pixi.sha256", "pixi.toml"):
+        assert (res / "payload" / name).is_file()
+    assert os.access(app / "Contents" / "MacOS" / "launch", os.X_OK)
