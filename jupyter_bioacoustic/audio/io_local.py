@@ -61,8 +61,9 @@ def read_segment(
     )
     with sf.SoundFile(path) as f:
         sr = f.samplerate
-        f.seek(int(start_sec * sr))
-        raw = f.read(int(dur_sec * sr), dtype=DEFAULT_DTYPE, always_2d=True)
+        start, n_samples = _shared.segment_frames(start_sec, dur_sec, sr)
+        f.seek(start)
+        raw = f.read(n_samples, dtype=DEFAULT_DTYPE, always_2d=True)
     _log.debug('local read_segment: %d samples, sr=%d', raw.shape[0], sr)
     return raw, sr
 
