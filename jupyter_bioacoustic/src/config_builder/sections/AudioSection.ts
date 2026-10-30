@@ -198,6 +198,18 @@ export class AudioSection extends CollapsibleSection {
     return result;
   }
 
+  override reset(): void {
+    this._sourceType.value = 'path';
+    for (const el of [this._valueInput, this._colInput, this._prefixInput, this._suffixInput,
+                      this._fallbackInput]) {
+      el.value = '';
+    }
+    this._colSelect.value = '';
+    this._secrets.reset();
+    this.setValidateStatus(null);
+    this._updateValueUI();
+  }
+
   setData(data: Record<string, any>): void {
     // Current form: source_type + value. Legacy form: an explicit
     // path/url/uri/column key (still loadable).
