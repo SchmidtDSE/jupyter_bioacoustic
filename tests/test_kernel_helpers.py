@@ -536,3 +536,27 @@ class TestLoadSelectText:
             f.write('a,Alpha\nb,Beta\n')
         result = json.loads(load_select_items(p))
         assert result == [['a', 'Alpha'], ['b', 'Beta']]
+
+
+#
+# concurrent writers (output file locking)
+#
+_WRITER = '''
+import sys
+from jupyter_bioacoustic._kernel_helpers import write_output_row
+path, who = sys.argv[1], sys.argv[2]
+for i in range(60):
+    # a new column on every row forces a full rewrite each time: the worst case for races
+    write_output_row(path, {"who": who, "i": i, f"c_{who}_{i}": "x"}, ["who", "i"], "csv")
+'''
+
+
+def test_concurrent_kernels_do_not_lose_rows(tmp_path):
+    import subprocess
+    path = str(tmp_path / 'shared.csv')
+    procs = [subprocess.Popen([sys.executable, '-c', _WRITER, path, who]) for who in 'abc']
+    assert all(p.wait(timeout=120) == 0 for p in procs)
+    with open(path) as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 180
+    assert {(r['who'], r['i']) for r in rows} == {(w, str(i)) for w in 'abc' for i in range(60)}
