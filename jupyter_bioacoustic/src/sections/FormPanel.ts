@@ -8,14 +8,14 @@
  * Communicates with the rest of the widget via Lumino signals.
  */
 import { Signal } from '@lumino/signaling';
-import { Detection, AnnotConfig, MultiboxEntry } from '../types';
+import { AnnotConfig, AnnotField, Detection, MultiboxEntry } from '../types';
 import { KernelBridge, KernelError } from '../kernel';
 import { escPy, AccuracyConfig, parseAccuracyConfig, isTruthyValue, resolveTemplate, hasTemplatePlaceholders } from '../util';
 import { HINT, TOOLTIP } from '../text';
 import {
   countOutputRows,
   readOutputRows,
-  writeOutputRow,
+  writeOutputRows,
   deleteOutputRow,
   loadSelectItems,
   INVALIDATE_OUTPUT_CACHE,
@@ -127,6 +127,7 @@ export class FormPanel {
   private _syncConfig: { uri?: string; button?: string; recursive?: boolean } = {};
   private _syncBtn: HTMLButtonElement | null = null;
   private _selectedIdx = -1;
+  private _submitting = false;
   private _filteredLength = 0;
 
   constructor(private _kernel: KernelBridge) {
@@ -380,7 +381,7 @@ export class FormPanel {
   }
 
   /** Move one bound of box ``index`` (edge drag); the active box's inputs follow. */
-  updateMultiboxBounds(index: number, field: 'startTime' | 'endTime' | 'minFreq' | 'maxFreq', value: number): void {
+  updateMultiboxBounds(index: number, field: AnnotField, value: number): void {
     const entry = this._multiboxEntries[index];
     if (!entry) return;
     entry[field] = value;
@@ -1919,83 +1920,74 @@ export class FormPanel {
 
   // ─── Private: submit / delete ─────────────────────────────
 
+  /** Submit handler: one guarded write per submit (no double-clicks, no partial multibox saves). */
   private async _onVerify(): Promise<void> {
-    if (!this._currentRow || !this._outputPath) return;
-    const activeRow = this._currentRow;
-    const ac = this._annotConfig;
-
-    // Multibox mode: write one row per box
-    if (this.isMultiboxMode() && this._multiboxEntries.length > 0) {
-      const baseValues = this._collectFormValues();
-      // Remove annotation columns from base (they come from each box)
-      if (ac?.startTime) delete baseValues[ac.startTime.col];
-      if (ac?.endTime) delete baseValues[ac.endTime.col];
-      if (ac?.minFreq) delete baseValues[ac.minFreq.col];
-      if (ac?.maxFreq) delete baseValues[ac.maxFreq.col];
-
-      const n = this._multiboxEntries.length;
-      try {
-        for (const entry of this._multiboxEntries) {
-          const rowValues: Record<string, any> = { ...baseValues };
-          if (ac?.startTime) rowValues[ac.startTime.col] = entry.startTime;
-          if (ac?.endTime) rowValues[ac.endTime.col] = entry.endTime;
-          if (ac?.minFreq) rowValues[ac.minFreq.col] = entry.minFreq;
-          if (ac?.maxFreq) rowValues[ac.maxFreq.col] = entry.maxFreq;
-          // Merge per-box form values
-          Object.assign(rowValues, entry.formValues);
-          const code = writeOutputRow(this._outputPath, rowValues);
-          await this._kernel.exec(code);
-        }
-        this.statusChanged.emit({
-          message: `✓ Saved ${n} boxes for clip ${activeRow[this._dataIndexCol]} → ${this._outputPath}`,
-          error: false,
-        });
-      } catch (e: any) {
-        const summary = e instanceof KernelError ? e.message : String(e.message ?? e);
-        if (e instanceof KernelError) console.error('[JBA] Write failed:', e.traceback);
-        this.statusChanged.emit({ message: `❌ Write failed: ${summary}`, error: true });
-        return;
-      }
-      this._sessionCount++;
-      if (!this._duplicateEntries) {
-        const multiRows: Record<string, any>[] = this._multiboxEntries.map(entry => {
-          const rv: Record<string, any> = { ...this._collectFormValues() };
-          if (ac?.startTime) { delete rv[ac.startTime.col]; rv[ac.startTime.col] = entry.startTime; }
-          if (ac?.endTime) { delete rv[ac.endTime.col]; rv[ac.endTime.col] = entry.endTime; }
-          if (ac?.minFreq) { delete rv[ac.minFreq.col]; rv[ac.minFreq.col] = entry.minFreq; }
-          if (ac?.maxFreq) { delete rv[ac.maxFreq.col]; rv[ac.maxFreq.col] = entry.maxFreq; }
-          Object.assign(rv, entry.formValues);
-          return rv;
-        });
-        this._reviewedMap.set(activeRow[this._dataIndexCol], multiRows);
-      }
-      void this._refreshAccuracy().then(() => this._updateProgress());
-      void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
-      this._enableSyncBtn()
-      this.submitted.emit({ _multibox: true, count: n });
-      return;
-    }
-
-    // Standard single-row submit
-    const values = this._collectFormValues();
-    const code = writeOutputRow(this._outputPath, values);
+    if (this._submitting || !this._currentRow || !this._outputPath) return;
+    this._submitting = true;
+    this._setSubmitBusy(true);
     try {
-      await this._kernel.exec(code);
-      this.statusChanged.emit({ message: `✓ Saved clip ${activeRow[this._dataIndexCol]} → ${this._outputPath}`, error: false });
+      await this._writeSubmission(this._currentRow);
+    } finally {
+      this._submitting = false;
+      this._setSubmitBusy(false);
+    }
+  }
+
+  /** Write the current form (one row, or one row per multibox box) in a single kernel call. */
+  private async _writeSubmission(activeRow: Detection): Promise<void> {
+    const multibox = this.isMultiboxMode() && this._multiboxEntries.length > 0;
+    const rows = multibox
+      ? this._multiboxEntries.map(entry => this._multiboxRow(entry))
+      : [this._collectFormValues()];
+    try {
+      await this._kernel.exec(writeOutputRows(this._outputPath, rows));
     } catch (e: any) {
       const summary = e instanceof KernelError ? e.message : String(e.message ?? e);
       if (e instanceof KernelError) console.error('[JBA] Write failed:', e.traceback);
       this.statusChanged.emit({ message: `❌ Write failed: ${summary}`, error: true });
       return;
     }
+    const clipId = activeRow[this._dataIndexCol];
+    this.statusChanged.emit({
+      message: multibox
+        ? `✓ Saved ${rows.length} boxes for clip ${clipId} → ${this._outputPath}`
+        : `✓ Saved clip ${clipId} → ${this._outputPath}`,
+      error: false,
+    });
     this._sessionCount++;
     if (!this._duplicateEntries) {
-      this._reviewedMap.set(activeRow[this._dataIndexCol], [{ ...values }]);
+      this._reviewedMap.set(clipId, rows.map(r => ({ ...r })));
     }
     void this._refreshAccuracy().then(() => this._updateProgress());
     void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
-    this._enableSyncBtn()
-    this.submitted.emit(values);
+    this._enableSyncBtn();
+    this.submitted.emit(multibox ? { _multibox: true, count: rows.length } : rows[0]);
+  }
+
+  /** One output row for a multibox box: shared form values + the box bounds + its own form. */
+  private _multiboxRow(entry: MultiboxEntry): Record<string, any> {
+    const row: Record<string, any> = this._collectFormValues();
+    const bounds: Array<[AnnotField, number]> = [
+      ['startTime', entry.startTime], ['endTime', entry.endTime],
+      ['minFreq', entry.minFreq], ['maxFreq', entry.maxFreq],
+    ];
+    for (const [field, value] of bounds) {
+      const col = this._annotConfig?.[field]?.col;
+      if (col) {
+        delete row[col];            // re-add so the bound columns come last, after the form
+        row[col] = value;
+      }
+    }
+    return Object.assign(row, entry.formValues);
+  }
+
+  /** Disable the submit buttons while a write is in flight; re-validate afterwards. */
+  private _setSubmitBusy(busy: boolean): void {
+    if (busy) {
+      for (const btn of this._submitBtns) btn.disabled = true;
+    } else {
+      this._validateForm();
+    }
   }
 
   private _currentRow: Detection | null = null;
