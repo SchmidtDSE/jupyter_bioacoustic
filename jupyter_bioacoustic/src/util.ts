@@ -23,6 +23,15 @@ export function suppressNotebookShortcuts(node: HTMLElement): void {
   node.addEventListener('focusin', e => mark(e.target));
 }
 
+/**
+ * ``text`` as a number, or ``fallback`` when it's blank or not a number. Unlike
+ * ``parseInt(text) || fallback`` it keeps 0 and decimals (``min: 0`` used to become 1).
+ */
+export function numberOr(text: string, fallback: number): number {
+  const n = Number(text);
+  return text.trim() !== '' && Number.isFinite(n) ? n : fallback;
+}
+
 export function fmtTime(s: number): string {
   const sign = s < 0 ? '-' : '';
   const abs = Math.abs(s);
