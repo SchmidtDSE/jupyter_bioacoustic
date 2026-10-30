@@ -43,6 +43,12 @@ import { DescriptionSection } from './sections/DescriptionSection';
 import { CollapsibleSection } from './sections/CollapsibleSection';
 import { ConfigSummary } from './sections/ConfigSummary';
 
+
+/** ``path`` with a ``.yaml`` extension unless it has .yaml/.yml (as the kernel saves it). */
+export function withYamlExt(path: string): string {
+  return /\.ya?ml$/i.test(path) ? path : `${path}.yaml`;
+}
+
 export class ConfigPanel {
   readonly element: HTMLDivElement;
 
@@ -660,25 +666,24 @@ export class ConfigPanel {
       return null;
     }
 
-    const checkPath =
-      (projectData.project_enabled && !projectData.project_locked && projectData.project_path) ||
-      (projectData.config_enabled && !projectData.config_locked && projectData.config_path) || '';
-    if (checkPath) {
+    // every file about to be written (project, config AND form), as the kernel will name it
+    const existing: string[] = [];
+    for (const path of enabled.map(p => withYamlExt(String(p)))) {
       try {
-        const existsRaw = await this._kernel.exec(checkFileExists(checkPath));
-        const exists = JSON.parse(extractJson(existsRaw)).exists as boolean;
-        if (exists) {
-          const choice = await showDialog({
-            title: 'Overwrite Files?',
-            body: 'Configuration files already exist at the specified paths.',
-            buttons: [
-              { label: 'Cancel' },
-              { label: 'Overwrite', primary: true },
-            ],
-          });
-          if (choice !== 'Overwrite') return null;
-        }
-      } catch { /* proceed */ }
+        const raw = await this._kernel.exec(checkFileExists(path));
+        if (JSON.parse(extractJson(raw)).exists) existing.push(path);
+      } catch { /* unknown: treat as new */ }
+    }
+    if (existing.length > 0) {
+      const choice = await showDialog({
+        title: 'Overwrite Files?',
+        body: `These files already exist and will be overwritten:\n• ${existing.join('\n• ')}`,
+        buttons: [
+          { label: 'Cancel' },
+          { label: 'Overwrite', primary: true },
+        ],
+      });
+      if (choice !== 'Overwrite') return null;
     }
 
     this._dbg('saveToFile', { enabled });
@@ -690,7 +695,9 @@ export class ConfigPanel {
       const paths = state.saved_paths || {};
       this._dbg('saved', paths);
       const savedList = Object.values(paths).join(', ');
-      this._savedPath = paths.project || paths.config || paths.form || '';
+      // open the project file when it's enabled, even if locked (not rewritten, but it exists)
+      const active = this._activeFilePath().path;
+      this._savedPath = (active && withYamlExt(active)) || paths.project || paths.config || paths.form || '';
       this._setStatus(`Saved: ${savedList}`);
       for (const cb of this._dirtyCallbacks) cb();
       return this._savedPath;
