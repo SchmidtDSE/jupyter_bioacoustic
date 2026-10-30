@@ -69,13 +69,15 @@ export class KernelBridge {
 
   /**
    * Execute a Python snippet and return stdout (trimmed).
-   * @throws KernelError(stderr+traceback) on Python error, or Error("No active kernel")
+   * @throws KernelError(traceback) if Python raised (even after printing some output), or if
+   *     it printed only to stderr; Error("No active kernel") without a kernel.
    */
   async exec(code: string): Promise<string> {
     const kernel = this.activeKernel;
     if (!kernel) throw new Error('No active kernel');
     let out = '', err = '';
     let summary = '';
+    let raised = false;
     const future = kernel.requestExecute({ code });
     future.onIOPub = (msg: any) => {
       const t = msg.header.msg_type;
@@ -83,13 +85,15 @@ export class KernelBridge {
         if (msg.content?.name === 'stdout') out += msg.content.text as string;
         if (msg.content?.name === 'stderr') err += msg.content.text as string;
       } else if (t === 'error') {
+        raised = true;
         const tb: string[] = msg.content?.traceback ?? [];
         summary = (msg.content?.ename ?? '') + ': ' + (msg.content?.evalue ?? '');
         err += summary + '\n' + tb.join('\n');
       }
     };
     await future.done;
-    if (!out.trim() && err) {
+    // an exception always fails the call: partial stdout before it is not a result
+    if (raised || (!out.trim() && err)) {
       throw new KernelError(summary || err.trim(), err.trim());
     }
     return out.trim();
