@@ -7,6 +7,7 @@
  */
 import { Signal } from '@lumino/signaling';
 import { Detection } from '../types';
+import { BoxEdge, dragBoxEdge } from '../boxEdges';
 import { KernelBridge } from '../kernel';
 import { FormPanel } from './FormPanel';
 import { fmtTime, resolveTemplate } from '../util';
@@ -919,10 +920,10 @@ export class Player {
         const yhi = this._freqToY(entry.maxFreq), ylo = this._freqToY(entry.minFreq);
         const inY = cy >= yhi - GRAB && cy <= ylo + GRAB;
         const inX = cx >= sx - GRAB && cx <= ex + GRAB;
-        if (inY && Math.abs(cx - sx) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-left', boxIndex: i }; this._renderFrame(); return; }
-        if (inY && Math.abs(cx - ex) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-right', boxIndex: i }; this._renderFrame(); return; }
-        if (inX && Math.abs(cy - yhi) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-top', boxIndex: i }; this._renderFrame(); return; }
-        if (inX && Math.abs(cy - ylo) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'box-bottom', boxIndex: i }; this._renderFrame(); return; }
+        if (inY && Math.abs(cx - sx) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'mb-left', boxIndex: i }; this._renderFrame(); return; }
+        if (inY && Math.abs(cx - ex) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'mb-right', boxIndex: i }; this._renderFrame(); return; }
+        if (inX && Math.abs(cy - yhi) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'mb-top', boxIndex: i }; this._renderFrame(); return; }
+        if (inX && Math.abs(cy - ylo) <= GRAB) { this._form.setActiveBox(i); this._annotDrag = { target: 'mb-bottom', boxIndex: i }; this._renderFrame(); return; }
       }
       // Hit test interior (click to select)
       for (let i = entries.length - 1; i >= 0; i--) {
@@ -1062,14 +1063,14 @@ export class Player {
     } else if (tgt === 'multibox-new') {
       // Drawing a new multibox — render preview
       // (committed on mouseup)
-    } else if (tgt.startsWith('box-') && this._annotDrag.boxIndex != null) {
+    } else if (tgt.startsWith('mb-') && this._annotDrag.boxIndex != null) {
+      // multibox edges use their own 'mb-*' targets: they used to share the single-box
+      // 'box-*' names, so the branches above caught them and the box never moved
       const bi = this._annotDrag.boxIndex;
       const entry = this._form.getMultiboxEntries()[bi];
       if (entry) {
-        if (tgt === 'box-left') this._form.updateMultiboxBounds(bi, 'startTime', Math.min(t, entry.endTime));
-        else if (tgt === 'box-right') this._form.updateMultiboxBounds(bi, 'endTime', Math.max(t, entry.startTime));
-        else if (tgt === 'box-top') this._form.updateMultiboxBounds(bi, 'maxFreq', Math.max(f, entry.minFreq));
-        else if (tgt === 'box-bottom') this._form.updateMultiboxBounds(bi, 'minFreq', Math.min(f, entry.maxFreq));
+        const { field, value } = dragBoxEdge(entry, tgt.slice(3) as BoxEdge, t, f);
+        this._form.updateMultiboxBounds(bi, field, value);
       }
     }
 
