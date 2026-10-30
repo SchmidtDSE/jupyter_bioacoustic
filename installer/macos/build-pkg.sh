@@ -4,14 +4,14 @@
 # Prereqs (CI or local with creds):
 #   - Developer ID Application + Developer ID Installer certs in the keychain
 #   - A notarytool keychain profile (xcrun notarytool store-credentials)
-#   - The pinned pixi binary for the target arch + its .sha256
-#   - icon built: installer/icon/build/AppIcon.icns  (run icon/make-icons.sh)
+#   - The pinned pixi binary for the target arch (optionally its .sha256 to verify it)
+#   - icons built: installer/icon/build/AppIcon.icns + tray.png  (run icon/make-icons.sh)
 #
 # Env:
 #   APP_CERT="Developer ID Application: NAME (TEAMID)"
 #   PKG_CERT="Developer ID Installer: NAME (TEAMID)"
 #   NOTARY_PROFILE="jba-notary"
-#   PIXI_BIN=/path/to/pixi          PIXI_SHA256=/path/to/pixi.sha256
+#   PIXI_BIN=/path/to/pixi          PIXI_SHA256=/path/to/pixi.sha256  (optional: "<hash>  <name>")
 #   VERSION=0.1.0  ARCH=arm64
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -20,15 +20,13 @@ ROOT="$(cd ../.. && pwd)/installer"
 STAGE="$(mktemp -d)"; APP="$STAGE/JupyterBioacoustic.app"
 
 echo "› stage .app bundle"
-cp -R app/JupyterBioacoustic.app "$APP"
-mkdir -p "$APP/Contents/Resources/payload"
-cp "$ROOT/shared/bootstrap.sh"        "$APP/Contents/Resources/bootstrap.sh"
-cp "$ROOT/icon/build/AppIcon.icns"    "$APP/Contents/Resources/AppIcon.icns"
-cp "$ROOT/manifest/pixi.toml"         "$APP/Contents/Resources/payload/pixi.toml"
-cp "$ROOT/manifest/pixi.lock"         "$APP/Contents/Resources/payload/pixi.lock" 2>/dev/null || true
-cp "${PIXI_BIN:?set PIXI_BIN}"        "$APP/Contents/Resources/payload/pixi"
-cp "${PIXI_SHA256:?set PIXI_SHA256}"  "$APP/Contents/Resources/payload/pixi.sha256"
-chmod +x "$APP/Contents/MacOS/launch" "$APP/Contents/Resources/payload/pixi"
+[ -f "$ROOT/icon/build/AppIcon.icns" ] || { echo "run icon/make-icons.sh first" >&2; exit 1; }
+if [ -n "${PIXI_SHA256:-}" ]; then
+  want="$(awk '{print $1}' "$PIXI_SHA256")"; got="$(shasum -a 256 "${PIXI_BIN:?set PIXI_BIN}" | awk '{print $1}')"
+  [ "$want" = "$got" ] || { echo "PIXI_BIN does not match PIXI_SHA256" >&2; exit 1; }
+fi
+# same bundle contents as the dev / unsigned builds (launcher, splash, tray icon, payload)
+PIXI_BIN="${PIXI_BIN:?set PIXI_BIN}" bash "$ROOT/macos/assemble-app.sh" "$APP"
 
 echo "› codesign .app (hardened runtime)"
 codesign --force --deep --options runtime --timestamp \
