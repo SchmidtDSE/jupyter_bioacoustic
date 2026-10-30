@@ -1198,3 +1198,74 @@ class TestAnnotatorVisualizationIndex:
         ba = self._viz([custom])
         assert ba._viz_meta == [{'type': 'custom', 'label': 'custom', 'index': 0}]
         json.dumps(ba._viz_meta)                       # sent to the frontend as JSON
+
+
+#
+# BioacousticAnnotator — description given as a string (A5)
+#
+class TestAnnotatorDescriptionString:
+
+    def _desc(self, description):
+        return BioacousticAnnotator(data=_make_df(), audio='audio_path',
+                                    description=description)._description_config
+
+    def test_markdown_text(self):
+        assert self._desc('# About\nListen for owls') == {
+            'title': '', 'text': '# About\nListen for owls', 'open': True}
+
+    def test_markdown_file_path(self, tmp_path):
+        md = tmp_path / 'about.md'
+        md.write_text('From a file')
+        assert self._desc(str(md))['text'] == 'From a file'
+
+    def test_false_means_no_panel(self):
+        assert self._desc(False) is None
+
+    def test_true_warns_and_shows_nothing(self):
+        with pytest.warns(UserWarning, match='no text to show'):
+            assert self._desc(True) is None
+
+
+#
+# .json output written as JSON Lines reads back (A8)
+#
+class TestReadJsonOutput:
+
+    @pytest.mark.parametrize('n_rows', [1, 3])
+    def test_json_lines_file(self, tmp_path, n_rows):
+        from jupyter_bioacoustic._kernel_helpers import write_output_rows
+        p = str(tmp_path / 'out.json')
+        rows = [{'id': i, 'label': f'x{i}'} for i in range(n_rows)]
+        write_output_rows(p, rows, ['id', 'label'], 'json')
+        assert _read_data(p).to_dict('records') == rows
+
+    def test_json_document_file(self, tmp_path):
+        p = tmp_path / 'data.json'
+        p.write_text(json.dumps([{'id': 1}, {'id': 2}]))
+        assert _read_data(str(p)).to_dict('records') == [{'id': 1}, {'id': 2}]
+
+
+#
+# SQL secrets: quoted SET values, environment only during the query
+#
+class TestSqlSecrets:
+
+    def test_temporary_environ_restores(self, monkeypatch):
+        from jupyter_bioacoustic.api import _temporary_environ
+        monkeypatch.setenv('JBA_KEEP', 'old')
+        monkeypatch.delenv('JBA_TEMP', raising=False)
+        with _temporary_environ({'JBA_KEEP': 'new', 'JBA_TEMP': 'tmp'}):
+            assert os.environ['JBA_KEEP'] == 'new' and os.environ['JBA_TEMP'] == 'tmp'
+        assert os.environ['JBA_KEEP'] == 'old'
+        assert 'JBA_TEMP' not in os.environ
+
+    def test_query_with_quoted_secret_and_no_env_leak(self, monkeypatch):
+        pytest.importorskip('duckdb')
+        from jupyter_bioacoustic.api import _read_data_from_sql
+        monkeypatch.delenv('JBA_SQL_SECRET', raising=False)
+        df = _read_data_from_sql(
+            "SELECT 1 AS a",
+            secrets={'s3_region': "us-east-1' ; DROP", 'JBA_SQL_SECRET': 'shh'},
+        )
+        assert df['a'].tolist() == [1]
+        assert 'JBA_SQL_SECRET' not in os.environ
