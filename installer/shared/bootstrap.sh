@@ -21,9 +21,10 @@ UPDATE_INTERVAL=$((60*60*24))  # seconds between update checks
 log()    { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
 notify() { command -v _notify_impl >/dev/null 2>&1 && _notify_impl "$@" || true; }
 
-# Copy the bundled pixi binary into APP_SUPPORT and verify its checksum.
+# Copy the bundled pixi binary into APP_SUPPORT (first run, or when a newer installer bundles a
+# different pixi) and verify its checksum.
 ensure_pixi() {
-  [ -x "$PIXI" ] && return 0
+  [ -x "$PIXI" ] && cmp -s "$PAYLOAD/pixi" "$PIXI" && return 0
   mkdir -p "$APP_SUPPORT"
   log "installing bundled pixi $PIXI_VERSION"
   cp "$PAYLOAD/pixi" "$PIXI"
@@ -35,10 +36,23 @@ ensure_pixi() {
 }
 
 # Copy the bundled manifest+lock and install the environment (idempotent).
+# A newer installer whose pixi.toml differs from the installed one (new version band, new
+# dependency) replaces the manifest AND lock and reinstalls; otherwise the installed lock is
+# kept, since in-band "Check for Updates" rewrites it.
 ensure_env() {
+  local reinstall=0
   mkdir -p "$ENV_DIR"
-  [ -f "$ENV_DIR/pixi.toml" ] || cp "$PAYLOAD/pixi.toml" "$ENV_DIR/pixi.toml"
-  [ -f "$ENV_DIR/pixi.lock" ] || cp "$PAYLOAD/pixi.lock" "$ENV_DIR/pixi.lock" 2>/dev/null || true
+  if ! cmp -s "$PAYLOAD/pixi.toml" "$ENV_DIR/pixi.toml"; then
+    [ -f "$ENV_DIR/pixi.toml" ] && { log "installer manifest changed: refreshing env"; reinstall=1; }
+    cp "$PAYLOAD/pixi.toml" "$ENV_DIR/pixi.toml"
+    rm -f "$ENV_DIR/pixi.lock"
+    cp "$PAYLOAD/pixi.lock" "$ENV_DIR/pixi.lock" 2>/dev/null || true
+  fi
+  if [ "$reinstall" = 1 ] && [ -d "$ENV_DIR/.pixi" ]; then
+    notify "Updating Jupyter Bioacoustic (a few minutes)…"
+    "$PIXI" install --manifest-path "$ENV_DIR/pixi.toml" >>"$LOG" 2>&1 \
+      || { notify "Update failed — see $LOG"; log "pixi install (refresh) FAILED"; exit 1; }
+  fi
   if [ ! -d "$ENV_DIR/.pixi" ]; then
     log "pixi install (first run)"
     # Show a persistent "Setting up…" indicator (hook from the platform wrapper) that
