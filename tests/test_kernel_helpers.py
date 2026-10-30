@@ -292,6 +292,32 @@ class TestWriteOutputRow:
         assert row1 == ['owl', '1.0', '2.0', 'alice']
         assert row2 == ['hawk', '3.0', '4.0', 'bob']
 
+    def test_write_csv_new_column_mid_project(self, tmp_path):
+        """H5: a form field added mid-project must not break every submit."""
+        p = str(tmp_path / 'grow.csv')
+        write_output_row(p, {'id': '1', 'label': 'owl'}, ['id', 'label'], 'csv')
+        write_output_row(p, {'id': '2', 'label': 'hawk', 'notes': 'faint'},
+                         ['id', 'label', 'notes'], 'csv')
+        write_output_row(p, {'id': '3', 'label': 'wren'}, ['id', 'label'], 'csv')
+        with open(p) as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        assert reader.fieldnames == ['id', 'label', 'notes']
+        assert [r['notes'] for r in rows] == ['', 'faint', '']
+        assert [r['id'] for r in rows] == ['1', '2', '3']
+
+    def test_write_csv_row_keys_not_in_columns(self, tmp_path):
+        p = str(tmp_path / 'extra.csv')
+        write_output_row(p, {'a': '1', 'b': '2'}, ['a'], 'csv')
+        with open(p) as f:
+            assert list(csv.DictReader(f)) == [{'a': '1', 'b': '2'}]
+
+    def test_write_csv_into_empty_file_writes_header(self, tmp_path):
+        p = tmp_path / 'empty.csv'
+        p.write_text('')
+        write_output_row(str(p), {'a': '1'}, ['a'], 'csv')
+        assert p.read_text().splitlines() == ['a', '1']
+
 
 #
 # delete_output_row
@@ -307,6 +333,17 @@ class TestDeleteOutputRow:
             rows = list(csv.DictReader(f))
         assert len(rows) == 1
         assert rows[0]['id'] == '2'
+
+    def test_delete_last_csv_row_keeps_header(self, tmp_path):
+        """H4: deleting every row must keep the header so later writes stay valid."""
+        p = str(tmp_path / 'last.csv')
+        write_output_row(p, {'id': '1', 'val': 'a'}, ['id', 'val'], 'csv')
+        delete_output_row(p, lambda r: True, 'csv')
+        with open(p) as f:
+            assert f.read().splitlines() == ['id,val']
+        write_output_row(p, {'id': '2', 'val': 'b'}, ['id', 'val'], 'csv')
+        with open(p) as f:
+            assert list(csv.DictReader(f)) == [{'id': '2', 'val': 'b'}]
 
     def test_delete_jsonl_row(self, tmp_path):
         p = str(tmp_path / 'del.jsonl')
