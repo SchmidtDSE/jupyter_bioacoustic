@@ -665,3 +665,48 @@ class TestOutputSplitTarget:
         cb.set_section_target('output', 'split')
         assert cb._project['output'] == {'path': 'out.csv'}
         assert cb._config['output'] == {'index_column': 'id'}
+
+
+#
+# saved paths and the references to them agree
+#
+class TestConfigRefExtension:
+
+    def test_project_references_saved_file_names(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cb = ConfigBuilder()
+        cb.update_section('project', {'project_name': 'P', 'project_path': 'proj/p',
+                                      'config_path': 'cfgs/foo', 'form_path': 'forms/f'})
+        cb.update_section('form', {'form': [{'textbox': {'label': 'n'}}]})
+        files = cb._build_file_contents()
+        assert files['project_cfg']['config'] == 'cfgs/foo.yaml'
+        assert files['config_cfg']['form_config'] == 'forms/f.yaml'
+        cb.save_all()
+        assert (tmp_path / 'cfgs/foo.yaml').exists() and (tmp_path / 'forms/f.yaml').exists()
+
+
+#
+# read_columns: every supported data format
+#
+class TestReadColumns:
+
+    @pytest.mark.parametrize('name,write', [
+        ('d.csv', lambda df, p: df.to_csv(p, index=False)),
+        ('d.tsv', lambda df, p: df.to_csv(p, sep='\t', index=False)),
+        ('d.json', lambda df, p: df.to_json(p, orient='records')),
+        ('lines.json', lambda df, p: df.to_json(p, orient='records', lines=True)),
+        ('d.jsonl', lambda df, p: df.to_json(p, orient='records', lines=True)),
+        ('d.ndjson', lambda df, p: df.to_json(p, orient='records', lines=True)),
+    ])
+    def test_formats(self, tmp_path, name, write):
+        import pandas as pd
+        df = pd.DataFrame({'id': [1, 2], 'species': ['a', 'b']})
+        write(df, tmp_path / name)
+        assert ConfigBuilder().read_columns(str(tmp_path / name)) == ['id', 'species']
+
+    def test_parquet(self, tmp_path):
+        pytest.importorskip('pyarrow')
+        import pandas as pd
+        p = tmp_path / 'd.parquet'
+        pd.DataFrame({'id': [1], 'species': ['a']}).to_parquet(p)
+        assert ConfigBuilder().read_columns(str(p)) == ['id', 'species']
