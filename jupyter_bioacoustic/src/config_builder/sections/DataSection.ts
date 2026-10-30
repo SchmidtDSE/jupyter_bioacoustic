@@ -202,9 +202,6 @@ export class DataSection extends CollapsibleSection {
     const currentStart = this._startTimeSelect.value;
     const currentEnd = this._endTimeSelect.value;
 
-    this._startTimeSelect.innerHTML = '';
-    this._endTimeSelect.innerHTML = '';
-
     this._indexColSelect.innerHTML = '';
     const placeholder = document.createElement('option');
     placeholder.value = ''; placeholder.textContent = '— select —';
@@ -226,24 +223,25 @@ export class DataSection extends CollapsibleSection {
       this._indexColSelect.style.display = 'none';
     }
 
-    const cols = this._detectedCols.length > 0 ? this._detectedCols : ['start_time'];
-    for (const col of cols) {
-      const o1 = document.createElement('option');
-      o1.value = col; o1.textContent = col;
-      this._startTimeSelect.appendChild(o1);
-    }
-    for (const col of (this._detectedCols.length > 0 ? this._detectedCols : ['end_time'])) {
-      const o2 = document.createElement('option');
-      o2.value = col; o2.textContent = col;
-      this._endTimeSelect.appendChild(o2);
-    }
+    this._fillTimeSelect(this._startTimeSelect, currentStart, 'start_time');
+    this._fillTimeSelect(this._endTimeSelect, currentEnd, 'end_time');
+  }
 
-    if (cols.includes(currentStart)) this._startTimeSelect.value = currentStart;
-    else if (cols.includes('start_time')) this._startTimeSelect.value = 'start_time';
-
-    const endCols = this._detectedCols.length > 0 ? this._detectedCols : ['end_time'];
-    if (endCols.includes(currentEnd)) this._endTimeSelect.value = currentEnd;
-    else if (endCols.includes('end_time')) this._endTimeSelect.value = 'end_time';
+  /**
+   * Fill a time-column select with the detected columns (or just ``fallback`` before any are
+   * loaded) and select ``keep``. A configured column the data doesn't (yet) list is kept as an
+   * extra option instead of being silently replaced — that used to drop custom mappings.
+   */
+  private _fillTimeSelect(sel: HTMLSelectElement, keep: string, fallback: string): void {
+    const cols = this._detectedCols.length > 0 ? this._detectedCols : [fallback];
+    const options = keep && !cols.includes(keep) ? [...cols, keep] : cols;
+    sel.innerHTML = '';
+    for (const col of options) {
+      const o = document.createElement('option');
+      o.value = col; o.textContent = col;
+      sel.appendChild(o);
+    }
+    sel.value = keep || (options.includes(fallback) ? fallback : options[0]);
   }
 
   applyLocks(
@@ -329,8 +327,8 @@ export class DataSection extends CollapsibleSection {
         this._indexColSelect.value = data.index_column;
       }
     }
-    if (data.start_time) this._startTimeSelect.value = data.start_time;
-    if (data.end_time) this._endTimeSelect.value = data.end_time;
+    if (data.start_time) this._fillTimeSelect(this._startTimeSelect, data.start_time, 'start_time');
+    if (data.end_time) this._fillTimeSelect(this._endTimeSelect, data.end_time, 'end_time');
     if (data.duration !== undefined) this._durationInput.value = String(data.duration);
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
