@@ -14,29 +14,9 @@ cd "$(dirname "$0")/.."                          # → installer/
 INSTALLER="$PWD"
 DEST="${1:-$HOME/Applications}/JupyterBioacoustic.app"
 
-command -v pixi >/dev/null || { echo "need pixi on PATH" >&2; exit 1; }
-
 echo "› staging $DEST"
-rm -rf "$DEST"; mkdir -p "$(dirname "$DEST")"
-cp -R "$INSTALLER/macos/app/JupyterBioacoustic.app" "$DEST"
-RES="$DEST/Contents/Resources"; mkdir -p "$RES/payload"
-
-cp "$INSTALLER/shared/bootstrap.sh"   "$RES/bootstrap.sh"
-cp "$INSTALLER/launcher/jba_launcher.py" "$RES/jba_launcher.py"   # the tray app
-cp "$INSTALLER/macos/splash.js" "$RES/splash.js"                 # first-run install splash
-cp "$INSTALLER/icon/build/tray.png" "$RES/tray.png" 2>/dev/null || true  # menu-bar icon (else drawn)
-cp "$INSTALLER/manifest/pixi.toml"  "$RES/payload/pixi.toml"
-cp "$INSTALLER/manifest/pixi.lock"  "$RES/payload/pixi.lock" 2>/dev/null || true
-cp "${PIXI_BIN:-$(command -v pixi)}" "$RES/payload/pixi"   # PIXI_BIN lets make-dist bundle a specific arch
-( cd "$RES/payload" && shasum -a 256 pixi > pixi.sha256 )
-
-if [ -f "$INSTALLER/icon/build/AppIcon.icns" ]; then
-  cp "$INSTALLER/icon/build/AppIcon.icns" "$RES/AppIcon.icns"
-else
-  echo "  (no AppIcon.icns — run icon/make-icons.sh for the brand icon; using generic)"
-fi
-
-chmod +x "$DEST/Contents/MacOS/launch" "$RES/payload/pixi"
+# PIXI_BIN (optional) lets make-dist bundle a specific arch's pixi
+bash "$INSTALLER/macos/assemble-app.sh" "$DEST"
 codesign -s - --deep --force "$DEST" >/dev/null 2>&1 || true   # ad-hoc: runs locally
 
 # Drop the folder-picker next to the app so you can test the "set start folder" UI.
