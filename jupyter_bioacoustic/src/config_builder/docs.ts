@@ -32,7 +32,7 @@ export const DOCS: Record<string, SectionDocs> = {
     start_time_col: `Column name containing the segment start time in seconds.\nDefault: "start_time". Remap if your file uses a different name.`,
     end_time_col: `Column name containing the segment end time in seconds.\nDefault: "end_time". Remap if your file uses a different name.`,
     duration: `Column name or fixed number (seconds) to compute end_time from start_time.\nUse this if your data has duration instead of end_time.\nExample: "duration" (column) or 5.0 (fixed seconds).`,
-    secrets: `Key-value pairs for credentials needed to access data.\nExample: API tokens, database passwords. Stored in the session only, never written to config files.`,
+    secrets: `Key-value pairs for credentials needed to access data.\nExample: API tokens, database passwords. They ARE saved in the config file: use env:VAR_NAME (read from an environment variable) or dialog (asked for when the annotator opens) instead of pasting real secrets.`,
   },
   audio: {
     _intro: `Audio defines where to find the sound files for each clip.\nYou can point to a single file, a URL, or a per-row column that holds the path for each detection.`,
