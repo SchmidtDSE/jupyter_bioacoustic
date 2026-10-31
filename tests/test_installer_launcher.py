@@ -280,3 +280,37 @@ def test_assembled_app_has_everything_launch_needs(tmp_path):
     for name in ("pixi", "pixi.sha256", "pixi.toml"):
         assert (res / "payload" / name).is_file()
     assert os.access(app / "Contents" / "MacOS" / "launch", os.X_OK)
+
+
+def test_apply_update_logs_pixi_output(tmp_path):
+    """The 'Update failed' dialog points at launch.log: it must contain pixi's output."""
+    fake_pixi = tmp_path / "pixi"
+    fake_pixi.write_text("#!/bin/sh\necho 'resolving...'\necho 'ERROR: no match' >&2\nexit 1\n")
+    fake_pixi.chmod(0o755)
+    jl.LAUNCH_LOG.unlink(missing_ok=True)
+    assert jl._apply_update(fake_pixi, tmp_path / "pixi.toml") is False
+    log = jl.LAUNCH_LOG.read_text()
+    assert "exited 1" in log and "resolving..." in log and "ERROR: no match" in log
+
+
+def test_server_output_goes_to_jupyter_log(monkeypatch):
+    """JupyterLab's stdout/stderr used to go nowhere (Finder / pythonw have no console)."""
+    captured = {}
+
+    class FakePopen:
+        pid = 4242
+
+        def __init__(self, args, env=None, stdout=None, stderr=None):
+            captured.update(stdout=stdout.name, stderr=stderr)
+
+    monkeypatch.setattr(jl.subprocess, "Popen", FakePopen)
+    jl._start_server({"root_dir": str(_APP_SUPPORT / "root")})
+    assert captured == {"stdout": str(jl.JUPYTER_LOG), "stderr": subprocess.STDOUT}
+
+
+def test_rotate_keeps_one_old_copy(tmp_path, monkeypatch):
+    monkeypatch.setattr(jl, "MAX_LOG_BYTES", 10)
+    log = tmp_path / "jupyter.log"
+    log.write_text("x" * 20)
+    jl._rotate(log)
+    assert not log.exists() and (tmp_path / "jupyter.log.1").read_text() == "x" * 20
