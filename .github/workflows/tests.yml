@@ -1,0 +1,44 @@
+name: "Tests"
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: "tests-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: "pytest + jest + typecheck"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
+    steps:
+      - name: "Checkout repository"
+        uses: "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd" # v6.0.2
+        with:
+          persist-credentials: false
+
+      # pixi.lock is git-ignored, so environments are solved fresh (no lockfile to cache on)
+      - name: "Set up pixi"
+        uses: "prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94" # v0.11.2
+        with:
+          environments: "default test"
+          cache: false
+
+      - name: "Install JS dependencies"
+        run: "pixi run jlpm-install"
+
+      - name: "Typecheck (tsc)"
+        run: "pixi run typecheck"
+
+      - name: "JS tests (jest)"
+        run: "pixi run bash -c 'cd jupyter_bioacoustic && jlpm test'"
+
+      - name: "Python tests (pytest)"
+        run: "pixi run -e test pytest tests/ -q"
