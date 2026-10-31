@@ -107,6 +107,9 @@ export class FileBrowser {
     this.element.append(header, this._pathBar, this._listEl, this._footerRow, this._statusEl);
     this.element.tabIndex = 0;
     this.element.addEventListener('keydown', (e: KeyboardEvent) => {
+      // Enter = "select this folder", except in a text box (e.g. the new-folder name), which
+      // handles its own Enter; it used to bubble here and also select the parent folder
+      if (e.target instanceof HTMLInputElement) return;
       if (e.key === 'Enter' && this._dirOnly) {
         this.fileSelected.emit(this._emitPath(this._cwd));
       }
