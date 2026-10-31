@@ -14,7 +14,7 @@ import {
   injectGlobalStyles,
 } from './styles';
 import { Detection } from './types';
-import { showDialog, suppressNotebookShortcuts } from './util';
+import { escapeHtml, showDialog, suppressNotebookShortcuts } from './util';
 import { LAUNCHER, PROJECT_PICKER, DIALOG, TOOLTIP } from './text';
 import {
   KernelBridge, KernelSource, acquireKernel, execInKernel, notebookSession,
@@ -433,15 +433,12 @@ class BioacousticWidget extends Widget {
   private _populateInfoPanel(
     cfg: any, audioConfig: any, outputPath: string, syncConfig: any, mergedConfig: any,
   ): void {
+    // every value below comes from config / data: escaped before going into innerHTML
     const formatPath = (path: string, type: string) => {
       if (!path) return `<span style="color:${COLORS.textSubtle};">Not specified</span>`;
-      if (path.startsWith('http://') || path.startsWith('https://')) {
-        return `<span style="color:${COLORS.blue};">(url)</span> ${path}`;
-      }
-      if (path.startsWith('s3://') || path.startsWith('gs://')) {
-        return `<span style="color:${COLORS.blue};">(${path.startsWith('s3://') ? 's3' : 'gcs'})</span> ${path}`;
-      }
-      return `<span style="color:${COLORS.blue};">(${type})</span> ${path}`;
+      const label = /^https?:\/\//.test(path) ? 'url'
+        : path.startsWith('s3://') ? 's3' : path.startsWith('gs://') ? 'gcs' : type;
+      return `<span style="color:${COLORS.blue};">(${escapeHtml(label)})</span> ${escapeHtml(path)}`;
     };
 
     const mcData = mergedConfig.data;
@@ -462,7 +459,7 @@ class BioacousticWidget extends Widget {
 
     let audioSourceText = '';
     if (audioConfig.type === 'column') {
-      audioSourceText = `<span style="color:${COLORS.blue};">(column)</span> ${audioConfig.value}`;
+      audioSourceText = `<span style="color:${COLORS.blue};">(column)</span> ${escapeHtml(String(audioConfig.value))}`;
     } else if (audioConfig.type && audioConfig.value) {
       audioSourceText = formatPath(audioConfig.value, audioConfig.type);
     } else {
@@ -475,12 +472,12 @@ class BioacousticWidget extends Widget {
       outputText = formatPath(mcOutput.path || outputPath, 'local');
       const syncUri = mcOutput.uri || mcOutput.url || (syncConfig && syncConfig.uri) || '';
       if (syncUri) {
-        outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${COLORS.blue};">(sync)</span> ${syncUri}`;
+        outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${COLORS.blue};">(sync)</span> ${escapeHtml(String(syncUri))}`;
       }
     } else {
       outputText = formatPath(outputPath, 'local');
       if (syncConfig && syncConfig.uri) {
-        outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${COLORS.blue};">(sync)</span> ${syncConfig.uri}`;
+        outputText += `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:${COLORS.blue};">(sync)</span> ${escapeHtml(String(syncConfig.uri))}`;
       }
     }
 
@@ -748,14 +745,14 @@ async function showProjectFileDialog(
           `;
 
           if (item.type === 'directory') {
-            itemEl.innerHTML = `📁 ${item.name}`;
+            itemEl.textContent = `📁 ${item.name}`;   // server file names: text, never HTML
             itemEl.onclick = () => {
               currentBrowserPath = item.path;
               loadFileBrowser(item.path);
               updatePathContext();
             };
           } else if (item.name.toLowerCase().match(/\.(yaml|yml|json)$/)) {
-            itemEl.innerHTML = `📄 ${item.name}`;
+            itemEl.textContent = `📄 ${item.name}`;
             const selectFile = () => {
               selectedFile = item.path;
               selectedFromBrowser = true;
@@ -772,7 +769,7 @@ async function showProjectFileDialog(
             itemEl.onmouseover = () => itemEl.style.backgroundColor = '#f0f0f0';
             itemEl.onmouseout = () => itemEl.style.backgroundColor = 'transparent';
           } else {
-            itemEl.innerHTML = `📄 ${item.name}`;
+            itemEl.textContent = `📄 ${item.name}`;
             itemEl.style.color = '#ccc';
           }
 
@@ -780,7 +777,10 @@ async function showProjectFileDialog(
         }
       }
     } catch (error) {
-      browserContainer.innerHTML = `<div style="color: #f44336; padding: 20px;">Error loading directory: ${error}</div>`;
+      const errorEl = document.createElement('div');
+      errorEl.style.cssText = 'color: #f44336; padding: 20px;';
+      errorEl.textContent = `Error loading directory: ${error}`;
+      browserContainer.replaceChildren(errorEl);
     }
   };
 
