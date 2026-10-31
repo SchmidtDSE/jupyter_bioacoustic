@@ -46,6 +46,9 @@ ICON_PNG: str = os.environ.get("JBA_ICON", "")
 CONFIG: Path = APP_SUPPORT / "config.json"
 SERVERFILE: Path = APP_SUPPORT / "server.json"
 JDIR: Path = APP_SUPPORT / "jupyter"
+LAUNCH_LOG: Path = APP_SUPPORT / "launch.log"     # also written by bootstrap.sh
+JUPYTER_LOG: Path = APP_SUPPORT / "jupyter.log"   # JupyterLab's own output
+MAX_LOG_BYTES: int = 5 * 1024 * 1024              # rotate jupyter.log -> jupyter.log.1 past this
 DEFAULT_CONFIG: dict = {"root_dir": "~", "single_instance": True, "shutdown_on_idle_minutes": False}
 # Tray "Shut Down When Idle" presets — label → config value in minutes (False = never).
 # A "Custom…" entry (handled separately) prompts for any value, e.g. 90m / 8h / 3d.
@@ -203,7 +206,7 @@ class Launcher:
                 ok = _apply_update(pixi, manifest)
                 self._start()
                 _alert("Updated to the latest version." if ok
-                       else "Update failed — see the log for details.")
+                       else f"Update failed — details are in {LAUNCH_LOG}")
         finally:
             self._updating = False
 
@@ -322,6 +325,33 @@ def _as_str(text: str) -> str:
     """
     escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
     return f'"{escaped}"'
+
+
+def _log(msg: str) -> None:
+    """Append a timestamped line to launch.log (best effort: logging must never crash the app).
+
+    Args:
+        msg: The message (may span lines).
+    """
+    try:
+        LAUNCH_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(LAUNCH_LOG, "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [launcher] {msg}\n")
+    except OSError:
+        pass
+
+
+def _rotate(path: Path) -> None:
+    """Move ``path`` to ``<path>.1`` once it exceeds MAX_LOG_BYTES (keeps one old copy).
+
+    Args:
+        path: The log file.
+    """
+    try:
+        if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
+            os.replace(path, path.with_name(path.name + ".1"))
+    except OSError:
+        pass
 
 
 def _load_config() -> dict:
@@ -478,7 +508,10 @@ def _start_server(cfg: dict) -> tuple:
     idle = _idle_minutes(cfg.get("shutdown_on_idle_minutes"))
     if idle > 0:
         args.append(f"--ServerApp.shutdown_no_activity_timeout={idle * 60}")
-    proc = subprocess.Popen(args, env=env)
+    _rotate(JUPYTER_LOG)
+    _log(f"starting jupyter lab on port {port} (output: {JUPYTER_LOG})")
+    with open(JUPYTER_LOG, "ab") as out:      # the child keeps its own copy of the handle
+        proc = subprocess.Popen(args, env=env, stdout=out, stderr=subprocess.STDOUT)
     info = {"port": port, "token": token, "pid": proc.pid}
     SERVERFILE.write_text(json.dumps(info))
     return proc, info
@@ -553,9 +586,11 @@ def _apply_update(pixi: Path, manifest: Path) -> bool:
         out = subprocess.run([str(pixi), "update", "jupyter-bioacoustic",
                               "--manifest-path", str(manifest)],
                              capture_output=True, text=True, timeout=1800)
-        return out.returncode == 0
-    except Exception:
+    except Exception as e:
+        _log(f"pixi update failed to run: {e!r}")
         return False
+    _log(f"pixi update exited {out.returncode}\n{out.stdout}{out.stderr}".rstrip())
+    return out.returncode == 0
 
 
 def _notify(msg: str) -> None:
