@@ -1,4 +1,5 @@
 import { COLORS } from '../styles';
+import { escapeHtml } from '../util';
 
 const DEFAULT_DESCRIPTION_TITLE = 'Description';
 
@@ -8,6 +9,17 @@ export interface DescriptionConfig {
   open: boolean;
 }
 
+/**
+ * A link target that is safe to put in ``href``: http(s), mailto, or a relative link.
+ * Anything else (``javascript:``, ``data:``, ...) becomes ``#``. Browsers ignore tabs, newlines
+ * and spaces inside a scheme (``java\tscript:``), so those are removed before checking.
+ */
+export function safeHref(url: string): string {
+  const u = url.replace(/[\u0000-\u0020]/g, '');
+  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(u);
+  return !hasScheme || /^(https?|mailto):/i.test(u) ? u : '#';
+}
+
 export function renderMarkdown(src: string): string {
   const lines = src.split('\n');
   const out: string[] = [];
@@ -15,14 +27,14 @@ export function renderMarkdown(src: string): string {
   let inCode = false;
 
   const inline = (s: string): string =>
-    s
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    escapeHtml(s)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/__(.+?)__/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/_(.+?)_/g, '<em>$1</em>')
       .replace(/`(.+?)`/g, '<code>$1</code>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+        (_m, text, url) => `<a href="${safeHref(url)}" target="_blank" rel="noopener noreferrer">${text}</a>`);
 
   const closeList = () => {
     if (inList) { out.push(inList === 'ol' ? '</ol>' : '</ul>'); inList = ''; }
