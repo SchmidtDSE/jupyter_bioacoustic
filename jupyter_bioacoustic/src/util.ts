@@ -32,6 +32,12 @@ export function numberOr(text: string, fallback: number): number {
   return text.trim() !== '' && Number.isFinite(n) ? n : fallback;
 }
 
+/** Escape text for HTML content and attribute values (never put raw data in innerHTML). */
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 export function fmtTime(s: number): string {
   const sign = s < 0 ? '-' : '';
   const abs = Math.abs(s);
