@@ -1,3 +1,19 @@
+# ============================================================================================
+# DRAFT — NOT FUNCTIONAL. Do not copy into .github/workflows/ until these are fixed (they can
+# only be tested with the signing certificates). Known issues (code review 2026-10-30):
+#   * line ~42 `cp pixi.lock pixi.lock` copies the file onto itself (no-op)
+#   * Windows signing: $env:THUMB is never set and the PFX is never imported
+#   * Windows pixi download has no checksum check (macOS fails closed)
+#   * macOS pixi is saved as payload/pixi but pixi's .sha256 names pixi-<target>, so
+#     `shasum -c` likely fails; build-pkg.sh now takes PIXI_SHA256 optionally instead
+#   * runner macos-13 (Intel) is retired / retiring
+#   * ${{ secrets.NOTARY_KEY }} is interpolated straight into `run:` (template injection):
+#     pass secrets through `env:` instead
+#   * actions are not SHA-pinned (zizmor, which runs on .github/workflows, will flag them)
+#   * matrix arch "x64" vs "x86_64" in the shipped zip names
+# The unsigned macOS/Windows zips are built locally with installer/macos/make-dist.sh and
+# installer/windows/make-dist-win.sh.
+# ============================================================================================
 # GitHub Actions: build + sign + notarize the desktop installers and attach them
 # to the GitHub Release for a tag. Place at .github/workflows/build-installers.yml
 # (kept here under installer/ci/ as a reference copy).
