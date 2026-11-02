@@ -1,3 +1,8 @@
+/**
+ * AppSection
+ *
+ * License: BSD 3-Clause
+ */
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { CollapsibleSection } from './CollapsibleSection';
