@@ -1,11 +1,50 @@
 /**
- * Small stateless utilities used across sections.
+ * Small stateless utilities shared by the annotator and the config builder: escaping,
+ * formatting, ``[[column]]`` templates, truthiness rules, and the ``showDialog`` message box.
  *
  * License: BSD 3-Clause
  */
-import { COLORS, btnStyle } from './styles';
+//
+// Imports
+//
+import { DialogButton, showMessage } from './modal';
 
-/** Format a time in seconds as "m:ss.cc" or "h:mm:ss.cc" if >= 1 hour. */
+
+//
+// Constants
+//
+/** Matches a ``[[column]]`` / ``[[column||default]]`` template placeholder. */
+const TEMPLATE_RE = /\[\[([^\]]+)\]\]/g;
+/** Separates a placeholder's column from its default value. */
+const DEFAULT_SEP = '||';
+/** Words that count as "true" for accuracy / truthiness checks. */
+const TRUTHY_WORDS = new Set(['yes', 'valid', 'true']);
+/** Prefixes allowed before a truthy word (``is valid``, ``is-true``, ...). */
+const IS_PREFIXES = ['is', 'is ', 'is-', 'is_'];
+/** Prefix marking the default item of a select / resolution list (``selected::value``). */
+export const SELECTED_PREFIX = 'selected::';
+
+
+//
+// Types
+//
+export type { DialogButton } from './modal';
+
+/** Parsed ``progress_tracker.accuracy`` setting. */
+export interface AccuracyConfig {
+  /** Output column whose values are checked. */
+  column: string;
+  /** Value that counts as correct (case-insensitive), or null to use ``isTruthyValue``. */
+  value: string | null;
+}
+
+/** The kind of remote location a path points at (see ``remoteScheme``). */
+export type RemoteScheme = 'url' | 's3' | 'gcs';
+
+
+//
+// Public
+//
 /**
  * Stop JupyterLab keyboard shortcuts from firing for keys typed inside ``node``. Used for
  * widgets shown inline in a notebook output: there, with a canvas / select / checkbox
@@ -25,6 +64,7 @@ export function suppressNotebookShortcuts(node: HTMLElement): void {
   node.addEventListener('focusin', e => mark(e.target));
 }
 
+
 /**
  * ``text`` as a number, or ``fallback`` when it's blank or not a number. Unlike
  * ``parseInt(text) || fallback`` it keeps 0 and decimals (``min: 0`` used to become 1).
@@ -34,24 +74,31 @@ export function numberOr(text: string, fallback: number): number {
   return text.trim() !== '' && Number.isFinite(n) ? n : fallback;
 }
 
+
 /** Escape text for HTML content and attribute values (never put raw data in innerHTML). */
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+
 /** The message of a caught error (``catch (e: unknown)``), for status lines and dialogs. */
 export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
-  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+  if (e && typeof e === 'object' && 'message' in e) {
+    return String((e as { message: unknown }).message);
+  }
   return String(e);
 }
+
 
 /** ``name`` as a snake_case slug (lowercase, non-alphanumerics -> ``_``), matching core.py's slugs. */
 export function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
+
+/** Format a time in seconds as "m:ss.cc", or "h:mm:ss.cc" from one hour up. */
 export function fmtTime(s: number): string {
   const sign = s < 0 ? '-' : '';
   const abs = Math.abs(s);
@@ -66,16 +113,44 @@ export function fmtTime(s: number): string {
   return `${sign}${m}:${sec}.${cs}`;
 }
 
+
 /** Escape a string for use inside a single-quoted Python string literal. */
 export function escPy(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 
-export interface AccuracyConfig {
-  column: string;
-  value: string | null;
+
+/**
+ * Where ``path`` lives remotely: ``'url'`` (http/https), ``'s3'`` or ``'gcs'`` (gs://), or
+ * null for a local path.
+ */
+export function remoteScheme(path: string): RemoteScheme | null {
+  if (/^https?:\/\//.test(path)) return 'url';
+  if (path.startsWith('s3://')) return 's3';
+  if (path.startsWith('gs://')) return 'gcs';
+  return null;
 }
 
+
+/**
+ * Split a ``selected::value`` list item into its value and whether it is the default.
+ *
+ * @example splitSelected('selected::2000') // { value: '2000', selected: true }
+ */
+export function splitSelected(raw: string): { value: string; selected: boolean } {
+  return raw.startsWith(SELECTED_PREFIX)
+    ? { value: raw.slice(SELECTED_PREFIX.length), selected: true }
+    : { value: raw, selected: false };
+}
+
+
+/**
+ * Parse a form's ``progress_tracker`` setting into its accuracy check.
+ *
+ * @param progressTracker - ``true`` (counts only), a column name, or ``{accuracy: column}`` /
+ *     ``{accuracy: {column, value}}``.
+ * @returns The accuracy check, or null when none is configured.
+ */
 export function parseAccuracyConfig(progressTracker: any): AccuracyConfig | null {
   if (!progressTracker || progressTracker === true) return null;
 
@@ -96,8 +171,6 @@ export function parseAccuracyConfig(progressTracker: any): AccuracyConfig | null
   return null;
 }
 
-const TEMPLATE_RE = /\[\[([^\]]+)\]\]/g;
-const DEFAULT_SEP = '||';
 
 /** Replace [[column_name]] and [[column||default]] placeholders with row values. */
 export function resolveTemplate(template: string, row: Record<string, any>): string {
@@ -118,15 +191,18 @@ export function resolveTemplate(template: string, row: Record<string, any>): str
   });
 }
 
+
 /** Return true if the string contains at least one [[...]] placeholder. */
 export function hasTemplatePlaceholders(text: string): boolean {
   TEMPLATE_RE.lastIndex = 0;
   return TEMPLATE_RE.test(text);
 }
 
-const _TRUTHY_WORDS = new Set(['yes', 'valid', 'true']);
-const _IS_PREFIXES = ['is', 'is ', 'is-', 'is_'];
 
+/**
+ * Whether a cell value means "yes": ``true``, ``1`` / ``'1.0'``, ``yes`` / ``valid`` / ``true``
+ * (case-insensitive), optionally prefixed with ``is`` (``is valid``, ``is_true``...).
+ */
 export function isTruthyValue(val: any): boolean {
   if (val === true) return true;
   if (val === 1) return true;
@@ -138,71 +214,27 @@ export function isTruthyValue(val: any): boolean {
   const n = parseFloat(s);
   if (!isNaN(n)) return n === 1 || s === '1.0';
 
-  if (_TRUTHY_WORDS.has(s)) return true;
-  for (const prefix of _IS_PREFIXES) {
-    if (s.startsWith(prefix) && _TRUTHY_WORDS.has(s.slice(prefix.length))) return true;
+  if (TRUTHY_WORDS.has(s)) return true;
+  for (const prefix of IS_PREFIXES) {
+    if (s.startsWith(prefix) && TRUTHY_WORDS.has(s.slice(prefix.length))) return true;
   }
 
   return false;
 }
 
 
-export interface DialogButton {
-  label: string;
-  primary?: boolean;
-}
-
+/**
+ * Show a themed message box (see ``modal.showMessage``).
+ *
+ * @param opts.title - Heading.
+ * @param opts.body - Plain-text message.
+ * @param opts.buttons - Buttons, left to right (default: a single "OK").
+ * @returns The clicked button's label, or null if dismissed with Escape.
+ */
 export function showDialog(opts: {
   title?: string;
   body: string;
   buttons?: DialogButton[];
 }): Promise<string | null> {
-  const buttons = opts.buttons ?? [{ label: 'OK', primary: true }];
-
-  return new Promise(resolve => {
-    const backdrop = document.createElement('div');
-    backdrop.style.cssText =
-      `position:fixed;inset:0;z-index:100000;display:flex;align-items:center;` +
-      `justify-content:center;background:rgba(0,0,0,0.55);`;
-
-    const card = document.createElement('div');
-    card.style.cssText =
-      `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};border-radius:8px;` +
-      `padding:20px 24px;max-width:520px;width:90%;max-height:80vh;display:flex;` +
-      `flex-direction:column;gap:12px;font-family:sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.5);`;
-
-    if (opts.title) {
-      const h = document.createElement('div');
-      h.textContent = opts.title;
-      h.style.cssText =
-        `font-size:14px;font-weight:700;color:${COLORS.textPrimary};`;
-      card.appendChild(h);
-    }
-
-    const bodyEl = document.createElement('div');
-    bodyEl.style.cssText =
-      `font-size:12px;color:${COLORS.textSubtle};white-space:pre-wrap;` +
-      `overflow-y:auto;max-height:50vh;line-height:1.5;`;
-    bodyEl.textContent = opts.body;
-    card.appendChild(bodyEl);
-
-    const row = document.createElement('div');
-    row.style.cssText = `display:flex;gap:8px;justify-content:flex-end;margin-top:4px;`;
-    for (const b of buttons) {
-      const btn = document.createElement('button');
-      btn.textContent = b.label;
-      btn.style.cssText = btnStyle(b.primary);
-      btn.addEventListener('click', () => { backdrop.remove(); resolve(b.label); });
-      row.appendChild(btn);
-    }
-    card.appendChild(row);
-
-    backdrop.appendChild(card);
-    backdrop.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { backdrop.remove(); resolve(null); }
-    });
-    document.body.appendChild(backdrop);
-    const firstPrimary = row.querySelector('button:last-child') as HTMLButtonElement | null;
-    firstPrimary?.focus();
-  });
+  return showMessage(opts);
 }
