@@ -3,6 +3,8 @@
  *
  * Specific sections may define their own internal types; this module
  * holds types used across multiple files.
+ *
+ * License: BSD 3-Clause
  */
 
 /** A single row of the input data. Requires at minimum start_time, end_time. */
