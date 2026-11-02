@@ -560,3 +560,19 @@ def test_concurrent_kernels_do_not_lose_rows(tmp_path):
         rows = list(csv.DictReader(f))
     assert len(rows) == 180
     assert {(r['who'], r['i']) for r in rows} == {(w, str(i)) for w in 'abc' for i in range(60)}
+
+
+#
+# shared DSP helpers (one implementation, in utils/visualizations.py)
+#
+def test_mel_filterbank_wrapper_uses_shared_filterbank():
+    from jupyter_bioacoustic.utils.visualizations import mel_filterbank
+    mag = np.abs(np.random.default_rng(3).normal(size=(256, 12)))
+    expected = mel_filterbank(16000, 512, 80, 80.0, 8000.0) @ mag
+    assert np.array_equal(_mel_filterbank(mag, 16000, 80.0, 8000.0), expected)
+
+
+def test_normalize_db_wrapper_uses_80db_range():
+    from jupyter_bioacoustic.utils.visualizations import normalize_db
+    mag = np.abs(np.random.default_rng(4).normal(size=(20, 12))) + 1e-12
+    assert np.array_equal(_normalize_db(mag), normalize_db(mag, 80))
