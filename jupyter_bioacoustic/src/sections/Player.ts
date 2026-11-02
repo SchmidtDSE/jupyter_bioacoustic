@@ -4,6 +4,8 @@
  * Owns the player controls bar, spectrogram canvas, playback bar, and
  * all mouse interaction for annotation tools. Reads annotation config
  * and values from FormPanel.
+ *
+ * License: BSD 3-Clause
  */
 import { Signal } from '@lumino/signaling';
 import { Detection } from '../types';
@@ -50,7 +52,6 @@ export class Player {
   private _rafId = 0;
   private _resizeObserver: ResizeObserver | null = null;
   private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
-  private _sampleRate = 0;
   private _freqMin = 0;
   private _freqMax = 0;
   private _annotDrag: { target: string; anchorTime?: number; anchorFreq?: number; boxIndex?: number } | null = null;
@@ -110,8 +111,6 @@ export class Player {
   private _titleTemplate = '';
   private _currentRow: Detection | null = null;
   private _dataIndexCol = 'id';
-  private _rows: Detection[] = [];
-  private _selectedIdx = -1;
 
   constructor(
     private _kernel: KernelBridge,
@@ -148,7 +147,6 @@ export class Player {
     this._captureHeight = opts.captureHeight;
     this._titleTemplate = opts.titleTemplate;
     this._dataIndexCol = opts.dataIndexCol;
-    this._rows = opts.rows;
     this._bufferInput.value = String(opts.defaultBuffer);
     this._specResolutions = opts.specResolutions;
     this._rebuildResolutionSelect();
@@ -513,7 +511,6 @@ export class Player {
     }
 
     this._segDuration = result.duration;
-    this._sampleRate = result.sample_rate;
     this._freqMin = result.freq_min;
     this._freqMax = result.freq_max;
     this._currentFreqScale = result.freq_scale ?? 'linear';
