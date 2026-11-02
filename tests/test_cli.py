@@ -11,7 +11,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from jupyter_bioacoustic.cli import main, _find_yaml, _print_yaml_names
+from jupyter_bioacoustic.cli import main, _find_yaml
 
 
 #
@@ -178,21 +178,17 @@ class TestDescribe:
 class TestFindYaml:
 
     def test_finds_existing(self, config_dir):
-        from pathlib import Path
         result = _find_yaml(config_dir / 'projects', 'my_project')
         assert result is not None
         assert result.stem == 'my_project'
 
     def test_returns_none_for_missing(self, config_dir):
-        from pathlib import Path
         assert _find_yaml(config_dir / 'projects', 'nope') is None
 
     def test_returns_none_for_nonexistent_dir(self, tmp_path):
-        from pathlib import Path
         assert _find_yaml(tmp_path / 'nope', 'anything') is None
 
     def test_finds_yml_extension(self, tmp_path):
-        from pathlib import Path
         d = tmp_path / 'projects'
         d.mkdir()
         (d / 'alt.yml').write_text('project_name: Alt\n')
