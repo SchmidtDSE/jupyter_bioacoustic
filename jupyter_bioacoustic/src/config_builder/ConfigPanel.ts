@@ -6,7 +6,7 @@
  *
  * License: BSD 3-Clause
  */
-import { COLORS, btnStyle } from '../styles';
+import { COLORS } from '../styles';
 import { showDialog } from '../util';
 import { KernelBridge } from '../kernel';
 import {
@@ -320,7 +320,7 @@ export class ConfigPanel {
       try {
         const raw = await this._kernel.exec(updateSection('output', data, target));
         const state = JSON.parse(extractJson(raw));
-        this._applyStatePartial(state, sectionName);
+        this._applyStatePartial(state);
         void this._updateSummary();
         this._setStatus('Ready');
       } catch (e: any) {
@@ -332,7 +332,7 @@ export class ConfigPanel {
     try {
       const raw = await this._kernel.exec(updateSection(sectionName, data, target));
       const state = JSON.parse(extractJson(raw));
-      this._applyStatePartial(state, sectionName);
+      this._applyStatePartial(state);
       void this._updateSummary();
       this._setStatus('Ready');
     } catch (e: any) {
@@ -704,7 +704,7 @@ export class ConfigPanel {
     }
   }
 
-  private _applyStatePartial(state: any, skipSection: string): void {
+  private _applyStatePartial(state: any): void {
     this._yamls = {
       project_yaml: state.project_yaml || '',
       config_yaml: state.config_yaml || '',
@@ -971,7 +971,7 @@ export class ConfigPanel {
     try {
       const raw = await this._kernel.exec(updateSection('project', this._configFiles.getData()));
       const state = JSON.parse(extractJson(raw));
-      this._applyStatePartial(state, 'project');
+      this._applyStatePartial(state);
     } catch { /* ignore */ }
   }
 
@@ -1006,7 +1006,7 @@ export class ConfigPanel {
     try {
       const raw = await this._kernel.exec(setSectionTarget(section, pyTarget));
       const state = JSON.parse(extractJson(raw));
-      this._applyStatePartial(state, section);
+      this._applyStatePartial(state);
       this._applyFileLocks();
       this._setStatus('Ready');
     } catch (e: any) {
