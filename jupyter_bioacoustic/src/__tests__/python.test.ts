@@ -12,8 +12,8 @@ import {
 } from '../python';
 import {
   extractJson, ensureSetup, updateSection, listFiles, checkFileExists,
-  readState, updateConfigFromYaml, saveAll, saveSingleFile,
-  createDirectory, readColumns, readSampleData, setSectionTarget,
+  updateConfigFromYaml, saveAll, saveSingleFile,
+  createDirectory, readColumns, setSectionTarget,
   validateConfig, loadConfig, getSummary,
 } from '../config_builder/python';
 
@@ -282,13 +282,6 @@ describe('syncOutput', () => {
   });
 });
 
-describe('readState', () => {
-  test('reads _CB_STATE', () => {
-    const code = readState();
-    expect(code).toContain('_CB_STATE');
-  });
-});
-
 describe('updateConfigFromYaml', () => {
   test('includes yaml string and config type', () => {
     const code = updateConfigFromYaml('project_name: Test', 'project');
@@ -325,19 +318,6 @@ describe('readColumns', () => {
     const code = readColumns('/data.csv');
     expect(code).toContain('read_columns');
     expect(code).toContain('/data.csv');
-  });
-});
-
-describe('readSampleData', () => {
-  test('includes filepath and nRows', () => {
-    const code = readSampleData('/data.csv', 10);
-    expect(code).toContain('read_sample_data');
-    expect(code).toContain('10');
-  });
-
-  test('default nRows is 5', () => {
-    const code = readSampleData('/data.csv');
-    expect(code).toContain('5');
   });
 });
 

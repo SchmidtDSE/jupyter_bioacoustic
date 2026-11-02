@@ -38,13 +38,6 @@ export function ensureSetup(cwd?: string): string {
   return lines.join('\n');
 }
 
-export function readState(): string {
-  return [
-    `import json as _j`,
-    wp(`_CB_STATE`),
-  ].join('\n');
-}
-
 export function updateSection(section: string, data: Record<string, any>, target?: string): string {
   const dataJson = JSON.stringify(data);
   const targetArg = target ? `, target='${escPy(target)}'` : '';
@@ -129,13 +122,6 @@ export function checkAudioUrl(value: string): string {
   return [
     `import json as _j`,
     wp(`_j.dumps(_CB_INSTANCE.check_audio_url('${escPy(value)}'))`),
-  ].join('\n');
-}
-
-export function readSampleData(filepath: string, nRows = 5): string {
-  return [
-    `import json as _j`,
-    wp(`_j.dumps({'rows': _CB_INSTANCE.read_sample_data('${escPy(filepath)}', ${nRows})})`),
   ].join('\n');
 }
 
