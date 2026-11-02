@@ -1,5 +1,7 @@
 /**
  * Small stateless utilities used across sections.
+ *
+ * License: BSD 3-Clause
  */
 import { COLORS, btnStyle } from './styles';
 
