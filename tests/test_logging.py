@@ -12,7 +12,8 @@ import tempfile
 
 import pytest
 
-from jupyter_bioacoustic import _ResilientFileHandler
+import jupyter_bioacoustic
+from jupyter_bioacoustic import _ResilientFileHandler, _setup_debug_logging
 
 
 #
@@ -91,3 +92,35 @@ def test_log_survives_atomic_replace(logger: logging.Logger, log_file: str) -> N
     with open(log_file) as f:
         contents = f.read()
     assert 'after replace' in contents
+
+
+def test_setup_debug_logging_noop_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv('JBA_DEBUG_MODE', raising=False)
+    pkg_log = jupyter_bioacoustic._log
+    before = list(pkg_log.handlers)
+    _setup_debug_logging()
+    assert pkg_log.handlers == before
+
+
+def test_setup_debug_logging_attaches_handler(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: str,
+) -> None:
+    monkeypatch.setenv('JBA_DEBUG_MODE', '1')
+    monkeypatch.setenv('JBA_LOG_DIR', str(tmp_path))
+    monkeypatch.setenv('JBA_LOG_FILE', 'dbg.log')
+    pkg_log = jupyter_bioacoustic._log
+    before = list(pkg_log.handlers)
+    old_level = pkg_log.level
+    try:
+        _setup_debug_logging()
+        added = [h for h in pkg_log.handlers if h not in before]
+        assert len(added) == 1
+        assert isinstance(added[0], _ResilientFileHandler)
+        assert added[0].baseFilename == os.path.join(str(tmp_path), 'dbg.log')
+        assert pkg_log.level == logging.DEBUG
+    finally:
+        for h in list(pkg_log.handlers):
+            if h not in before:
+                pkg_log.removeHandler(h)
+                h.close()
+        pkg_log.setLevel(old_level)
