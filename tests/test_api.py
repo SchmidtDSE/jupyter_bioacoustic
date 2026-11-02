@@ -391,20 +391,20 @@ class TestUrlLoaderCloudRouting:
     """s3://, gs:// route to the cloud reader, not requests."""
 
     def test_s3_routes_to_cloud(self, monkeypatch):
-        import jupyter_bioacoustic.api as api
+        import jupyter_bioacoustic._data_sources as ds
         seen = {}
 
         def fake(url):
             seen['url'] = url
             return 'DF'
-        monkeypatch.setattr(api, '_read_data_from_cloud', fake)
-        assert api._read_data_from_url('s3://bucket/k.csv') == 'DF'
+        monkeypatch.setattr(ds, 'read_data_from_cloud', fake)
+        assert ds.read_data_from_url('s3://bucket/k.csv') == 'DF'
         assert seen['url'] == 's3://bucket/k.csv'
 
     def test_gs_routes_to_cloud(self, monkeypatch):
-        import jupyter_bioacoustic.api as api
-        monkeypatch.setattr(api, '_read_data_from_cloud', lambda url: 'DF')
-        assert api._read_data_from_url('gs://bucket/k.parquet') == 'DF'
+        import jupyter_bioacoustic._data_sources as ds
+        monkeypatch.setattr(ds, 'read_data_from_cloud', lambda url: 'DF')
+        assert ds.read_data_from_url('gs://bucket/k.parquet') == 'DF'
 
 
 #
