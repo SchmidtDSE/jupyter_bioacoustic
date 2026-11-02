@@ -13,7 +13,10 @@ Usage:
     jba validate [name]
 
 License: BSD 3-Clause
-"""
+"""  # noqa: D415
+#
+# Imports
+#
 from __future__ import annotations
 
 import os
@@ -21,8 +24,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
-
 import click
 
 from .config_builder.core import ConfigBuilder
@@ -42,6 +43,30 @@ SCOPE_SUBDIR = {'project': 'projects', 'config': 'config', 'form': 'forms'}
 SCOPE_LABEL = {'project': 'Project', 'config': 'Config', 'form': 'Form'}
 PIXI_CLEAN_CMD = ['pixi', 'clean', 'cache', '--pypi', '-y']
 PIXI_INSTALL_CMD = ['pixi', 'install']
+
+# Reusable Click parameter decorators (shared by ``list``, ``describe`` and ``validate``).
+NAME_ARGUMENT = click.argument('name', required=False, default=None)
+DIR_OPTION = click.option(
+    '-d', '--dir', 'directory',
+    default=DEFAULT_CONFIG_DIR,
+    show_default=True,
+    help='Root configuration directory.',
+)
+SEARCH_PROJECT_OPTION = click.option(
+    '-p', '--project', 'search_project',
+    is_flag=False, flag_value=True, default=None,
+    help='Search projects only. Optionally pass a file path.',
+)
+SEARCH_CONFIG_OPTION = click.option(
+    '-c', '--config', 'search_config',
+    is_flag=False, flag_value=True, default=None,
+    help='Search configs only. Optionally pass a file path.',
+)
+SEARCH_FORM_OPTION = click.option(
+    '-f', '--form', 'search_form',
+    is_flag=False, flag_value=True, default=None,
+    help='Search forms only. Optionally pass a file path.',
+)
 
 
 #
@@ -73,7 +98,15 @@ def main() -> None:
     help='Clear pixi PyPI cache and reinstall before launching.',
 )
 def lab(rate_limit: str, debug: str | None, clean: bool) -> None:
-    """Launch JupyterLab with the required IOPub rate limit."""
+    """Launch JupyterLab with the required IOPub rate limit.
+
+    \f
+    Args:
+        rate_limit: Value for ``--ServerApp.iopub_data_rate_limit``.
+        debug: ``None`` (debug off), the flag sentinel (debug on, default log
+            path) or a log file path.
+        clean: Clear the pixi PyPI cache and reinstall before launching.
+    """  # noqa: D301
     if clean:
         _clean_pixi_cache()
     env = os.environ.copy()
@@ -92,12 +125,7 @@ def lab(rate_limit: str, debug: str | None, clean: bool) -> None:
 
 
 @main.command('list')
-@click.option(
-    '-d', '--dir', 'directory',
-    default=DEFAULT_CONFIG_DIR,
-    show_default=True,
-    help='Root configuration directory.',
-)
+@DIR_OPTION
 @click.option('-p', '--project', 'show_projects', is_flag=True, help='Show only projects.')
 @click.option('-c', '--config', 'show_configs', is_flag=True, help='Show only configs.')
 @click.option('-f', '--form', 'show_forms', is_flag=True, help='Show only forms.')
@@ -107,7 +135,15 @@ def config_list(
     show_configs: bool,
     show_forms: bool,
 ) -> None:
-    """List configuration files."""
+    """List configuration files.
+
+    \f
+    Args:
+        directory: Root configuration directory.
+        show_projects: Show only ``projects/``.
+        show_configs: Show only ``config/``.
+        show_forms: Show only ``forms/``.
+    """  # noqa: D301
     root = Path(directory)
     if not root.is_dir():
         click.echo(f'Directory not found: {directory}', err=True)
@@ -132,28 +168,11 @@ def config_list(
 
 
 @main.command()
-@click.argument('name', required=False, default=None)
-@click.option(
-    '-d', '--dir', 'directory',
-    default=DEFAULT_CONFIG_DIR,
-    show_default=True,
-    help='Root configuration directory.',
-)
-@click.option(
-    '-p', '--project', 'search_project',
-    is_flag=False, flag_value=True, default=None,
-    help='Search projects only. Optionally pass a file path.',
-)
-@click.option(
-    '-c', '--config', 'search_config',
-    is_flag=False, flag_value=True, default=None,
-    help='Search configs only. Optionally pass a file path.',
-)
-@click.option(
-    '-f', '--form', 'search_form',
-    is_flag=False, flag_value=True, default=None,
-    help='Search forms only. Optionally pass a file path.',
-)
+@NAME_ARGUMENT
+@DIR_OPTION
+@SEARCH_PROJECT_OPTION
+@SEARCH_CONFIG_OPTION
+@SEARCH_FORM_OPTION
 def describe(
     name: str | None,
     directory: str,
@@ -161,18 +180,19 @@ def describe(
     search_config: str | bool | None,
     search_form: str | bool | None,
 ) -> None:
-    """Describe a configuration by name or path."""
-    resolved = _resolve_config_target(
-        name, directory,
-        search_project=search_project,
-        search_config=search_config,
-        search_form=search_form,
+    """Describe a configuration by name or path.
+
+    \f
+    Args:
+        name: Configuration name (file stem) to search for.
+        directory: Root configuration directory.
+        search_project: ``-p`` value: ``True`` (flag only) or a path.
+        search_config: ``-c`` value: ``True`` (flag only) or a path.
+        search_form: ``-f`` value: ``True`` (flag only) or a path.
+    """  # noqa: D301
+    cb, _path, scope, label = _load_target(
+        name, directory, search_project, search_config, search_form,
     )
-    if resolved is None:
-        sys.exit(1)
-    path, scope, label = resolved
-    cb = ConfigBuilder()
-    cb.load_config(str(path), file_type=scope)
     click.echo(f'{label} Configuration Summary')
     click.echo('=' * 40)
     sections = build_summary_from_builder(cb, scope=scope)
@@ -180,28 +200,11 @@ def describe(
 
 
 @main.command()
-@click.argument('name', required=False, default=None)
-@click.option(
-    '-d', '--dir', 'directory',
-    default=DEFAULT_CONFIG_DIR,
-    show_default=True,
-    help='Root configuration directory.',
-)
-@click.option(
-    '-p', '--project', 'search_project',
-    is_flag=False, flag_value=True, default=None,
-    help='Search projects only. Optionally pass a file path.',
-)
-@click.option(
-    '-c', '--config', 'search_config',
-    is_flag=False, flag_value=True, default=None,
-    help='Search configs only. Optionally pass a file path.',
-)
-@click.option(
-    '-f', '--form', 'search_form',
-    is_flag=False, flag_value=True, default=None,
-    help='Search forms only. Optionally pass a file path.',
-)
+@NAME_ARGUMENT
+@DIR_OPTION
+@SEARCH_PROJECT_OPTION
+@SEARCH_CONFIG_OPTION
+@SEARCH_FORM_OPTION
 def validate(
     name: str | None,
     directory: str,
@@ -209,18 +212,19 @@ def validate(
     search_config: str | bool | None,
     search_form: str | bool | None,
 ) -> None:
-    """Validate a configuration by name or path."""
-    resolved = _resolve_config_target(
-        name, directory,
-        search_project=search_project,
-        search_config=search_config,
-        search_form=search_form,
+    """Validate a configuration by name or path.
+
+    \f
+    Args:
+        name: Configuration name (file stem) to search for.
+        directory: Root configuration directory.
+        search_project: ``-p`` value: ``True`` (flag only) or a path.
+        search_config: ``-c`` value: ``True`` (flag only) or a path.
+        search_form: ``-f`` value: ``True`` (flag only) or a path.
+    """  # noqa: D301
+    cb, path, _scope, label = _load_target(
+        name, directory, search_project, search_config, search_form,
     )
-    if resolved is None:
-        sys.exit(1)
-    path, scope, label = resolved
-    cb = ConfigBuilder()
-    cb.load_config(str(path), file_type=scope)
     result = cb.validate()
     click.echo(f'{label}: {path}')
     if result['errors']:
@@ -244,7 +248,11 @@ def validate(
 # INTERNAL
 #
 def _clean_pixi_cache() -> None:
-    """Clear the pixi PyPI cache and reinstall to pick up local changes."""
+    """Clear the pixi PyPI cache and reinstall to pick up local changes.
+
+    Raises:
+        subprocess.CalledProcessError: If a pixi command fails.
+    """
     if shutil.which('pixi') is None:
         click.echo('Warning: pixi not found, skipping cache clean.', err=True)
         return
@@ -252,6 +260,42 @@ def _clean_pixi_cache() -> None:
     subprocess.run(PIXI_CLEAN_CMD, check=True)
     click.echo('Reinstalling...')
     subprocess.run(PIXI_INSTALL_CMD, check=True)
+
+
+def _load_target(
+    name: str | None,
+    directory: str,
+    search_project: str | bool | None,
+    search_config: str | bool | None,
+    search_form: str | bool | None,
+) -> tuple[ConfigBuilder, Path, str, str]:
+    """Resolve a CLI config target and load it into a ConfigBuilder.
+
+    Exits the process with status 1 (after an error message has been printed by
+    :func:`_resolve_config_target`) when the target cannot be found.
+
+    Args:
+        name: Configuration name (file stem) to search for.
+        directory: Root configuration directory.
+        search_project: ``-p`` value: ``None``, ``True`` (flag only) or a path.
+        search_config: ``-c`` value: ``None``, ``True`` (flag only) or a path.
+        search_form: ``-f`` value: ``None``, ``True`` (flag only) or a path.
+
+    Returns:
+        ``(builder, path, scope, label)`` for the loaded configuration.
+    """
+    resolved = _resolve_config_target(
+        name, directory,
+        search_project=search_project,
+        search_config=search_config,
+        search_form=search_form,
+    )
+    if resolved is None:
+        sys.exit(1)
+    path, scope, label = resolved
+    cb = ConfigBuilder()
+    cb.load_config(str(path), file_type=scope)
+    return cb, path, scope, label
 
 
 def _resolve_config_target(
@@ -264,15 +308,23 @@ def _resolve_config_target(
 ) -> tuple[Path, str, str] | None:
     """Resolve a config file target from CLI arguments.
 
-    Returns ``(path, scope, label)`` on success, or ``None`` after printing
-    an error message on failure.
-
     Resolution rules:
     * ``-p/c/f <path>`` with *name*: treat path as directory, search for *name* in it.
     * ``-p/c/f <path>`` without *name*: treat path as a direct file path.
     * ``-p/c/f`` (flag only) with *name*: search the default subdirectory.
     * *name* alone (no flags): search all subdirectories.
     * Neither *name* nor a path flag: error.
+
+    Args:
+        name: Configuration name (file stem) to search for.
+        directory: Root configuration directory.
+        search_project: ``-p`` value: ``None``, ``True`` (flag only) or a path.
+        search_config: ``-c`` value: ``None``, ``True`` (flag only) or a path.
+        search_form: ``-f`` value: ``None``, ``True`` (flag only) or a path.
+
+    Returns:
+        ``(path, scope, label)`` on success, or ``None`` after printing an
+        error message on failure.
     """
     flags = {
         'search_project': search_project,
@@ -334,7 +386,12 @@ def _resolve_config_target(
 
 
 def _print_yaml_names(directory: Path, indent: int = 0) -> None:
-    """Recursively print YAML filenames (without extension) under *directory*."""
+    """Recursively print YAML filenames (without extension) under *directory*.
+
+    Args:
+        directory: Directory to walk.
+        indent: Current nesting depth (two spaces per level).
+    """
     if not directory.is_dir():
         return
     prefix = '  ' * indent
@@ -348,8 +405,16 @@ def _print_yaml_names(directory: Path, indent: int = 0) -> None:
             click.echo(f'{prefix}{entry.stem}')
 
 
-def _find_yaml(directory: Path, name: str) -> Optional[Path]:
-    """Find a YAML file matching *name* (recursive, stem match)."""
+def _find_yaml(directory: Path, name: str) -> Path | None:
+    """Find a YAML file matching *name* (recursive, stem match).
+
+    Args:
+        directory: Directory to search recursively.
+        name: File stem to match.
+
+    Returns:
+        The first matching path (sorted order), or ``None``.
+    """
     if not directory.is_dir():
         return None
     for path in sorted(directory.rglob('*')):
