@@ -1,3 +1,8 @@
+/**
+ * util.test
+ *
+ * License: BSD 3-Clause
+ */
 import { fmtTime, escPy, parseAccuracyConfig, isTruthyValue, resolveTemplate, hasTemplatePlaceholders } from '../util';
 
 describe('fmtTime', () => {
