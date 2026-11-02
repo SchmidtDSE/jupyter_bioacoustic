@@ -1,5 +1,6 @@
 /**
- * index
+ * Extension entry point: JupyterLab loads the default export, the list of plugins
+ * (the annotator and the config builder).
  *
  * License: BSD 3-Clause
  */
