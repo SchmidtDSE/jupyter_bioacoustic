@@ -9,10 +9,13 @@
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { JupyterFrontEnd } from '@jupyterlab/application';
 import type { ISessionContext } from '@jupyterlab/apputils';
 import { INotebookTracker } from '@jupyterlab/notebook';
-import type { Kernel } from '@jupyterlab/services';
+import type { Kernel, KernelMessage } from '@jupyterlab/services';
 
 
 //
@@ -34,13 +37,22 @@ export interface AcquiredKernel {
   owns: boolean;
 }
 
+/** The content fields the bridge reads from ``stream`` and ``error`` IOPub messages. */
+type IOPubContent = Partial<KernelMessage.IStreamMsg['content'] & KernelMessage.IErrorMsg['content']>;
+
 
 //
 // Public
 //
+/** A Python exception (or stderr-only output) from a kernel call. */
 export class KernelError extends Error {
+  /** Full error text: ``ename: evalue`` plus the traceback lines. */
   readonly traceback: string;
 
+  /**
+   * @param message - Short summary (``ename: evalue``).
+   * @param traceback - Full error text.
+   */
   constructor(message: string, traceback: string) {
     super(message);
     this.name = 'KernelError';
@@ -49,9 +61,14 @@ export class KernelError extends Error {
 }
 
 
+/**
+ * Runs Python snippets in one widget's kernel and returns what they print. Every annotator /
+ * builder kernel call goes through here.
+ */
 export class KernelBridge {
-  private readonly _source: KernelSource;
+  /** Working directory the widget was opened in, if known (used by the config builder). */
   readonly cwd: string | undefined;
+  private readonly _source: KernelSource;
 
   /**
    * @param source - The widget's kernel or notebook session (fixed for its lifetime).
@@ -79,15 +96,16 @@ export class KernelBridge {
     let summary = '';
     let raised = false;
     const future = kernel.requestExecute({ code });
-    future.onIOPub = (msg: any) => {
+    future.onIOPub = (msg: KernelMessage.IIOPubMessage) => {
       const t = msg.header.msg_type;
+      const content = msg.content as IOPubContent | undefined;
       if (t === 'stream') {
-        if (msg.content?.name === 'stdout') out += msg.content.text as string;
-        if (msg.content?.name === 'stderr') err += msg.content.text as string;
+        if (content?.name === 'stdout') out += content.text as string;
+        if (content?.name === 'stderr') err += content.text as string;
       } else if (t === 'error') {
         raised = true;
-        const tb: string[] = msg.content?.traceback ?? [];
-        summary = (msg.content?.ename ?? '') + ': ' + (msg.content?.evalue ?? '');
+        const tb: string[] = content?.traceback ?? [];
+        summary = (content?.ename ?? '') + ': ' + (content?.evalue ?? '');
         err += summary + '\n' + tb.join('\n');
       }
     };
@@ -146,12 +164,16 @@ export async function acquireKernel(
  * Run ``code`` in ``kernel``, ignoring its output.
  * @returns The Python error message, or '' on success.
  */
-export async function execInKernel(kernel: Kernel.IKernelConnection, code: string): Promise<string> {
+export async function execInKernel(
+  kernel: Kernel.IKernelConnection,
+  code: string,
+): Promise<string> {
   const future = kernel.requestExecute({ code });
   let error = '';
-  future.onIOPub = (msg: any) => {
+  future.onIOPub = (msg: KernelMessage.IIOPubMessage) => {
     if (msg.header?.msg_type === 'error') {
-      error = msg.content.evalue || (msg.content.traceback || []).join('\n') || 'Unknown error';
+      const content = msg.content as IOPubContent;
+      error = content.evalue || (content.traceback || []).join('\n') || 'Unknown error';
     }
   };
   await future.done;
