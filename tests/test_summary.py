@@ -160,7 +160,8 @@ class TestBuildSummary:
         assert any(r['key'] == 'output' for r in proj_rows)
 
     def test_no_files_shows_muted(self):
-        sections = build_summary(project={'project_name': 'x'}, config={}, form_config={}, merged={})
+        sections = build_summary(project={'project_name': 'x'}, config={}, form_config={},
+                                 merged={})
         proj_rows = sections[0]['rows']
         assert any(r['key'] == 'files' and r.get('muted') for r in proj_rows)
 
