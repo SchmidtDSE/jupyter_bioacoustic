@@ -13,7 +13,7 @@ from typing import Any, Optional, Union
 
 from ondio import OndioError
 
-from . import _shared
+from . import _remote, _shared
 
 
 #
@@ -46,39 +46,7 @@ def read(
     Returns:
         Bytes if dest is None, otherwise dest path.
     """
-    import requests
-    _log.debug(
-        'HTTPS read: %s byte_range=%s-%s',
-        src[:LOG_URL_MAX_LEN], start_byte, end_byte,
-    )
-
-    rk = _request_kwargs(kwargs)
-
-    if start_byte is not None and end_byte is not None:
-        rk['headers']['Range'] = (
-            f'bytes={start_byte}-{end_byte}'
-        )
-    elif start_byte is not None:
-        rk['headers']['Range'] = f'bytes={start_byte}-'
-    elif end_byte is not None:
-        rk['headers']['Range'] = f'bytes=0-{end_byte}'
-
-    resp = requests.get(src, stream=True, **rk)
-    resp.raise_for_status()
-    _log.debug(
-        'HTTPS read: status=%d content-length=%s',
-        resp.status_code,
-        resp.headers.get('Content-Length', 'unknown'),
-    )
-
-    if dest is None:
-        return resp.content
-
-    _shared.ensure_parent_dirs(dest)
-    with open(dest, 'wb') as f:
-        for chunk in resp.iter_content(CHUNK_SIZE):
-            f.write(chunk)
-    return dest
+    return _remote.read('https', src, dest, start_byte, end_byte, **kwargs)
 
 
 def read_segment(
@@ -99,39 +67,7 @@ def read_segment(
     Returns:
         (raw, sr) audio segment.
     """
-    _shared.check_scheme(path, ('http://', 'https://'))
-    if partial and _shared.is_flac(path):
-        okw = _shared.ondio_kwargs('https', kwargs)
-        try:
-            return _shared.read_remote_flac(
-                path, start_sec, dur_sec, **okw,
-            )
-        # A bad window is ValueError. Both fall back,
-        # as before.
-        except (OndioError, ValueError) as e:
-            msg = (
-                f'Partial download failed '
-                f'({type(e).__name__}: {e}). '
-                f'Falling back to full download'
-            )
-            _log.warning(msg)
-            _shared.last_warning = msg
-
-    rk = _request_kwargs(kwargs)
-    _log.debug(
-        'HTTPS full download: %s',
-        path[:LOG_URL_MAX_LEN],
-    )
-    cache = _shared.cache_path(path)
-    if not os.path.exists(cache):
-        import requests as req
-        resp = req.get(path, stream=True, **rk)
-        resp.raise_for_status()
-        with open(cache, 'wb') as f:
-            for chunk in resp.iter_content(CHUNK_SIZE):
-                f.write(chunk)
-    from . import io_local
-    return io_local.read_segment(cache, start_sec, dur_sec)
+    return _remote.read_segment('https', path, start_sec, dur_sec, partial, **kwargs)
 
 
 def write(

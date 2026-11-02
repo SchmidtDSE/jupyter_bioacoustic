@@ -165,85 +165,92 @@ def vbr_flac(tmp_path_factory):
     return path
 
 
-class _CountingBackend:
-    """ondio LocalBackend over one local file. Ignores the URI, counts
-    read_range calls, and can raise a given exception from read_range."""
+class _DiskStore:
+    """ondio backend that serves s3://, gs:// and http(s):// URIs from files
+    under root/<bucket-or-host>/<key>. It records each call as
+    (method, uri, *args). Set fail[method] = exc to make that method raise."""
 
-    def __init__(self, path):
-        self.path = path
-        self.ranges = 0
-        self.raises = None
+    def __init__(self, root):
+        self.root = str(root)
+        self.calls = []
+        self.fail = {}
         self._local = LocalBackend()
 
-    def read_range(self, uri, start_byte, end_byte):
-        self.ranges += 1
-        if self.raises is not None:
-            raise self.raises
-        return self._local.read_range(self.path, start_byte, end_byte)
+    def path(self, uri):
+        return os.path.join(self.root, uri.split('://', 1)[1].split('?')[0])
 
-    def size(self, uri):
-        return self._local.size(self.path)
+    def put(self, uri, src):
+        import shutil
+        os.makedirs(os.path.dirname(self.path(uri)), exist_ok=True)
+        shutil.copyfile(src, self.path(uri))
+
+    def count(self, method):
+        return sum(1 for c in self.calls if c[0] == method)
+
+    def _call(self, method, uri, *args):
+        self.calls.append((method, uri, *args))
+        if method in self.fail:
+            raise self.fail[method]
 
     def read(self, uri):
-        return self._local.read(self.path)
+        self._call('read', uri)
+        return self._local.read(self.path(uri))
+
+    def read_range(self, uri, start_byte, end_byte):
+        self._call('read_range', uri, start_byte, end_byte)
+        return self._local.read_range(self.path(uri), start_byte, end_byte)
+
+    def size(self, uri):
+        self._call('size', uri)
+        return self._local.size(self.path(uri))
+
+    def exists(self, uri):
+        self._call('exists', uri)
+        return self._local.exists(self.path(uri))
+
+    def download(self, uri, out_path):
+        self._call('download', uri, out_path)
+        self._local.download(self.path(uri), out_path)
 
 
 class _FakeRemote:
-    """Gives JBA's ondio calls a counting backend, and routes the old
-    clients' full downloads to a local copy. Nothing reaches the network."""
+    """Gives JBA's ondio calls a _DiskStore. self.calls records each
+    (uri, ondio options) that reached the backend seam. The old clients
+    fail, so nothing reaches the network."""
 
-    def __init__(self, monkeypatch, tmp_path, path):
-        import shutil
-
-        self.backend = _CountingBackend(path)
+    def __init__(self, monkeypatch, tmp_path):
+        self.store = _DiskStore(tmp_path / 'store')
         self.calls = []
-        self.downloads = 0
         monkeypatch.setattr(_shared, 'CACHE_DIR', str(tmp_path / 'cache'))
 
         def ondio_backend(uri, okw):
             self.calls.append((uri, okw))
-            return self.backend
+            return self.store
 
         monkeypatch.setattr(_shared, 'ondio_backend', ondio_backend)
 
-        def copy(dest):
-            self.downloads += 1
-            shutil.copyfile(path, dest)
+        def old_client(*a, **kw):
+            raise AssertionError('old storage client used')
 
-        class Blob:
-            def download_to_filename(self, dest):
-                copy(dest)
+        for mod in (io_aws, io_gcs):
+            monkeypatch.setattr(mod, '_get_client', old_client, raising=False)
+        monkeypatch.setattr(requests, 'get', old_client)
 
-        class Bucket:
-            def blob(self, name):
-                return Blob()
+    @property
+    def ranges(self):
+        return self.store.count('read_range')
 
-        class Client:
-            def download_file(self, bucket, key, dest):
-                copy(dest)
-
-            def bucket(self, name):
-                return Bucket()
-
-        class Response:
-            def raise_for_status(self):
-                pass
-
-            def iter_content(self, size):
-                self_.downloads += 1
-                with open(path, 'rb') as f:
-                    yield f.read()
-
-        self_ = self
-        self.client = Client()
-        monkeypatch.setattr(io_aws, '_get_client', lambda **kw: self.client)
-        monkeypatch.setattr(io_gcs, '_get_client', lambda **kw: self.client)
-        monkeypatch.setattr(requests, 'get', lambda *a, **kw: Response())
+    @property
+    def downloads(self):
+        return self.store.count('download')
 
 
 @pytest.fixture
 def fake_remote(monkeypatch, tmp_path, vbr_flac):
-    return _FakeRemote(monkeypatch, tmp_path, vbr_flac)
+    fake = _FakeRemote(monkeypatch, tmp_path)
+    for uri in (*_URIS.values(), 'http://example.com/x.flac'):
+        fake.store.put(uri, vbr_flac)
+    return fake
 
 
 def _assert_same(got, want):
@@ -269,7 +276,7 @@ class TestRemoteFlacExact:
         got = io.read_segment(_URIS['s3'], start, dur)
         _assert_same(got, io_local.read_segment(vbr_flac, start, dur))
         assert _shared.last_warning is None
-        assert fake_remote.backend.ranges > 0
+        assert fake_remote.ranges > 0
         assert fake_remote.downloads == 0
 
     @pytest.mark.parametrize('scheme', ['gs', 'https'])
@@ -277,7 +284,7 @@ class TestRemoteFlacExact:
         got = io.read_segment(_URIS[scheme], 33.3, 3.0)
         _assert_same(got, io_local.read_segment(vbr_flac, 33.3, 3.0))
         assert _shared.last_warning is None
-        assert fake_remote.backend.ranges > 0
+        assert fake_remote.ranges > 0
         assert fake_remote.downloads == 0
 
     def test_window_past_eof_falls_back(self, fake_remote):
@@ -296,15 +303,15 @@ class TestRangedFailureFallsBack:
         NetworkError('reset'), AuthError('denied'), OndioError('corrupt region'),
     ])
     def test_fallback(self, fake_remote, vbr_flac, scheme, exc):
-        fake_remote.backend.raises = exc
+        fake_remote.store.fail['read_range'] = exc
         got = io.read_segment(_URIS[scheme], 12.5, 3.0)
         _assert_same(got, io_local.read_segment(vbr_flac, 12.5, 3.0))
-        assert fake_remote.backend.ranges > 0
+        assert fake_remote.ranges > 0
         assert _shared.last_warning.startswith('Partial download failed')
         assert fake_remote.downloads == 1
 
     def test_programming_error_is_not_hidden(self, fake_remote):
-        fake_remote.backend.raises = TypeError('bug')
+        fake_remote.store.fail['read_range'] = TypeError('bug')
         with pytest.raises(TypeError):
             io.read_segment(_URIS['s3'], 12.5, 3.0)
         assert fake_remote.downloads == 0
@@ -314,14 +321,15 @@ class TestRangedPathSkipped:
 
     def _assert_skipped(self, fake_remote, uri, **kwargs):
         io.read_segment(uri, 1.0, 1.0, **kwargs)
-        assert fake_remote.backend.ranges == 0
+        assert fake_remote.ranges == 0
         assert _shared.last_warning is None
         assert fake_remote.downloads == 1
 
     def test_non_flac(self, monkeypatch, tmp_path):
         wav = str(tmp_path / 'a.wav')
         sf.write(wav, np.zeros(_VBR_SR * 3, dtype=np.float32), _VBR_SR)
-        fake = _FakeRemote(monkeypatch, tmp_path, wav)
+        fake = _FakeRemote(monkeypatch, tmp_path)
+        fake.store.put('s3://bucket/a.wav', wav)
         self._assert_skipped(fake, 's3://bucket/a.wav')
 
     def test_partial_false(self, fake_remote):
@@ -354,8 +362,81 @@ class TestPlatformScheme:
         got = io.read_segment('http://example.com/x.flac', 33.3, 3.0,
                               platform='https')
         _assert_same(got, io_local.read_segment(vbr_flac, 33.3, 3.0))
-        assert fake_remote.backend.ranges > 0
+        assert fake_remote.ranges > 0
         assert fake_remote.downloads == 0
+
+
+_DATA = bytes(range(10))
+
+
+@pytest.fixture
+def remote_bin(monkeypatch, tmp_path):
+    """A _FakeRemote that serves _DATA at s3://b/x.bin, gs://b/x.bin,
+    https://h/x.bin and http://h/x.bin."""
+    src = tmp_path / 'x.bin'
+    src.write_bytes(_DATA)
+    fake = _FakeRemote(monkeypatch, tmp_path)
+    for uri in ('s3://b/x.bin', 'gs://b/x.bin', 'https://h/x.bin'):
+        fake.store.put(uri, str(src))
+    return fake
+
+
+class TestRemoteRead:
+
+    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin',
+                                     'https://h/x.bin'])
+    def test_read_whole(self, remote_bin, uri):
+        assert io.read(uri) == _DATA
+
+    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin',
+                                     'https://h/x.bin'])
+    @pytest.mark.parametrize('kwargs,want', [
+        ({'start_byte': 2, 'end_byte': 5}, _DATA[2:6]),
+        ({'start_byte': 2}, _DATA[2:]),
+        ({'end_byte': 5}, _DATA[:6]),
+    ])
+    def test_read_range_inclusive(self, remote_bin, uri, kwargs, want):
+        assert io.read(uri, **kwargs) == want
+
+    def test_read_dest_relative(self, remote_bin, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        assert io.read('s3://b/x.bin', dest='out/x.bin') == 'out/x.bin'
+        assert (tmp_path / 'out' / 'x.bin').read_bytes() == _DATA
+
+    def test_read_range_with_dest(self, remote_bin, tmp_path):
+        dest = str(tmp_path / 'out' / 'r.bin')
+        got = io.read('s3://b/x.bin', dest=dest, start_byte=2, end_byte=5)
+        assert got == dest
+        with open(dest, 'rb') as f:
+            assert f.read() == _DATA[2:6]
+
+    def test_read_options_reach_ondio(self, remote_bin):
+        client = object()
+        io.read('s3://b/x.bin', client=client, profile_name='p')
+        assert remote_bin.calls == [('s3://b/x.bin', {'client': client})]
+
+    def test_platform_with_other_scheme_is_refused(self, remote_bin, tmp_path):
+        with pytest.raises(ValueError):
+            io.read(str(tmp_path / 'x.bin'), platform='aws')
+        assert remote_bin.calls == []
+        assert remote_bin.store.calls == []
+
+    @pytest.mark.parametrize('platform', [None, 'https'])
+    def test_read_http(self, remote_bin, platform):
+        assert io.read('http://h/x.bin', platform=platform) == _DATA
+
+    def test_failed_cache_download_retries_next_time(self, monkeypatch, tmp_path):
+        wav = str(tmp_path / 'a.wav')
+        sf.write(wav, np.zeros(_VBR_SR * 2, dtype=np.float32), _VBR_SR)
+        fake = _FakeRemote(monkeypatch, tmp_path)
+        fake.store.put('s3://b/a.wav', wav)
+        fake.store.fail['download'] = NetworkError('reset')
+        with pytest.raises(NetworkError):
+            io.read_segment('s3://b/a.wav', 0, 1)
+        del fake.store.fail['download']
+        raw, sr = io.read_segment('s3://b/a.wav', 0, 1)
+        assert sr == _VBR_SR and len(raw) == _VBR_SR
+        assert fake.downloads == 2
 
 
 _CLIENT = object()
@@ -378,7 +459,7 @@ class TestOptionsReachOndio:
         headers = dict(options.get('headers', {}))
         io.read_segment(_URIS[scheme], 12.5, 3.0, **options)
         assert fake_remote.calls[-1] == (_URIS[scheme], expected)
-        assert fake_remote.backend.ranges > 0
+        assert fake_remote.ranges > 0
         assert fake_remote.downloads == 0
         assert options.get('headers', {}) == headers
 

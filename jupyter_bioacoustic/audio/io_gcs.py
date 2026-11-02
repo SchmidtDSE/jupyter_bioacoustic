@@ -12,7 +12,7 @@ from typing import Any
 
 from ondio import OndioError
 
-from . import _shared
+from . import _remote, _shared
 
 #
 # Constants
@@ -27,56 +27,13 @@ _GCS_URI_PREFIX: str = 'gs://'
 def read(src: str, dest: str | None = None, start_byte: int | None = None,
          end_byte: int | None = None, **kwargs: Any) -> bytes | str:
     """Read data from GCS blob with optional byte range."""
-    from google.cloud import storage
-    bucket_name, blob_name = _parse_gcs_uri(src)
-    _log.debug('GCS read: bucket=%s blob=%s byte_range=%s-%s', bucket_name,
-               blob_name, start_byte, end_byte)
-    client = kwargs.get('client') or _get_client(**kwargs)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-
-    if start_byte is not None or end_byte is not None:
-        data = blob.download_as_bytes(
-            start=start_byte or 0,
-            end=end_byte,
-        )
-    else:
-        data = blob.download_as_bytes()
-
-    if dest is None:
-        return data
-
-    _shared.ensure_parent_dirs(dest)
-    with open(dest, 'wb') as f:
-        f.write(data)
-    return dest
+    return _remote.read('gs', src, dest, start_byte, end_byte, **kwargs)
 
 
 def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = True,
                  **kwargs: Any) -> Any:
     """Read audio segment from GCS blob."""
-    _shared.check_scheme(path, ('gs://',))
-    if partial and _shared.is_flac(path):
-        okw = _shared.ondio_kwargs('gs', kwargs)
-        try:
-            return _shared.read_remote_flac(path, start_sec, dur_sec, **okw)
-        # A bad window is ValueError. Both fall back, as before.
-        except (OndioError, ValueError) as e:
-            msg = (f'Partial download failed ({type(e).__name__}: {e}). '
-                   f'Falling back to full download')
-            _log.warning(msg)
-            _shared.last_warning = msg
-
-    bucket_name, blob_name = _parse_gcs_uri(path)
-    client = kwargs.get('client') or _get_client(**kwargs)
-    blob = client.bucket(bucket_name).blob(blob_name)
-    _log.debug('GCS full download: %s', path)
-    cache = _shared.cache_path(path)
-    if not os.path.exists(cache):
-        _log.debug('GCS downloading full file to cache: %s', cache)
-        blob.download_to_filename(cache)
-    from . import io_local
-    return io_local.read_segment(cache, start_sec, dur_sec)
+    return _remote.read_segment('gs', path, start_sec, dur_sec, partial, **kwargs)
 
 
 def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
