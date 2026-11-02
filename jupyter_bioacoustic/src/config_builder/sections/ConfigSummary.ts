@@ -1,10 +1,19 @@
 /**
- * ConfigSummary
+ * The read-only "Configuration Summary" at the bottom of the builder, rendered from the
+ * kernel's ``build_summary_from_builder`` sections.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { COLORS } from '../../styles';
+import { escapeHtml } from '../../util';
 
+
+//
+// Constants
+//
 const S = {
   section: `padding:6px 10px;`,
   sectionTitle:
@@ -22,7 +31,13 @@ const S = {
   indent: `margin-left:16px;padding-left:8px;border-left:2px solid ${COLORS.bgSurface1};`,
 };
 
-interface SummaryRow {
+
+
+//
+// Types
+//
+/** One summary row: key/value, a tagged value, or a nested group (``FORM``, ``dynamic``). */
+export interface SummaryRow {
   key?: string;
   value?: string;
   muted?: boolean;
@@ -30,11 +45,17 @@ interface SummaryRow {
   children?: SummaryRow[];
 }
 
-interface SummarySection {
+/** A titled block of rows (one per builder section). */
+export interface SummarySection {
   title: string;
   rows: SummaryRow[];
 }
 
+
+
+//
+// Public
+//
 export class ConfigSummary {
   readonly element: HTMLDetailsElement;
   private _body: HTMLDivElement;
@@ -60,6 +81,7 @@ export class ConfigSummary {
     this.element.append(summary, this._body);
   }
 
+  /** Re-render from the ``getSummary`` reply. */
   update(sections: SummarySection[]): void {
     this._body.innerHTML = '';
     for (let i = 0; i < sections.length; i++) {
@@ -114,7 +136,7 @@ export class ConfigSummary {
       const header = document.createElement('div');
       header.style.cssText = S.row;
       header.innerHTML =
-        `<span style="${S.dynTag}">${this._esc(value)}</span>`;
+        `<span style="${S.dynTag}">${escapeHtml(value)}</span>`;
       wrap.appendChild(header);
       for (const child of row.children || []) {
         this._renderRow(wrap, child);
@@ -128,8 +150,8 @@ export class ConfigSummary {
 
     if (tag) {
       el.innerHTML =
-        `<span style="${S.tag}">${this._esc(tag)}</span>` +
-        `<span style="${S.val}">${this._esc(value)}</span>`;
+        `<span style="${S.tag}">${escapeHtml(tag)}</span>` +
+        `<span style="${S.val}">${escapeHtml(value)}</span>`;
     } else if (key) {
       const k = document.createElement('span');
       k.style.cssText = S.key;
@@ -155,11 +177,5 @@ export class ConfigSummary {
       }
       parent.appendChild(wrap);
     }
-  }
-
-  private _esc(s: string): string {
-    const el = document.createElement('span');
-    el.textContent = s;
-    return el.innerHTML;
   }
 }
