@@ -7,6 +7,9 @@
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { Detection, FilterClause, FilterColumnMeta } from '../types';
 import { FormPanel } from './FormPanel';
@@ -22,10 +25,21 @@ import {
   filterChipDismissStyle,
 } from '../styles';
 
-// ─── Operator definitions ────────────────────────────────────
 
+//
+// Types
+//
+/** A filter operator offered for a column type. */
 interface OpDef { value: string; label: string; needsValue: boolean; }
 
+
+//
+// Constants
+//
+const DEFAULT_TABLE_MAX_HEIGHT = 175;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Operators for numeric columns. */
 const FLOAT_OPS: OpDef[] = [
   { value: '=',            label: '=',            needsValue: true },
   { value: '!=',           label: '!=',           needsValue: true },
@@ -39,6 +53,7 @@ const FLOAT_OPS: OpDef[] = [
   { value: 'is_not_empty', label: 'is not empty', needsValue: false },
 ];
 
+/** Operators for date (YYYY-MM-DD) columns. */
 const DATE_OPS: OpDef[] = [
   { value: '=',            label: 'equals',       needsValue: true },
   { value: '!=',           label: 'not equals',   needsValue: true },
@@ -52,8 +67,7 @@ const DATE_OPS: OpDef[] = [
   { value: 'is_not_empty', label: 'is not empty', needsValue: false },
 ];
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
+/** Operators for text columns. */
 const STRING_OPS: OpDef[] = [
   { value: '=',            label: 'equals',        needsValue: true },
   { value: '!=',           label: 'not equals',    needsValue: true },
@@ -66,14 +80,16 @@ const STRING_OPS: OpDef[] = [
   { value: 'is_not_empty', label: 'is not empty',  needsValue: false },
 ];
 
-// ─── Constants ────────────────────────────────────────────────
-
-const DEFAULT_TABLE_MAX_HEIGHT = 175;
-
-// Human-readable label for an operator (used in chips)
+/** Human-readable label for an operator (used in chips). */
 const OP_LABELS: Record<string, string> = {};
 [...FLOAT_OPS, ...STRING_OPS, ...DATE_OPS].forEach(o => { OP_LABELS[o.value] = o.label; });
 
+
+
+//
+// Public
+//
+/** The clip table section: filter bar, chips, sortable paginated table. */
 export class ClipTable {
   /** Root element — contains filter bar, chip bar, table wrapper, pagination bar. */
   readonly element: HTMLDivElement;
