@@ -35,7 +35,11 @@ PACKAGE_DIR: Path = ROOT / 'jupyter_bioacoustic'
 # PUBLIC
 #
 def main() -> None:
-    """Mirror the built labextension into every Jupyter data dir."""
+    """Mirror the built labextension into every Jupyter data dir.
+
+    Raises:
+        SystemExit: With status 1 if the labextension hasn't been built.
+    """
     argparse.ArgumentParser(description=__doc__.split('\n\n')[1]).parse_args()
     pkg = json.loads((PACKAGE_DIR / 'package.json').read_text())
     out_dir = (PACKAGE_DIR / pkg['jupyterlab']['outputDir']).resolve()
