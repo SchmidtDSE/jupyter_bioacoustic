@@ -6,7 +6,7 @@ title/text) and in nested form configs. Used by ``BioacousticAnnotator`` and,
 through ``jupyter_bioacoustic.api._resolve_templates``, by the frontend.
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
