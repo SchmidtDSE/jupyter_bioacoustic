@@ -1,3 +1,8 @@
+/**
+ * SecretsEditor
+ *
+ * License: BSD 3-Clause
+ */
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { SECRETS_HINT } from '../text';
