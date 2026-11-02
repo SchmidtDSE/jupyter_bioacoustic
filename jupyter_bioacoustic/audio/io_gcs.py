@@ -1,12 +1,16 @@
-"""GCS IO backend.
+"""
+GCS IO Backend
 
-GCS (Google Cloud Storage) backend for reading and writing audio files.
+Audio file IO for Google Cloud Storage (``gs://bucket/blob``). Needs ``google-cloud-storage``
+(``pip install 'jupyter-bioacoustic[gcs]'``).
 
 License: BSD 3-Clause
 """
+#
+# Imports
+#
 from __future__ import annotations
 
-import os
 import logging
 from typing import Any
 
@@ -14,19 +18,32 @@ import numpy as np
 
 from . import _shared
 
+
 #
-# Constants
+# CONSTANTS
 #
+_log = logging.getLogger('jupyter_bioacoustic.audio')
 
 _GCS_URI_PREFIX: str = 'gs://'
 
-#
-# Public API
-#
 
+#
+# PUBLIC
+#
 def read(src: str, dest: str | None = None, start_byte: int | None = None,
          end_byte: int | None = None, **kwargs: Any) -> bytes | str:
-    """Read data from GCS blob with optional byte range."""
+    """Read data from a GCS blob, optionally a byte range.
+
+    Args:
+        src: gs:// URI of the blob.
+        dest: Local destination path (optional).
+        start_byte: First byte (optional).
+        end_byte: Last byte, inclusive (optional).
+        **kwargs: Additional arguments including client, project and credentials.
+
+    Returns:
+        The bytes if ``dest`` is None, otherwise ``dest``.
+    """
     bucket_name, blob_name = _parse_gcs_uri(src)
     _log.debug('GCS read: bucket=%s blob=%s byte_range=%s-%s', bucket_name,
                blob_name, start_byte, end_byte)
@@ -41,14 +58,7 @@ def read(src: str, dest: str | None = None, start_byte: int | None = None,
         )
     else:
         data = blob.download_as_bytes()
-
-    if dest is None:
-        return data
-
-    _shared.ensure_parent_dirs(dest)
-    with open(dest, 'wb') as f:
-        f.write(data)
-    return dest
+    return _shared.save_or_return(data, dest)
 
 
 def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = True,
@@ -80,54 +90,66 @@ def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = Tr
 
 def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
           **kwargs: Any) -> str:
-    """Write files to GCS."""
+    """Upload a local file or directory to GCS.
+
+    Args:
+        src: Local source file or directory.
+        dest: gs:// destination URI (a prefix for a directory).
+        recursive: Required to upload a directory.
+        overwrite: If False, refuse to replace existing blobs.
+        **kwargs: Additional arguments including client, project and credentials.
+
+    Returns:
+        ``dest``.
+
+    Raises:
+        ValueError: If ``src`` is a directory and ``recursive`` is False.
+        FileExistsError: If a blob exists and ``overwrite`` is False.
+    """
     bucket_name, prefix = _parse_gcs_uri(dest)
     client = kwargs.get('client') or _get_client(**kwargs)
     bucket = client.bucket(bucket_name)
 
-    if os.path.isdir(src):
-        if not recursive:
-            raise ValueError(f"src is a directory but recursive=False: {src}")
-        for root, _dirs, files in os.walk(src):
-            for fname in files:
-                local_path = os.path.join(root, fname)
-                rel_path = os.path.relpath(local_path, src)
-                blob_name = (prefix.rstrip('/') + '/' +
-                             rel_path.replace(os.sep, '/'))
-                blob = bucket.blob(blob_name)
-                if not overwrite and blob.exists():
-                    raise FileExistsError(
-                        f"gs://{bucket_name}/{blob_name} exists and "
-                        f"overwrite=False")
-                blob.upload_from_filename(local_path)
-                _log.debug('uploaded %s -> gs://%s/%s', local_path,
-                           bucket_name, blob_name)
+    if _shared.is_directory_upload(src, recursive):
+        for local_path, blob_name in _shared.iter_upload_keys(src, prefix):
+            blob = bucket.blob(blob_name)
+            if not overwrite:
+                _raise_if_exists(blob, bucket_name, blob_name)
+            blob.upload_from_filename(local_path)
+            _log.debug('uploaded %s -> gs://%s/%s', local_path,
+                       bucket_name, blob_name)
         _log.info('GCS write: uploaded directory to %s', dest)
         return dest
-    else:
-        blob = bucket.blob(prefix)
-        if not overwrite and blob.exists():
-            raise FileExistsError(f"gs://{bucket_name}/{prefix} exists and "
-                                  f"overwrite=False")
-        blob.upload_from_filename(src)
-        _log.info('GCS write: uploaded %s -> gs://%s/%s', src, bucket_name,
-                  prefix)
-        return dest
+
+    blob = bucket.blob(prefix)
+    if not overwrite:
+        _raise_if_exists(blob, bucket_name, prefix)
+    blob.upload_from_filename(src)
+    _log.info('GCS write: uploaded %s -> gs://%s/%s', src, bucket_name,
+              prefix)
+    return dest
 
 
 def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
-    """List files in GCS bucket prefix."""
+    """List the blobs under a GCS prefix.
+
+    Args:
+        path: gs:// URI of a bucket or prefix.
+        recursive: Also list blobs in "subdirectories".
+        **kwargs: Additional arguments including client, project and credentials.
+
+    Returns:
+        Sorted gs:// URIs.
+    """
     bucket_name, prefix = _parse_gcs_uri(path)
     _log.debug('GCS list_files: bucket=%s prefix=%s recursive=%s', bucket_name,
                prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
-
-    if prefix and not prefix.endswith('/'):    # '' = bucket root
-        prefix += '/'
+    prefix = _shared.list_prefix(prefix)
 
     list_kwargs = {'prefix': prefix}
     if not recursive:
-        list_kwargs['delimiter'] = '/'
+        list_kwargs['delimiter'] = _shared.PATH_SEPARATOR
 
     results = []
     for blob in client.list_blobs(bucket_name, **list_kwargs):
@@ -136,22 +158,33 @@ def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
 
     return sorted(results)
 
+
 #
-# Internal
-
-_log = logging.getLogger('jupyter_bioacoustic.audio')
-
-
+# INTERNAL
+#
 def _parse_gcs_uri(uri: str) -> tuple[str, str]:
-    """Split a GCS URI: ``gs://bucket/a/b`` -> ``('bucket', 'a/b')``; ``gs://bucket`` -> ``''``."""
-    path = uri[len(_GCS_URI_PREFIX):] if uri.startswith(_GCS_URI_PREFIX) else uri
-    bucket, _, blob = path.partition('/')
-    return bucket, blob
+    """Split a GCS URI: ``gs://bucket/a/b`` -> ``('bucket', 'a/b')``; ``gs://bucket`` -> ``''``.
+
+    Args:
+        uri: gs:// URI.
+
+    Returns:
+        (bucket, blob name).
+    """
+    return _shared.split_bucket_uri(uri, _GCS_URI_PREFIX)
 
 
 def _get_client(project: str | None = None, credentials: Any | None = None,
                 **kwargs: Any) -> Any:
-    """A google-cloud-storage client (optionally for a project / with credentials).
+    """Create a google-cloud-storage client (optionally for a project / with credentials).
+
+    Args:
+        project: GCP project id (optional).
+        credentials: google-auth credentials (optional).
+        **kwargs: Ignored (the caller's other backend options).
+
+    Returns:
+        A ``google.cloud.storage.Client``.
 
     Raises:
         ImportError: If google-cloud-storage isn't installed.
@@ -171,8 +204,34 @@ def _get_client(project: str | None = None, credentials: Any | None = None,
 
 
 def _blob_size(blob: Any) -> int:
+    """Return a blob's size in bytes (reloads its metadata).
+
+    Args:
+        blob: A ``google.cloud.storage.Blob``.
+
+    Returns:
+        Size in bytes.
+
+    Raises:
+        ValueError: If GCS reports no size.
+    """
     blob.reload()
     if blob.size is None:
         _log.error('GCS blob size is None for %s', blob.name)
         raise ValueError('Could not determine blob size')
     return blob.size
+
+
+def _raise_if_exists(blob: Any, bucket_name: str, blob_name: str) -> None:
+    """Raise if ``blob`` exists (used when ``overwrite=False``).
+
+    Args:
+        blob: The destination ``google.cloud.storage.Blob``.
+        bucket_name: Bucket name (for the message).
+        blob_name: Blob name (for the message).
+
+    Raises:
+        FileExistsError: If the blob exists.
+    """
+    if blob.exists():
+        raise FileExistsError(f"gs://{bucket_name}/{blob_name} exists and overwrite=False")
