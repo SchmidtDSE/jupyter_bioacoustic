@@ -9,10 +9,7 @@ License: BSD 3-Clause
 """
 import os
 import json
-import struct
-import tempfile
 
-import numpy as np
 import pandas as pd
 import pytest
 
