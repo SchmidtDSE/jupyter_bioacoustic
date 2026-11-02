@@ -3,10 +3,9 @@
 License: BSD 3-Clause
 """
 import os
+import threading
+import time
 
-import boto3
-import requests
-from google.cloud import storage
 from ondio.backends.local import LocalBackend
 
 from jupyter_bioacoustic.audio import _shared
@@ -19,7 +18,8 @@ VBR_SECONDS = 60
 class _DiskStore:
     """ondio backend that serves s3://, gs:// and http(s):// URIs from files
     under root/<bucket-or-host>/<key>. It records each call as
-    (method, uri, *args). Set fail[method] = exc to make that method raise."""
+    (method, uri, *args). Set fail[method] = exc to make that method raise.
+    max_uploads is the most uploads that ran at the same time."""
 
     def __init__(self, root):
         self.root = str(root)
@@ -27,6 +27,9 @@ class _DiskStore:
         self.fail = {}
         self.listing = []
         self._local = LocalBackend()
+        self.max_uploads = 0
+        self._uploads = 0
+        self._lock = threading.Lock()
 
     def path(self, uri):
         key = uri.split('://', 1)[1].split('?')[0]
@@ -67,10 +70,19 @@ class _DiskStore:
         self._call('download', uri, out_path)
         self._local.download(self.path(uri), out_path)
 
-    def upload(self, uri, source_path):
-        self._call('upload', uri, source_path)
-        os.makedirs(os.path.dirname(self.path(uri)), exist_ok=True)
-        self._local.upload(self.path(uri), source_path)
+    def upload(self, uri, source_path, *, overwrite=True):
+        self._call('upload', uri, source_path, overwrite)
+        with self._lock:
+            self._uploads += 1
+            self.max_uploads = max(self.max_uploads, self._uploads)
+        try:
+            # Long enough for uploads on other threads to start.
+            time.sleep(0.02)
+            os.makedirs(os.path.dirname(self.path(uri)), exist_ok=True)
+            self._local.upload(self.path(uri), source_path, overwrite=overwrite)
+        finally:
+            with self._lock:
+                self._uploads -= 1
 
     def list_files(self, uri_prefix, *, recursive=True, **kwargs):
         self._call('list_files', uri_prefix, recursive)
@@ -85,9 +97,9 @@ class _DiskStore:
 class _FakeRemote:
     """Gives JBA's ondio calls a _DiskStore. self.calls records each
     (uri, ondio options) that reached the backend seam. Set backend_fails
-    to make the seam raise, as ondio does when credentials fail. The public
-    (no credentials) backend is a second store, self.public. The old
-    clients fail, so nothing reaches the network."""
+    to make the seam raise, as ondio does when credentials fail. A backend
+    with no credentials (anonymous=True) is a second store, self.public.
+    Local paths get ondio's real local backend."""
 
     def __init__(self, monkeypatch, tmp_path):
         self.store = _DiskStore(tmp_path / 'store')
@@ -97,32 +109,20 @@ class _FakeRemote:
         self.backend_fails = None
         monkeypatch.setattr(_shared, 'CACHE_DIR', str(tmp_path / 'cache'))
 
+        real_backend = _shared.ondio_backend
+
         def ondio_backend(uri, okw):
+            if _shared.platform(uri) == 'local':
+                return real_backend(uri, okw)
+            if okw.get('anonymous'):
+                self.public_calls.append(uri)
+                return self.public
             self.calls.append((uri, okw))
             if self.backend_fails is not None:
                 raise self.backend_fails
             return self.store
 
-        def public_backend(uri):
-            self.public_calls.append(uri)
-            return self.public
-
         monkeypatch.setattr(_shared, 'ondio_backend', ondio_backend)
-        monkeypatch.setattr(_shared, 'public_backend', public_backend,
-                            raising=False)
-
-        def old_client(*a, **kw):
-            raise AssertionError('old storage client used')
-
-        class OldGcsClient:
-            def __init__(self, *a, **kw):
-                old_client()
-
-            create_anonymous_client = staticmethod(old_client)
-
-        monkeypatch.setattr(requests, 'get', old_client)
-        monkeypatch.setattr(boto3, 'client', old_client)
-        monkeypatch.setattr(storage, 'Client', OldGcsClient)
 
     @property
     def ranges(self):

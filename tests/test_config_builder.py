@@ -609,17 +609,12 @@ class TestCheckAudioUrl:
         assert ConfigBuilder().check_audio_url('s3://b/x.flac') == _FLAC_OK
         assert flac_remote.public_calls == ['s3://b/x.flac']
 
-    def test_gcs_alias(self, flac_remote):
-        assert ConfigBuilder().check_audio_url('gcs://b/x.flac') == _FLAC_OK
-        assert {c[0] for c in flac_remote.calls} == {'gs://b/x.flac'}
-
-    def test_gcs_alias_segment_fallback(self, flac_remote, monkeypatch):
+    def test_segment_fallback(self, flac_remote, monkeypatch):
         def bad_header(*a, **kw):
             raise OndioError('bad header')
         monkeypatch.setattr(ondio, 'extract_flac_header', bad_header)
-        got = ConfigBuilder().check_audio_url('gcs://b/x.flac')
+        got = ConfigBuilder().check_audio_url('gs://b/x.flac')
         assert got == {'ok': True, 'sample_rate': 48000, 'channels': 1}
-        assert {c[0] for c in flac_remote.calls} == {'gs://b/x.flac'}
         assert flac_remote.store.count('read_range') > 0
 
     def test_programming_error_is_not_hidden(self, flac_remote, monkeypatch):

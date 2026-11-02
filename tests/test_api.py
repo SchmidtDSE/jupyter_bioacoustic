@@ -1214,28 +1214,19 @@ class TestCloudGetBytes:
             _cloud_get_bytes('https://h/x.bin')
         assert remote.public_calls == []
 
-    def test_gcs_alias(self, remote):
-        assert _cloud_get_bytes('gcs://b/x.bin') == _DATA
-        assert [c[0] for c in remote.calls] == ['gs://b/x.bin']
 
-
-class TestPublicBackend:
-    # These constructors make no request.
+class TestPublicOptions:
+    """The options of the public retry build real backends with no
+    credentials. These constructors make no request."""
 
     def test_s3_is_unsigned(self):
         from botocore import UNSIGNED
-        from ondio.backends.aws import AwsBackend
-        b = _shared.public_backend('s3://b/k')
-        assert isinstance(b, AwsBackend)
+        from ondio.registry import get_backend
+        b = get_backend('s3://b/k', **_shared.PUBLIC_OPTIONS)
         assert b._client.meta.config.signature_version is UNSIGNED
 
     def test_gs_is_anonymous(self):
         from google.auth.credentials import AnonymousCredentials
-        from ondio.backends.gcs import GcsBackend
-        b = _shared.public_backend('gs://b/k')
-        assert isinstance(b, GcsBackend)
+        from ondio.registry import get_backend
+        b = get_backend('gs://b/k', **_shared.PUBLIC_OPTIONS)
         assert isinstance(b._client._credentials, AnonymousCredentials)
-
-    def test_other_scheme(self):
-        with pytest.raises(ValueError):
-            _shared.public_backend('https://h/k')

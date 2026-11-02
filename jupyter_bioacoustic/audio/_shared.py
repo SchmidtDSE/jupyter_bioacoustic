@@ -1,9 +1,9 @@
 """
 Audio Shared (Internal)
 
-Shared utilities for audio IO backends: caching, ondio
-backends, sample-exact remote FLAC windows, and path
-helpers.
+Helpers for audio IO: caching, ondio backends and their
+options, sample-exact remote FLAC windows, the local window
+decode, and path helpers.
 
 License: BSD 3-Clause
 """
@@ -16,6 +16,7 @@ import os
 from typing import Any
 
 import numpy as np
+import soundfile as sf
 
 
 #
@@ -24,15 +25,26 @@ import numpy as np
 _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 CACHE_DIR = '/tmp/jba_audio_cache'
+DEFAULT_DTYPE = 'float32'
 
-# Caller options passed on to ondio, per scheme.
+# Caller options passed on to ondio, per ondio platform.
 _ONDIO_OPTIONS = {
-    's3': ('profile_name', 'region_name'),
-    'gs': ('project', 'credentials'),
+    'aws': ('profile_name', 'region_name', 'aws_access_key_id',
+            'aws_secret_access_key', 'aws_session_token'),
+    'gcs': ('project', 'credentials'),
 }
 _HTTPS_OPTIONS = (
     'headers', 'cookies', 'auth', 'verify', 'timeout', 'allow_redirects',
 )
+# Every option that a caller can give. A backend ignores the options of
+# other backends.
+_KNOWN_OPTIONS = frozenset(
+    ('client', 'token', *_HTTPS_OPTIONS,
+     *(n for names in _ONDIO_OPTIONS.values() for n in names)),
+)
+
+# ondio options for a backend with no credentials, for public buckets.
+PUBLIC_OPTIONS: dict[str, Any] = {'anonymous': True}
 
 last_warning: str | None = None
 
@@ -53,35 +65,46 @@ def cache_path(url_or_uri: str) -> str:
     return os.path.join(CACHE_DIR, name)
 
 
-def check_scheme(path: str, schemes: tuple[str, ...]) -> None:
-    """Raise ValueError if *path* does not start with one of *schemes*.
-
-    ``platform=`` can send a path to a handler of another scheme. ondio
-    selects its backend from the URI, so without this check a local path
-    sent to the S3 handler would be read from disk.
-    """
-    if not path.startswith(schemes):
-        raise ValueError(f'{path!r} does not start with {" or ".join(schemes)}')
-
-
 def is_flac(path: str) -> bool:
     """Return True if *path* names a FLAC file."""
     return path.split('?')[0].lower().endswith('.flac')
 
 
-def ondio_kwargs(
-    scheme: str, kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    """Map caller options to ondio backend kwargs.
+def platform(uri: str) -> str:
+    """Return the ondio platform of *uri*: aws, gcs, url or local.
 
-    Options that the JBA backends ignore are also ignored here.
+    Raises:
+        UnknownPlatformError: For a scheme that ondio does not know.
     """
-    if scheme in ('s3', 'gs'):
+    from ondio.registry import detect_platform
+    return detect_platform(uri)
+
+
+def ondio_kwargs(
+    uri: str, kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Map caller options to ondio backend kwargs for *uri*.
+
+    Options of other backends are ignored.
+
+    Raises:
+        TypeError: For an option that no backend takes.
+        UnknownPlatformError: For a scheme that ondio does not know.
+    """
+    unknown = sorted(set(kwargs) - _KNOWN_OPTIONS)
+    if unknown:
+        raise TypeError(
+            f'unexpected keyword argument(s): {", ".join(unknown)}',
+        )
+    kind = platform(uri)
+    if kind == 'local':
+        return {}
+    if kind in _ONDIO_OPTIONS:
         # ondio refuses a client together with other options;
         # JBA ignores the other options when a client is given.
         if kwargs.get('client') is not None:
             return {'client': kwargs['client']}
-        names = _ONDIO_OPTIONS[scheme]
+        names = _ONDIO_OPTIONS[kind]
         return {k: kwargs[k] for k in names if kwargs.get(k)}
     okw = {k: kwargs[k] for k in _HTTPS_OPTIONS if k in kwargs}
     if 'token' in kwargs:
@@ -96,33 +119,6 @@ def ondio_backend(uri: str, okw: dict[str, Any]) -> Any:
     """Build the ondio backend for *uri* from mapped caller options."""
     from ondio.registry import get_backend
     return get_backend(uri, **okw)
-
-
-def normalize_gs(uri: str) -> str:
-    """Rewrite a leading gcs:// to gs://. ondio knows only gs://."""
-    if uri.startswith('gcs://'):
-        return 'gs://' + uri[len('gcs://'):]
-    return uri
-
-
-def public_backend(uri: str) -> Any:
-    """Build an ondio backend with no credentials, for a public bucket.
-
-    S3 uses an unsigned client and GCS an anonymous client.
-    """
-    if uri.startswith('s3://'):
-        import boto3
-        from botocore import UNSIGNED
-        from botocore.config import Config
-        from ondio.backends.aws import AwsBackend
-        return AwsBackend(client=boto3.client(
-            's3', config=Config(signature_version=UNSIGNED),
-        ))
-    if uri.startswith('gs://'):
-        from google.cloud import storage
-        from ondio.backends.gcs import GcsBackend
-        return GcsBackend(client=storage.Client.create_anonymous_client())
-    raise ValueError(f'no public backend for {uri!r}')
 
 
 def read_remote_flac(
@@ -148,6 +144,24 @@ def read_remote_flac(
         uri, start_sec, start_sec + dur_sec, use_range=True,
         backend=ondio_backend(uri, backend_kwargs),
     )
+
+
+def decode_window(
+    path: str, start_sec: float, dur_sec: float,
+) -> tuple[np.ndarray, int]:
+    """Decode a window of a local audio file as (raw, sr).
+
+    The window is samples [round(start_sec * sr),
+    round((start_sec + dur_sec) * sr)), clipped at EOF. raw is 2-D float32.
+    """
+    with sf.SoundFile(path) as f:
+        sr = f.samplerate
+        first = round(start_sec * sr)
+        stop = round((start_sec + dur_sec) * sr)
+        f.seek(first)
+        raw = f.read(stop - first, dtype=DEFAULT_DTYPE, always_2d=True)
+    _log.debug('decode_window: %d samples, sr=%d', raw.shape[0], sr)
+    return raw, sr
 
 
 def ensure_parent_dirs(path: str) -> None:

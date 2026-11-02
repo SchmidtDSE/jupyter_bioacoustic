@@ -606,7 +606,6 @@ class ConfigBuilder:
         from ..audio import _shared, read_segment
         from ..api import _with_public_retry
         _log.info('check_audio_url: %s', str(value)[:120])
-        value = _shared.normalize_gs(value)
 
         if _shared.is_flac(value):
             try:

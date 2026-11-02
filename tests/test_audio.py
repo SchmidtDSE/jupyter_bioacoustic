@@ -1,8 +1,8 @@
 """
 Tests for audio modules
 
-Unit tests for IO handler dispatch, cache path generation,
-and remote IO through ondio.
+Unit tests for cache path generation, and local and remote IO
+through ondio.
 
 License: BSD 3-Clause
 """
@@ -15,40 +15,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jupyter_bioacoustic.audio import io, _shared
 from jupyter_bioacoustic.audio._shared import cache_path
-from jupyter_bioacoustic.audio import io_local, io_aws, io_gcs, io_https
-
-
-#
-# io._handler
-#
-class TestHandler:
-
-    def test_s3(self):
-        assert io._handler('s3://bucket/key.flac') is io_aws
-
-    def test_gs(self):
-        assert io._handler('gs://bucket/key.flac') is io_gcs
-
-    def test_https(self):
-        assert io._handler('https://example.com/a.flac') is io_https
-
-    def test_http(self):
-        assert io._handler('http://example.com/a.flac') is io_https
-
-    def test_local(self):
-        assert io._handler('/tmp/audio.flac') is io_local
-
-    def test_relative_local(self):
-        assert io._handler('audio/file.wav') is io_local
-
-    def test_platform_override_aws(self):
-        assert io._handler('/local/path', platform='aws') is io_aws
-
-    def test_platform_override_gcs(self):
-        assert io._handler('/local/path', platform='gcs') is io_gcs
-
-    def test_platform_override_url(self):
-        assert io._handler('/local/path', platform='url') is io_https
 
 
 #
@@ -101,12 +67,11 @@ class TestLastWarningCleared:
 # Remote FLAC reads through ondio (no network)
 #
 import numpy as np
-import requests
 import soundfile as sf
 from ondio import AuthError, NetworkError, OndioError
 from ondio.registry import get_backend
 
-from tests._fakes import VBR_SR as _VBR_SR, _DiskStore, _FakeRemote
+from tests._fakes import VBR_SR as _VBR_SR, _FakeRemote
 _URIS = {
     's3': 's3://bucket/x.flac',
     'gs': 'gs://bucket/x.flac',
@@ -142,17 +107,26 @@ class TestRemoteFlacExact:
 
     @pytest.mark.parametrize('start,dur', _WINDOWS)
     def test_window_matches_local(self, fake_remote, vbr_flac, start, dur):
+        want = io.read_segment(vbr_flac, start, dur)
         got = io.read_segment(_URIS['s3'], start, dur)
-        _assert_same(got, io_local.read_segment(vbr_flac, start, dur))
+        _assert_same(got, want)
         assert _shared.last_warning is None
         assert fake_remote.ranges > 0
         assert fake_remote.downloads == 0
 
     @pytest.mark.parametrize('scheme', ['gs', 'https'])
     def test_other_schemes_use_ranged_path(self, fake_remote, vbr_flac, scheme):
+        want = io.read_segment(vbr_flac, 33.3, 3.0)
         got = io.read_segment(_URIS[scheme], 33.3, 3.0)
-        _assert_same(got, io_local.read_segment(vbr_flac, 33.3, 3.0))
+        _assert_same(got, want)
         assert _shared.last_warning is None
+        assert fake_remote.ranges > 0
+        assert fake_remote.downloads == 0
+
+    def test_http_uses_ranged_path(self, fake_remote, vbr_flac):
+        want = io.read_segment(vbr_flac, 33.3, 3.0)
+        got = io.read_segment('http://example.com/x.flac', 33.3, 3.0)
+        _assert_same(got, want)
         assert fake_remote.ranges > 0
         assert fake_remote.downloads == 0
 
@@ -173,8 +147,9 @@ class TestRangedFailureFallsBack:
     ])
     def test_fallback(self, fake_remote, vbr_flac, scheme, exc):
         fake_remote.store.fail['read_range'] = exc
+        want = io.read_segment(vbr_flac, 12.5, 3.0)
         got = io.read_segment(_URIS[scheme], 12.5, 3.0)
-        _assert_same(got, io_local.read_segment(vbr_flac, 12.5, 3.0))
+        _assert_same(got, want)
         assert fake_remote.ranges > 0
         assert _shared.last_warning.startswith('Partial download failed')
         assert fake_remote.downloads == 1
@@ -205,36 +180,6 @@ class TestRangedPathSkipped:
         self._assert_skipped(fake_remote, _URIS['s3'], partial=False)
 
 
-class TestPlatformScheme:
-    """``platform=`` selects a handler. ondio selects its backend from the
-    URI, so a URI of another scheme must be refused, not read."""
-
-    @pytest.mark.parametrize('platform,uri', [
-        ('aws', 'LOCAL'),
-        ('aws', _URIS['gs']),
-        ('gcs', 'LOCAL'),
-        ('gcs', _URIS['s3']),
-        ('https', 'LOCAL'),
-        ('https', _URIS['s3']),
-    ])
-    @pytest.mark.parametrize('partial', [True, False])
-    def test_other_scheme_is_refused(
-        self, fake_remote, vbr_flac, platform, uri, partial,
-    ):
-        uri = vbr_flac if uri == 'LOCAL' else uri
-        with pytest.raises(ValueError):
-            io.read_segment(uri, 1.0, 1.0, partial=partial, platform=platform)
-        assert fake_remote.calls == []
-        assert fake_remote.downloads == 0
-
-    def test_http_uses_ranged_path(self, fake_remote, vbr_flac):
-        got = io.read_segment('http://example.com/x.flac', 33.3, 3.0,
-                              platform='https')
-        _assert_same(got, io_local.read_segment(vbr_flac, 33.3, 3.0))
-        assert fake_remote.ranges > 0
-        assert fake_remote.downloads == 0
-
-
 _DATA = bytes(range(10))
 
 
@@ -250,22 +195,34 @@ def remote_bin(monkeypatch, tmp_path):
     return fake
 
 
+_READ_URIS = ['s3://b/x.bin', 'gs://b/x.bin', 'https://h/x.bin', 'LOCAL']
+
+
+def _uri(uri, tmp_path):
+    return str(tmp_path / 'x.bin') if uri == 'LOCAL' else uri
+
+
 class TestRemoteRead:
 
-    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin',
-                                     'https://h/x.bin'])
-    def test_read_whole(self, remote_bin, uri):
-        assert io.read(uri) == _DATA
+    @pytest.mark.parametrize('uri', _READ_URIS)
+    def test_read_whole(self, remote_bin, tmp_path, uri):
+        assert io.read(_uri(uri, tmp_path)) == _DATA
 
-    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin',
-                                     'https://h/x.bin'])
+    @pytest.mark.parametrize('uri', _READ_URIS)
     @pytest.mark.parametrize('kwargs,want', [
         ({'start_byte': 2, 'end_byte': 5}, _DATA[2:6]),
         ({'start_byte': 2}, _DATA[2:]),
         ({'end_byte': 5}, _DATA[:6]),
     ])
-    def test_read_range_inclusive(self, remote_bin, uri, kwargs, want):
-        assert io.read(uri, **kwargs) == want
+    def test_read_range_inclusive(self, remote_bin, tmp_path, uri, kwargs,
+                                  want):
+        assert io.read(_uri(uri, tmp_path), **kwargs) == want
+
+    @pytest.mark.parametrize('uri', _READ_URIS)
+    def test_read_dest(self, remote_bin, tmp_path, uri):
+        dest = str(tmp_path / 'out' / 'y.bin')
+        assert io.read(_uri(uri, tmp_path), dest=dest) == dest
+        assert (tmp_path / 'out' / 'y.bin').read_bytes() == _DATA
 
     def test_read_dest_relative(self, remote_bin, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
@@ -284,15 +241,13 @@ class TestRemoteRead:
         io.read('s3://b/x.bin', client=client, profile_name='p')
         assert remote_bin.calls == [('s3://b/x.bin', {'client': client})]
 
-    def test_platform_with_other_scheme_is_refused(self, remote_bin, tmp_path):
-        with pytest.raises(ValueError):
-            io.read(str(tmp_path / 'x.bin'), platform='aws')
-        assert remote_bin.calls == []
-        assert remote_bin.store.calls == []
+    def test_local_ignores_remote_options(self, remote_bin, tmp_path):
+        # Sync passes its secrets to a local destination too.
+        src = str(tmp_path / 'x.bin')
+        assert io.read(src, token='t', profile_name='p', timeout=5) == _DATA
 
-    @pytest.mark.parametrize('platform', [None, 'https'])
-    def test_read_http(self, remote_bin, platform):
-        assert io.read('http://h/x.bin', platform=platform) == _DATA
+    def test_read_http(self, remote_bin):
+        assert io.read('http://h/x.bin') == _DATA
 
     def test_failed_cache_download_retries_next_time(self, monkeypatch, tmp_path):
         wav = str(tmp_path / 'a.wav')
@@ -348,7 +303,15 @@ class TestRemoteWrite:
         with pytest.raises(FileExistsError, match='exists and overwrite=False'):
             io.write(str(new), f'{bucket}/f', overwrite=False)
         assert store.object(f'{bucket}/f') == b'old'
-        assert store.count('upload') == 0
+
+    def test_write_overwrite_false_needs_no_exists_check(self, store, tmp_path):
+        # S3 answers a check on a missing key with 403 when the caller has
+        # no s3:ListBucket permission. The upload itself must decide.
+        store.fail['exists'] = AuthError('403')
+        src = tmp_path / 'f'
+        src.write_bytes(b'new')
+        assert io.write(str(src), 's3://b/f', overwrite=False) == 's3://b/f'
+        assert store.object('s3://b/f') == b'new'
 
     def test_write_overwrite_false_absent(self, store, tmp_path):
         src = tmp_path / 'f'
@@ -387,14 +350,6 @@ class TestRemoteWrite:
         io.write(str(src), 's3://b/f', profile_name='p')
         assert {c[1]['profile_name'] for c in fake.calls} == {'p'}
 
-    def test_write_other_scheme_is_refused(self, store, tmp_path):
-        src = tmp_path / 'f'
-        src.write_bytes(b'x')
-        with pytest.raises(ValueError):
-            io.write(str(src), str(tmp_path / 'g'), platform='aws')
-        assert store.calls == []
-        assert not (tmp_path / 'g').exists()
-
     @pytest.mark.parametrize('bucket', _BUCKETS)
     @pytest.mark.parametrize('recursive', [False, True])
     def test_list_files_folder_prefix(self, store, bucket, recursive):
@@ -408,18 +363,92 @@ class TestRemoteWrite:
         io.list_files('s3://b/p')
         assert store.calls == [('list_files', 's3://b/p/', False)]
 
-    def test_list_files_other_scheme_is_refused(self, store, tmp_path):
-        with pytest.raises(ValueError):
-            io.list_files(str(tmp_path), platform='gcs')
-        assert store.calls == []
+    def test_write_dir_gcs_one_upload_at_a_time(self, store, tmp_path):
+        # ondio does not promise that a shared GCS client is thread-safe.
+        io.write(_tree(tmp_path / 'src'), 'gs://b/out', recursive=True)
+        assert store.count('upload') == 2
+        assert store.max_uploads == 1
 
-    def test_local_dir_overwrite_false(self, tmp_path):
+    def test_write_dir_s3_uploads_in_parallel(self, store, tmp_path):
+        io.write(_tree(tmp_path / 'src'), 's3://b/out', recursive=True)
+        assert store.max_uploads == 2
+
+    @pytest.mark.parametrize('call', [
+        lambda src: io.write(src, 'https://h/f'),
+        lambda src: io.list_files('https://h/p/'),
+    ])
+    def test_https_is_read_only(self, monkeypatch, tmp_path, call):
+        fake = _FakeRemote(monkeypatch, tmp_path)
+        src = tmp_path / 'f'
+        src.write_bytes(b'x')
+        with pytest.raises(NotImplementedError):
+            call(str(src))
+        assert fake.store.calls == []
+
+
+class TestLocalWrite:
+
+    def test_file_to_new_folder(self, tmp_path):
+        src = tmp_path / 'f.txt'
+        src.write_bytes(b'data')
+        dest = str(tmp_path / 'a' / 'b' / 'f.txt')
+        assert io.write(str(src), dest) == dest
+        assert (tmp_path / 'a' / 'b' / 'f.txt').read_bytes() == b'data'
+
+    def test_file_overwrite_false_existing(self, tmp_path):
+        src, dest = tmp_path / 'new', tmp_path / 'old'
+        src.write_bytes(b'new')
+        dest.write_bytes(b'old')
+        with pytest.raises(FileExistsError, match='exists and overwrite=False'):
+            io.write(str(src), str(dest), overwrite=False)
+        assert dest.read_bytes() == b'old'
+
+    def test_dir_recursive(self, tmp_path):
+        src = _tree(tmp_path / 'src')
+        dest = tmp_path / 'dest'
+        assert io.write(src, str(dest), recursive=True) == str(dest)
+        assert (dest / 'a.txt').read_bytes() == b'A'
+        assert (dest / 'sub' / 'b.txt').read_bytes() == b'B'
+
+    def test_dir_overwrite_false_existing_file(self, tmp_path):
         src = _tree(tmp_path / 'src')
         dest = tmp_path / 'dest'
         dest.mkdir()
-        with pytest.raises(FileExistsError):
+        (dest / 'a.txt').write_bytes(b'old')
+        with pytest.raises(FileExistsError, match='exists and overwrite=False'):
             io.write(src, str(dest), recursive=True, overwrite=False)
-        assert list(dest.iterdir()) == []
+        assert (dest / 'a.txt').read_bytes() == b'old'
+
+    def test_dir_overwrite_false_existing_folder(self, tmp_path):
+        # The rule is the remote rule: only an existing file stops the write.
+        src = _tree(tmp_path / 'src')
+        dest = tmp_path / 'dest'
+        dest.mkdir()
+        io.write(src, str(dest), recursive=True, overwrite=False)
+        assert (dest / 'sub' / 'b.txt').read_bytes() == b'B'
+
+    @pytest.mark.parametrize('recursive,want', [
+        (False, ['a.txt']), (True, ['a.txt', 'sub/b.txt']),
+    ])
+    def test_list_files(self, tmp_path, recursive, want):
+        root = _tree(tmp_path / 'src')
+        got = io.list_files(root, recursive=recursive)
+        assert got == [os.path.join(root, w) for w in want]
+
+
+class TestUnknownOption:
+
+    @pytest.mark.parametrize('call', [
+        lambda p: io.read('s3://b/x.bin', not_an_option=1),
+        lambda p: io.read(p, not_an_option=1),
+        lambda p: io.read_segment('s3://b/x.bin', 0, 1, not_an_option=1),
+        lambda p: io.write(p, 's3://b/f', not_an_option=1),
+        lambda p: io.list_files('s3://b/p/', not_an_option=1),
+    ])
+    def test_raises(self, remote_bin, tmp_path, call):
+        with pytest.raises(TypeError, match='not_an_option'):
+            call(str(tmp_path / 'x.bin'))
+        assert remote_bin.store.calls == []
 
 
 _CLIENT = object()
@@ -436,6 +465,10 @@ class TestOptionsReachOndio:
         ('s3', {'client': _CLIENT, 'profile_name': 'p'}, {'client': _CLIENT}),
         ('s3', {'profile_name': 'p', 'region_name': 'r'},
          {'profile_name': 'p', 'region_name': 'r'}),
+        ('s3', {'aws_access_key_id': 'k', 'aws_secret_access_key': 's',
+                'aws_session_token': 't', 'token': 'x'},
+         {'aws_access_key_id': 'k', 'aws_secret_access_key': 's',
+          'aws_session_token': 't'}),
         ('gs', {'client': _CLIENT}, {'client': _CLIENT}),
     ])
     def test_options(self, fake_remote, scheme, options, expected):
@@ -451,11 +484,14 @@ class TestOptionsReachOndio:
                    'auth': ('u', 'p'), 'verify': False, 'timeout': 5,
                    'allow_redirects': False}),
         ('s3', {'client': _CLIENT, 'profile_name': 'p'}),
+        ('s3', {'aws_access_key_id': 'k', 'aws_secret_access_key': 's',
+                'aws_session_token': 't', 'region_name': 'us-west-2'}),
         ('gs', {'client': _CLIENT, 'project': 'p'}),
     ])
     def test_mappings_build_real_backends(self, scheme, options):
         # These constructors make no request.
-        get_backend(_URIS[scheme], **_shared.ondio_kwargs(scheme, options))
+        get_backend(_URIS[scheme],
+                    **_shared.ondio_kwargs(_URIS[scheme], options))
 
 
 class TestLocalCutRule:
@@ -470,7 +506,7 @@ class TestLocalCutRule:
         return path
 
     def _indices(self, path, start, dur):
-        raw, _ = io_local.read_segment(path, start, dur)
+        raw, _ = io.read_segment(path, start, dur)
         return list(np.round(raw[:, 0] * 1000).astype(int))
 
     def test_start_rounds(self, ramp):

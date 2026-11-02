@@ -296,14 +296,14 @@ def _with_public_retry(uri: str, op: Callable[[Any], _T]) -> _T:
             raise
         _log.info('default credentials failed (%s); retrying with no '
                   'credentials', err)
-        return op(_shared.public_backend(uri))
+        return op(_shared.ondio_backend(uri, _shared.PUBLIC_OPTIONS))
 
 
 def _cloud_get_bytes(
     url: str,
     byte_range: Optional[tuple[int, int]] = None,
 ) -> bytes:
-    """Fetch bytes from a local path or http(s)/s3/gs/gcs URL.
+    """Fetch bytes from a local path or an http(s)/s3/gs URL.
 
     Optionally fetches an inclusive ``[start, end]`` byte range (e.g. just a
     file header). s3:// and gs:// retry with no credentials if the default
@@ -311,8 +311,7 @@ def _cloud_get_bytes(
     """
     import ondio
     from .audio import _shared
-    url = _shared.normalize_gs(url)
-    if not url.startswith(('http://', 'https://', 's3://', 'gs://')):
+    if _shared.platform(url) == 'local':
         with open(url, 'rb') as f:
             if byte_range:
                 f.seek(byte_range[0])
@@ -359,7 +358,7 @@ def _read_data_from_url(
     import requests as req
     import tempfile
 
-    if url.startswith(('s3://', 'gs://', 'gcs://')):
+    if url.startswith(('s3://', 'gs://')):
         return _read_data_from_cloud(url)
 
     _log.info('fetching data from URL: %s', url[:120])

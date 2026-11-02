@@ -30,7 +30,7 @@ ba.open()
 | `uri` / `url` | `str` | Remote destination for sync |
 | `sync_button` | `bool` or `str` | Show sync button. `true` → "Sync", string → custom label |
 | `recursive` | `bool` | For directory uploads |
-| `secrets` | `list` | Auth kwargs — same `{key, value}` format as `data_secrets` |
+| `secrets` | `list` | Auth kwargs for the upload (see [Authentication](#authentication)) — same `{key, value}` format as `data_secrets` |
 
 ---
 
@@ -50,7 +50,7 @@ Set `sync_button: false` in the config to hide the button while still allowing `
 
 ## Audio IO Module
 
-Sync is powered by the `jupyter_bioacoustic.audio` module, which can also be used directly for generic file reads and writes across local, S3, GCS, and HTTPS backends. The router dispatches based on the URI scheme. Remote reads and writes go through [ondio](https://pypi.org/project/ondio/). S3, GCS and HTTPS support comes with JBA; no extra install is needed.
+Sync is powered by the `jupyter_bioacoustic.audio` module, which can also be used directly for generic file reads and writes across local, S3, GCS, and HTTPS backends. All reads and writes go through [ondio](https://pypi.org/project/ondio/), which selects the backend from the URI scheme. S3, GCS and HTTPS support comes with JBA; no extra install is needed.
 
 ```python
 from jupyter_bioacoustic.audio import io
@@ -61,9 +61,9 @@ from jupyter_bioacoustic.audio import io
 | `s3://` | AWS S3 |
 | `gs://` | Google Cloud Storage |
 | `http://`, `https://` | HTTPS (read-only) |
-| anything else | Local filesystem |
+| no scheme | Local filesystem |
 
-With `platform=`, the URI must have that platform's scheme. For example, `io.read('/data/x.csv', platform='aws')` raises `ValueError`.
+Other schemes raise `UnknownPlatformError`. For Google Cloud Storage, use `gs://` (not `gcs://`).
 
 ### Reading Audio
 
@@ -77,7 +77,9 @@ raw, sr = io.read_segment('local_file.flac', start_sec=30, dur_sec=10)
 
 ### Writing Files
 
-`io.write()` uploads local files to S3 or GCS. Use `recursive=True` for directory uploads (e.g. partitioned parquet).
+`io.write()` uploads local files to S3, GCS or a local path. Use `recursive=True` for directory uploads (e.g. partitioned parquet). A directory upload sends files in parallel, except on GCS, where it sends one file at a time.
+
+With `overwrite=False`, each file is written only if no file exists at its destination. If one exists, `io.write()` raises `FileExistsError`, and that file does not change. In a directory upload, files that were written before the error stay. On S3, `overwrite=False` works for files up to 5 GiB.
 
 ```python
 io.write('output.csv', 's3://bucket/project/output.csv')
@@ -86,13 +88,28 @@ io.write('output_dir/', 's3://bucket/project/output/', recursive=True)
 
 ### Authentication
 
-Auth kwargs are passed through to the backend:
+Auth kwargs are passed through to the backend. A backend ignores the kwargs of other backends. A kwarg that no backend takes raises `TypeError`.
 
 | Backend | Kwargs |
 |---------|--------|
-| **S3** | `profile_name`, `region_name`, `client` |
+| **S3** | `profile_name`, `region_name`, `aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`, `client` |
 | **GCS** | `project`, `credentials`, `client` |
 | **HTTPS** | `cookies`, `auth`, `token` (Bearer), `headers`, `verify`, `timeout`, `allow_redirects` |
+
+With no kwargs, S3 uses the AWS credential chain (for example `AWS_PROFILE` or an SSO login), and GCS uses Google application default credentials.
+
+To sync with S3 access keys, put them in the output secrets. Use `env:` or `dialog` so that the keys are not written in the config file:
+
+```yaml
+output:
+  path: outputs/reviews.csv
+  uri: s3://my-bucket/project/reviews.csv
+  secrets:
+    - key: aws_access_key_id
+      value: env:AWS_ACCESS_KEY_ID
+    - key: aws_secret_access_key
+      value: dialog
+```
 
 ```python
 io.write('output.csv', 's3://bucket/output.csv', profile_name='my-profile')
