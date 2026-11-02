@@ -339,7 +339,6 @@ export class BioacousticWidget extends Widget {
         ? parseFloat(cfg.default_buffer) : DEFAULT_BUFFER_SEC,
       specResolutions: JSON.parse(cfg.spec_resolutions || DEFAULT_SPEC_RESOLUTIONS) as string[],
       vizMeta: JSON.parse(cfg.viz_meta || '[]') as VizMeta[],
-      rows,
       dataIndexCol,
       height: _parseHeight(cfg.player_height),
     });
@@ -375,7 +374,7 @@ export class BioacousticWidget extends Widget {
 
     this._form.setSelectionInfo(filteredIdx, this._table.filtered.length);
     this._form.updateFromRow(row);
-    this._player.signalTimeDisplay.textContent = '';
+    this._player.clearAnnotDisplay();
   }
 
   /** Go to the previous row (if any) and load its audio. */
