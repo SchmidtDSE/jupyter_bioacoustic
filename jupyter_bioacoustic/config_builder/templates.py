@@ -12,6 +12,9 @@ substitutes the user's values into the configuration and produces the per-file d
 
 License: BSD 3-Clause
 """
+#
+# Imports
+#
 from __future__ import annotations
 
 import logging
@@ -20,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
 
 #
 # CONSTANTS
@@ -42,7 +46,11 @@ SCOPE_SECTIONS = {
 # PUBLIC
 #
 def list_templates() -> list[dict[str, str]]:
-    """Return available templates as ``[{name, title, short_description}]`` (sorted)."""
+    """List the available templates (unparseable or non-mapping files are skipped).
+
+    Returns:
+        ``[{name, title, short_description}]`` sorted by file name.
+    """
     items: list[dict[str, str]] = []
     if not TEMPLATES_DIR.is_dir():
         return items
@@ -63,7 +71,18 @@ def list_templates() -> list[dict[str, str]]:
 
 
 def load_template(name: str) -> dict[str, Any]:
-    """Load and return the full parsed template dict for ``name`` (file stem)."""
+    """Load and return the full parsed template dict for ``name`` (file stem).
+
+    Args:
+        name: Template file stem.
+
+    Returns:
+        The parsed template.
+
+    Raises:
+        FileNotFoundError: If there is no such template.
+        ValueError: If the file is not a YAML mapping.
+    """
     path = _template_path(name)
     data = yaml.safe_load(path.read_text()) or {}
     if not isinstance(data, dict):
@@ -114,7 +133,14 @@ def build_template_config(
 # INTERNAL
 #
 def _short_description(data: dict[str, Any]) -> str:
-    """Return the template's short_description, falling back to a clipped description."""
+    """Return the template's short_description, falling back to a clipped description.
+
+    Args:
+        data: The parsed template.
+
+    Returns:
+        The short description (at most ``SHORT_DESCRIPTION_CHARS`` + an ellipsis).
+    """
     sd = data.get('short_description')
     if sd:
         return str(sd).strip()
@@ -125,7 +151,17 @@ def _short_description(data: dict[str, Any]) -> str:
 
 
 def _template_path(name: str) -> Path:
-    """Resolve a template file stem to its path (guards against path traversal)."""
+    """Resolve a template file stem to its path (guards against path traversal).
+
+    Args:
+        name: Template file stem (any directory part is ignored).
+
+    Returns:
+        The ``.yaml`` (or ``.yml``) file under ``TEMPLATES_DIR``.
+
+    Raises:
+        FileNotFoundError: If there is no such template.
+    """
     safe = Path(name).name
     for ext in ('.yaml', '.yml'):
         candidate = TEMPLATES_DIR / f'{safe}{ext}'
@@ -142,6 +178,14 @@ def _resolve_values(
     """Build a ``{key: resolved_value}`` map across the scope's builder elements.
 
     A value falls back to the element's ``default`` when the user left it blank.
+
+    Args:
+        template: The parsed template.
+        scope: Selects the sections (see ``SCOPE_SECTIONS``).
+        values: User-entered ``{builder_element_key: value}`` map.
+
+    Returns:
+        ``{builder_element_key: resolved value}``.
 
     Raises:
         ValueError: if a required element resolves to an empty value.
@@ -168,7 +212,14 @@ def _resolve_values(
 
 
 def _flatten_elements(elements: Any) -> dict[str, Any]:
-    """Flatten a ``builder_elements`` list (recursing groups) into ``{key: spec}``."""
+    """Flatten a ``builder_elements`` list (recursing groups) into ``{key: spec}``.
+
+    Args:
+        elements: A ``builder_elements`` list (anything else gives ``{}``).
+
+    Returns:
+        ``{key: spec}``.
+    """
     flat: dict[str, Any] = {}
     if not isinstance(elements, list):
         return flat
@@ -185,7 +236,14 @@ def _flatten_elements(elements: Any) -> dict[str, Any]:
 
 
 def _normalize_spec(spec: Any) -> dict[str, Any]:
-    """Normalize a builder-element spec (shorthand or dict) to required/default/etc."""
+    """Normalize a builder-element spec (shorthand or dict) to required/default/etc.
+
+    Args:
+        spec: A dict, ``True`` (required), ``False`` (optional) or a default value.
+
+    Returns:
+        ``{required, default, label, description}``.
+    """
     if isinstance(spec, dict):
         return {
             'required': bool(spec.get('required', False)),
@@ -203,8 +261,13 @@ def _normalize_spec(spec: Any) -> dict[str, Any]:
 def _substitute(node: Any, resolution: dict[str, Any]) -> Any:
     """Recursively replace ``__placeholder__`` strings; drop empty/unfilled nodes.
 
-    Returns ``_DROP`` for a node that should be omitted (an unfilled exact-match
-    placeholder, or a dict/list left empty after its children were dropped).
+    Args:
+        node: A configuration value.
+        resolution: ``{placeholder key: value}`` from ``_resolve_values``.
+
+    Returns:
+        The substituted value, or ``_DROP`` for a node that should be omitted (an unfilled
+        exact-match placeholder, or a dict/list left empty after its children were dropped).
     """
     if isinstance(node, dict):
         out: dict[str, Any] = {}
@@ -224,9 +287,17 @@ def _substitute(node: Any, resolution: dict[str, Any]) -> Any:
         if exact:
             val = resolution.get(exact.group(1))
             return _DROP if val is None or val == '' else val
-        return _PLACEHOLDER_RE.sub(
-            lambda m: '' if resolution.get(m.group(1)) is None
-            else str(resolution.get(m.group(1))),
-            node,
-        )
+        return _PLACEHOLDER_RE.sub(lambda m: _fill(resolution.get(m.group(1))), node)
     return node
+
+
+def _fill(value: Any) -> str:
+    """Text for a placeholder inside a longer string (an unfilled one becomes ``''``).
+
+    Args:
+        value: The resolved value.
+
+    Returns:
+        ``''`` for None, else ``str(value)``.
+    """
+    return '' if value is None else str(value)
