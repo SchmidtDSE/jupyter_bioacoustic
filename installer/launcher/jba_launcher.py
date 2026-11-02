@@ -612,7 +612,8 @@ def _notify(msg: str) -> None:
 
 def _alert(msg: str) -> None:
     """Blocking, always-visible message with an OK button — used for outcomes the user
-    must see (notifications can be silently suppressed)."""
+    must see (notifications can be silently suppressed).
+    """
     title = "Jupyter Bioacoustic"
     try:
         if sys.platform == "darwin":
@@ -744,7 +745,8 @@ def _is_dark_menubar() -> bool:
 
 def _make_icon():
     """Tray image: the bundled black PNG (JBA_ICON) or a drawn fallback, inverted to
-    white on a dark menu bar / taskbar so the black mark stays visible."""
+    white on a dark menu bar / taskbar so the black mark stays visible.
+    """
     from PIL import Image, ImageDraw
     if ICON_PNG and os.path.exists(ICON_PNG):
         img = Image.open(ICON_PNG).convert("RGBA")
