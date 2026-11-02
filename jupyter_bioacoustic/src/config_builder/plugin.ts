@@ -1,10 +1,14 @@
+/**
+ * plugin
+ *
+ * License: BSD 3-Clause
+ */
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { ICommandPalette } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
 import { IDefaultFileBrowser } from '@jupyterlab/filebrowser';
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { LabIcon } from '@jupyterlab/ui-components';
-import { Message } from '@lumino/messaging';
 import { Widget } from '@lumino/widgets';
 
 import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles';
@@ -42,7 +46,7 @@ class ConfigBuilderWidget extends Widget {
     this._buildUI();
   }
 
-  dispose(): void {
+  override dispose(): void {
     if (this._ownedKernel) {
       this._ownedKernel.shutdown().catch(() => {});
       this._ownedKernel = null;
@@ -151,10 +155,6 @@ class ConfigBuilderWidget extends Widget {
     bottomBar.append(validateBtn, saveBtn, spacer, openBtn, dismissBtn);
 
     this.node.append(header, this._panel.element, bottomBar);
-  }
-
-  protected onAfterAttach(_msg: Message): void {
-    super.onAfterAttach(_msg);
   }
 
   private async _onSaveAndOpen(): Promise<void> {
