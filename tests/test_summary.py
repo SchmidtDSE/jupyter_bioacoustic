@@ -15,6 +15,9 @@ from jupyter_bioacoustic.config_builder.summary import (
     _secrets_summary,
     _get_referenced_forms,
     _parse_dynamic_forms,
+    _source_row,
+    _dyn_form_row,
+    _label,
 )
 from jupyter_bioacoustic.config_builder.core import ConfigBuilder
 
@@ -609,3 +612,27 @@ class TestNumberStepSummary:
         )
         assert 'count' in result
         assert '[0..100]' in result
+
+
+#
+# small row helpers
+#
+class TestRowHelpers:
+
+    def test_source_row(self):
+        keys = ('path', 'url')
+        assert _source_row({'source_type': 'url', 'value': 'u'}, keys) == {
+            'key': 'url', 'value': 'u'}
+        assert _source_row({'value': 3}, keys) == {'key': 'value', 'value': '3'}
+        assert _source_row({'url': 'u', 'path': ''}, keys) == {'key': 'url', 'value': 'u'}
+        assert _source_row({}, keys) == {'key': 'source', 'value': 'not set', 'muted': True}
+
+    def test_dyn_form_row(self):
+        row = _dyn_form_row('extra', [{'textbox': {'label': 'note'}}, 'junk'])
+        assert row == {'key': '', 'value': 'dynamic form: extra', 'tag': 'dynamic',
+                       'children': [{'key': '', 'value': 'note', 'tag': 'textbox'}]}
+
+    def test_label(self):
+        assert _label({'label': 'L', 'column': 'c'}) == 'L'
+        assert _label({'column': 'c'}) == 'c'
+        assert _label({}) == ''
