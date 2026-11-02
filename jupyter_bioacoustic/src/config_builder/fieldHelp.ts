@@ -1,3 +1,8 @@
+/**
+ * fieldHelp
+ *
+ * License: BSD 3-Clause
+ */
 export const FIELD_HELP: Record<string, Record<string, string>> = {
   project: {
     project_name: 'Widget header title. Auto-derived from project filename if not set.',
