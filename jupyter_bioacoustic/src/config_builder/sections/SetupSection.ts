@@ -1,18 +1,21 @@
 /**
- * SetupSection
- *
- * Tabbed project entry: Create New / Create from Template / Load Existing.
+ * Setup section: tabbed project entry: Create New / Create from Template / Load Existing.
  * File management (paths, enable, Duplicate/Rename, lock) lives in the separate
  * ConfigFilesSection. This section only emits intent signals — `projectCreated`,
  * `loadConfigRequested`, and the template signals.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
-import { CollapsibleSection } from './CollapsibleSection';
-import { TemplateForm, TemplateSummary } from './TemplateForm';
+import { makeButton, makeInput, makeLabel, makeSelect } from '../dom';
+import type { TemplateSummary } from '../python';
 import { SETUP_TAB_HELP } from '../text';
+import { CollapsibleSection } from './CollapsibleSection';
+import { TemplateApplyRequest, TemplateBrowseRequest, TemplateForm } from './TemplateForm';
 
 
 //
@@ -27,15 +30,17 @@ const MODE_LOAD = 'load';
 // Public
 //
 export class SetupSection extends CollapsibleSection {
+  /** Load tab Browse clicked (``field``: the chosen file type). */
   readonly browseRequested = new Signal<this, { field: string; current: string }>(this);
+  /** Load clicked (``field``: file type hint, ``path``: file to load). */
   readonly loadConfigRequested = new Signal<this, { field: string; path: string }>(this);
+  /** Create clicked (payload: the project name). */
   readonly projectCreated = new Signal<this, string>(this);
+  // Re-emitted TemplateForm signals (see TemplateForm).
   readonly templateListRequested = new Signal<this, void>(this);
   readonly templateSelected = new Signal<this, string>(this);
-  readonly applyTemplateRequested = new Signal<this, {
-    name: string; scope: string; projectName: string; values: Record<string, string>;
-  }>(this);
-  readonly templateBrowseRequested = new Signal<this, { key: string; exts: string[]; current: string }>(this);
+  readonly applyTemplateRequested = new Signal<this, TemplateApplyRequest>(this);
+  readonly templateBrowseRequested = new Signal<this, TemplateBrowseRequest>(this);
   readonly templateColumnsRequested = new Signal<this, string>(this);
 
   private _createTab!: HTMLButtonElement;
@@ -73,9 +78,6 @@ export class SetupSection extends CollapsibleSection {
   }
 
 
-  //
-  // Public API
-  //
   setTemplateList(items: TemplateSummary[]): void {
     this._templateForm.setList(items);
   }
@@ -84,10 +86,7 @@ export class SetupSection extends CollapsibleSection {
     this._templateForm.setTemplate(name, template);
   }
 
-  resetTemplateForm(): void {
-    this._templateForm.reset();
-  }
-
+  /** Lock the template form after its files were saved (Edit re-enables it). */
   markTemplateSaved(): void {
     this._templateForm.markSaved();
   }
@@ -100,15 +99,13 @@ export class SetupSection extends CollapsibleSection {
     this._templateForm.setColumns(path, cols);
   }
 
+  /** Fill the Load path (e.g. from Browse). */
   setLoadPath(path: string): void {
     this._loadPathInput.value = path;
     this._loadPathInput.focus();
   }
 
-  getLoadType(): string {
-    return this._loadTypeSelect.value;
-  }
-
+  /** Nothing: the tabs hold no persisted config. */
   getData(): Record<string, any> {
     return {};
   }
@@ -164,15 +161,15 @@ export class SetupSection extends CollapsibleSection {
     const pane = document.createElement('div');
     pane.style.cssText = `display:flex;align-items:center;gap:10px;padding:4px 0;`;
 
-    const lbl = this._makeLabel('name');
+    const lbl = makeLabel('name');
     lbl.style.minWidth = '40px';
-    this._createNameInput = this._makeInput('e.g. Bird Review', '400px');
+    this._createNameInput = makeInput('e.g. Bird Review', '400px');
     this._createNameInput.style.flexShrink = '1';
     this._createNameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._onCreate();
     });
 
-    this._createBtn = this._makeButton('Create', true);
+    this._createBtn = makeButton('Create', true);
     this._createBtn.type = 'button';
     this._createBtn.addEventListener('click', (e) => { e.stopPropagation(); this._onCreate(); });
 
@@ -184,14 +181,14 @@ export class SetupSection extends CollapsibleSection {
     const pane = document.createElement('div');
     pane.style.cssText = `display:flex;align-items:center;gap:10px;padding:4px 0;flex-wrap:wrap;`;
 
-    this._loadTypeSelect = this._makeSelect(['project', 'config', 'form'], 'project');
+    this._loadTypeSelect = makeSelect(['project', 'config', 'form'], 'project');
 
-    this._loadPathInput = this._makeInput('path to configuration file', '400px');
+    this._loadPathInput = makeInput('path to configuration file', '400px');
     this._loadPathInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); this._onLoad(); }
     });
 
-    const loadBrowseBtn = this._makeButton('Browse');
+    const loadBrowseBtn = makeButton('Browse');
     loadBrowseBtn.type = 'button';
     loadBrowseBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -201,7 +198,7 @@ export class SetupSection extends CollapsibleSection {
       });
     });
 
-    this._loadBtn = this._makeButton('Load', true);
+    this._loadBtn = makeButton('Load', true);
     this._loadBtn.type = 'button';
     this._loadBtn.addEventListener('click', (e) => { e.stopPropagation(); this._onLoad(); });
 

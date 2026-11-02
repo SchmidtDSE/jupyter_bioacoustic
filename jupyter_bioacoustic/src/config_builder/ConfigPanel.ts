@@ -351,7 +351,7 @@ export class ConfigPanel {
 
   private _openBrowser(
     dir: string,
-    extensions: string[],
+    extensions: readonly string[],
     onSelect: (path: string) => void,
     dirOnly = false,
   ): void {

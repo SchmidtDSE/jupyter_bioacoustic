@@ -21,7 +21,7 @@ export class FileBrowser {
   private _kernel: KernelBridge;
   private _cwd: string;
   private _startDir = '';
-  private _extensions: string[];
+  private _extensions: readonly string[];
   private _dirOnly: boolean;
   private _pathBar: HTMLDivElement;
   private _listEl: HTMLDivElement;
@@ -34,7 +34,7 @@ export class FileBrowser {
   constructor(
     kernel: KernelBridge,
     startDir: string,
-    extensions: string[],
+    extensions: readonly string[],
     dirOnly = false,
     rootDir?: string,
   ) {

@@ -12,74 +12,70 @@
  *  - an index/select column → a **text input until the source file's columns are
  *    loaded**, then a dropdown of those columns (preserving the typed value);
  *  - a source path → text + Browse; everything else → text.
- * Columns and Browse reuse the kernel's read_columns + FileBrowser via ConfigPanel.
+ * Columns and Browse reuse the kernel's read_columns + FileBrowser via ConfigPanel. The
+ * placeholder analysis itself lives in templateAnalysis.ts.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
-import { COLORS, inputStyle, selectStyle, btnStyle } from '../../styles';
+import { COLORS, inputStyle, selectStyle } from '../../styles';
 import { showDialog } from '../../util';
 import { renderMarkdown } from '../../sections/DescriptionPanel';
+import { DATA_EXTS, DATA_FILE_RE } from '../constants';
+import { fillSelect, makeButton } from '../dom';
+import type { TemplateSummary } from '../python';
+import {
+  Descriptor, Role, SCOPE_SECTIONS, analyzeTemplate, normalizeElementSpec,
+} from './templateAnalysis';
 
 
 //
 // Constants
 //
-const SCOPE_SECTIONS: Record<string, string[]> = {
-  project: ['project', 'config', 'form'],
-  config: ['config', 'form'],
-  form: ['form'],
-};
-const DATA_EXTS = ['.csv', '.parquet', '.json', '.tsv', '.jsonl'];
-const AUDIO_EXTS = ['.flac', '.wav', '.mp3', '.ogg', '.m4a', '.aac'];
-const OUTPUT_EXTS = ['.csv', '.parquet', '.json', '.tsv'];
-const COLUMN_FILE_RE = /\.(csv|parquet|json|jsonl|tsv)$/i;
-const PLACEHOLDER_RE = /^__([a-zA-Z0-9_]+)__$/;
 const SOURCE_TYPE_OPTIONS: Record<string, string[]> = {
   data: ['path', 'url', 'sql', 'api'],
   audio: ['path', 'url', 'uri', 'column'],
 };
+const COLUMNS_DEBOUNCE_MS = 500;
 
 
 //
 // Types
 //
-export interface TemplateSummary {
+/** Save clicked: apply template ``name`` at ``scope`` with the user's values. */
+export interface TemplateApplyRequest {
   name: string;
-  title: string;
-  short_description: string;
+  scope: string;
+  projectName: string;
+  /** The trimmed, non-empty value per placeholder key. */
+  values: Record<string, string>;
 }
 
-type Role = 'plain' | 'source_type' | 'value' | 'column' | 'pathfile';
-
-interface Descriptor {
-  role: Role;
-  section?: 'data' | 'audio';
-  exts?: string[];
-  sourceTypeKey?: string;     // value: sibling source_type placeholder key (dynamic)
-  literalSourceType?: string; // value: fixed source_type literal from config
-  providerKey?: string;       // column / value(column): field holding the source file
+/** Browse clicked for a path field. */
+export interface TemplateBrowseRequest {
+  key: string;
+  exts: readonly string[];
+  current: string;
 }
 
+/** One rendered template input. */
 interface Field {
   key: string;
   required: boolean;
   role: Role;
-  default: any;
-  value: string;              // source of truth (survives control swaps)
-  host: HTMLDivElement;       // container the control(s) render into
+  default: unknown;
+  /** Source of truth (survives control swaps). */
+  value: string;
+  /** Container the control(s) render into. */
+  host: HTMLDivElement;
   section?: 'data' | 'audio';
-  exts?: string[];
+  exts?: readonly string[];
   sourceTypeKey?: string;
   literalSourceType?: string;
   providerKey?: string;
-}
-
-interface ElementSpec {
-  required: boolean;
-  default: any;
-  label?: string;
-  description?: string;
 }
 
 
@@ -88,12 +84,13 @@ interface ElementSpec {
 //
 export class TemplateForm {
   readonly element: HTMLDivElement;
+  /** The template tab opened for the first time: fetch the list. */
   readonly listRequested = new Signal<this, void>(this);
+  /** A template was picked: fetch it (answer with ``setTemplate``). */
   readonly templateSelected = new Signal<this, string>(this);
-  readonly applyRequested = new Signal<this, {
-    name: string; scope: string; projectName: string; values: Record<string, string>;
-  }>(this);
-  readonly browseRequested = new Signal<this, { key: string; exts: string[]; current: string }>(this);
+  readonly applyRequested = new Signal<this, TemplateApplyRequest>(this);
+  readonly browseRequested = new Signal<this, TemplateBrowseRequest>(this);
+  /** A source file changed: fetch its columns (answer with ``setColumns``). */
   readonly columnsRequested = new Signal<this, string>(this);
 
   private _listEl: HTMLDivElement;
@@ -114,7 +111,7 @@ export class TemplateForm {
   private _fieldByKey = new Map<string, Field>();
   private _columnsByPath = new Map<string, string[]>();
   private _providerKeys = new Set<string>();
-  private _debounce = new Map<string, any>();
+  private _debounce = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor() {
     this.element = document.createElement('div');
@@ -140,6 +137,7 @@ export class TemplateForm {
     }
   }
 
+  /** Show the template list (``list_templates`` reply). */
   setList(items: TemplateSummary[]): void {
     this._listEl.innerHTML = '';
     this._rows.clear();
@@ -171,6 +169,7 @@ export class TemplateForm {
     }
   }
 
+  /** Show the selected template's description and inputs (ignored if no longer selected). */
   setTemplate(name: string, template: Record<string, any>): void {
     if (name !== this._selectedName) return;
     this._template = template;
@@ -206,6 +205,7 @@ export class TemplateForm {
     this._updateSaveEnabled();
   }
 
+  /** Deselect and clear the form (keeps the list). */
   reset(): void {
     this._selectedName = '';
     this._template = null;
@@ -258,7 +258,7 @@ export class TemplateForm {
 
   private _maybeRequestColumns(path: string): void {
     const p = (path || '').trim();
-    if (p && COLUMN_FILE_RE.test(p)) this.columnsRequested.emit(p);
+    if (p && DATA_FILE_RE.test(p)) this.columnsRequested.emit(p);
   }
 
 
@@ -285,11 +285,7 @@ export class TemplateForm {
     scopeRow.style.cssText = `display:flex;align-items:center;gap:8px;`;
     this._scopeSelect = document.createElement('select');
     this._scopeSelect.style.cssText = selectStyle();
-    for (const s of ['project', 'config', 'form']) {
-      const o = document.createElement('option');
-      o.value = s; o.textContent = s;
-      this._scopeSelect.appendChild(o);
-    }
+    fillSelect(this._scopeSelect, Object.keys(SCOPE_SECTIONS));
     this._scopeSelect.value = 'project';
     this._scopeSelect.addEventListener('change', () => this._renderForm());
     scopeRow.append(this._label('create'), this._scopeSelect);
@@ -320,20 +316,14 @@ export class TemplateForm {
   private _renderButtons(): void {
     this._btnRow.innerHTML = '';
     if (this._locked) {
-      const edit = document.createElement('button');
-      edit.textContent = 'Edit';
-      edit.style.cssText = btnStyle(true);
+      const edit = makeButton('Edit', true);
       edit.addEventListener('click', () => this._setLocked(false));
       this._btnRow.appendChild(edit);
       return;
     }
-    this._saveBtn = document.createElement('button');
-    this._saveBtn.textContent = 'Save';
-    this._saveBtn.style.cssText = btnStyle(true);
+    this._saveBtn = makeButton('Save', true);
     this._saveBtn.addEventListener('click', () => this._onSave());
-    const dismissBtn = document.createElement('button');
-    dismissBtn.textContent = 'Dismiss';
-    dismissBtn.style.cssText = btnStyle(false);
+    const dismissBtn = makeButton('Dismiss');
     dismissBtn.addEventListener('click', () => this._onDismiss());
     this._btnRow.append(this._saveBtn, dismissBtn);
     this._updateSaveEnabled();
@@ -352,7 +342,7 @@ export class TemplateForm {
     this._fieldByKey.clear();
     const tpl = this._template!;
     const scope = this._scopeSelect.value;
-    const descriptors = this._analyze(scope);
+    const descriptors = analyzeTemplate(tpl, scope);
 
     for (const section of SCOPE_SECTIONS[scope] ?? []) {
       const sec = tpl[section];
@@ -424,9 +414,9 @@ export class TemplateForm {
   }
 
   private _addField(
-    key: string, spec: any, parent: HTMLElement, desc?: Descriptor,
+    key: string, spec: unknown, parent: HTMLElement, desc?: Descriptor,
   ): void {
-    const norm = this._normalize(spec);
+    const norm = normalizeElementSpec(spec);
     const row = document.createElement('div');
     row.style.cssText = `display:flex;align-items:center;gap:8px;`;
     const lbl = this._label(norm.label || key, norm.required);
@@ -479,16 +469,7 @@ export class TemplateForm {
     const select = document.createElement('select');
     select.style.cssText = selectStyle() + 'min-width:120px;';
     const opts = SOURCE_TYPE_OPTIONS[field.section ?? 'data'] ?? [];
-    if (!field.value) {
-      const ph = document.createElement('option');
-      ph.value = ''; ph.textContent = '— select —';
-      select.appendChild(ph);
-    }
-    for (const opt of opts) {
-      const o = document.createElement('option');
-      o.value = opt; o.textContent = opt;
-      select.appendChild(o);
-    }
+    fillSelect(select, opts, field.value ? undefined : '— select —');
     select.value = field.value;
     select.addEventListener('change', () => {
       field.value = select.value;
@@ -502,28 +483,14 @@ export class TemplateForm {
   }
 
   private _renderText(field: Field): void {
-    const input = document.createElement('input');
-    input.style.cssText = inputStyle('300px');
-    input.value = field.value;
-    input.addEventListener('input', () => {
-      field.value = input.value;
-      this._updateSaveEnabled();
-    });
-    field.host.appendChild(input);
+    field.host.appendChild(this._makeValueInput(field));
   }
 
-  private _renderPath(field: Field, exts: string[]): void {
-    const input = document.createElement('input');
-    input.style.cssText = inputStyle('300px');
-    input.value = field.value;
-    input.addEventListener('input', () => {
-      field.value = input.value;
-      this._updateSaveEnabled();
+  private _renderPath(field: Field, exts: readonly string[]): void {
+    const input = this._makeValueInput(field, () => {
       if (this._providerKeys.has(field.key)) this._scheduleProvide(field);
     });
-    const browse = document.createElement('button');
-    browse.textContent = 'Browse';
-    browse.style.cssText = btnStyle(false);
+    const browse = makeButton('Browse');
     browse.addEventListener('click', () =>
       this.browseRequested.emit({ key: field.key, exts, current: field.value || '.' }));
     field.host.append(input, browse);
@@ -536,18 +503,9 @@ export class TemplateForm {
       const select = document.createElement('select');
       select.style.cssText = selectStyle() + 'min-width:200px;';
       const current = field.value;
-      if (!field.required || !current) {
-        const ph = document.createElement('option');
-        ph.value = ''; ph.textContent = '— select —';
-        select.appendChild(ph);
-      }
       const opts = [...cols];
       if (current && !opts.includes(current)) opts.unshift(current);
-      for (const c of opts) {
-        const o = document.createElement('option');
-        o.value = c; o.textContent = c;
-        select.appendChild(o);
-      }
+      fillSelect(select, opts, (!field.required || !current) ? '— select —' : undefined);
       select.value = current;
       select.addEventListener('change', () => {
         field.value = select.value;
@@ -556,14 +514,8 @@ export class TemplateForm {
       field.host.appendChild(select);
     } else {
       // No columns yet — a plain text input until the source file loads.
-      const input = document.createElement('input');
-      input.style.cssText = inputStyle('300px');
-      input.value = field.value;
+      const input = this._makeValueInput(field);
       input.placeholder = 'type a column, or pick the file above';
-      input.addEventListener('input', () => {
-        field.value = input.value;
-        this._updateSaveEnabled();
-      });
       field.host.appendChild(input);
     }
   }
@@ -602,7 +554,7 @@ export class TemplateForm {
     this._debounce.set(field.key, setTimeout(() => {
       this._refreshColumnDependents(field.key);
       this._maybeRequestColumns(field.value);
-    }, 500));
+    }, COLUMNS_DEBOUNCE_MS));
   }
 
   private _updateSaveEnabled(): void {
@@ -616,97 +568,8 @@ export class TemplateForm {
 
 
   //
-  // Internal — placeholder analysis (location → descriptor)
-  //
-  private _analyze(scope: string): Map<string, Descriptor> {
-    const map = new Map<string, Descriptor>();
-    const tpl = this._template!;
-    const dataProvider = this._findDataProvider();
-    for (const section of SCOPE_SECTIONS[scope] ?? []) {
-      const cfg = tpl[section]?.configuration;
-      if (cfg && typeof cfg === 'object') this._walk(cfg, [], map, dataProvider);
-    }
-    return map;
-  }
-
-  private _findDataProvider(): string | undefined {
-    const data = this._template?.['project']?.configuration?.data;
-    if (!data || typeof data !== 'object') return undefined;
-    return this._ph(data.value) || this._ph(data.path) || undefined;
-  }
-
-  private _walk(
-    node: any, path: string[], map: Map<string, Descriptor>, dataProvider?: string,
-  ): void {
-    if (Array.isArray(node)) {
-      for (const item of node) this._walk(item, path, map, dataProvider);
-      return;
-    }
-    if (!node || typeof node !== 'object') return;
-    const tail = path[path.length - 1];
-    for (const [k, v] of Object.entries(node)) {
-      const key = typeof v === 'string' ? this._ph(v) : '';
-      if (key) {
-        map.set(key, this._classify(tail, k, node, dataProvider));
-      } else {
-        this._walk(v, [...path, k], map, dataProvider);
-      }
-    }
-  }
-
-  private _classify(
-    tail: string, key: string, parent: any, dataProvider?: string,
-  ): Descriptor {
-    const stMeta = {
-      sourceTypeKey: this._ph(parent.source_type) || undefined,
-      literalSourceType: (typeof parent.source_type === 'string' && !this._ph(parent.source_type))
-        ? parent.source_type : undefined,
-    };
-    if (tail === 'data') {
-      if (key === 'source_type') return { role: 'source_type', section: 'data' };
-      if (key === 'path') return { role: 'pathfile', exts: DATA_EXTS };
-      if (key === 'value') return { role: 'value', section: 'data', exts: DATA_EXTS, ...stMeta };
-      if (key === 'index_column') return { role: 'column', providerKey: dataProvider };
-    } else if (tail === 'audio') {
-      if (key === 'source_type') return { role: 'source_type', section: 'audio' };
-      if (key === 'column') return { role: 'column', providerKey: dataProvider };
-      if (key === 'value') {
-        return { role: 'value', section: 'audio', exts: AUDIO_EXTS, providerKey: dataProvider, ...stMeta };
-      }
-    } else if (tail === 'output') {
-      if (key === 'path') return { role: 'pathfile', exts: OUTPUT_EXTS };
-    } else if (tail === 'items') {
-      if (key === 'path') return { role: 'pathfile', exts: DATA_EXTS };
-      if (key === 'value') return { role: 'column', providerKey: this._ph(parent.path) || undefined };
-    }
-    if (key === 'source_type') return { role: 'source_type', section: 'data' };
-    return { role: 'plain' };
-  }
-
-  private _ph(v: any): string {
-    if (typeof v !== 'string') return '';
-    const m = v.match(PLACEHOLDER_RE);
-    return m ? m[1] : '';
-  }
-
-
-  //
   // Internal — helpers
   //
-  private _normalize(spec: any): ElementSpec {
-    if (spec && typeof spec === 'object' && !Array.isArray(spec)) {
-      return {
-        required: !!spec.required,
-        default: spec.default ?? null,
-        label: spec.label,
-        description: spec.description,
-      };
-    }
-    if (spec === true) return { required: true, default: null };
-    if (spec === false) return { required: false, default: null };
-    return { required: false, default: spec };
-  }
-
   private _sectionHeader(name: string): HTMLDivElement {
     const wrap = document.createElement('div');
     wrap.style.cssText = `display:flex;flex-direction:column;gap:3px;margin-top:8px;`;
@@ -717,6 +580,19 @@ export class TemplateForm {
     hr.style.cssText = `height:1px;background:${COLORS.bgSurface1};`;
     wrap.append(title, hr);
     return wrap;
+  }
+
+  /** A text input bound to ``field.value`` (``onInput`` runs after each edit). */
+  private _makeValueInput(field: Field, onInput?: () => void): HTMLInputElement {
+    const input = document.createElement('input');
+    input.style.cssText = inputStyle('300px');
+    input.value = field.value;
+    input.addEventListener('input', () => {
+      field.value = input.value;
+      this._updateSaveEnabled();
+      onInput?.();
+    });
+    return input;
   }
 
   private _label(text: string, required = false): HTMLSpanElement {
