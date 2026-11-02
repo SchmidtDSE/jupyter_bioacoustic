@@ -7,8 +7,10 @@ performs I/O or computation, and returns a JSON string that the frontend
 parses.
 
 License: BSD 3-Clause
-"""
-
+"""  # noqa: D415
+#
+# Imports
+#
 from __future__ import annotations
 
 import base64
@@ -23,16 +25,20 @@ from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Optional
 
 import numpy as np
-# Figure (not pyplot): render PNGs off-screen without switching the user's matplotlib backend
-from matplotlib.figure import Figure
 import soundfile as sf
 
 from .audio import _shared as _audio_shared
-from .utils.visualizations import render_png, _stft
+from .utils.visualizations import (
+    _stft,
+    matrix_to_png,
+    mel_filterbank,
+    normalize_db,
+    render_png,
+)
 
 
 #
-# Constants
+# CONSTANTS
 #
 _log = logging.getLogger('jupyter_bioacoustic.kernel_helpers')
 
@@ -42,14 +48,15 @@ _N_MELS = 80
 _DPI = 100
 _DEFAULT_WIDTH = 2000
 _DEFAULT_FIG_HEIGHT = 2.6
-_DB_FLOOR = 1e-10
 _DB_RANGE = 80
 _MEL_F_MIN = 80.0
 _PCM16_SCALE = 32767
+_COLORMAP = 'magma'
+_N_LUT = 256
 
 
 #
-# Public API
+# PUBLIC
 #
 def build_spectrogram(
     raw: np.ndarray,
@@ -89,21 +96,12 @@ def build_spectrogram(
     S_norm = _normalize_db(S)
 
     fig_h = (height / _DPI) if height else _DEFAULT_FIG_HEIGHT
-    fig = Figure(figsize=(width / _DPI, fig_h), dpi=_DPI)
-    ax = fig.add_axes([0, 0, 1, 1])
-    ax.imshow(
-        S_norm, aspect='auto', cmap='magma',
-        origin='lower', interpolation='bilinear',
-    )
-    ax.set_axis_off()
-    pb = io.BytesIO()
-    fig.savefig(pb, format='png', dpi=_DPI, bbox_inches='tight',
-                pad_inches=0)
+    png = matrix_to_png(S_norm, width, fig_h, cmap=_COLORMAP, dpi=_DPI)
 
     wav_b64 = _encode_wav(mono, sr)
 
     return json.dumps({
-        'spec': base64.b64encode(pb.getvalue()).decode(),
+        'spec': base64.b64encode(png).decode(),
         'wav': wav_b64,
         'duration': float(actual_dur),
         'sample_rate': int(sr),
@@ -134,6 +132,9 @@ def run_custom_viz(
         JSON string with keys: ``spec``, ``wav``, ``duration``,
         ``sample_rate``, ``freq_min``, ``freq_max``, ``freq_scale``,
         ``freq_scale_lut``, ``audio_warning``.
+
+    Raises:
+        ValueError: If the viz result has neither ``png_bytes`` nor ``matrix``.
     """
     mono = _to_mono(raw)
     actual_dur = len(mono) / sr
@@ -180,6 +181,10 @@ def run_custom_viz(
 def count_output_rows(path: str, ext: str) -> str:
     """Count rows in an output file.
 
+    Args:
+        path: Output file path (a missing file counts as 0 rows).
+        ext: ``'csv'``, ``'parquet'``, or anything else for JSON Lines.
+
     Returns:
         JSON string ``{"count": <int>}``.
     """
@@ -199,6 +204,10 @@ def count_output_rows(path: str, ext: str) -> str:
 
 def read_output_rows(path: str, ext: str) -> str:
     """Read all rows from an output file.
+
+    Args:
+        path: Output file path (a missing file gives ``[]``).
+        ext: ``'csv'``, ``'parquet'``, or anything else for JSON Lines.
 
     Returns:
         JSON array of row dicts.
@@ -233,6 +242,9 @@ def write_output_row(
 
     Returns:
         ``'ok'`` on success.
+
+    Raises:
+        Exception: Any I/O error is logged and re-raised.
     """
     return write_output_rows(path, [row_dict], columns, ext)
 
@@ -260,6 +272,9 @@ def write_output_rows(
 
     Returns:
         ``'ok'`` on success.
+
+    Raises:
+        Exception: Any I/O error is logged and re-raised.
     """
     if not rows:
         return 'ok'
@@ -302,6 +317,9 @@ def delete_output_row(
 
     Returns:
         ``'ok'`` on success.
+
+    Raises:
+        Exception: Any I/O error (e.g. a missing file) is logged and re-raised.
     """
     try:
         with _file_lock(path):
@@ -334,7 +352,13 @@ def load_select_items(
 ) -> str:
     """Load ``[value, label]`` pairs from a data file.
 
-    Supports CSV, Parquet, JSONL/NDJSON, YAML, and plain text.
+    Supports CSV, Parquet, JSONL/NDJSON, YAML, and plain text (chosen by
+    file extension).
+
+    Args:
+        path: Data file path.
+        value_col: Column/key holding the values (default: the first one).
+        label_col: Column/key holding the labels (default: ``value_col``).
 
     Returns:
         JSON array of ``[value, label]`` pairs.
@@ -359,6 +383,12 @@ def load_select_items(
 def save_png(path: str, b64_data: str) -> str:
     """Decode base-64 PNG data and write to *path*.
 
+    Missing parent directories are created.
+
+    Args:
+        path: Destination PNG path.
+        b64_data: Base-64 encoded PNG bytes.
+
     Returns:
         ``'ok'`` on success.
     """
@@ -371,10 +401,10 @@ def save_png(path: str, b64_data: str) -> str:
 
 
 #
-# Internal
+# INTERNAL
 #
 def _csv_header(path: str) -> Optional[list[str]]:
-    """The header row of a CSV file, or None if the file is missing or empty.
+    """Return the header row of a CSV file, or None if it is missing or empty.
 
     Args:
         path: CSV file path.
@@ -397,6 +427,9 @@ def _file_lock(path: str) -> Iterator[None]:
 
     Args:
         path: The file being read-modified-written.
+
+    Yields:
+        None, while the lock is held.
     """
     key = hashlib.md5(os.path.abspath(path).encode()).hexdigest()
     lock_dir = os.path.join(tempfile.gettempdir(), 'jba_locks')
@@ -438,7 +471,12 @@ def _replace_atomically(path: str, write: Callable[[str], None]) -> None:
 
 
 def _write_text(path: str, text: str) -> None:
-    """Write ``text`` to ``path``."""
+    """Write ``text`` to ``path``.
+
+    Args:
+        path: Destination file path.
+        text: The full file contents.
+    """
     with open(path, 'w') as f:
         f.write(text)
 
@@ -477,6 +515,11 @@ def _write_csv(path: str, fieldnames: list[str], rows: list[dict[str, Any]]) -> 
         rows: Rows to write.
     """
     def write(tmp: str) -> None:
+        """Write the header and rows to *tmp*.
+
+        Args:
+            tmp: Temporary file path.
+        """
         with open(tmp, 'w', newline='') as f:
             w = csv.DictWriter(f, fieldnames=fieldnames)
             w.writeheader()
@@ -486,7 +529,17 @@ def _write_csv(path: str, fieldnames: list[str], rows: list[dict[str, Any]]) -> 
 
 
 def _safe_float(val: Any, default: float = float('nan')) -> float:
-    """Convert *val* to float, returning *default* on failure."""
+    """Convert *val* to float, returning *default* on failure.
+
+    Used by the TS-built match expression in ``delete_output_row`` calls.
+
+    Args:
+        val: Value to convert.
+        default: Value returned when conversion fails.
+
+    Returns:
+        ``float(val)``, or *default*.
+    """
     try:
         return float(val)
     except (TypeError, ValueError):
@@ -494,12 +547,27 @@ def _safe_float(val: Any, default: float = float('nan')) -> float:
 
 
 def _to_mono(raw: np.ndarray) -> np.ndarray:
-    """Convert multi-channel audio to mono."""
+    """Convert multi-channel audio to mono.
+
+    Args:
+        raw: Samples as a 2-D array (samples × channels).
+
+    Returns:
+        1-D array (channel mean when there is more than one channel).
+    """
     return raw.mean(axis=1) if raw.shape[1] > 1 else raw[:, 0]
 
 
 def _encode_wav(mono: np.ndarray, sr: int) -> str:
-    """Encode mono audio as a base-64 WAV string."""
+    """Encode mono audio as a base-64 WAV string.
+
+    Args:
+        mono: 1-D float samples in ``[-1, 1]``.
+        sr: Sample rate in Hz.
+
+    Returns:
+        Base-64 encoded 16-bit PCM WAV.
+    """
     wb = io.BytesIO()
     pcm = (mono * _PCM16_SCALE).astype(np.int16)[:, None]
     sf.write(wb, pcm, sr, format='WAV', subtype='PCM_16')
@@ -507,11 +575,15 @@ def _encode_wav(mono: np.ndarray, sr: int) -> str:
 
 
 def _normalize_db(S: np.ndarray) -> np.ndarray:
-    """Convert magnitude spectrogram to normalised dB scale."""
-    S_db = 20 * np.log10(np.maximum(S, _DB_FLOOR))
-    S_db = np.clip(S_db, S_db.max() - _DB_RANGE, S_db.max())
-    denom = max(float(S_db.max() - S_db.min()), _DB_FLOOR)
-    return (S_db - S_db.min()) / denom
+    """Convert a magnitude spectrogram to a normalised (``0..1``) dB scale.
+
+    Args:
+        S: Magnitude matrix (freq × time).
+
+    Returns:
+        The normalised matrix (see ``visualizations.normalize_db``).
+    """
+    return normalize_db(S, _DB_RANGE)
 
 
 def _mel_filterbank(
@@ -520,28 +592,18 @@ def _mel_filterbank(
     f_min: float,
     f_max: float,
 ) -> np.ndarray:
-    """Apply a mel filterbank to a magnitude spectrogram."""
-    mel_pts = np.linspace(
-        2595 * np.log10(1 + f_min / 700),
-        2595 * np.log10(1 + f_max / 700),
-        _N_MELS + 2,
-    )
-    hz_pts = 700 * (10 ** (mel_pts / 2595) - 1)
-    n_bins = _FFT_SIZE // 2
-    bin_pts = (hz_pts / (sr / 2.0) * (n_bins - 1)).astype(int)
-    bin_pts = bin_pts.clip(0, n_bins - 1)
-    fb = np.zeros((_N_MELS, n_bins))
-    for m in range(1, _N_MELS + 1):
-        lo, pk, hi = bin_pts[m - 1], bin_pts[m], bin_pts[m + 1]
-        if pk > lo:
-            fb[m - 1, lo:pk] = (
-                (np.arange(lo, pk) - lo) / (pk - lo)
-            )
-        if hi > pk:
-            fb[m - 1, pk:hi] = (
-                (hi - np.arange(pk, hi)) / (hi - pk)
-            )
-    return fb @ mag
+    """Apply an 80-band mel filterbank to a 512-point magnitude spectrogram.
+
+    Args:
+        mag: Magnitude STFT, shape ``(_FFT_SIZE // 2, n_frames)``.
+        sr: Sample rate in Hz.
+        f_min: Lowest band edge in Hz.
+        f_max: Highest band edge in Hz.
+
+    Returns:
+        Mel spectrogram, shape ``(_N_MELS, n_frames)``.
+    """
+    return mel_filterbank(sr, _FFT_SIZE, _N_MELS, f_min, f_max) @ mag
 
 
 def _resolve_freq_scale(
@@ -551,13 +613,18 @@ def _resolve_freq_scale(
 ) -> tuple[str, Optional[list[float]]]:
     """Normalise a freq_scale value from a custom viz result.
 
+    Args:
+        freq_scale_raw: A scale name, or a callable ``fn(f, f_min, f_max)``
+            returning the ``0..1`` position of frequency ``f``.
+        f_min: Lowest frequency in Hz.
+        f_max: Highest frequency in Hz.
+
     Returns:
         ``(freq_scale, freq_scale_lut)`` — the LUT is ``None``
         unless the raw value was callable.
     """
     if callable(freq_scale_raw):
-        n_lut = 256
-        lut_freqs = np.linspace(f_min, f_max, n_lut).tolist()
+        lut_freqs = np.linspace(f_min, f_max, _N_LUT).tolist()
         lut = [
             float(freq_scale_raw(f, f_min, f_max))
             for f in lut_freqs
@@ -571,6 +638,16 @@ def _load_select_csv(
     value_col: Optional[str],
     label_col: Optional[str],
 ) -> str:
+    """Load select items from a CSV (header row when ``value_col`` is set).
+
+    Args:
+        path: Data file path.
+        value_col: Column/key holding the values (default: the first one).
+        label_col: Column/key holding the labels (default: ``value_col``).
+
+    Returns:
+        JSON array of ``[value, label]`` pairs.
+    """
     with open(path) as f:
         if value_col:
             rows = list(csv.DictReader(f))
@@ -591,6 +668,16 @@ def _load_select_parquet(
     value_col: Optional[str],
     label_col: Optional[str],
 ) -> str:
+    """Load select items from a Parquet file.
+
+    Args:
+        path: Data file path.
+        value_col: Column/key holding the values (default: the first one).
+        label_col: Column/key holding the labels (default: ``value_col``).
+
+    Returns:
+        JSON array of ``[value, label]`` pairs.
+    """
     import pandas as pd
     df = pd.read_parquet(path)
     vc = value_col or df.columns[0]
@@ -605,6 +692,16 @@ def _load_select_jsonl(
     value_col: Optional[str],
     label_col: Optional[str],
 ) -> str:
+    """Load select items from a JSON Lines file.
+
+    Args:
+        path: Data file path.
+        value_col: Column/key holding the values (default: the first one).
+        label_col: Column/key holding the labels (default: ``value_col``).
+
+    Returns:
+        JSON array of ``[value, label]`` pairs.
+    """
     with open(path) as f:
         rows = [json.loads(line) for line in f if line.strip()]
     vc = value_col or (
@@ -621,6 +718,16 @@ def _load_select_yaml(
     value_col: Optional[str],
     label_col: Optional[str],
 ) -> str:
+    """Load select items from YAML (a ``{column: [values]}`` dict or a list).
+
+    Args:
+        path: Data file path.
+        value_col: Column/key holding the values (default: the first one).
+        label_col: Column/key holding the labels (default: ``value_col``).
+
+    Returns:
+        JSON array of ``[value, label]`` pairs.
+    """
     import yaml
     with open(path) as f:
         data = yaml.safe_load(f)
@@ -639,6 +746,14 @@ def _load_select_yaml(
 
 
 def _load_select_text(path: str) -> str:
+    """Load select items from plain text: ``value`` or ``value, label`` per line.
+
+    Args:
+        path: Text file path.
+
+    Returns:
+        JSON array of ``[value, label]`` pairs.
+    """
     with open(path) as f:
         lines = [ln.rstrip('\n') for ln in f if ln.strip()]
     rows = [[p.strip() for p in ln.split(',', 1)] for ln in lines]
