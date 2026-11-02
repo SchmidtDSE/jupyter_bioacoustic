@@ -17,36 +17,79 @@ Usage (config + overrides):
         data=df, audio_path='test.flac', config='config.yaml',
     ).open()
 
-License: BSD 3-Clause
-"""
+The source/config helpers live in ``_templates``, ``_data_sources``,
+``_audio_sources`` and ``_config``; they are re-exported here under their
+old underscore names (``_load_data``, ``_resolve_templates``, ...) because the
+config builder, the TypeScript frontend and the tests import them from here.
 
+License: BSD 3-Clause
+"""  # noqa: D415
+#
+# Imports
+#
 from __future__ import annotations
-import yaml
-import contextlib
+
 import copy
 import json
 import logging
 import os
-import re
 import uuid
 import warnings
 from datetime import datetime
-from typing import Any, Iterator, Optional
-from IPython import get_ipython
-from IPython.display import display, Javascript, HTML, Markdown
+from typing import Any, Optional
 
+import yaml
+from IPython import get_ipython
+from IPython.display import HTML, Javascript, Markdown, display
+
+from ._audio_sources import (
+    detect_audio_type as _detect_audio_type,  # noqa: F401 (re-export)
+    resolve_audio_config as _resolve_audio_config,
+    resolve_audio_from_source as _resolve_audio_from_source,  # noqa: F401 (re-export)
+)
+from ._config import (
+    AUDIO_SOURCE_KEYS as _AUDIO_SOURCE_KEYS,
+    CONFIG_PARAMS as _CONFIG_PARAMS,
+    DATA_SOURCE_KEYS as _DATA_SOURCE_KEYS,
+    MERGE_DICT_KEYS as _MERGE_DICT_KEYS,  # noqa: F401 (re-export)
+    SOURCE_KEYS_MAP as _SOURCE_KEYS_MAP,  # noqa: F401 (re-export)
+    filter_session_args as _filter_session_args,
+    load_config as _load_config,
+    load_config_from_remote as _load_config_from_remote,  # noqa: F401 (re-export)
+    merge_project_over_config as _merge_project_over_config,
+    section_with_index as _section_with_index,
+)
+from ._data_sources import (
+    DATA_TYPE_MAP as _DATA_TYPE_MAP,
+    cloud_get_bytes as _cloud_get_bytes,  # noqa: F401 (re-export)
+    detect_data_type as _detect_data_type,  # noqa: F401 (re-export)
+    load_data as _load_data,
+    read_data as _read_data,
+    read_data_from_api as _read_data_from_api,  # noqa: F401 (re-export)
+    read_data_from_cloud as _read_data_from_cloud,  # noqa: F401 (re-export)
+    read_data_from_sql as _read_data_from_sql,  # noqa: F401 (re-export)
+    read_data_from_url as _read_data_from_url,  # noqa: F401 (re-export)
+    resolve_data_config as _resolve_data_config,
+    resolve_secrets as _resolve_secrets,
+    temporary_environ as _temporary_environ,  # noqa: F401 (re-export)
+)
+from ._templates import (
+    DEFAULT_SEP as _DEFAULT_SEP,  # noqa: F401 (re-export)
+    TEMPLATE_RE as _TEMPLATE_RE,  # noqa: F401 (re-export)
+    resolve_templates as _resolve_templates,
+    resolve_templates_in_structure as _resolve_templates_in_structure,
+)
 from ._validation import validate_config
 
 
 #
-# Constants
+# CONSTANTS
 #
 _log = logging.getLogger('jupyter_bioacoustic.api')
 
 _DESCRIPTION_FILE_EXTS = ('.md', '.markdown', '.txt')
+# "argument not passed" marker (None is a meaningful value for many arguments)
 _UNSET = object()
-_TEMPLATE_RE = re.compile(r'\[\[([^\]]+)\]\]')
-_DEFAULT_SEP = '||'
 
 DEFAULT_OUTPUT_DIR = 'outputs'
 DEFAULT_OUTPUT_PREFIX = 'annotation_output'
@@ -57,6 +100,7 @@ DEFAULT_END_TIME_COL = 'end_time'
 DEFAULT_BUFFER = 3
 DEFAULT_PROJECT_NAME = 'Jupyter Bioacoustic'
 DEFAULT_CAPTURE_LABEL = 'Capture'
+DEFAULT_SYNC_LABEL = 'Sync'
 DEFAULT_SPEC_RESOLUTIONS = [1000, 2000, 4000]
 DEFAULT_VISUALIZATIONS = ['linear', 'mel']
 DEFAULT_INLINE = True
@@ -67,943 +111,18 @@ DEFAULT_INFO_CARD_HEIGHT = 34
 DEFAULT_FORM_PANEL_HEIGHT = 175
 DEFAULT_DESCRIPTION_HEIGHT = 0
 _TOOLBAR_AND_PADDING_PX = 290
+_BUILTIN_VIZ = ('linear', 'plain', 'mel')
 
 
 #
-# Template resolution
+# PUBLIC
 #
-def _resolve_templates(
-    text: str,
-    kwargs: dict[str, Any] | None = None,
-    resolve_dates: bool = True,
-    warn_missing: bool = False,
-    columns: set[str] | None = None,
-) -> str:
-    """Replace ``[[...]]`` placeholders in a template string.
-
-    Supports default values via ``[[key || default]]``.
-
-    Resolution order:
-
-    1. Date patterns (contain ``%``): ``[[%Y%m%d]]`` -> ``20260527``
-    2. Kwarg values: ``[[reviewer_name]]`` -> kwarg value
-    3. Column names (if *columns* provided): left as ``[[key]]``
-       or ``[[key||default]]`` for later per-row resolution
-    4. Default value (if ``||`` present and key is not a column):
-       returns the default
-    5. Otherwise: left as ``[[key]]`` unresolved
+def print_md(value: str) -> None:
+    """Display a markdown string in the notebook output.
 
     Args:
-        text: The template string.
-        kwargs: Fixed-value keyword arguments to resolve.
-        resolve_dates: Whether to resolve date format patterns.
-        warn_missing: Warn when a non-date placeholder has no match.
-        columns: Source data column names. When provided, placeholders
-            matching a column are preserved for later per-row resolution.
+        value: Markdown text.
     """
-    now = datetime.now()
-    kw = kwargs or {}
-    cols = columns or set()
-
-    def _replace(m: re.Match) -> str:
-        raw = m.group(1)
-        if _DEFAULT_SEP in raw:
-            key, default = raw.split(_DEFAULT_SEP, 1)
-            key = key.strip()
-            default = default.strip()
-        else:
-            key = raw.strip()
-            default = None
-        if resolve_dates and '%' in key:
-            return now.strftime(key)
-        if key in kw:
-            return str(kw[key])
-        if key in cols:
-            return m.group(0)
-        if default is not None:
-            return default
-        if warn_missing:
-            _log.warning('unresolved template placeholder: [[%s]]', key)
-        return m.group(0)
-
-    return _TEMPLATE_RE.sub(_replace, text)
-
-
-def _resolve_templates_in_structure(
-    obj: Any,
-    kwargs: dict[str, Any] | None = None,
-    resolve_dates: bool = True,
-    columns: set[str] | None = None,
-) -> Any:
-    """Recursively resolve ``[[...]]`` templates in nested dicts/lists.
-
-    Strings are resolved via :func:`_resolve_templates`.
-    Dicts and lists are traversed recursively.
-    All other types are returned unchanged.
-    """
-    if isinstance(obj, str):
-        return _resolve_templates(obj, kwargs, resolve_dates, columns=columns)
-    if isinstance(obj, dict):
-        return {
-            k: _resolve_templates_in_structure(v, kwargs, resolve_dates, columns)
-            for k, v in obj.items()
-        }
-    if isinstance(obj, list):
-        return [
-            _resolve_templates_in_structure(v, kwargs, resolve_dates, columns)
-            for v in obj
-        ]
-    return obj
-
-
-#
-# Secret resolution
-#
-def _resolve_secrets(
-    data_secrets: Any,
-) -> dict[str, str]:
-    """Resolve a data_secrets param into a plain dict.
-
-    Each entry is ``{key: str, value: str}`` where value can be:
-    - ``env:VAR_NAME`` -> reads ``os.environ['VAR_NAME']``
-    - ``dialog`` (case-insensitive) -> prompts via getpass
-    - anything else -> used literally
-    """
-    if not data_secrets:
-        return {}
-    if isinstance(data_secrets, dict):
-        data_secrets = [data_secrets]
-
-    import getpass
-    resolved: dict[str, str] = {}
-    for entry in data_secrets:
-        k = entry['key']
-        v = entry.get('value', '__IS_ENV')
-        if v == '__IS_ENV':
-            env_var = k
-        elif isinstance(v, str) and re.match(r'^env:', v, re.IGNORECASE):
-            env_var = v[4:]
-        else:
-            env_var = None
-        if env_var:
-            resolved[k] = os.environ.get(env_var, '')
-            if not resolved[k]:
-                _log.error(
-                    'Environment variable %r not set '
-                    '(for secret %r)', env_var, k,
-                )
-                raise ValueError(
-                    f"Environment variable {env_var!r} "
-                    f"not set (for secret {k!r})"
-                )
-        elif isinstance(v, str) and v.lower() == 'dialog':
-            resolved[k] = getpass.getpass(
-                f'Enter value for {k!r}: ',
-            )
-        else:
-            resolved[k] = v
-    return resolved
-
-
-#
-# Data type detection
-#
-def _detect_data_type(data_str: str) -> str:
-    """Detect whether a data string is sql, api, url, or path.
-
-    - Contains 'SELECT ' (case-insensitive) -> 'sql'
-    - Starts with 'api::' -> 'api'
-    - Starts with http/https/s3/gs -> 'url'
-    - Otherwise -> 'path'
-    """
-    if re.search(r'\bSELECT\s', data_str, re.IGNORECASE):
-        return 'sql'
-    if data_str.lower().startswith('api::'):
-        return 'api'
-    if data_str.startswith(
-        ('http://', 'https://', 's3://', 'gs://'),
-    ):
-        return 'url'
-    return 'path'
-
-
-# Maps a data 'source_type' to the loader dtype ('uri' is a URL alias).
-_DATA_TYPE_MAP = {
-    'path': 'path', 'url': 'url', 'uri': 'url',
-    'api': 'api', 'sql': 'sql',
-}
-
-
-def _section_with_index(
-    value: Any, index_col: Optional[str], is_data: bool,
-) -> dict:
-    """Return a data/output section as a dict carrying its index_column.
-
-    Consolidates a bare source (string path/url/sql/api, or DataFrame) into
-    a dict so the resolved ``index_column`` lives inside the section rather
-    than at the top level. Returns ``{}`` when there is no section.
-    """
-    if isinstance(value, dict):
-        section = dict(value)
-    elif value is not None:
-        key = (
-            _detect_data_type(value)
-            if is_data and isinstance(value, str)
-            else 'path'
-        )
-        section = {key: value}
-    else:
-        return {}
-    if index_col is not None:
-        section['index_column'] = index_col
-    return section
-
-
-#
-# Data loading
-#
-def _read_data(path: str) -> Any:
-    """Read a DataFrame from a local file path."""
-    import pandas as pd
-    ext = os.path.splitext(path)[1].lower()
-    if ext == '.csv':
-        return pd.read_csv(path)
-    elif ext == '.parquet':
-        return pd.read_parquet(path)
-    elif ext in ('.jsonl', '.ndjson'):
-        return pd.read_json(path, lines=True)
-    elif ext == '.json':
-        # a JSON document, or JSON Lines (the annotator writes .json outputs one row per line)
-        try:
-            return pd.read_json(path)
-        except ValueError:
-            return pd.read_json(path, lines=True)
-    else:
-        raise ValueError(
-            f"Unsupported data file extension {ext!r}. "
-            f"Expected .csv, .parquet, .json, .jsonl, or .ndjson."
-        )
-
-
-def _cloud_get_bytes(
-    url: str,
-    byte_range: Optional[tuple[int, int]] = None,
-) -> bytes:
-    """Fetch bytes from a local path or http(s)/s3/gs URL.
-
-    Optionally fetches an inclusive ``[start, end]`` byte range (e.g. just a
-    file header). Cloud schemes fall back to unsigned/anonymous access so
-    public buckets work without credentials.
-    """
-    if url.startswith(('http://', 'https://')):
-        import requests
-        headers = (
-            {'Range': f'bytes={byte_range[0]}-{byte_range[1]}'}
-            if byte_range else None
-        )
-        resp = requests.get(url, headers=headers, timeout=120)
-        resp.raise_for_status()
-        return resp.content
-    if url.startswith('s3://'):
-        import boto3
-        bucket, key = url[len('s3://'):].split('/', 1)
-        kw: dict[str, Any] = {'Bucket': bucket, 'Key': key}
-        if byte_range:
-            kw['Range'] = f'bytes={byte_range[0]}-{byte_range[1]}'
-        try:
-            return boto3.client('s3').get_object(**kw)['Body'].read()
-        except Exception as err:
-            from botocore import UNSIGNED
-            from botocore.config import Config
-            _log.info('s3 default creds failed (%s); retrying unsigned', err)
-            return boto3.client(
-                's3', config=Config(signature_version=UNSIGNED),
-            ).get_object(**kw)['Body'].read()
-    if url.startswith(('gs://', 'gcs://')):
-        from google.cloud import storage
-        bucket, blob = url.split('://', 1)[1].split('/', 1)
-        try:
-            client = storage.Client()
-        except Exception as err:
-            _log.info('gcs default creds failed (%s); using anonymous', err)
-            client = storage.Client.create_anonymous_client()
-        b = client.bucket(bucket).blob(blob)
-        if byte_range:
-            return b.download_as_bytes(start=byte_range[0], end=byte_range[1])
-        return b.download_as_bytes()
-    with open(url, 'rb') as f:
-        if byte_range:
-            f.seek(byte_range[0])
-            return f.read(byte_range[1] - byte_range[0] + 1)
-        return f.read()
-
-
-def _read_data_from_cloud(url: str) -> Any:
-    """Download a data file from s3:// or gs:// and read it as a DataFrame.
-
-    Uses the native client (not requests, which has no adapter for these
-    schemes) via ``_cloud_get_bytes``.
-    """
-    import os
-    import tempfile
-
-    ext = os.path.splitext(url.split('?')[0])[1].lower() or '.csv'
-    body = _cloud_get_bytes(url)
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
-        f.write(body)
-        tmp_path = f.name
-    try:
-        return _read_data(tmp_path)
-    finally:
-        os.unlink(tmp_path)
-
-
-def _read_data_from_url(
-    url: str,
-    cookies: Optional[dict] = None,
-) -> Any:
-    """Fetch data from a URL.
-
-    Auto-detects file vs JSON response. Cloud-storage schemes (s3://, gs://)
-    are routed to their native clients rather than HTTP.
-    """
-    import pandas as pd
-    import requests as req
-    import tempfile
-
-    if url.startswith(('s3://', 'gs://', 'gcs://')):
-        return _read_data_from_cloud(url)
-
-    _log.info('fetching data from URL: %s', url[:120])
-    resp = req.get(url, cookies=cookies or {}, timeout=120)
-    resp.raise_for_status()
-    ct_header = resp.headers.get('Content-Type', '')
-    _log.debug(
-        'URL response: status=%d content-type=%s',
-        resp.status_code, ct_header,
-    )
-
-    ct = ct_header.lower()
-
-    if 'application/json' in ct:
-        data = resp.json()
-        if isinstance(data, list):
-            return pd.DataFrame(data)
-        elif isinstance(data, dict):
-            for key in (
-                'data', 'results', 'items', 'records', 'rows',
-            ):
-                if key in data and isinstance(
-                    data[key], list,
-                ):
-                    return pd.DataFrame(data[key])
-            return pd.DataFrame([data])
-
-    if 'ndjson' in ct or 'jsonl' in ct:
-        import io
-        return pd.read_json(
-            io.StringIO(resp.text), lines=True,
-        )
-
-    try:
-        data = resp.json()
-        if isinstance(data, list):
-            return pd.DataFrame(data)
-    except (ValueError, TypeError):
-        _log.debug(
-            'URL response is not JSON, '
-            'falling back to file download',
-        )
-
-    ext = (
-        os.path.splitext(url.split('?')[0])[1].lower()
-        or '.csv'
-    )
-    with tempfile.NamedTemporaryFile(
-        suffix=ext, delete=False,
-    ) as f:
-        f.write(resp.content)
-        tmp_path = f.name
-    try:
-        return _read_data(tmp_path)
-    finally:
-        os.unlink(tmp_path)
-
-
-def _read_data_from_api(
-    url: str,
-    cookies: Optional[dict] = None,
-) -> Any:
-    """Fetch data from an API endpoint."""
-    if url.lower().startswith('api::'):
-        url = url[5:]
-    return _read_data_from_url(url, cookies=cookies)
-
-
-def _read_data_from_sql(
-    query: str,
-    secrets: Optional[dict] = None,
-) -> Any:
-    """Execute a SQL query with duckdb and return a DataFrame.
-
-    Automatically loads the httpfs extension if the query
-    references s3:// or gs:// paths.
-    """
-    try:
-        import duckdb
-    except ImportError:
-        raise ImportError(
-            "duckdb is required for SQL queries: "
-            "pip install duckdb"
-        )
-
-    conn = duckdb.connect(':memory:')
-
-    if re.search(
-        r"s3://|gs://|https?://", query, re.IGNORECASE,
-    ):
-        try:
-            conn.execute("INSTALL httpfs")
-        except Exception:
-            pass
-        conn.execute("LOAD httpfs")
-        _log.debug('duckdb: loaded httpfs extension')
-
-    _DUCKDB_SET_KEYS = {
-        's3_access_key_id', 's3_secret_access_key',
-        's3_region', 's3_endpoint', 's3_session_token',
-        's3_url_style', 's3_use_ssl',
-        's3_url_compatibility_mode',
-    }
-
-    has_credentials = False
-    env_secrets = {}
-    for k, v in (secrets or {}).items():
-        if k.lower() in _DUCKDB_SET_KEYS:
-            # k is from the allow-list; the value is quoted as a SQL string literal
-            value = str(v).replace("'", "''")
-            conn.execute(f"SET {k} = '{value}'")
-            if k.lower() in ('s3_access_key_id', 's3_secret_access_key'):
-                has_credentials = True
-        else:
-            env_secrets[k] = str(v)
-
-    try:
-        # other secrets (e.g. AWS_PROFILE for the credential chain) are visible as environment
-        # variables only while the query runs, not for the rest of the kernel session
-        with _temporary_environ(env_secrets):
-            if re.search(r"s3://", query, re.IGNORECASE) and not has_credentials:
-                try:
-                    conn.execute(
-                        "CREATE SECRET IF NOT EXISTS "
-                        "(_type = 's3', provider = 'credential_chain')"
-                    )
-                except Exception as e:
-                    _log.debug('duckdb: credential chain not available: %s', e)
-            _log.info('executing SQL query (%d chars)', len(query))
-            result = conn.execute(query).df()
-    finally:
-        conn.close()
-    _log.info('SQL query returned %d rows, %d columns', len(result), len(result.columns))
-    return result
-
-
-@contextlib.contextmanager
-def _temporary_environ(updates: dict[str, str]) -> Iterator[None]:
-    """Set environment variables for the duration of the block, then restore them.
-
-    Args:
-        updates: Variables to set.
-    """
-    saved = {k: os.environ.get(k) for k in updates}
-    os.environ.update(updates)
-    try:
-        yield
-    finally:
-        for k, old in saved.items():
-            if old is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = old
-
-
-def _resolve_data_config(
-    data: Any,
-    data_secrets: Any,
-) -> tuple[Any, Optional[str], dict]:
-    """Normalize the data parameter.
-
-    Returns:
-        (data_value, dtype_or_none, resolved_secrets)
-    """
-    import pandas as pd
-
-    if isinstance(data, pd.DataFrame):
-        return (
-            data, None,
-            _resolve_secrets(data_secrets),
-        )
-
-    if isinstance(data, dict):
-        explicit_keys = {'path', 'url', 'uri', 'api', 'sql'}
-        has_value = data.get('value') is not None
-        found = [k for k in explicit_keys if k in data]
-
-        if has_value and found:
-            raise ValueError(
-                f"data dict: use either 'value' (with optional "
-                f"'source_type') or one explicit source key "
-                f"{explicit_keys}, not both. "
-                f"Got: value + {found}"
-            )
-        if not has_value and len(found) != 1:
-            raise ValueError(
-                f"data dict must have exactly one of 'value' or "
-                f"{explicit_keys}, got: {found or 'none'}"
-            )
-
-        secrets_raw = (
-            data_secrets
-            if data_secrets is not None
-            else data.get('secrets')
-        )
-        secrets = _resolve_secrets(secrets_raw)
-
-        if has_value:
-            # An explicit 'source_type' forces the type; a falsey
-            # 'source_type' auto-detects (like a bare string source).
-            source = data['value']
-            stype = data.get('source_type') or None
-            if stype:
-                dtype = _DATA_TYPE_MAP.get(stype, stype)
-            elif isinstance(source, str):
-                dtype = _detect_data_type(source)
-            else:
-                dtype = None
-            return source, dtype, secrets
-
-        key = found[0]
-        return data[key], _DATA_TYPE_MAP[key], secrets
-
-    if isinstance(data, str):
-        secrets = _resolve_secrets(data_secrets)
-        dtype = _detect_data_type(data)
-        return data, dtype, secrets
-
-    raise ValueError(
-        f"'data' must be a DataFrame, str, or dict. "
-        f"Got {type(data).__name__}."
-    )
-
-
-def _load_data(
-    data: Any,
-    dtype: Optional[str] = None,
-    secrets: Optional[dict] = None,
-) -> Any:
-    """Load data from any supported source.
-
-    Returns:
-        pandas DataFrame
-    """
-    import pandas as pd
-
-    if isinstance(data, pd.DataFrame):
-        return data
-
-    if not isinstance(data, str):
-        raise ValueError(
-            f"'data' must be a DataFrame or string. "
-            f"Got {type(data).__name__}."
-        )
-
-    if dtype is None:
-        dtype = _detect_data_type(data)
-
-    if dtype == 'sql':
-        return _read_data_from_sql(data, secrets=secrets)
-    elif dtype == 'api':
-        return _read_data_from_api(data, cookies=secrets)
-    elif dtype == 'url':
-        return _read_data_from_url(data, cookies=secrets)
-    else:
-        return _read_data(data)
-
-
-def _load_config_from_remote(uri: str) -> dict:
-    """Load a JSON or YAML config file from a remote URI (HTTP/S3/GCS)."""
-    import os
-    import tempfile
-    from urllib.parse import urlparse
-
-    _log.info('fetching config from remote URI: %s', uri[:120])
-
-    # Get file extension from URI path
-    parsed = urlparse(uri)
-    ext = os.path.splitext(parsed.path)[1].lower()
-
-    if uri.startswith(('http://', 'https://')):
-        # Handle HTTP/HTTPS URLs
-        import requests as req
-        resp = req.get(uri, timeout=120)
-        resp.raise_for_status()
-
-        # If no extension in URL, try to detect from content-type
-        if not ext:
-            ct_header = resp.headers.get('Content-Type', '')
-            if 'json' in ct_header:
-                ext = '.json'
-            elif 'yaml' in ct_header or 'yml' in ct_header:
-                ext = '.yaml'
-            else:
-                # Default to YAML as most config files are YAML
-                ext = '.yaml'
-
-        content = resp.text
-    else:
-        # Handle S3/GCS URIs using the audio.io module
-        from .audio import io
-
-        # Create a temporary file to download to
-        with tempfile.NamedTemporaryFile(mode='w+', suffix=ext or '.yaml', delete=False) as tmp_file:
-            temp_path = tmp_file.name
-
-        try:
-            # Download the file using audio.io which handles S3/GCS auth
-            io.read(uri, dest=temp_path)
-
-            # Read the content from the temporary file
-            with open(temp_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        finally:
-            # Clean up the temporary file
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-
-        # Default to YAML if no extension detected
-        if not ext:
-            ext = '.yaml'
-
-    # Parse the content based on extension
-    if ext == '.json':
-        return json.loads(content) or {}
-    else:
-        try:
-            import yaml
-        except ImportError:
-            raise ImportError(
-                "pyyaml is required to load YAML config "
-                "files: pip install pyyaml"
-            )
-        return yaml.safe_load(content) or {}
-
-
-def _load_config(path: str) -> dict:
-    """Load a JSON or YAML config file from local path or remote URI."""
-    # Check if this is a remote URI (HTTP/HTTPS/S3/GCS)
-    if path.startswith(('http://', 'https://', 's3://', 'gs://')):
-        return _load_config_from_remote(path)
-
-    # Local file loading
-    ext = os.path.splitext(path)[1].lower()
-    if ext == '.json':
-        with open(path) as f:
-            return json.load(f) or {}
-    else:
-        with open(path) as f:
-            return yaml.safe_load(f) or {}
-
-
-#
-# Audio resolution
-#
-def _detect_audio_type(value: str) -> str:
-    """Detect whether an audio string is url, column, or path."""
-    if value.startswith(
-        ('http://', 'https://', 's3://', 'gs://'),
-    ):
-        return 'url'
-    if '/' not in value and '.' not in value:
-        return 'column'
-    return 'path'
-
-
-def _resolve_audio_from_source(
-    source_type: str,
-    source_value: str,
-    prop: Optional[str],
-    index: Optional[int],
-    secrets: Optional[dict],
-) -> str:
-    """Resolve an audio path from an SQL query or API."""
-    if index is None:
-        index = 1
-    idx = max(0, index - 1)
-
-    if not prop:
-        raise ValueError(
-            f"'property' is required when using "
-            f"audio.{source_type} to specify which "
-            f"field contains the audio path."
-        )
-
-    if source_type == 'sql':
-        query = source_value
-        if not re.search(
-            r'\bLIMIT\b', query, re.IGNORECASE,
-        ):
-            query = (
-                query.rstrip().rstrip(';')
-                + f' LIMIT {idx + 1}'
-            )
-        df = _read_data_from_sql(query, secrets=secrets)
-        if len(df) <= idx:
-            raise ValueError(
-                f"SQL returned {len(df)} rows, but "
-                f"response_index={index} (row {idx})"
-            )
-        val = df.iloc[idx][prop]
-    elif source_type == 'api':
-        import requests as req
-        cookies = secrets or {}
-        resp = req.get(
-            source_value, cookies=cookies, timeout=120,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if not isinstance(data, list):
-            for k in (
-                'data', 'results', 'items',
-                'records', 'rows',
-            ):
-                if k in data and isinstance(
-                    data[k], list,
-                ):
-                    data = data[k]
-                    break
-        if (
-            not isinstance(data, list)
-            or len(data) <= idx
-        ):
-            n = (
-                len(data)
-                if isinstance(data, list)
-                else 'non-list'
-            )
-            raise ValueError(
-                f"API returned {n} items, but "
-                f"response_index={index} (row {idx})"
-            )
-        val = data[idx][prop]
-    else:
-        raise ValueError(
-            f"Unknown audio source type: {source_type}"
-        )
-
-    return str(val)
-
-
-def _resolve_audio_config(
-    audio: Any,
-    audio_prefix: str,
-    audio_suffix: str,
-    audio_fallback: str,
-    audio_secrets: Any = None,
-) -> dict[str, Any]:
-    """Normalize the audio parameter into a standard dict.
-
-    Returns dict with keys: type, value, prefix, suffix,
-    fallback, secrets.
-    """
-    prefix = audio_prefix or ''
-    suffix = audio_suffix or ''
-    fallback = audio_fallback or ''
-
-    if isinstance(audio, dict):
-        source_keys = {'sql', 'api'}
-        static_keys = {'path', 'url', 'uri', 'column'}
-        explicit_keys = source_keys | static_keys
-        has_value = audio.get('value') is not None
-        found = [k for k in explicit_keys if k in audio]
-
-        if has_value and found:
-            raise ValueError(
-                f"audio dict: use either 'value' (with optional "
-                f"'source_type') or one explicit source key "
-                f"{explicit_keys}, not both. "
-                f"Got: value + {found}"
-            )
-        if not has_value and len(found) != 1:
-            raise ValueError(
-                f"audio dict must have exactly one of 'value' or "
-                f"{explicit_keys}, got: {found or 'none'}"
-            )
-
-        secrets_raw = (
-            audio_secrets
-            if audio_secrets is not None
-            else audio.get('secrets')
-        )
-        resolved_secrets = _resolve_secrets(secrets_raw)
-
-        common = {
-            'prefix': prefix or audio.get('prefix', ''),
-            'suffix': suffix or audio.get('suffix', ''),
-            'fallback': fallback or audio.get('fallback', ''),
-            'secrets': resolved_secrets,
-        }
-
-        # Resolve the effective source type and raw value. 'value' with a
-        # falsey 'source_type' auto-detects (like a bare string); an
-        # explicit 'source_type' (or explicit key) forces the type.
-        if has_value:
-            raw_value = audio['value']
-            stype = audio.get('source_type') or None
-            if stype in ('url', 'uri'):
-                stype = 'url'
-        else:
-            key = found[0]
-            raw_value = audio[key]
-            stype = 'url' if key in ('url', 'uri') else key
-
-        if stype in source_keys:
-            prop = audio.get('property')
-            index = audio.get('response_index')
-            resolved_value = _resolve_audio_from_source(
-                stype, raw_value, prop, index,
-                resolved_secrets,
-            )
-            return {
-                'type': _detect_audio_type(resolved_value),
-                'value': resolved_value,
-                **common,
-            }
-
-        atype = (
-            _detect_audio_type(raw_value)
-            if stype is None else stype
-        )
-        return {'type': atype, 'value': raw_value, **common}
-
-    if isinstance(audio, str) and audio:
-        return {
-            'type': _detect_audio_type(audio),
-            'value': audio,
-            'prefix': prefix,
-            'suffix': suffix,
-            'fallback': fallback,
-            'secrets': _resolve_secrets(audio_secrets),
-        }
-
-    raise ValueError(
-        "'audio' is required — pass a path, URL, "
-        "column name, or dict. "
-        "See documentation for details."
-    )
-
-
-_DATA_SOURCE_KEYS = frozenset(
-    {'value', 'source_type', 'path', 'url', 'uri', 'api', 'sql'},
-)
-_AUDIO_SOURCE_KEYS = frozenset(
-    {'value', 'source_type', 'path', 'url', 'uri',
-     'column', 'sql', 'api'},
-)
-_MERGE_DICT_KEYS = frozenset(
-    {'data', 'audio', 'output', 'description'},
-)
-_SOURCE_KEYS_MAP = {
-    'data': _DATA_SOURCE_KEYS,
-    'audio': _AUDIO_SOURCE_KEYS,
-}
-
-
-
-
-def _merge_project_over_config(
-    base: dict,
-    proj: dict,
-) -> None:
-    """Merge project overrides on top of base config."""
-    for k, v in proj.items():
-        if (
-            k in _MERGE_DICT_KEYS
-            and isinstance(v, dict)
-            and isinstance(base.get(k), dict)
-        ):
-            merged = dict(base[k])
-            source_keys = _SOURCE_KEYS_MAP.get(k)
-            if source_keys:
-                proj_sources = source_keys & v.keys()
-                if proj_sources:
-                    for sk in source_keys:
-                        merged.pop(sk, None)
-            merged.update(v)
-            base[k] = merged
-        else:
-            base[k] = v
-
-
-def _filter_session_args(
-    policy: object,
-    kwargs: dict[str, object],
-) -> tuple[dict[str, object], list[str]]:
-    """Filter kwargs according to the session_args policy.
-
-    Returns:
-        Tuple of (allowed kwargs dict, sorted list of stripped key names).
-    """
-    if not kwargs:
-        return kwargs, []
-    if policy is None or policy is True or policy == '*':
-        return kwargs, []
-    if policy is False:
-        return {}, sorted(kwargs)
-    if isinstance(policy, list):
-        allowed = set(policy)
-        stripped = sorted(set(kwargs) - allowed)
-        filtered = {k: v for k, v in kwargs.items() if k in allowed}
-        return filtered, stripped
-    return kwargs, []
-
-
-_CONFIG_PARAMS = {
-    'data', 'data_source_type', 'data_value',
-    'data_path', 'data_url', 'data_sql',
-    'data_api', 'data_start_time', 'data_end_time',
-    'data_duration', 'data_secrets',
-    'data_index_column',
-    'audio', 'audio_source_type', 'audio_value',
-    'audio_path', 'audio_url',
-    'audio_uri', 'audio_column', 'audio_prefix',
-    'audio_suffix', 'audio_fallback', 'audio_secrets',
-    'audio_sql', 'audio_api', 'audio_property',
-    'audio_response_index',
-    'secrets',
-    'output', 'output_path', 'output_url', 'output_uri',
-    'output_sync_button', 'output_recursive',
-    'output_secrets', 'output_index_column',
-    'info_card_title', 'info_card_text', 'display_columns',
-    'sort', 'sort_order',
-    'form_config', 'duplicate_entries', 'default_buffer',
-    'capture', 'capture_dir', 'spectrogram_resolution',
-    'visualizations', 'partial_download',
-    'width', 'clip_table_height', 'player_height',
-    'capture_height',
-    'info_card_height', 'form_panel_height',
-    'description', 'description_title',
-    'description_text', 'description_path',
-    'description_open', 'description_height',
-    'project_name',
-    'config', 'session_args',
-}
-
-
-#
-# Public API
-#
-def print_md(value):
-    """Print markdown utility"""
     display(Markdown(value))
 
 
@@ -1012,73 +131,73 @@ class BioacousticAnnotator:
 
     def __init__(
         self,
-        project=None,
-        config=_UNSET,
-        form_config=_UNSET,
-        data=_UNSET,
-        data_source_type=_UNSET,
-        data_value=_UNSET,
-        data_path=_UNSET,
-        data_url=_UNSET,
-        data_sql=_UNSET,
-        data_api=_UNSET,
-        data_start_time=_UNSET,
-        data_end_time=_UNSET,
-        data_duration=_UNSET,
-        data_secrets=_UNSET,
-        data_index_column=_UNSET,
-        audio=_UNSET,
-        audio_source_type=_UNSET,
-        audio_value=_UNSET,
-        audio_path=_UNSET,
-        audio_url=_UNSET,
-        audio_uri=_UNSET,
-        audio_column=_UNSET,
-        audio_prefix=_UNSET,
-        audio_suffix=_UNSET,
-        audio_fallback=_UNSET,
-        audio_secrets=_UNSET,
-        audio_sql=_UNSET,
-        audio_api=_UNSET,
-        audio_property=_UNSET,
-        audio_response_index=_UNSET,
-        output=_UNSET,
-        output_path=_UNSET,
-        output_url=_UNSET,
-        output_uri=_UNSET,
-        output_sync_button=_UNSET,
-        output_recursive=_UNSET,
-        output_secrets=_UNSET,
-        output_index_column=_UNSET,
-        description=_UNSET,
-        description_title=_UNSET,
-        description_text=_UNSET,
-        description_path=_UNSET,
-        description_open=_UNSET,
-        description_height=_UNSET,
-        secrets=_UNSET,
-        project_name=_UNSET,
-        display_columns=_UNSET,
-        info_card_title=_UNSET,
-        info_card_text=_UNSET,
-        info_card_height=_UNSET,
-        visualizations=_UNSET,
-        spectrogram_resolution=_UNSET,
-        default_buffer=_UNSET,
-        capture=_UNSET,
-        capture_dir=_UNSET,
-        capture_height=_UNSET,
-        clip_table_height=_UNSET,
-        player_height=_UNSET,
-        form_panel_height=_UNSET,
-        width=_UNSET,
-        partial_download=_UNSET,
-        duplicate_entries=_UNSET,
-        sort=_UNSET,
-        sort_order=_UNSET,
-        session_args=_UNSET,
-        **kwargs,
-    ):
+        project: Any = None,
+        config: Any = _UNSET,
+        form_config: Any = _UNSET,
+        data: Any = _UNSET,
+        data_source_type: Any = _UNSET,
+        data_value: Any = _UNSET,
+        data_path: Any = _UNSET,
+        data_url: Any = _UNSET,
+        data_sql: Any = _UNSET,
+        data_api: Any = _UNSET,
+        data_start_time: Any = _UNSET,
+        data_end_time: Any = _UNSET,
+        data_duration: Any = _UNSET,
+        data_secrets: Any = _UNSET,
+        data_index_column: Any = _UNSET,
+        audio: Any = _UNSET,
+        audio_source_type: Any = _UNSET,
+        audio_value: Any = _UNSET,
+        audio_path: Any = _UNSET,
+        audio_url: Any = _UNSET,
+        audio_uri: Any = _UNSET,
+        audio_column: Any = _UNSET,
+        audio_prefix: Any = _UNSET,
+        audio_suffix: Any = _UNSET,
+        audio_fallback: Any = _UNSET,
+        audio_secrets: Any = _UNSET,
+        audio_sql: Any = _UNSET,
+        audio_api: Any = _UNSET,
+        audio_property: Any = _UNSET,
+        audio_response_index: Any = _UNSET,
+        output: Any = _UNSET,
+        output_path: Any = _UNSET,
+        output_url: Any = _UNSET,
+        output_uri: Any = _UNSET,
+        output_sync_button: Any = _UNSET,
+        output_recursive: Any = _UNSET,
+        output_secrets: Any = _UNSET,
+        output_index_column: Any = _UNSET,
+        description: Any = _UNSET,
+        description_title: Any = _UNSET,
+        description_text: Any = _UNSET,
+        description_path: Any = _UNSET,
+        description_open: Any = _UNSET,
+        description_height: Any = _UNSET,
+        secrets: Any = _UNSET,
+        project_name: Any = _UNSET,
+        display_columns: Any = _UNSET,
+        info_card_title: Any = _UNSET,
+        info_card_text: Any = _UNSET,
+        info_card_height: Any = _UNSET,
+        visualizations: Any = _UNSET,
+        spectrogram_resolution: Any = _UNSET,
+        default_buffer: Any = _UNSET,
+        capture: Any = _UNSET,
+        capture_dir: Any = _UNSET,
+        capture_height: Any = _UNSET,
+        clip_table_height: Any = _UNSET,
+        player_height: Any = _UNSET,
+        form_panel_height: Any = _UNSET,
+        width: Any = _UNSET,
+        partial_download: Any = _UNSET,
+        duplicate_entries: Any = _UNSET,
+        sort: Any = _UNSET,
+        sort_order: Any = _UNSET,
+        session_args: Any = _UNSET,
+        **kwargs: Any,
+    ) -> None:
         """Create a BioacousticAnnotator instance.
 
         All parameters (except ``project``) may also be set via a YAML/JSON
@@ -1112,7 +231,7 @@ class BioacousticAnnotator:
             data_secrets: Auth for data loading. ``{key, value}`` pairs
                 where value is ``env:VAR``, ``dialog``, or a literal.
             data_index_column: Column name that uniquely identifies
-                each row in the input data. Required.
+                each row in the input data. Required when a form is configured.
             audio: Audio source. String: local path, URL/URI, or column
                 name (auto-detected). Dict form:
                 ``{value(+source_type)|path|url|uri|column|sql|api,
@@ -1192,520 +311,55 @@ class BioacousticAnnotator:
             session_args: List of allowed ``**kwargs`` keys, or True to
                 allow all.
             **kwargs: Fixed columns included in every output row.
+
+        Raises:
+            ValueError: If ``project`` is combined with other config
+                parameters, or the data/audio/index-column settings are
+                missing, ambiguous or invalid.
+            TypeError: If ``project`` (or its nested ``config``) is neither a
+                path nor a dict.
         """
-        # Initialize path tracking variables
-        self._project_file = None
-        self._config_file = None
-        self._form_file = None
-        self._project_cfg = None
-        self._config_cfg = None
+        # Every config parameter the caller actually passed (precedence:
+        # these > project > nested config > default; see _resolve()).
+        self._init_overrides: dict[str, Any] = {
+            k: v for k, v in locals().items()
+            if k in _CONFIG_PARAMS and v is not _UNSET
+        }
+
+        # Paths of the files this instance was loaded from, and their contents
+        self._project_file: Optional[str] = None
+        self._config_file: Optional[str] = None
+        self._form_file: Optional[str] = None
+        self._project_cfg: Optional[dict] = None
+        self._config_cfg: Optional[dict] = None
 
         if project is not None:
-            passed = {
-                k for k in _CONFIG_PARAMS
-                if locals().get(k, _UNSET) is not _UNSET
-            }
-            if passed:
-                raise ValueError(
-                    f"When 'project' is set, no other "
-                    f"config parameters may be passed. "
-                    f"Got: {sorted(passed)}"
-                )
-            if isinstance(project, str):
-                _log.info(
-                    'loading project file: %s', project,
-                )
-                self._project_file = project
-                proj_cfg = _load_config(project)
-            elif isinstance(project, dict):
-                proj_cfg = dict(project)
-            else:
-                raise TypeError(
-                    f"'project' must be a file path (str)"
-                    f" or dict, got "
-                    f"{type(project).__name__}"
-                )
-            self._project_cfg = dict(proj_cfg)
-            nested = proj_cfg.pop('config', None)
-            if nested:
-                if isinstance(nested, str):
-                    _log.info(
-                        'loading nested config: %s',
-                        nested,
-                    )
-                    base = _load_config(nested)
-                    self._config_file = nested
-                elif isinstance(nested, dict):
-                    base = dict(nested)
-                else:
-                    raise TypeError(
-                        f"Nested 'config' in project must"
-                        f" be a file path or dict, got "
-                        f"{type(nested).__name__}"
-                    )
-                self._config_cfg = dict(base)
-                _merge_project_over_config(
-                    base, proj_cfg,
-                )
-                cfg = base
-            else:
-                cfg = proj_cfg
+            self._merged_cfg = self._load_project(project)
         else:
-            if config not in (_UNSET, None):
-                _log.info(
-                    'loading config file: %s', config,
-                )
-                cfg = _load_config(config)
-                self._config_file = config
-                self._config_cfg = dict(cfg)
-            else:
-                cfg = {}
+            self._merged_cfg = self._load_config_file(config)
 
-
-        if project_name is not _UNSET:
-            self._project_name = project_name
-        elif 'project_name' in cfg:
-            self._project_name = cfg['project_name']
-        elif isinstance(project, str):
-            self._project_name = (
-                os.path.splitext(
-                    os.path.basename(project),
-                )[0]
-                .replace('_', ' ')
-                .replace('-', ' ')
-                .title()
-            )
-        else:
-            self._project_name = DEFAULT_PROJECT_NAME
-
-        self._merged_cfg = dict(cfg)
-
-        _init_cfg = dict(cfg)
-        _init_overrides = {}
-        for _k in _CONFIG_PARAMS:
-            _v = locals().get(_k, _UNSET)
-            if _v is not _UNSET:
-                _init_overrides[_k] = _v
-        _init_cfg.update(_init_overrides)
-        self._init_overrides = dict(_init_overrides)
-        _init_cfg.pop('config', None)
-        _init_cfg.pop('session_args', None)
-        import pandas as _pd
-        self._init_args = {
-            k: v for k, v in _init_cfg.items()
-            if (
-                v is not _UNSET
-                and v is not None
-                and not isinstance(v, _pd.DataFrame)
-            )
-        }
-        if 'data' not in self._init_args and isinstance(cfg.get('data'), dict):
-            self._init_args['data'] = dict(cfg['data'])
-        def resolve(val, key, default):
-            if val is not _UNSET:
-                return val
-            if key in cfg:
-                return cfg[key]
-            return default
-
-        raw_global_secrets = resolve(
-            secrets, 'secrets', None,
+        self._project_name = self._resolve(
+            'project_name', _default_project_name(project),
         )
-
-        raw_data = resolve(data, 'data', _UNSET)
-        if isinstance(raw_data, dict):
-            raw_data = dict(raw_data)   # it may be the caller's / a config file's dict
-        raw_data_value = resolve(
-            data_value, 'data_value', None,
-        )
-        raw_data_source_type = resolve(
-            data_source_type, 'data_source_type', None,
-        )
-        raw_data_path = resolve(
-            data_path, 'data_path', None,
-        )
-        raw_data_url = resolve(
-            data_url, 'data_url', None,
-        )
-        raw_data_sql = resolve(
-            data_sql, 'data_sql', None,
-        )
-        raw_data_api = resolve(
-            data_api, 'data_api', None,
-        )
-
-        _top_level_data = {
-            'value': raw_data_value,
-            'path': raw_data_path,
-            'url': raw_data_url,
-            'sql': raw_data_sql,
-            'api': raw_data_api,
-        }
-        _top_found = {
-            k: v for k, v in _top_level_data.items()
-            if v is not None
-        }
-
-        if len(_top_found) > 1:
-            raise ValueError(
-                f"Only one of data_value, data_path, "
-                f"data_url, data_sql, data_api may be set. "
-                f"Got: {list(_top_found.keys())}"
-            )
-
-        if _top_found:
-            _tkey, _tval = next(iter(_top_found.items()))
-            if raw_data is _UNSET:
-                # A bare value (no source_type) and explicit data_path/url/
-                # sql/api all reach _resolve_data_config as a string; the
-                # forced/auto dtype is applied below via _top_dtype.
-                raw_data = _tval
-            elif isinstance(raw_data, dict):
-                for k in (
-                    'value', 'source_type',
-                    'path', 'url', 'uri', 'api', 'sql',
-                ):
-                    raw_data.pop(k, None)
-                if _tkey == 'value':
-                    raw_data['value'] = _tval
-                    if raw_data_source_type:
-                        raw_data['source_type'] = raw_data_source_type
-                else:
-                    raw_data[_tkey] = _tval
-            else:
-                raw_data = _tval
-        elif raw_data is _UNSET:
-            raise ValueError(
-                "'data' is required — pass a DataFrame, "
-                "file path, URL, API endpoint, SQL query,"
-                " or dict. Alternatively use data_value, "
-                "data_path, data_url, data_sql, or data_api."
-            )
-
-        # When the top-level source is a bare string, force the dtype:
-        # explicit data_path/url/sql/api use their key; data_value uses
-        # data_source_type (falsey ⇒ None ⇒ auto-detect).
-        if _top_found and not isinstance(raw_data, dict):
-            if _tkey == 'value':
-                _top_dtype = (
-                    _DATA_TYPE_MAP.get(
-                        raw_data_source_type, raw_data_source_type,
-                    )
-                    if raw_data_source_type else None
-                )
-            else:
-                _top_dtype = _tkey
-        else:
-            _top_dtype = None
-
-        raw_data_secrets = resolve(
-            data_secrets, 'data_secrets', None,
-        )
-        if raw_data_secrets is None:
-            raw_data_secrets = raw_global_secrets
-        elif raw_data_secrets is False:
-            raw_data_secrets = None
-        raw_display_columns = resolve(
-            display_columns, 'display_columns', None,
-        )
-
-        (
-            source, dtype, resolved_secrets,
-        ) = _resolve_data_config(
-            raw_data, raw_data_secrets,
-        )
-        if _top_dtype and isinstance(source, str):
-            dtype = _top_dtype
-        src_label = (
-            str(source)[:100]
-            if isinstance(source, str)
-            else type(source).__name__
-        )
-        _log.info(
-            'loading data: dtype=%s source=%s',
-            dtype, src_label,
-        )
-        loaded_data = _load_data(
-            source, dtype=dtype, secrets=resolved_secrets,
-        )
-        _log.info(
-            'data loaded: %d rows, %d columns',
-            len(loaded_data), len(loaded_data.columns),
-        )
-
-        _dict_st = (
-            raw_data.get('start_time')
-            if isinstance(raw_data, dict) else None
-        )
-        _dict_et = (
-            raw_data.get('end_time')
-            if isinstance(raw_data, dict) else None
-        )
-        _dict_dur = (
-            raw_data.get('duration')
-            if isinstance(raw_data, dict) else None
-        )
-        st_col = (
-            resolve(
-                data_start_time, 'data_start_time', None,
-            )
-            or _dict_st
-            or DEFAULT_START_TIME_COL
-        )
-        et_col = (
-            resolve(
-                data_end_time, 'data_end_time', None,
-            )
-            or _dict_et
-            or DEFAULT_END_TIME_COL
-        )
-        dur_val = resolve(
-            data_duration, 'data_duration', None,
-        )
-        if dur_val is None:
-            dur_val = _dict_dur
-
-        if dur_val is not None:
-            if isinstance(dur_val, str):
-                loaded_data['end_time'] = (
-                    loaded_data[st_col]
-                    + loaded_data[dur_val]
-                )
-            else:
-                loaded_data['end_time'] = (
-                    loaded_data[st_col] + dur_val
-                )
-            if st_col != 'start_time':
-                loaded_data = loaded_data.rename(
-                    columns={st_col: 'start_time'},
-                )
-        else:
-            renames = {}
-            if st_col != 'start_time':
-                renames[st_col] = 'start_time'
-            if et_col != 'end_time':
-                renames[et_col] = 'end_time'
-            if renames:
-                loaded_data = loaded_data.rename(
-                    columns=renames,
-                )
-
-        _cfg_data = cfg.get('data')
-        _dict_idx = (
-            raw_data.get('index_column')
-            if isinstance(raw_data, dict)
-            else (
-                _cfg_data.get('index_column')
-                if isinstance(_cfg_data, dict)
-                else None
-            )
-        )
-        idx_col = (
-            resolve(
-                data_index_column,
-                'data_index_column', None,
-            )
-            or _dict_idx
-        )
-        # data_index_column is only required when a form is configured
-        # (form_config or a top-level 'form' key). Without a form the
-        # widget is a player-only view and needs no index column.
-        _has_form = (
-            resolve(form_config, 'form_config', None) is not None
-            or bool(cfg.get('form'))
-        )
-        if idx_col is None:
-            if _has_form:
-                raise ValueError(
-                    "'data_index_column' is required when a form "
-                    "is configured — set it to the column that "
-                    "uniquely identifies each row in the input data."
-                )
-            self._data_index_column = None
-        else:
-            if idx_col not in loaded_data.columns:
-                raise ValueError(
-                    f"data_index_column '{idx_col}' not found "
-                    f"in data columns: "
-                    f"{list(loaded_data.columns)}"
-                )
-            self._data_index_column = idx_col
-
-        raw_output_for_idx = resolve(
-            output, 'output', _UNSET,
-        )
-        _cfg_output = cfg.get('output')
-        _dict_out_idx = (
-            raw_output_for_idx.get('index_column')
-            if isinstance(raw_output_for_idx, dict)
-            else (
-                _cfg_output.get('index_column')
-                if isinstance(_cfg_output, dict)
-                else None
-            )
-        )
-        out_idx_col = (
-            resolve(
-                output_index_column,
-                'output_index_column', None,
-            )
-            or _dict_out_idx
-            or idx_col
-        )
-        self._output_index_column = out_idx_col
-
-        self._init_audio(
-            resolve, cfg, audio, audio_source_type,
-            audio_value, audio_path,
-            audio_url, audio_uri, audio_column,
-            audio_prefix, audio_suffix, audio_fallback,
-            audio_secrets, audio_sql, audio_api,
-            audio_property, audio_response_index,
-            raw_global_secrets,
-        )
-
-        self._data = loaded_data
-        self._data_source = (
-            source if isinstance(source, str) else None
-        )
-        self._data_start_time = st_col
-        self._data_end_time = et_col
-
-        self._init_output(
-            resolve, output, output_path, output_url,
-            output_uri, output_sync_button,
-            output_recursive, output_secrets,
-            raw_global_secrets,
-        )
-
-        self._info_card_title = resolve(
-            info_card_title, 'info_card_title', '',
-        )
-
-        raw_form_check = resolve(
-            form_config, 'form_config', None,
-        )
-        if not self._output and raw_form_check is not None:
-            ts = datetime.now().strftime(
-                DEFAULT_OUTPUT_TS_FMT,
-            )
-            self._output = os.path.join(
-                DEFAULT_OUTPUT_DIR,
-                f'{DEFAULT_OUTPUT_PREFIX}-{ts}'
-                f'{DEFAULT_OUTPUT_EXT}',
-            )
-
-        self._info_card_text = resolve(
-            info_card_text, 'info_card_text', '',
-        )
-        self._data_columns = raw_display_columns or []
-
-        raw_form = resolve(
-            form_config, 'form_config', None,
-        )
-        if isinstance(raw_form, str):
-            _log.info(
-                'loading form config: %s', raw_form,
-            )
-            self._form_file = raw_form
-            raw_form = _load_config(raw_form)
-        self._session_args = resolve(
-            session_args, 'session_args', None,
-        )
-        kwargs, self._stripped_args = _filter_session_args(
-            self._session_args, kwargs,
-        )
-        self._init_kwargs = dict(kwargs)
-        if kwargs:
-            # copy: the form dict may be the caller's (or a config file's) and is reused across
-            # annotators; writing this session's kwargs into it leaked them into later sessions
-            raw_form = copy.deepcopy(raw_form) if raw_form is not None else {}
-            raw_form['_fixed_kwargs'] = [
-                {'fixed_value': {'column': k, 'value': v}}
-                for k, v in kwargs.items()
-            ]
-        self._form_config = raw_form
-
-        self._duplicate_entries = resolve(
-            duplicate_entries, 'duplicate_entries', False,
-        )
-        self._sort = resolve(sort, 'sort', None)
-        self._sort_order = resolve(sort_order, 'sort_order', 'asc')
-        self._default_buffer = resolve(
-            default_buffer, 'default_buffer',
-            DEFAULT_BUFFER,
-        )
-        self._capture = resolve(
-            capture, 'capture', True,
-        )
-        self._capture_dir = resolve(
-            capture_dir, 'capture_dir', '',
-        )
-        self._capture_height = resolve(
-            capture_height, 'capture_height', None,
-        )
-
-        self._init_spec_resolutions(
-            resolve, spectrogram_resolution,
-        )
-        self._init_visualizations(resolve, visualizations)
-
-        self._partial_download = resolve(
-            partial_download, 'partial_download', True,
-        )
-        self._width = resolve(
-            width, 'width', DEFAULT_WIDTH,
-        )
-        self._clip_table_height = resolve(
-            clip_table_height, 'clip_table_height',
-            DEFAULT_CLIP_TABLE_HEIGHT,
-        )
-        self._player_height = resolve(
-            player_height, 'player_height',
-            DEFAULT_PLAYER_HEIGHT,
-        )
-        self._info_card_height = resolve(
-            info_card_height, 'info_card_height',
-            DEFAULT_INFO_CARD_HEIGHT,
-        )
-        self._form_panel_height = resolve(
-            form_panel_height, 'form_panel_height',
-            DEFAULT_FORM_PANEL_HEIGHT,
-        )
-        self._description_height = resolve(
-            description_height, 'description_height',
-            DEFAULT_DESCRIPTION_HEIGHT,
-        )
-
-        self._init_description(
-            resolve, description, description_title,
-            description_text, description_path,
-            description_open, description_height,
-        )
-
-        self._output_cache = None
-        kw = self._init_kwargs or None
-        cols = set(self._data.columns) if self._data is not None else None
-        self._resolved_output = (
-            _resolve_templates(self._output, kw, warn_missing=True)
-            if self._output else self._output
-        )
-        if self._info_card_title:
-            self._info_card_title = _resolve_templates(
-                self._info_card_title, kw, columns=cols,
-            )
-        if self._info_card_text:
-            self._info_card_text = _resolve_templates(
-                self._info_card_text, kw, columns=cols,
-            )
-        if self._form_config:
-            self._form_config = _resolve_templates_in_structure(
-                self._form_config, kw, columns=cols,
-            )
-
+        global_secrets = self._resolve('secrets', None)
+        raw_data = self._init_data(global_secrets)
+        self._init_index_columns(raw_data)
+        self._init_audio(global_secrets)
+        self._init_output(global_secrets)
+        self._init_display_options()
+        self._init_form(kwargs)
+        self._init_spec_resolutions()
+        self._init_visualizations()
+        self._init_layout()
+        self._init_description()
+        self._resolve_init_templates()
 
     def setup(self) -> None:
-        """Serialize data into kernel variables."""
+        """Serialize data into kernel variables (the ``_BA_*`` globals the frontend reads).
+
+        Raises:
+            RuntimeError: If not called from inside a Jupyter kernel.
+        """
         ip = get_ipython()
         if ip is None:
             raise RuntimeError(
@@ -1714,12 +368,8 @@ class BioacousticAnnotator:
             )
 
         ns = ip.user_ns
-        ns['_BA_DATA'] = self._data.to_json(
-            orient='records',
-        )
-        ns['_BA_AUDIO'] = json.dumps(
-            self._audio_config,
-        )
+        ns['_BA_DATA'] = self._data.to_json(orient='records')
+        ns['_BA_AUDIO'] = json.dumps(self._audio_config)
         ns['_BA_OUTPUT'] = self._resolved_output
         ns['_BA_SYNC_CONFIG'] = json.dumps({
             'uri': self.sync_uri,
@@ -1729,13 +379,9 @@ class BioacousticAnnotator:
         ns['_BA_INFO_CARD_TITLE'] = self._info_card_title
         ns['_BA_APP_TITLE'] = self._project_name
         ns['_BA_INFO_CARD_TEXT'] = self._info_card_text
-        ns['_BA_DATA_COLS'] = json.dumps(
-            self._data_columns,
-        )
+        ns['_BA_DATA_COLS'] = json.dumps(self._data_columns)
 
-        ns['_BA_FORM_CONFIG'] = json.dumps(
-            self._form_config,
-        )
+        ns['_BA_FORM_CONFIG'] = json.dumps(self._form_config)
         cap = self._capture
         if cap is True:
             cap = DEFAULT_CAPTURE_LABEL
@@ -1743,53 +389,29 @@ class BioacousticAnnotator:
             cap = ''
         ns['_BA_CAPTURE'] = cap
         ns['_BA_CAPTURE_DIR'] = self._capture_dir or ''
-        ns['_BA_CAPTURE_HEIGHT'] = (
-            str(self._capture_height)
-            if self._capture_height
-            else ''
-        )
-        ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(
-            self._spec_resolutions,
-        )
+        ns['_BA_CAPTURE_HEIGHT'] = str(self._capture_height) if self._capture_height else ''
+        ns['_BA_SPEC_RESOLUTIONS'] = json.dumps(self._spec_resolutions)
         ns['_BA_VIZ_META'] = json.dumps(self._viz_meta)
-        ns['_BA_DUPLICATE_ENTRIES'] = (
-            'true' if self._duplicate_entries else ''
-        )
+        ns['_BA_DUPLICATE_ENTRIES'] = 'true' if self._duplicate_entries else ''
         ns['_BA_SORT'] = self._sort or ''
         ns['_BA_SORT_ORDER'] = self._sort_order or 'asc'
-        ns['_BA_DEFAULT_BUFFER'] = str(
-            self._default_buffer,
-        )
-        ns['_BA_CLIP_TABLE_HEIGHT'] = str(
-            self._clip_table_height,
-        )
-        ns['_BA_PLAYER_HEIGHT'] = str(
-            self._player_height,
-        )
-        ns['_BA_INFO_CARD_HEIGHT'] = str(
-            self._info_card_height,
-        )
-        ns['_BA_FORM_PANEL_HEIGHT'] = str(
-            self._form_panel_height,
-        )
+        ns['_BA_DEFAULT_BUFFER'] = str(self._default_buffer)
+        ns['_BA_CLIP_TABLE_HEIGHT'] = str(self._clip_table_height)
+        ns['_BA_PLAYER_HEIGHT'] = str(self._player_height)
+        ns['_BA_INFO_CARD_HEIGHT'] = str(self._info_card_height)
+        ns['_BA_FORM_PANEL_HEIGHT'] = str(self._form_panel_height)
         ns['_BA_DESCRIPTION'] = (
             json.dumps(self._description_config)
             if self._description_config
             else ''
         )
-        ns['_BA_DESCRIPTION_HEIGHT'] = str(
-            self._description_height,
-        )
+        ns['_BA_DESCRIPTION_HEIGHT'] = str(self._description_height)
         ns['_BA_DATA_INDEX_COL'] = self._data_index_column
-        ns['_BA_OUTPUT_INDEX_COL'] = (
-            self._output_index_column
-        )
+        ns['_BA_OUTPUT_INDEX_COL'] = self._output_index_column
         ns['_BA_PROJECT_PATH'] = self._project_file or ''
         ns['_BA_CONFIG_PATH'] = self._config_file or ''
         ns['_BA_FORM_PATH'] = self._form_file or ''
-        ns['_BA_MERGED_CONFIG'] = json.dumps(
-            self._merged_cfg, default=str,
-        )
+        ns['_BA_MERGED_CONFIG'] = json.dumps(self._merged_cfg, default=str)
         ns['_BA_INSTANCE'] = self
 
     def validate(self) -> dict:
@@ -1812,7 +434,14 @@ class BioacousticAnnotator:
         )
 
     def open(self, inline: bool = DEFAULT_INLINE) -> None:
-        """Serialize data and open the widget."""
+        """Serialize data and open the widget.
+
+        Stripped session args and validation errors are reported as warnings;
+        they do not stop the widget from opening.
+
+        Args:
+            inline: Open in the cell output (True) or in a JupyterLab tab.
+        """
         if self._stripped_args:
             policy = self._session_args
             if isinstance(policy, list):
@@ -1850,21 +479,23 @@ class BioacousticAnnotator:
         Args:
             dest: Override the destination URI.
             recursive: Override recursive setting.
-            **kwargs: Additional auth kwargs.
+            **kwargs: Additional auth kwargs (merged over the output secrets).
+
+        Returns:
+            The result of ``audio.io.write`` (the destination written).
+
+        Raises:
+            ValueError: If no output path or no sync destination is configured.
+            FileNotFoundError: If the output file does not exist yet.
         """
         from jupyter_bioacoustic.audio import io
-        _log.info(
-            'sync requested: dest=%s recursive=%s',
-            dest, recursive,
-        )
+        _log.info('sync requested: dest=%s recursive=%s', dest, recursive)
 
         src = self._resolved_output
         if not src:
             raise ValueError('No output path configured')
         if not os.path.exists(src):
-            raise FileNotFoundError(
-                f'Output file not found: {src}',
-            )
+            raise FileNotFoundError(f'Output file not found: {src}')
 
         target = dest or self.sync_uri
         if not target:
@@ -1874,44 +505,56 @@ class BioacousticAnnotator:
                 'dest= to sync().'
             )
 
-        rec = (
-            recursive
-            if recursive is not None
-            else self._sync_recursive
-        )
+        rec = recursive if recursive is not None else self._sync_recursive
 
         merged_kwargs: dict[str, Any] = {}
         if self._sync_secrets_raw:
-            merged_kwargs.update(
-                _resolve_secrets(self._sync_secrets_raw),
-            )
+            merged_kwargs.update(_resolve_secrets(self._sync_secrets_raw))
         merged_kwargs.update(kwargs)
 
-        _log.info(
-            'syncing %s -> %s (recursive=%s)',
-            src, target, rec,
-        )
-        result = io.write(
-            src, target, recursive=rec, **merged_kwargs,
-        )
+        _log.info('syncing %s -> %s (recursive=%s)', src, target, rec)
+        result = io.write(src, target, recursive=rec, **merged_kwargs)
         _log.info('sync complete: %s', result)
         return result
 
-
     def describe(self, print_config: bool = True) -> None:
-        """Print description of instance"""
+        """Print the configuration files and the resolved configuration.
+
+        Args:
+            print_config: Also print :attr:`configuration` as YAML.
+        """
         if self.project_path or self.config_path or self.form_path:
             print_md('---')
             print_md('**Configuration Files**')
-            if self.project_path: print(f'- Project: {self.project_path}')
-            if self.config_path: print(f'- Config: {self.config_path}')
-            if self.form_path: print(f'- Form: {self.form_path}')
+            if self.project_path:
+                print(f'- Project: {self.project_path}')
+            if self.config_path:
+                print(f'- Config: {self.config_path}')
+            if self.form_path:
+                print(f'- Form: {self.form_path}')
         if print_config:
             print_md('---')
             print_md('**Configuration**')
             print(yaml.dump(self.configuration))
         print_md('---')
 
+    def output(self, force: bool = False) -> Any:
+        """Read and return the output file as a DataFrame.
+
+        Args:
+            force: Re-read even if a cached copy exists.
+
+        Returns:
+            pandas DataFrame, or None when there is no output file (yet).
+        """
+        if self._output_cache is not None and not force:
+            return self._output_cache
+        if not self._resolved_output:
+            return None
+        if not os.path.exists(self._resolved_output):
+            return None
+        self._output_cache = _read_data(self._resolved_output)
+        return self._output_cache
 
     #
     # PROPERTIES
@@ -1983,136 +626,342 @@ class BioacousticAnnotator:
         """Path to the form config file, if loaded from a file."""
         return self._form_file
 
-    def output(self, force: bool = False) -> Any:
-        """Read and return the output file as a DataFrame.
-
-        Args:
-            force: Re-read even if a cached copy exists.
-        """
-        if self._output_cache is not None and not force:
-            return self._output_cache
-        if not self._resolved_output:
-            return None
-        if not os.path.exists(self._resolved_output):
-            return None
-        self._output_cache = _read_data(self._resolved_output)
-        return self._output_cache
-
-
     #
     # INTERNAL
     #
-    def _init_audio(
-        self, resolve, cfg, audio, audio_source_type,
-        audio_value, audio_path,
-        audio_url, audio_uri, audio_column, audio_prefix,
-        audio_suffix, audio_fallback, audio_secrets,
-        audio_sql, audio_api, audio_property,
-        audio_response_index, raw_global_secrets,
-    ):
-        raw_audio = resolve(audio, 'audio', _UNSET)
+    def _resolve(self, key: str, default: Any) -> Any:
+        """Return a setting: constructor argument > project/config value > default.
+
+        A config key that is present with a ``None`` value counts as set.
+
+        Args:
+            key: Parameter / config key name (e.g. ``'audio_prefix'``).
+            default: Value used when neither source sets *key*.
+
+        Returns:
+            The resolved value.
+        """
+        if key in self._init_overrides:
+            return self._init_overrides[key]
+        if key in self._merged_cfg:
+            return self._merged_cfg[key]
+        return default
+
+    def _load_project(self, project: Any) -> dict:
+        """Load a project (and its nested ``config``) into one merged config dict.
+
+        Args:
+            project: Project file path or dict.
+
+        Returns:
+            The nested config with the project merged over it (or just the
+            project when it has no nested config).
+
+        Raises:
+            ValueError: If any other config parameter was also passed.
+            TypeError: If *project* or its nested ``config`` has the wrong type.
+        """
+        if self._init_overrides:
+            raise ValueError(
+                f"When 'project' is set, no other "
+                f"config parameters may be passed. "
+                f"Got: {sorted(self._init_overrides)}"
+            )
+        if isinstance(project, str):
+            _log.info('loading project file: %s', project)
+            self._project_file = project
+            proj_cfg = _load_config(project)
+        elif isinstance(project, dict):
+            proj_cfg = dict(project)
+        else:
+            raise TypeError(
+                f"'project' must be a file path (str)"
+                f" or dict, got "
+                f"{type(project).__name__}"
+            )
+        self._project_cfg = dict(proj_cfg)
+        nested = proj_cfg.pop('config', None)
+        if not nested:
+            return proj_cfg
+        if isinstance(nested, str):
+            _log.info('loading nested config: %s', nested)
+            base = _load_config(nested)
+            self._config_file = nested
+        elif isinstance(nested, dict):
+            base = dict(nested)
+        else:
+            raise TypeError(
+                f"Nested 'config' in project must"
+                f" be a file path or dict, got "
+                f"{type(nested).__name__}"
+            )
+        self._config_cfg = dict(base)
+        _merge_project_over_config(base, proj_cfg)
+        return base
+
+    def _load_config_file(self, config: Any) -> dict:
+        """Load the ``config=`` file (no project).
+
+        Args:
+            config: Config file path, or ``_UNSET``/``None`` for none.
+
+        Returns:
+            The config dict (``{}`` when there is no config file).
+        """
+        if config in (_UNSET, None):
+            return {}
+        _log.info('loading config file: %s', config)
+        cfg = _load_config(config)
+        self._config_file = config
+        self._config_cfg = dict(cfg)
+        return cfg
+
+    def _init_data(self, global_secrets: Any) -> Any:
+        """Load the input data into ``self._data``.
+
+        Args:
+            global_secrets: The global ``secrets`` setting (data secrets fallback).
+
+        Returns:
+            The effective ``data`` setting (a copied dict with any flat
+            ``data_*`` source applied, or the bare source), which
+            :meth:`_init_index_columns` reads.
+        """
+        raw_data, top_dtype = self._resolve_raw_data()
+        data_secrets = _cascade_secrets(self._resolve('data_secrets', None), global_secrets)
+        source, dtype, resolved_secrets = _resolve_data_config(raw_data, data_secrets)
+        if top_dtype and isinstance(source, str):
+            dtype = top_dtype
+        src_label = str(source)[:100] if isinstance(source, str) else type(source).__name__
+        _log.info('loading data: dtype=%s source=%s', dtype, src_label)
+        loaded_data = _load_data(source, dtype=dtype, secrets=resolved_secrets)
+        _log.info(
+            'data loaded: %d rows, %d columns',
+            len(loaded_data), len(loaded_data.columns),
+        )
+        self._data = self._apply_time_columns(loaded_data, raw_data)
+        return raw_data
+
+    def _resolve_raw_data(self) -> tuple[Any, Optional[str]]:
+        """Combine the ``data`` setting with a flat ``data_value/path/url/sql/api``.
+
+        A flat source replaces the source keys of a ``data`` dict, or replaces
+        a bare ``data`` value outright.
+
+        Returns:
+            ``(raw_data, forced_dtype)``. *forced_dtype* is set only when the
+            result is a bare flat source string: the flat key's type, or
+            ``data_source_type`` for ``data_value`` (``None`` = auto-detect).
+
+        Raises:
+            ValueError: If more than one flat source is set, or no data at all.
+        """
+        raw_data = self._resolve('data', _UNSET)
+        if isinstance(raw_data, dict):
+            raw_data = dict(raw_data)   # it may be the caller's / a config file's dict
+        source_type = self._resolve('data_source_type', None)
+        flat = _single_flat_source(
+            {
+                'value': self._resolve('data_value', None),
+                'path': self._resolve('data_path', None),
+                'url': self._resolve('data_url', None),
+                'sql': self._resolve('data_sql', None),
+                'api': self._resolve('data_api', None),
+            },
+            'data_value, data_path, data_url, data_sql, data_api',
+        )
+        if flat is None:
+            if raw_data is _UNSET:
+                raise ValueError(
+                    "'data' is required — pass a DataFrame, "
+                    "file path, URL, API endpoint, SQL query,"
+                    " or dict. Alternatively use data_value, "
+                    "data_path, data_url, data_sql, or data_api."
+                )
+            return raw_data, None
+
+        key, val = flat
+        if isinstance(raw_data, dict):
+            _drop_keys(raw_data, _DATA_SOURCE_KEYS)
+            if key == 'value':
+                raw_data['value'] = val
+                if source_type:
+                    raw_data['source_type'] = source_type
+            else:
+                raw_data[key] = val
+            return raw_data, None
+
+        # A bare string source: force the dtype. Explicit data_path/url/sql/api
+        # use their key; data_value uses data_source_type (falsey ⇒ auto-detect).
+        if key == 'value':
+            forced = _DATA_TYPE_MAP.get(source_type, source_type) if source_type else None
+        else:
+            forced = key
+        return val, forced
+
+    def _apply_time_columns(self, loaded_data: Any, raw_data: Any) -> Any:
+        """Rename the clip time columns to ``start_time``/``end_time``.
+
+        With a ``data_duration`` (a column name or a number), ``end_time`` is
+        computed as ``start + duration``.
+
+        Args:
+            loaded_data: The loaded DataFrame.
+            raw_data: The effective ``data`` setting (dict keys
+                ``start_time``/``end_time``/``duration`` are the fallbacks).
+
+        Returns:
+            The DataFrame with normalized time columns.
+        """
+        data_dict = raw_data if isinstance(raw_data, dict) else {}
+        st_col = (
+            self._resolve('data_start_time', None)
+            or data_dict.get('start_time')
+            or DEFAULT_START_TIME_COL
+        )
+        et_col = (
+            self._resolve('data_end_time', None)
+            or data_dict.get('end_time')
+            or DEFAULT_END_TIME_COL
+        )
+        dur_val = self._resolve('data_duration', None)
+        if dur_val is None:
+            dur_val = data_dict.get('duration')
+
+        if dur_val is not None:
+            if isinstance(dur_val, str):
+                loaded_data['end_time'] = loaded_data[st_col] + loaded_data[dur_val]
+            else:
+                loaded_data['end_time'] = loaded_data[st_col] + dur_val
+            if st_col != 'start_time':
+                loaded_data = loaded_data.rename(columns={st_col: 'start_time'})
+            return loaded_data
+
+        renames = {}
+        if st_col != 'start_time':
+            renames[st_col] = 'start_time'
+        if et_col != 'end_time':
+            renames[et_col] = 'end_time'
+        if renames:
+            loaded_data = loaded_data.rename(columns=renames)
+        return loaded_data
+
+    def _init_index_columns(self, raw_data: Any) -> None:
+        """Resolve ``self._data_index_column`` and ``self._output_index_column``.
+
+        The data index column is required only when a form is configured;
+        the output index column defaults to the data index column.
+
+        Args:
+            raw_data: The effective ``data`` setting from :meth:`_init_data`.
+
+        Raises:
+            ValueError: If a form needs an index column and none is set, or
+                the column is not in the data.
+        """
+        idx_col = (
+            self._resolve('data_index_column', None)
+            or _dict_index_column(raw_data, self._merged_cfg.get('data'))
+        )
+        # data_index_column is only required when a form is configured
+        # (form_config or a top-level 'form' key). Without a form the
+        # widget is a player-only view and needs no index column.
+        has_form = (
+            self._resolve('form_config', None) is not None
+            or bool(self._merged_cfg.get('form'))
+        )
+        if idx_col is None:
+            if has_form:
+                raise ValueError(
+                    "'data_index_column' is required when a form "
+                    "is configured — set it to the column that "
+                    "uniquely identifies each row in the input data."
+                )
+            self._data_index_column = None
+        else:
+            if idx_col not in self._data.columns:
+                raise ValueError(
+                    f"data_index_column '{idx_col}' not found "
+                    f"in data columns: "
+                    f"{list(self._data.columns)}"
+                )
+            self._data_index_column = idx_col
+
+        raw_output = self._resolve('output', _UNSET)
+        self._output_index_column = (
+            self._resolve('output_index_column', None)
+            or _dict_index_column(raw_output, self._merged_cfg.get('output'))
+            or idx_col
+        )
+
+    def _init_audio(self, global_secrets: Any) -> None:
+        """Resolve ``self._audio_config`` (the ``_BA_AUDIO`` dict).
+
+        Args:
+            global_secrets: The global ``secrets`` setting (audio secrets fallback).
+        """
+        audio_secrets = _cascade_secrets(self._resolve('audio_secrets', None), global_secrets)
+        self._audio_config = _resolve_audio_config(
+            self._resolve_raw_audio(),
+            self._resolve('audio_prefix', ''),
+            self._resolve('audio_suffix', ''),
+            self._resolve('audio_fallback', ''),
+            audio_secrets=audio_secrets,
+        )
+        _log.info(
+            'audio config resolved: type=%s value=%s',
+            self._audio_config.get('type'),
+            str(self._audio_config.get('value', ''))[:80],
+        )
+
+    def _resolve_raw_audio(self) -> Any:
+        """Combine the ``audio`` setting with a flat ``audio_value/path/url/...``.
+
+        A flat source replaces the source keys of an ``audio`` dict, or the
+        bare ``audio`` value. ``audio_property``/``audio_response_index``
+        are added to a dict result.
+
+        Returns:
+            The effective audio setting (a copied dict, or a source string).
+
+        Raises:
+            ValueError: If more than one flat source is set, or no audio at all.
+        """
+        raw_audio = self._resolve('audio', _UNSET)
         if isinstance(raw_audio, dict):
             raw_audio = dict(raw_audio)   # it may be the caller's / a config file's dict
-        raw_audio_value = resolve(
-            audio_value, 'audio_value', None,
+        source_type = self._resolve('audio_source_type', None)
+        flat = _single_flat_source(
+            {
+                'value': self._resolve('audio_value', None),
+                'path': self._resolve('audio_path', None),
+                'url': self._resolve('audio_url', None) or self._resolve('audio_uri', None),
+                'column': self._resolve('audio_column', None),
+                'sql': self._resolve('audio_sql', None),
+                'api': self._resolve('audio_api', None),
+            },
+            'audio_value, audio_path, audio_url, audio_uri, audio_column, audio_sql, audio_api',
         )
-        raw_audio_source_type = resolve(
-            audio_source_type, 'audio_source_type', None,
-        )
-        raw_audio_path = resolve(
-            audio_path, 'audio_path', None,
-        )
-        raw_audio_url = resolve(
-            audio_url, 'audio_url', None,
-        )
-        raw_audio_uri = resolve(
-            audio_uri, 'audio_uri', None,
-        )
-        raw_audio_column = resolve(
-            audio_column, 'audio_column', None,
-        )
-        raw_prefix = resolve(
-            audio_prefix, 'audio_prefix', '',
-        )
-        raw_suffix = resolve(
-            audio_suffix, 'audio_suffix', '',
-        )
-        raw_fallback = resolve(
-            audio_fallback, 'audio_fallback', '',
-        )
-        raw_audio_secrets = resolve(
-            audio_secrets, 'audio_secrets', None,
-        )
-        raw_audio_sql = resolve(
-            audio_sql, 'audio_sql', None,
-        )
-        raw_audio_api = resolve(
-            audio_api, 'audio_api', None,
-        )
-        raw_audio_property = resolve(
-            audio_property, 'audio_property', None,
-        )
-        raw_audio_response_index = resolve(
-            audio_response_index,
-            'audio_response_index', None,
-        )
-        if raw_audio_secrets is None:
-            raw_audio_secrets = raw_global_secrets
-        elif raw_audio_secrets is False:
-            raw_audio_secrets = None
-
-        _top_audio = {
-            'value': raw_audio_value,
-            'path': raw_audio_path,
-            'url': raw_audio_url or raw_audio_uri,
-            'column': raw_audio_column,
-            'sql': raw_audio_sql,
-            'api': raw_audio_api,
-        }
-        _top_audio_found = {
-            k: v for k, v in _top_audio.items()
-            if v is not None
-        }
-
-        if len(_top_audio_found) > 1:
-            raise ValueError(
-                f"Only one of audio_value, audio_path, "
-                f"audio_url, audio_uri, audio_column, "
-                f"audio_sql, audio_api may be set. "
-                f"Got: {list(_top_audio_found.keys())}"
-            )
-
-        _audio_source_keys = (
-            'value', 'source_type', 'path', 'url', 'uri',
-            'column', 'sql', 'api',
-        )
-        if _top_audio_found:
-            _akey, _aval = next(
-                iter(_top_audio_found.items()),
-            )
-            if _akey == 'value':
+        if flat is not None:
+            key, val = flat
+            if key == 'value':
                 # 'value' carries an optional source_type; a falsey
                 # source_type auto-detects in _resolve_audio_config.
-                _vdict = {'value': _aval}
-                if raw_audio_source_type:
-                    _vdict['source_type'] = raw_audio_source_type
+                value_dict = {'value': val}
+                if source_type:
+                    value_dict['source_type'] = source_type
                 if isinstance(raw_audio, dict):
-                    for k in _audio_source_keys:
-                        raw_audio.pop(k, None)
-                    raw_audio.update(_vdict)
+                    _drop_keys(raw_audio, _AUDIO_SOURCE_KEYS)
+                    raw_audio.update(value_dict)
                 else:
-                    raw_audio = _vdict
+                    raw_audio = value_dict
             elif raw_audio is _UNSET:
-                if _akey in ('sql', 'api'):
-                    raw_audio = {_akey: _aval}
-                else:
-                    raw_audio = _aval
+                raw_audio = {key: val} if key in ('sql', 'api') else val
             elif isinstance(raw_audio, dict):
-                for k in _audio_source_keys:
-                    raw_audio.pop(k, None)
-                raw_audio[_akey] = _aval
+                _drop_keys(raw_audio, _AUDIO_SOURCE_KEYS)
+                raw_audio[key] = val
             else:
-                raw_audio = _aval
+                raw_audio = val
         elif raw_audio is _UNSET:
             raise ValueError(
                 "'audio' is required — pass a path, "
@@ -2122,83 +971,43 @@ class BioacousticAnnotator:
             )
 
         if isinstance(raw_audio, dict):
-            if raw_audio_property is not None:
-                raw_audio.setdefault(
-                    'property', raw_audio_property,
-                )
-            if raw_audio_response_index is not None:
-                raw_audio['response_index'] = (
-                    raw_audio_response_index
-                )
+            audio_property = self._resolve('audio_property', None)
+            response_index = self._resolve('audio_response_index', None)
+            if audio_property is not None:
+                raw_audio.setdefault('property', audio_property)
+            if response_index is not None:
+                raw_audio['response_index'] = response_index
+        return raw_audio
 
-        self._audio_config = _resolve_audio_config(
-            raw_audio, raw_prefix, raw_suffix,
-            raw_fallback, audio_secrets=raw_audio_secrets,
-        )
-        _log.info(
-            'audio config resolved: type=%s value=%s',
-            self._audio_config.get('type'),
-            str(
-                self._audio_config.get('value', ''),
-            )[:80],
-        )
+    def _init_output(self, global_secrets: Any) -> None:
+        """Resolve the output path and the sync settings.
 
-    def _init_output(
-        self, resolve, output, output_path, output_url,
-        output_uri, output_sync_button, output_recursive,
-        output_secrets, raw_global_secrets,
-    ):
-        raw_output = resolve(output, 'output', '')
-        raw_output_path = resolve(
-            output_path, 'output_path', None,
-        )
-        raw_output_url = resolve(
-            output_url, 'output_url', None,
-        )
-        raw_output_uri = resolve(
-            output_uri, 'output_uri', None,
-        )
-        raw_output_sync_button = resolve(
-            output_sync_button, 'output_sync_button',
-            None,
-        )
-        raw_output_recursive = resolve(
-            output_recursive, 'output_recursive', None,
-        )
-        raw_output_secrets = resolve(
-            output_secrets, 'output_secrets', None,
-        )
-        if raw_output_secrets is None:
-            raw_output_secrets = raw_global_secrets
-        elif raw_output_secrets is False:
-            raw_output_secrets = None
+        Sets ``_output``, ``sync_uri``, ``_sync_button``, ``_sync_recursive``
+        and ``_sync_secrets_raw``. Flat ``output_*`` settings override the
+        ``output`` dict. A form without an output gets a timestamped default
+        CSV path.
+
+        Args:
+            global_secrets: The global ``secrets`` setting (sync secrets fallback).
+        """
+        raw_output = self._resolve('output', '')
+        output_path = self._resolve('output_path', None)
+        output_url = self._resolve('output_url', None)
+        output_uri = self._resolve('output_uri', None)
+        sync_button = self._resolve('output_sync_button', None)
+        recursive = self._resolve('output_recursive', None)
+        output_secrets = _cascade_secrets(self._resolve('output_secrets', None), global_secrets)
 
         if isinstance(raw_output, dict):
             self._output = raw_output.get('path', '')
-            self.sync_uri = (
-                raw_output.get('uri')
-                or raw_output.get('url')
-                or ''
-            )
-            sync_btn_raw = raw_output.get(
-                'sync_button', None,
-            )
-            if sync_btn_raw is None:
-                self._sync_button = (
-                    'Sync' if self.sync_uri else ''
-                )
-            elif isinstance(sync_btn_raw, str):
-                self._sync_button = sync_btn_raw
-            elif sync_btn_raw:
-                self._sync_button = 'Sync'
+            self.sync_uri = raw_output.get('uri') or raw_output.get('url') or ''
+            dict_button = raw_output.get('sync_button', None)
+            if dict_button is None:
+                self._sync_button = DEFAULT_SYNC_LABEL if self.sync_uri else ''
             else:
-                self._sync_button = ''
-            self._sync_recursive = raw_output.get(
-                'recursive', False,
-            )
-            self._sync_secrets_raw = raw_output.get(
-                'secrets',
-            )
+                self._sync_button = _sync_button_label(dict_button)
+            self._sync_recursive = raw_output.get('recursive', False)
+            self._sync_secrets_raw = raw_output.get('secrets')
         else:
             self._output = raw_output
             self.sync_uri = ''
@@ -2206,67 +1015,93 @@ class BioacousticAnnotator:
             self._sync_recursive = False
             self._sync_secrets_raw = None
 
-        if raw_output_path is not None:
-            self._output = raw_output_path
-        if (
-            raw_output_url is not None
-            or raw_output_uri is not None
-        ):
-            self.sync_uri = (
-                raw_output_url or raw_output_uri or ''
-            )
-        if raw_output_sync_button is not None:
-            if isinstance(raw_output_sync_button, str):
-                self._sync_button = (
-                    raw_output_sync_button
-                )
-            elif raw_output_sync_button:
-                self._sync_button = 'Sync'
-            else:
-                self._sync_button = ''
-        if raw_output_recursive is not None:
-            self._sync_recursive = raw_output_recursive
-        if raw_output_secrets is not None:
-            self._sync_secrets_raw = raw_output_secrets
+        if output_path is not None:
+            self._output = output_path
+        if output_url is not None or output_uri is not None:
+            self.sync_uri = output_url or output_uri or ''
+        if sync_button is not None:
+            self._sync_button = _sync_button_label(sync_button)
+        if recursive is not None:
+            self._sync_recursive = recursive
+        if output_secrets is not None:
+            self._sync_secrets_raw = output_secrets
 
         if self.sync_uri and not self._sync_button:
-            self._sync_button = 'Sync'
+            self._sync_button = DEFAULT_SYNC_LABEL
 
-    def _init_spec_resolutions(
-        self, resolve, spectrogram_resolution,
-    ):
-        raw_res = resolve(
-            spectrogram_resolution,
-            'spectrogram_resolution',
-            DEFAULT_SPEC_RESOLUTIONS,
-        )
+        if not self._output and self._resolve('form_config', None) is not None:
+            ts = datetime.now().strftime(DEFAULT_OUTPUT_TS_FMT)
+            self._output = os.path.join(
+                DEFAULT_OUTPUT_DIR,
+                f'{DEFAULT_OUTPUT_PREFIX}-{ts}{DEFAULT_OUTPUT_EXT}',
+            )
+
+    def _init_display_options(self) -> None:
+        """Resolve the info card, clip table, capture and playback options."""
+        self._info_card_title = self._resolve('info_card_title', '')
+        self._info_card_text = self._resolve('info_card_text', '')
+        self._data_columns = self._resolve('display_columns', None) or []
+        self._duplicate_entries = self._resolve('duplicate_entries', False)
+        self._sort = self._resolve('sort', None)
+        self._sort_order = self._resolve('sort_order', 'asc')
+        self._default_buffer = self._resolve('default_buffer', DEFAULT_BUFFER)
+        self._capture = self._resolve('capture', True)
+        self._capture_dir = self._resolve('capture_dir', '')
+        self._capture_height = self._resolve('capture_height', None)
+        self._partial_download = self._resolve('partial_download', True)
+
+    def _init_form(self, kwargs: dict[str, Any]) -> None:
+        """Load the form config and add the session ``**kwargs`` as fixed values.
+
+        Sets ``_form_file``, ``_session_args``, ``_stripped_args``,
+        ``_init_kwargs`` and ``_form_config``.
+
+        Args:
+            kwargs: The extra constructor keyword arguments (fixed columns).
+        """
+        raw_form = self._resolve('form_config', None)
+        if isinstance(raw_form, str):
+            _log.info('loading form config: %s', raw_form)
+            self._form_file = raw_form
+            raw_form = _load_config(raw_form)
+        self._session_args = self._resolve('session_args', None)
+        kwargs, self._stripped_args = _filter_session_args(self._session_args, kwargs)
+        self._init_kwargs = dict(kwargs)
+        if kwargs:
+            # copy: the form dict may be the caller's (or a config file's) and is reused across
+            # annotators; writing this session's kwargs into it leaked them into later sessions
+            raw_form = copy.deepcopy(raw_form) if raw_form is not None else {}
+            raw_form['_fixed_kwargs'] = [
+                {'fixed_value': {'column': k, 'value': v}}
+                for k, v in kwargs.items()
+            ]
+        self._form_config = raw_form
+
+    def _init_spec_resolutions(self) -> None:
+        """Resolve ``self._spec_resolutions`` (spectrogram widths, as strings)."""
+        raw_res = self._resolve('spectrogram_resolution', DEFAULT_SPEC_RESOLUTIONS)
         if isinstance(raw_res, (int, float)):
             self._spec_resolutions = [str(int(raw_res))]
         elif isinstance(raw_res, list):
-            self._spec_resolutions = [
-                str(r) for r in raw_res
-            ]
+            self._spec_resolutions = [str(r) for r in raw_res]
         else:
-            self._spec_resolutions = [
-                str(r) for r in DEFAULT_SPEC_RESOLUTIONS
-            ]
+            self._spec_resolutions = [str(r) for r in DEFAULT_SPEC_RESOLUTIONS]
 
-    def _init_visualizations(
-        self, resolve, visualizations,
-    ):
-        from jupyter_bioacoustic.utils.visualizations \
-            import REGISTRY as _VIZ_REGISTRY
-        raw_viz = resolve(
-            visualizations, 'visualizations',
-            DEFAULT_VISUALIZATIONS,
-        )
-        self._visualizations = []
-        self._viz_meta = []
-        viz_list = (
-            raw_viz
-            if isinstance(raw_viz, list)
-            else [raw_viz]
-        )
+    def _init_visualizations(self) -> None:
+        """Build ``self._visualizations`` and ``self._viz_meta`` from the setting.
+
+        Entries may be names (builtin or ``utils.visualizations.REGISTRY``),
+        callables, or dicts with a callable ``fn`` (and optional ``label``);
+        anything else is skipped with a warning.
+
+        Raises:
+            ValueError: If a visualization name is unknown.
+        """
+        from jupyter_bioacoustic.utils.visualizations import REGISTRY as _VIZ_REGISTRY
+        raw_viz = self._resolve('visualizations', DEFAULT_VISUALIZATIONS)
+        self._visualizations: list[dict[str, Any]] = []
+        self._viz_meta: list[dict[str, Any]] = []
+        viz_list = raw_viz if isinstance(raw_viz, list) else [raw_viz]
         for i, v in enumerate(viz_list):
             if isinstance(v, str):
                 self._add_viz_str(v, _VIZ_REGISTRY)
@@ -2312,7 +1147,7 @@ class BioacousticAnnotator:
         Raises:
             ValueError: If the name is unknown.
         """
-        if v in ('linear', 'plain', 'mel'):
+        if v in _BUILTIN_VIZ:
             key = 'linear' if v in ('plain', 'linear') else 'mel'
             self._add_viz({
                 'type': 'builtin', 'key': key, 'label': key.title(),
@@ -2330,26 +1165,30 @@ class BioacousticAnnotator:
                 f"{', '.join(sorted(registry.keys()))}"
             )
 
-    def _init_description(
-        self, resolve, description, description_title,
-        description_text, description_path,
-        description_open, description_height,
-    ):
-        raw_desc = resolve(
-            description, 'description', None,
+    def _init_layout(self) -> None:
+        """Resolve the widget width and the panel heights."""
+        self._width = self._resolve('width', DEFAULT_WIDTH)
+        self._clip_table_height = self._resolve('clip_table_height', DEFAULT_CLIP_TABLE_HEIGHT)
+        self._player_height = self._resolve('player_height', DEFAULT_PLAYER_HEIGHT)
+        self._info_card_height = self._resolve('info_card_height', DEFAULT_INFO_CARD_HEIGHT)
+        self._form_panel_height = self._resolve('form_panel_height', DEFAULT_FORM_PANEL_HEIGHT)
+        self._description_height = self._resolve(
+            'description_height', DEFAULT_DESCRIPTION_HEIGHT,
         )
-        raw_desc_title = resolve(
-            description_title, 'description_title', None,
-        )
-        raw_desc_text = resolve(
-            description_text, 'description_text', None,
-        )
-        raw_desc_path = resolve(
-            description_path, 'description_path', None,
-        )
-        raw_desc_open = resolve(
-            description_open, 'description_open', None,
-        )
+
+    def _init_description(self) -> None:
+        """Resolve ``self._description_config`` (the description panel).
+
+        ``description`` may be a dict, markdown text or a ``.md``/``.markdown``/
+        ``.txt`` path; the flat ``description_*`` settings take precedence over
+        the dict. A dict ``height`` applies unless ``description_height`` was
+        passed. The panel is shown only when it has text.
+        """
+        raw_desc = self._resolve('description', None)
+        desc_title = self._resolve('description_title', None)
+        desc_text = self._resolve('description_text', None)
+        desc_path = self._resolve('description_path', None)
+        desc_open = self._resolve('description_open', None)
         if isinstance(raw_desc, str):
             # a bare string is a file path when it looks like one, else markdown text
             looks_like_path = ('\n' not in raw_desc and raw_desc.strip().lower().endswith(
@@ -2361,79 +1200,71 @@ class BioacousticAnnotator:
                 'file path, or a dict (title/text/path/open/height)'
             )
         if isinstance(raw_desc, dict):
-            raw_desc_title = (
-                raw_desc_title
-                or raw_desc.get('title')
-            )
-            raw_desc_text = (
-                raw_desc_text or raw_desc.get('text')
-            )
-            raw_desc_path = (
-                raw_desc_path or raw_desc.get('path')
-            )
-            if raw_desc_open is None:
-                raw_desc_open = raw_desc.get('open', True)
-            if (
-                'height' in raw_desc
-                and description_height is _UNSET
-            ):
-                self._description_height = (
-                    raw_desc['height']
-                )
-        if raw_desc_path and not raw_desc_text:
+            desc_title = desc_title or raw_desc.get('title')
+            desc_text = desc_text or raw_desc.get('text')
+            desc_path = desc_path or raw_desc.get('path')
+            if desc_open is None:
+                desc_open = raw_desc.get('open', True)
+            if 'height' in raw_desc and 'description_height' not in self._init_overrides:
+                self._description_height = raw_desc['height']
+        if desc_path and not desc_text:
             try:
-                with open(raw_desc_path) as _f:
-                    raw_desc_text = _f.read()
-                _log.debug(
-                    'loaded description from %s',
-                    raw_desc_path,
-                )
+                with open(desc_path) as f:
+                    desc_text = f.read()
+                _log.debug('loaded description from %s', desc_path)
             except OSError as e:
-                _log.warning(
-                    'could not read description '
-                    'file %s: %s',
-                    raw_desc_path, e,
-                )
-                raw_desc_text = (
-                    f'(Could not read {raw_desc_path})'
-                )
+                _log.warning('could not read description file %s: %s', desc_path, e)
+                desc_text = f'(Could not read {desc_path})'
         self._description_config = (
             {
-                'title': raw_desc_title or '',
-                'text': raw_desc_text or '',
-                'open': (
-                    raw_desc_open
-                    if raw_desc_open is not None
-                    else True
-                ),
+                'title': desc_title or '',
+                'text': desc_text or '',
+                'open': desc_open if desc_open is not None else True,
             }
-            if raw_desc_text
+            if desc_text
             else None
         )
 
+    def _resolve_init_templates(self) -> None:
+        """Resolve ``[[...]]`` templates in the output path, info card and form.
+
+        Data-column placeholders in the info card and form are kept for
+        per-row resolution in the frontend.
+        """
+        self._output_cache = None
+        kw = self._init_kwargs or None
+        cols = set(self._data.columns) if self._data is not None else None
+        self._resolved_output = (
+            _resolve_templates(self._output, kw, warn_missing=True)
+            if self._output else self._output
+        )
+        if self._info_card_title:
+            self._info_card_title = _resolve_templates(
+                self._info_card_title, kw, columns=cols,
+            )
+        if self._info_card_text:
+            self._info_card_text = _resolve_templates(
+                self._info_card_text, kw, columns=cols,
+            )
+        if self._form_config:
+            self._form_config = _resolve_templates_in_structure(
+                self._form_config, kw, columns=cols,
+            )
 
     def _invalidate_output_cache(self) -> None:
         """Force a re-read on the next output() call."""
         self._output_cache = None
 
-
     def _open_inline(self) -> None:
         """Inject the widget into the cell output area."""
         div_id = f'bioacoustic-{uuid.uuid4().hex[:8]}'
-        w = (
-            self._width
-            if isinstance(self._width, str)
-            else f'{self._width}px'
-        )
+        w = self._width if isinstance(self._width, str) else f'{self._width}px'
         has_form = self._form_config is not None
         total_h = (
             int(self._clip_table_height)
             + int(self._player_height)
             + int(self._info_card_height)
-            + (
-                int(self._form_panel_height)
-                if has_form else 0
-            )
+            + (int(self._form_panel_height) if has_form else 0)
             + _TOOLBAR_AND_PADDING_PX
         )
         h = f'{total_h}px'
@@ -2452,3 +1283,108 @@ class BioacousticAnnotator:
             f"window._bioacousticOpenInline && "
             f"window._bioacousticOpenInline('{div_id}')"
         ))
+
+
+#
+# INTERNAL
+#
+def _default_project_name(project: Any) -> str:
+    """Return the default widget title: from the project file name, or generic.
+
+    Args:
+        project: The ``project`` argument (only a path is used).
+
+    Returns:
+        E.g. ``'My Survey'`` for ``projects/my_survey.yaml``, else
+        :data:`DEFAULT_PROJECT_NAME`.
+    """
+    if not isinstance(project, str):
+        return DEFAULT_PROJECT_NAME
+    stem = os.path.splitext(os.path.basename(project))[0]
+    return stem.replace('_', ' ').replace('-', ' ').title()
+
+
+def _cascade_secrets(section_secrets: Any, global_secrets: Any) -> Any:
+    """Apply the section-secrets fallback rule.
+
+    Args:
+        section_secrets: The section's setting (e.g. ``data_secrets``).
+        global_secrets: The global ``secrets`` setting.
+
+    Returns:
+        *global_secrets* when the section setting is ``None``; ``None`` (no
+        secrets) when it is ``False``; otherwise the section setting.
+    """
+    if section_secrets is None:
+        return global_secrets
+    if section_secrets is False:
+        return None
+    return section_secrets
+
+
+def _single_flat_source(
+    candidates: dict[str, Any],
+    param_names: str,
+) -> Optional[tuple[str, Any]]:
+    """Return the one flat source that is set (e.g. ``data_path``), if any.
+
+    Args:
+        candidates: ``{source_key: value}``; ``None`` means "not set".
+        param_names: Parameter names listed in the error message.
+
+    Returns:
+        ``(source_key, value)`` of the set source, or ``None`` when none is.
+
+    Raises:
+        ValueError: If more than one candidate is set.
+    """
+    found = {k: v for k, v in candidates.items() if v is not None}
+    if len(found) > 1:
+        raise ValueError(
+            f"Only one of {param_names} may be set. "
+            f"Got: {list(found.keys())}"
+        )
+    return next(iter(found.items())) if found else None
+
+
+def _drop_keys(section: dict, keys: frozenset[str]) -> None:
+    """Remove *keys* from *section* in place (missing keys are ignored).
+
+    Args:
+        section: The dict to modify.
+        keys: Keys to remove.
+    """
+    for k in keys:
+        section.pop(k, None)
+
+
+def _dict_index_column(raw_section: Any, cfg_section: Any) -> Any:
+    """Return the ``index_column`` of a data/output section dict.
+
+    Args:
+        raw_section: The effective section setting.
+        cfg_section: The section from the merged config (used only when
+            *raw_section* is not a dict).
+
+    Returns:
+        The ``index_column`` value, or None.
+    """
+    if isinstance(raw_section, dict):
+        return raw_section.get('index_column')
+    if isinstance(cfg_section, dict):
+        return cfg_section.get('index_column')
+    return None
+
+
+def _sync_button_label(value: Any) -> str:
+    """Return the sync button label for a ``sync_button`` setting.
+
+    Args:
+        value: A label string, or a truthy/falsey flag.
+
+    Returns:
+        The string itself, ``'Sync'`` for other truthy values, else ``''``.
+    """
+    if isinstance(value, str):
+        return value
+    return DEFAULT_SYNC_LABEL if value else ''
