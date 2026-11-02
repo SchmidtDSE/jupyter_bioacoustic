@@ -174,5 +174,5 @@ def _blob_size(blob: Any) -> int:
     blob.reload()
     if blob.size is None:
         _log.error('GCS blob size is None for %s', blob.name)
-        raise ValueError(f'Could not determine blob size')
+        raise ValueError('Could not determine blob size')
     return blob.size
