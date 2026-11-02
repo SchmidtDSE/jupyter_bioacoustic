@@ -1,3 +1,8 @@
+/**
+ * python.test
+ *
+ * License: BSD 3-Clause
+ */
 import {
   readKernelVars, readAudio, buildSpectrogram,
   spectrogramPipeline, loadSelectItems,
