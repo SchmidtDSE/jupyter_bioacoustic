@@ -13,7 +13,7 @@ Usage:
     jba validate [name]
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
