@@ -6,7 +6,6 @@ and FLAC header parsing.
 
 License: BSD 3-Clause
 """
-import hashlib
 import os
 import struct
 import sys
