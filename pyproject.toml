@@ -26,8 +26,7 @@ dependencies = [
     "matplotlib",
     "pandas",
     "soundfile",
-    "boto3",
-    "ondio[gcs,http]>=0.4,<0.5",
+    "ondio[gcs,http]>=0.5,<0.6",
     "pyyaml",
     "click>=8.0",
 ]

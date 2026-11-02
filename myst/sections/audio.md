@@ -65,9 +65,6 @@ audio:
   column: audio_path
   prefix: audio
   fallback: audio/default.flac
-  secrets:
-    - key: Authorization
-      value: env:AUDIO_TOKEN
 ```
 
 ## Audio from SQL or API
@@ -103,10 +100,18 @@ audio:
 
 `audio_secrets` works identically to `data_secrets` — `env:VAR`, `dialog`, or literal values. The global `secrets` parameter serves as a fallback.
 
+Audio secrets are used when JBA finds the audio path with `audio_sql` (as DuckDB settings) or `audio_api` (as HTTP cookies):
+
 ```python
 BioacousticAnnotator(
     data='detections.csv',
-    audio='s3://private-bucket/recording.flac',
-    audio_secrets={'key': 's3_access_key_id', 'value': 'env:AWS_KEY'},
+    audio_sql="SELECT path FROM 's3://private-bucket/recordings.parquet'",
+    audio_property='path',
+    audio_secrets=[
+        {'key': 's3_access_key_id', 'value': 'env:AWS_ACCESS_KEY_ID'},
+        {'key': 's3_secret_access_key', 'value': 'env:AWS_SECRET_ACCESS_KEY'},
+    ],
 ).open()
 ```
+
+Audio secrets are not used to read the audio files. JBA reads `s3://` and `gs://` audio with your default credentials: the AWS credential chain (for example `AWS_PROFILE`), or Google application default credentials.

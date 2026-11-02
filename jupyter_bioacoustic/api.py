@@ -29,7 +29,7 @@ import re
 import uuid
 import warnings
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Callable, Optional, TypeVar
 from pprint import pprint
 from IPython import get_ipython
 from IPython.display import display, Javascript, HTML, Markdown
@@ -41,6 +41,7 @@ from ._validation import validate_config
 # Constants
 #
 _log = logging.getLogger('jupyter_bioacoustic.api')
+_T = TypeVar('_T')
 
 _UNSET = object()
 _TEMPLATE_RE = re.compile(r'\[\[([^\]]+)\]\]')
@@ -279,64 +280,56 @@ def _read_data(path: str) -> Any:
         )
 
 
+def _with_public_retry(uri: str, op: Callable[[Any], _T]) -> _T:
+    """Return op(backend) for *uri*, with the caller's default credentials.
+
+    If the credentials fail (``AuthError``) for an s3:// or gs:// URI, call
+    op again with a backend that has no credentials, so public buckets work.
+    Other errors raise.
+    """
+    from ondio import AuthError
+    from .audio import _shared
+    try:
+        return op(_shared.ondio_backend(uri, {}))
+    except AuthError as err:
+        if not uri.startswith(('s3://', 'gs://')):
+            raise
+        _log.info('default credentials failed (%s); retrying with no '
+                  'credentials', err)
+        return op(_shared.ondio_backend(uri, _shared.PUBLIC_OPTIONS))
+
+
 def _cloud_get_bytes(
     url: str,
     byte_range: Optional[tuple[int, int]] = None,
 ) -> bytes:
-    """Fetch bytes from a local path or http(s)/s3/gs URL.
+    """Fetch bytes from a local path or an http(s)/s3/gs URL.
 
     Optionally fetches an inclusive ``[start, end]`` byte range (e.g. just a
-    file header). Cloud schemes fall back to unsigned/anonymous access so
-    public buckets work without credentials.
+    file header). s3:// and gs:// retry with no credentials if the default
+    credentials fail, so public buckets work.
     """
-    if url.startswith(('http://', 'https://')):
-        import requests
-        headers = (
-            {'Range': f'bytes={byte_range[0]}-{byte_range[1]}'}
-            if byte_range else None
+    import ondio
+    from .audio import _shared
+    if _shared.platform(url) == 'local':
+        with open(url, 'rb') as f:
+            if byte_range:
+                f.seek(byte_range[0])
+                return f.read(byte_range[1] - byte_range[0] + 1)
+            return f.read()
+    if byte_range:
+        start, end = byte_range
+        return _with_public_retry(
+            url, lambda b: ondio.read_range(url, start, end, backend=b),
         )
-        resp = requests.get(url, headers=headers, timeout=120)
-        resp.raise_for_status()
-        return resp.content
-    if url.startswith('s3://'):
-        import boto3
-        bucket, key = url[len('s3://'):].split('/', 1)
-        kw: dict[str, Any] = {'Bucket': bucket, 'Key': key}
-        if byte_range:
-            kw['Range'] = f'bytes={byte_range[0]}-{byte_range[1]}'
-        try:
-            return boto3.client('s3').get_object(**kw)['Body'].read()
-        except Exception as err:
-            from botocore import UNSIGNED
-            from botocore.config import Config
-            _log.info('s3 default creds failed (%s); retrying unsigned', err)
-            return boto3.client(
-                's3', config=Config(signature_version=UNSIGNED),
-            ).get_object(**kw)['Body'].read()
-    if url.startswith(('gs://', 'gcs://')):
-        from google.cloud import storage
-        bucket, blob = url.split('://', 1)[1].split('/', 1)
-        try:
-            client = storage.Client()
-        except Exception as err:
-            _log.info('gcs default creds failed (%s); using anonymous', err)
-            client = storage.Client.create_anonymous_client()
-        b = client.bucket(bucket).blob(blob)
-        if byte_range:
-            return b.download_as_bytes(start=byte_range[0], end=byte_range[1])
-        return b.download_as_bytes()
-    with open(url, 'rb') as f:
-        if byte_range:
-            f.seek(byte_range[0])
-            return f.read(byte_range[1] - byte_range[0] + 1)
-        return f.read()
+    return _with_public_retry(url, lambda b: ondio.read(url, backend=b))
 
 
 def _read_data_from_cloud(url: str) -> Any:
     """Download a data file from s3:// or gs:// and read it as a DataFrame.
 
-    Uses the native client (not requests, which has no adapter for these
-    schemes) via ``_cloud_get_bytes``.
+    Reads through ondio (``_cloud_get_bytes``), because requests has no
+    adapter for these schemes.
     """
     import os
     import tempfile
@@ -365,7 +358,7 @@ def _read_data_from_url(
     import requests as req
     import tempfile
 
-    if url.startswith(('s3://', 'gs://', 'gcs://')):
+    if url.startswith(('s3://', 'gs://')):
         return _read_data_from_cloud(url)
 
     _log.info('fetching data from URL: %s', url[:120])

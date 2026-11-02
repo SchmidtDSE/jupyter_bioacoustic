@@ -575,3 +575,51 @@ class TestListFiles:
         by_name = {r['name']: r for r in result}
         assert by_name['subdir']['is_dir'] is True
         assert by_name['file.txt']['is_dir'] is False
+
+
+#
+# check_audio_url (no network)
+#
+import ondio
+from ondio import AuthError, OndioError
+
+from tests._fakes import _FakeRemote
+
+_FLAC_OK = {'ok': True, 'sample_rate': 48000, 'duration': 60.0}
+
+
+@pytest.fixture
+def flac_remote(monkeypatch, tmp_path, vbr_flac):
+    fake = _FakeRemote(monkeypatch, tmp_path)
+    for uri in ('s3://b/x.flac', 'gs://b/x.flac'):
+        fake.store.put(uri, vbr_flac)
+        fake.public.put(uri, vbr_flac)
+    return fake
+
+
+class TestCheckAudioUrl:
+
+    @pytest.mark.parametrize('uri', ['s3://b/x.flac', 'gs://b/x.flac'])
+    def test_flac(self, flac_remote, uri):
+        assert ConfigBuilder().check_audio_url(uri) == _FLAC_OK
+        assert flac_remote.store.count('download') == 0
+
+    def test_flac_public_bucket(self, flac_remote):
+        flac_remote.backend_fails = AuthError('no credentials')
+        assert ConfigBuilder().check_audio_url('s3://b/x.flac') == _FLAC_OK
+        assert flac_remote.public_calls == ['s3://b/x.flac']
+
+    def test_segment_fallback(self, flac_remote, monkeypatch):
+        def bad_header(*a, **kw):
+            raise OndioError('bad header')
+        monkeypatch.setattr(ondio, 'extract_flac_header', bad_header)
+        got = ConfigBuilder().check_audio_url('gs://b/x.flac')
+        assert got == {'ok': True, 'sample_rate': 48000, 'channels': 1}
+        assert flac_remote.store.count('read_range') > 0
+
+    def test_programming_error_is_not_hidden(self, flac_remote, monkeypatch):
+        def bad_header(*a, **kw):
+            raise TypeError('bug')
+        monkeypatch.setattr(ondio, 'extract_flac_header', bad_header)
+        with pytest.raises(TypeError):
+            ConfigBuilder().check_audio_url('s3://b/x.flac')

@@ -601,16 +601,22 @@ class ConfigBuilder:
         reads a short segment to confirm reachability + sample rate (no
         duration). Raises on failure so the caller can surface the error.
         """
+        import ondio
+        from ondio import OndioError
         from ..audio import _shared, read_segment
-        from ..api import _cloud_get_bytes
+        from ..api import _with_public_retry
         _log.info('check_audio_url: %s', str(value)[:120])
 
-        if value.split('?')[0].lower().endswith('.flac'):
+        if _shared.is_flac(value):
             try:
-                header = _cloud_get_bytes(value, (0, _shared.HEADER_BYTES - 1))
-                sr, dur = _shared.parse_flac_header(header)
+                header = _with_public_retry(
+                    value,
+                    lambda b: ondio.extract_flac_header(value, backend=b),
+                )
+                sr = header.sample_rate
+                dur = header.total_samples / sr if sr > 0 else 0
                 return {'ok': True, 'sample_rate': int(sr), 'duration': float(dur)}
-            except Exception as err:
+            except OndioError as err:
                 # A segment read still checks reachability, with no duration.
                 _log.info('FLAC header read failed (%s); using segment read', err)
 
