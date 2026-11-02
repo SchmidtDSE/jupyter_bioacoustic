@@ -86,6 +86,7 @@ def read_segment(
     Returns:
         Audio data for the specified segment
     """
+    _shared.check_scheme(path, ('s3://',))
     if partial and _shared.is_flac(path):
         okw = _shared.ondio_kwargs('s3', kwargs)
         try:

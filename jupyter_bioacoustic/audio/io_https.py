@@ -99,6 +99,7 @@ def read_segment(
     Returns:
         (raw, sr) audio segment.
     """
+    _shared.check_scheme(path, ('http://', 'https://'))
     if partial and _shared.is_flac(path):
         okw = _shared.ondio_kwargs('https', kwargs)
         try:

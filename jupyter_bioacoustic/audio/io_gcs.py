@@ -55,6 +55,7 @@ def read(src: str, dest: str | None = None, start_byte: int | None = None,
 def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = True,
                  **kwargs: Any) -> Any:
     """Read audio segment from GCS blob."""
+    _shared.check_scheme(path, ('gs://',))
     if partial and _shared.is_flac(path):
         okw = _shared.ondio_kwargs('gs', kwargs)
         try:

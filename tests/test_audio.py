@@ -328,6 +328,36 @@ class TestRangedPathSkipped:
         self._assert_skipped(fake_remote, _URIS['s3'], partial=False)
 
 
+class TestPlatformScheme:
+    """``platform=`` selects a handler. ondio selects its backend from the
+    URI, so a URI of another scheme must be refused, not read."""
+
+    @pytest.mark.parametrize('platform,uri', [
+        ('aws', 'LOCAL'),
+        ('aws', _URIS['gs']),
+        ('gcs', 'LOCAL'),
+        ('gcs', _URIS['s3']),
+        ('https', 'LOCAL'),
+        ('https', _URIS['s3']),
+    ])
+    @pytest.mark.parametrize('partial', [True, False])
+    def test_other_scheme_is_refused(
+        self, fake_remote, vbr_flac, platform, uri, partial,
+    ):
+        uri = vbr_flac if uri == 'LOCAL' else uri
+        with pytest.raises(ValueError):
+            io.read_segment(uri, 1.0, 1.0, partial=partial, platform=platform)
+        assert fake_remote.calls == []
+        assert fake_remote.downloads == 0
+
+    def test_http_uses_ranged_path(self, fake_remote, vbr_flac):
+        got = io.read_segment('http://example.com/x.flac', 33.3, 3.0,
+                              platform='https')
+        _assert_same(got, io_local.read_segment(vbr_flac, 33.3, 3.0))
+        assert fake_remote.backend.ranges > 0
+        assert fake_remote.downloads == 0
+
+
 _CLIENT = object()
 
 

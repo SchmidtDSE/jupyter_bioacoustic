@@ -102,6 +102,17 @@ def parse_flac_header(
     raise ValueError('No STREAMINFO block found')
 
 
+def check_scheme(path: str, schemes: tuple[str, ...]) -> None:
+    """Raise ValueError if *path* does not start with one of *schemes*.
+
+    ``platform=`` can send a path to a handler of another scheme. ondio
+    selects its backend from the URI, so without this check a local path
+    sent to the S3 handler would be read from disk.
+    """
+    if not path.startswith(schemes):
+        raise ValueError(f'{path!r} does not start with {" or ".join(schemes)}')
+
+
 def is_flac(path: str) -> bool:
     """Return True if *path* names a FLAC file."""
     return path.split('?')[0].lower().endswith('.flac')
