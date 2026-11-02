@@ -135,6 +135,11 @@ test = { features = ["test"] }
 
 [tool.pixi.feature.test.dependencies]
 pytest = ">=9.0.3,<10"
+ruff = "*"
+
+[tool.pixi.feature.test.tasks]
+# style rules from CLAUDE.md, enforced: `pixi run -e test lint`
+lint = "ruff check"
 
 [tool.pixi.feature.dev.dependencies]
 twine = "*"
@@ -172,3 +177,24 @@ duckdb = ">=1.5.2, <2"
 
 [tool.pixi.feature.mystmd.dependencies]
 mystmd = ">=1.8.0, <2"
+
+# --- ruff (lint): PEP 8 @ 100 cols, pyflakes, Google docstrings, type hints ---
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [".jupyter", "demo", "myst", "jupyter_bioacoustic/labextension", "jupyter_bioacoustic/node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "D", "ANN"]
+ignore = [
+    "ANN401",   # typing.Any is allowed
+    "D105",     # magic methods
+    "D107",     # __init__ args are documented in the class docstring
+    "D212",     # summary may start on the line after the opening quotes (CLAUDE.md module style)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN"]   # test names say what they check
