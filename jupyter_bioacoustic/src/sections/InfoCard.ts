@@ -2,6 +2,8 @@
  * InfoCard — displays metadata for the currently selected row.
  *
  * Shows time range, resolved title/text templates, and Prev/Next navigation.
+ *
+ * License: BSD 3-Clause
  */
 import { Signal } from '@lumino/signaling';
 import { Detection } from '../types';
