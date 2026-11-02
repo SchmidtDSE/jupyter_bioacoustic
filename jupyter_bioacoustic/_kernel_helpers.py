@@ -7,7 +7,7 @@ performs I/O or computation, and returns a JSON string that the frontend
 parses.
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
