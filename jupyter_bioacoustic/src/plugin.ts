@@ -1,7 +1,12 @@
+/**
+ * plugin
+ *
+ * License: BSD 3-Clause
+ */
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { ICommandPalette } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
-import { FileDialog, IDefaultFileBrowser } from '@jupyterlab/filebrowser';
+import { IDefaultFileBrowser } from '@jupyterlab/filebrowser';
 import { ILauncher } from '@jupyterlab/launcher';
 import { INotebookTracker } from '@jupyterlab/notebook';
 import { LabIcon } from '@jupyterlab/ui-components';
@@ -68,7 +73,7 @@ class BioacousticWidget extends Widget {
     this._buildUI();
   }
 
-  dispose(): void {
+  override dispose(): void {
     if (this._ownedKernel) {
       this._ownedKernel.shutdown().catch(() => {});
       this._ownedKernel = null;
@@ -182,13 +187,13 @@ class BioacousticWidget extends Widget {
 
   // ─── Lumino lifecycle ────────────────────────────────────────
 
-  protected onAfterAttach(msg: Message): void {
+  protected override onAfterAttach(msg: Message): void {
     super.onAfterAttach(msg);
     this._player.attach();
     void this._init();
   }
 
-  protected onBeforeDetach(msg: Message): void {
+  protected override onBeforeDetach(msg: Message): void {
     this._player.detach();
     super.onBeforeDetach(msg);
   }
@@ -674,7 +679,6 @@ async function showProjectFileDialog(
   overlay.appendChild(dialog);
 
   // State tracking
-  let selectedFile = '';
   let selectedFromBrowser = false;
   let currentBrowserPath = initialPath;
 
@@ -754,7 +758,6 @@ async function showProjectFileDialog(
           } else if (item.name.toLowerCase().match(/\.(yaml|yml|json)$/)) {
             itemEl.textContent = `📄 ${item.name}`;
             const selectFile = () => {
-              selectedFile = item.path;
               selectedFromBrowser = true;
               const displayPath = cwdPath && item.path.startsWith(cwdPath + '/')
                 ? item.path.substring(cwdPath.length + 1)
