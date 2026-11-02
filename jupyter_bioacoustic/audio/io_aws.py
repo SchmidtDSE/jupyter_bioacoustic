@@ -1,12 +1,15 @@
-"""AWS S3 I/O Backend
+"""
+AWS S3 IO Backend
 
-Audio file I/O operations for AWS S3 storage backend.
+Audio file IO for AWS S3 (``s3://bucket/key``). Needs ``boto3``.
 
 License: BSD 3-Clause
 """
+#
+# Imports
+#
 from __future__ import annotations
 
-import os
 import logging
 from typing import Any, Optional, Union
 
@@ -14,14 +17,18 @@ import numpy as np
 
 from . import _shared
 
-#
-# Constants
-#
-S3_SCHEME = 's3://'
-PATH_SEPARATOR = '/'
 
 #
-# Public API
+# CONSTANTS
+#
+_log = logging.getLogger('jupyter_bioacoustic.audio')
+
+S3_SCHEME = 's3://'
+PATH_SEPARATOR = _shared.PATH_SEPARATOR
+
+
+#
+# PUBLIC
 #
 def read(
     src: str,
@@ -36,7 +43,7 @@ def read(
         src: S3 URI of the source object
         dest: Local destination path (optional)
         start_byte: Starting byte position (optional)
-        end_byte: Ending byte position (optional)
+        end_byte: Ending byte position, inclusive (optional)
         **kwargs: Additional arguments including client and AWS credentials
 
     Returns:
@@ -47,23 +54,12 @@ def read(
     client = kwargs.get('client') or _get_client(**kwargs)
 
     get_params = {'Bucket': bucket, 'Key': key}
-    if start_byte is not None and end_byte is not None:
-        get_params['Range'] = f'bytes={start_byte}-{end_byte}'
-    elif start_byte is not None:
-        get_params['Range'] = f'bytes={start_byte}-'
-    elif end_byte is not None:
-        get_params['Range'] = f'bytes=0-{end_byte}'
+    byte_range = _shared.range_header(start_byte, end_byte)
+    if byte_range:
+        get_params['Range'] = byte_range
 
     response = client.get_object(**get_params)
-    data = response['Body'].read()
-
-    if dest is None:
-        return data
-
-    _shared.ensure_parent_dirs(dest)
-    with open(dest, 'wb') as f:
-        f.write(data)
-    return dest
+    return _shared.save_or_return(response['Body'].read(), dest)
 
 
 def read_segment(
@@ -118,42 +114,30 @@ def write(
 
     Returns:
         Destination S3 URI
+
+    Raises:
+        ValueError: If ``src`` is a directory and ``recursive`` is False.
+        FileExistsError: If an object exists and ``overwrite`` is False.
     """
     bucket, prefix = _parse_s3_uri(dest)
     client = kwargs.get('client') or _get_client(**kwargs)
 
-    if os.path.isdir(src):
-        if not recursive:
-            raise ValueError(f"src is a directory but recursive=False: {src}")
+    if _shared.is_directory_upload(src, recursive):
         uploaded = []
-        for root, _dirs, files in os.walk(src):
-            for fname in files:
-                local_path = os.path.join(root, fname)
-                rel_path = os.path.relpath(local_path, src)
-                key = (prefix.rstrip(PATH_SEPARATOR) + PATH_SEPARATOR +
-                       rel_path.replace(os.sep, PATH_SEPARATOR))
-                if not overwrite:
-                    try:
-                        client.head_object(Bucket=bucket, Key=key)
-                        raise FileExistsError(f"s3://{bucket}/{key} exists and overwrite=False")
-                    except client.exceptions.ClientError:
-                        pass
-                client.upload_file(local_path, bucket, key)
-                uploaded.append(f's3://{bucket}/{key}')
-                _log.debug('uploaded %s -> s3://%s/%s', local_path, bucket, key)
+        for local_path, key in _shared.iter_upload_keys(src, prefix):
+            if not overwrite:
+                _raise_if_exists(client, bucket, key)
+            client.upload_file(local_path, bucket, key)
+            uploaded.append(f's3://{bucket}/{key}')
+            _log.debug('uploaded %s -> s3://%s/%s', local_path, bucket, key)
         _log.info('S3 write: uploaded %d files to %s', len(uploaded), dest)
         return dest
-    else:
-        key = prefix
-        if not overwrite:
-            try:
-                client.head_object(Bucket=bucket, Key=key)
-                raise FileExistsError(f"s3://{bucket}/{key} exists and overwrite=False")
-            except client.exceptions.ClientError:
-                pass
-        client.upload_file(src, bucket, key)
-        _log.info('S3 write: uploaded %s -> s3://%s/%s', src, bucket, key)
-        return dest
+
+    if not overwrite:
+        _raise_if_exists(client, bucket, prefix)
+    client.upload_file(src, bucket, prefix)
+    _log.info('S3 write: uploaded %s -> s3://%s/%s', src, bucket, prefix)
+    return dest
 
 
 def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
@@ -170,9 +154,7 @@ def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
     bucket, prefix = _parse_s3_uri(path)
     _log.debug('S3 list_files: bucket=%s prefix=%s recursive=%s', bucket, prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
-
-    if prefix and not prefix.endswith(PATH_SEPARATOR):    # '' = bucket root
-        prefix += PATH_SEPARATOR
+    prefix = _shared.list_prefix(prefix)
 
     results = []
     paginator = client.get_paginator('list_objects_v2')
@@ -189,17 +171,20 @@ def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
 
     return sorted(results)
 
-#
-# Internal
-#
-_log = logging.getLogger('jupyter_bioacoustic.audio')
 
-
+#
+# INTERNAL
+#
 def _parse_s3_uri(uri: str) -> tuple[str, str]:
-    """Split an S3 URI: ``s3://bucket/a/b`` -> ``('bucket', 'a/b')``; ``s3://bucket`` -> key ``''``."""
-    path = uri[len(S3_SCHEME):] if uri.startswith(S3_SCHEME) else uri
-    bucket, _, key = path.partition(PATH_SEPARATOR)
-    return bucket, key
+    """Split an S3 URI: ``s3://bucket/a/b`` -> ``('bucket', 'a/b')``; ``s3://bucket`` -> ``''``.
+
+    Args:
+        uri: S3 URI.
+
+    Returns:
+        (bucket, key).
+    """
+    return _shared.split_bucket_uri(uri, S3_SCHEME)
 
 
 def _get_client(
@@ -207,7 +192,16 @@ def _get_client(
     region_name: Optional[str] = None,
     **kwargs: Any
 ) -> Any:
-    """Create and return an S3 client."""
+    """Create an S3 client (optionally for a named profile / region).
+
+    Args:
+        profile_name: AWS profile name (optional).
+        region_name: AWS region (optional).
+        **kwargs: Ignored (the caller's other backend options).
+
+    Returns:
+        A boto3 S3 client.
+    """
     import boto3
     session_kwargs = {}
     if profile_name:
@@ -216,3 +210,23 @@ def _get_client(
         session_kwargs['region_name'] = region_name
     session = boto3.Session(**session_kwargs)
     return session.client('s3')
+
+
+def _raise_if_exists(client: Any, bucket: str, key: str) -> None:
+    """Raise if ``s3://bucket/key`` exists (used when ``overwrite=False``).
+
+    Any ``ClientError`` from the HEAD request is treated as "doesn't exist".
+
+    Args:
+        client: boto3 S3 client.
+        bucket: Bucket name.
+        key: Object key.
+
+    Raises:
+        FileExistsError: If the object exists.
+    """
+    try:
+        client.head_object(Bucket=bucket, Key=key)
+        raise FileExistsError(f"s3://{bucket}/{key} exists and overwrite=False")
+    except client.exceptions.ClientError:
+        pass
