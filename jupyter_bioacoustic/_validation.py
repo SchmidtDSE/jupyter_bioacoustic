@@ -5,7 +5,7 @@ Shared validation logic for BioacousticAnnotator and ConfigBuilder.
 Validates config keys, form keys, annotation tools, and dynamic forms.
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
