@@ -234,9 +234,9 @@ def validate(
     if result['valid'] and not result['warnings']:
         click.echo('✓ Valid')
     elif result['valid']:
-        click.echo(f'\n✓ Valid (with warnings)')
+        click.echo('\n✓ Valid (with warnings)')
     else:
-        click.echo(f'\n✗ Invalid')
+        click.echo('\n✗ Invalid')
         sys.exit(1)
 
 
