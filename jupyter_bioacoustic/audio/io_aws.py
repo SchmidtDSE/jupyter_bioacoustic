@@ -42,7 +42,6 @@ def read(
     Returns:
         Binary data if dest is None, otherwise destination path
     """
-    import boto3
     bucket, key = _parse_s3_uri(src)
     _log.debug('S3 read: bucket=%s key=%s byte_range=%s-%s', bucket, key, start_byte, end_byte)
     client = kwargs.get('client') or _get_client(**kwargs)
@@ -120,7 +119,6 @@ def write(
     Returns:
         Destination S3 URI
     """
-    import boto3
     bucket, prefix = _parse_s3_uri(dest)
     client = kwargs.get('client') or _get_client(**kwargs)
 
@@ -169,7 +167,6 @@ def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
     Returns:
         List of S3 URIs
     """
-    import boto3
     bucket, prefix = _parse_s3_uri(path)
     _log.debug('S3 list_files: bucket=%s prefix=%s recursive=%s', bucket, prefix, recursive)
     client = kwargs.get('client') or _get_client(**kwargs)
