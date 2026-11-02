@@ -75,6 +75,13 @@ export interface AudioCheckReply {
   channels?: number;
 }
 
+/** One entry of the ``listTemplates`` reply. */
+export interface TemplateSummary {
+  name: string;
+  title: string;
+  short_description: string;
+}
+
 /** ``validateConfig`` reply. */
 export interface ValidationReply {
   valid: boolean;
