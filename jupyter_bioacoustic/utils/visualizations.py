@@ -38,7 +38,7 @@ Usage:
         fig, ax = vis.plot(result)
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
