@@ -9,7 +9,7 @@ These helpers are re-exported from ``jupyter_bioacoustic.api`` under their
 old underscore names (``_resolve_audio_config``, ...).
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
