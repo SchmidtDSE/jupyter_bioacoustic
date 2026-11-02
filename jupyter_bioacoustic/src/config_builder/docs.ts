@@ -1,3 +1,8 @@
+/**
+ * docs
+ *
+ * License: BSD 3-Clause
+ */
 export interface SectionDocs {
   _intro: string;
   [field: string]: string | Record<string, string>;
