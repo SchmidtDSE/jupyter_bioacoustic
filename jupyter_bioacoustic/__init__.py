@@ -9,7 +9,7 @@ debug log file is attached to the ``jupyter_bioacoustic`` logger
 (``$JBA_LOG_DIR/$JBA_LOG_FILE``, default ``./jba_debug.log``).
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
