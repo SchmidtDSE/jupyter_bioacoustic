@@ -12,21 +12,26 @@ on URI scheme.
 
 License: BSD 3-Clause
 """
-
+#
+# Imports
+#
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from types import ModuleType
+from typing import Any, Optional, Union
 
-from . import io_local, io_aws, io_gcs, io_https
+import numpy as np
+
+from . import _shared, io_aws, io_gcs, io_https, io_local
 
 
 #
-# Constants
+# CONSTANTS
 #
 _log = logging.getLogger('jupyter_bioacoustic.audio')
 
-_PLATFORM_MAP = {
+_PLATFORM_MAP: dict[str, ModuleType] = {
     'aws': io_aws, 's3': io_aws,
     'gcs': io_gcs, 'gs': io_gcs,
     'https': io_https, 'http': io_https,
@@ -36,7 +41,7 @@ _PLATFORM_MAP = {
 
 
 #
-# Public API
+# PUBLIC
 #
 def read(
     src: str,
@@ -44,11 +49,18 @@ def read(
     start_byte: Optional[int] = None,
     end_byte: Optional[int] = None,
     **kwargs: Any,
-) -> Any:
-    """Read a file from any supported source.
+) -> Union[bytes, str]:
+    """Read a file (optionally a byte range) from any supported source.
+
+    Args:
+        src: Local path or s3:// / gs:// / http(s):// URI.
+        dest: Local path to save the bytes to (optional).
+        start_byte: First byte (optional).
+        end_byte: Last byte, inclusive (optional).
+        **kwargs: Backend options (client, credentials, platform, ...).
 
     Returns:
-        dest path (str) if dest provided, else bytes.
+        ``dest`` if given, else the bytes.
     """
     platform = kwargs.pop('platform', None)
     handler = _handler(src, platform)
@@ -71,8 +83,11 @@ def read_segment(
     partial: bool = True,
     fallback: bool = True,
     **kwargs: Any,
-) -> Any:
+) -> tuple[np.ndarray, int]:
     """Read a decoded audio segment from any source.
+
+    Clears ``_shared.last_warning`` first, so after the call it holds only this read's
+    warning (if any).
 
     Args:
         path: Local path or s3:// / gs:// / http(s):// URI.
@@ -89,7 +104,6 @@ def read_segment(
         (raw, sr): raw is 2-D float32 numpy array,
         sr is the sample rate.
     """
-    from . import _shared
     _shared.last_warning = None
 
     platform = kwargs.pop('platform', None)
@@ -112,7 +126,14 @@ def write(
     overwrite: bool = True,
     **kwargs: Any,
 ) -> str:
-    """Write a file or directory to any destination.
+    """Write a local file or directory to any destination.
+
+    Args:
+        src: Local source file or directory.
+        dest: Destination path or URI (picks the backend).
+        recursive: Required to write a directory.
+        overwrite: If False, refuse to replace existing files/objects.
+        **kwargs: Backend options (client, credentials, platform, ...).
 
     Returns:
         Destination path/URI (str).
@@ -138,6 +159,11 @@ def list_files(
 ) -> list[str]:
     """List files at a path or prefix.
 
+    Args:
+        path: Local directory or s3:// / gs:// prefix.
+        recursive: Also list files in subdirectories.
+        **kwargs: Backend options (client, credentials, platform, ...).
+
     Returns:
         Sorted list of full paths/URIs.
     """
@@ -149,10 +175,21 @@ def list_files(
 
 
 #
-# Internal
+# INTERNAL
 #
-def _handler(path: str, platform: Optional[str] = None):
-    """Select the IO backend for a given path/URI."""
+def _handler(path: str, platform: Optional[str] = None) -> ModuleType:
+    """Select the IO backend module for a path/URI.
+
+    Args:
+        path: Local path or URI.
+        platform: Explicit backend name (a ``_PLATFORM_MAP`` key) that overrides the scheme.
+
+    Returns:
+        The backend module (``io_aws``, ``io_gcs``, ``io_https`` or ``io_local``).
+
+    Raises:
+        KeyError: If ``platform`` is not a known backend name.
+    """
     if platform:
         return _PLATFORM_MAP[platform]
     if path.startswith('s3://'):
