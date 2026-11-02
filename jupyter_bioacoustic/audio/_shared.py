@@ -1,9 +1,9 @@
 """
 Audio Shared (Internal)
 
-Shared utilities for audio IO backends: caching, FLAC
-header parsing, sample-exact remote FLAC windows, and
-path helpers.
+Shared utilities for audio IO backends: caching, ondio
+backends, sample-exact remote FLAC windows, and path
+helpers.
 
 License: BSD 3-Clause
 """
@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import struct
 from typing import Any
 
 import numpy as np
@@ -25,7 +24,6 @@ import numpy as np
 _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 CACHE_DIR = '/tmp/jba_audio_cache'
-HEADER_BYTES = 4096
 
 # Caller options passed on to ondio, per scheme.
 _ONDIO_OPTIONS = {
@@ -53,53 +51,6 @@ def cache_path(url_or_uri: str) -> str:
         url_or_uri.encode(),
     ).hexdigest() + ext
     return os.path.join(CACHE_DIR, name)
-
-
-def parse_flac_header(
-    header_data: bytes,
-) -> tuple[int, float]:
-    """Extract sample rate and duration from a FLAC header.
-
-    Returns:
-        (sample_rate, duration_seconds)
-    """
-    if header_data[:4] != b'fLaC':
-        _log.error(
-            'FLAC header validation failed: got %r',
-            header_data[:4],
-        )
-        raise ValueError('Not a valid FLAC file')
-    pos = 4
-    while pos < len(header_data) - 34:
-        block_type = header_data[pos] & 0x7f
-        is_last = (header_data[pos] & 0x80) != 0
-        length = struct.unpack(
-            '>I', b'\x00' + header_data[pos + 1:pos + 4],
-        )[0]
-        if block_type == 0:
-            si = header_data[pos + 4:pos + 4 + length]
-            sample_rate = struct.unpack(
-                '>I', b'\x00' + si[10:13],
-            )[0] >> 4
-            total_samples = (
-                struct.unpack(
-                    '>Q', b'\x00\x00\x00' + si[13:18],
-                )[0]
-                & 0xfffffffff
-            )
-            duration = (
-                total_samples / sample_rate
-                if sample_rate > 0 else 0
-            )
-            return sample_rate, duration
-        pos += 4 + length
-        if is_last:
-            break
-    _log.error(
-        'No STREAMINFO block found in FLAC header '
-        '(%d bytes)', len(header_data),
-    )
-    raise ValueError('No STREAMINFO block found')
 
 
 def check_scheme(path: str, schemes: tuple[str, ...]) -> None:
@@ -145,6 +96,33 @@ def ondio_backend(uri: str, okw: dict[str, Any]) -> Any:
     """Build the ondio backend for *uri* from mapped caller options."""
     from ondio.registry import get_backend
     return get_backend(uri, **okw)
+
+
+def normalize_gs(uri: str) -> str:
+    """Rewrite a leading gcs:// to gs://. ondio knows only gs://."""
+    if uri.startswith('gcs://'):
+        return 'gs://' + uri[len('gcs://'):]
+    return uri
+
+
+def public_backend(uri: str) -> Any:
+    """Build an ondio backend with no credentials, for a public bucket.
+
+    S3 uses an unsigned client and GCS an anonymous client.
+    """
+    if uri.startswith('s3://'):
+        import boto3
+        from botocore import UNSIGNED
+        from botocore.config import Config
+        from ondio.backends.aws import AwsBackend
+        return AwsBackend(client=boto3.client(
+            's3', config=Config(signature_version=UNSIGNED),
+        ))
+    if uri.startswith('gs://'):
+        from google.cloud import storage
+        from ondio.backends.gcs import GcsBackend
+        return GcsBackend(client=storage.Client.create_anonymous_client())
+    raise ValueError(f'no public backend for {uri!r}')
 
 
 def read_remote_flac(

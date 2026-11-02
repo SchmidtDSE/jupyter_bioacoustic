@@ -2,13 +2,11 @@
 Tests for audio modules
 
 Unit tests for IO handler dispatch, cache path generation,
-and FLAC header parsing.
+and remote IO through ondio.
 
 License: BSD 3-Clause
 """
-import hashlib
 import os
-import struct
 import sys
 
 import pytest
@@ -16,7 +14,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jupyter_bioacoustic.audio import io, _shared
-from jupyter_bioacoustic.audio._shared import cache_path, parse_flac_header
+from jupyter_bioacoustic.audio._shared import cache_path
 from jupyter_bioacoustic.audio import io_local, io_aws, io_gcs, io_https
 
 
@@ -82,40 +80,6 @@ class TestCachePath:
 
 
 #
-# parse_flac_header
-#
-def _make_flac_header(sample_rate: int, total_samples: int) -> bytes:
-    """Build a minimal valid FLAC header with STREAMINFO block."""
-    magic = b'fLaC'
-    block_type = 0x80
-    si_length = 34
-    si_header = bytes([block_type]) + struct.pack('>I', si_length)[1:]
-    si_data = bytearray(34)
-    sr_bits = (sample_rate << 4) & 0xFFFFF0
-    si_data[10:13] = struct.pack('>I', sr_bits)[1:]
-    ts_packed = struct.pack('>Q', total_samples & 0xfffffffff)
-    si_data[13:18] = ts_packed[3:]
-    return magic + si_header + bytes(si_data)
-
-
-class TestParseFlacHeader:
-
-    def test_valid_header(self):
-        header = _make_flac_header(44100, 44100 * 60)
-        sr, dur = parse_flac_header(header)
-        assert sr == 44100
-        assert abs(dur - 60.0) < 0.01
-
-    def test_invalid_magic(self):
-        with pytest.raises(ValueError, match='Not a valid FLAC'):
-            parse_flac_header(b'RIFF' + b'\x00' * 100)
-
-    def test_truncated_header(self):
-        with pytest.raises(ValueError):
-            parse_flac_header(b'fLaC\x00')
-
-
-#
 # last_warning cleared by dispatcher
 #
 class TestLastWarningCleared:
@@ -141,126 +105,13 @@ import requests
 import soundfile as sf
 from ondio import AuthError, NetworkError, OndioError
 from ondio.registry import get_backend
-from ondio.backends.local import LocalBackend
 
-_VBR_SR = 48000
-_VBR_SECONDS = 60
+from tests._fakes import VBR_SR as _VBR_SR, _DiskStore, _FakeRemote
 _URIS = {
     's3': 's3://bucket/x.flac',
     'gs': 'gs://bucket/x.flac',
     'https': 'https://example.com/x.flac',
 }
-
-
-@pytest.fixture(scope='module')
-def vbr_flac(tmp_path_factory):
-    """60 s FLAC whose bitrate varies strongly: 5 s blocks of digital
-    silence and full-scale white noise. soundfile writes no seek table."""
-    path = str(tmp_path_factory.mktemp('vbr') / 'vbr.flac')
-    rng = np.random.default_rng(0)
-    x = np.zeros(_VBR_SECONDS * _VBR_SR, dtype=np.float32)
-    for b in range(5, _VBR_SECONDS, 10):
-        x[b * _VBR_SR:(b + 5) * _VBR_SR] = rng.uniform(-1, 1, 5 * _VBR_SR)
-    sf.write(path, x, _VBR_SR, subtype='PCM_16', format='FLAC')
-    return path
-
-
-class _DiskStore:
-    """ondio backend that serves s3://, gs:// and http(s):// URIs from files
-    under root/<bucket-or-host>/<key>. It records each call as
-    (method, uri, *args). Set fail[method] = exc to make that method raise."""
-
-    def __init__(self, root):
-        self.root = str(root)
-        self.calls = []
-        self.fail = {}
-        self.listing = []
-        self._local = LocalBackend()
-
-    def path(self, uri):
-        key = uri.split('://', 1)[1].split('?')[0]
-        # A file system merges '//'; object stores do not.
-        assert '//' not in key, f'empty path segment in {uri}'
-        return os.path.join(self.root, key)
-
-    def put(self, uri, src):
-        import shutil
-        os.makedirs(os.path.dirname(self.path(uri)), exist_ok=True)
-        shutil.copyfile(src, self.path(uri))
-
-    def count(self, method):
-        return sum(1 for c in self.calls if c[0] == method)
-
-    def _call(self, method, uri, *args):
-        self.calls.append((method, uri, *args))
-        if method in self.fail:
-            raise self.fail[method]
-
-    def read(self, uri):
-        self._call('read', uri)
-        return self._local.read(self.path(uri))
-
-    def read_range(self, uri, start_byte, end_byte):
-        self._call('read_range', uri, start_byte, end_byte)
-        return self._local.read_range(self.path(uri), start_byte, end_byte)
-
-    def size(self, uri):
-        self._call('size', uri)
-        return self._local.size(self.path(uri))
-
-    def exists(self, uri):
-        self._call('exists', uri)
-        return self._local.exists(self.path(uri))
-
-    def download(self, uri, out_path):
-        self._call('download', uri, out_path)
-        self._local.download(self.path(uri), out_path)
-
-    def upload(self, uri, source_path):
-        self._call('upload', uri, source_path)
-        os.makedirs(os.path.dirname(self.path(uri)), exist_ok=True)
-        self._local.upload(self.path(uri), source_path)
-
-    def list_files(self, uri_prefix, *, recursive=True, **kwargs):
-        self._call('list_files', uri_prefix, recursive)
-        return self.listing
-
-    def object(self, uri):
-        """The stored bytes at *uri*, or None."""
-        p = self.path(uri)
-        return open(p, 'rb').read() if os.path.isfile(p) else None
-
-
-class _FakeRemote:
-    """Gives JBA's ondio calls a _DiskStore. self.calls records each
-    (uri, ondio options) that reached the backend seam. The old clients
-    fail, so nothing reaches the network."""
-
-    def __init__(self, monkeypatch, tmp_path):
-        self.store = _DiskStore(tmp_path / 'store')
-        self.calls = []
-        monkeypatch.setattr(_shared, 'CACHE_DIR', str(tmp_path / 'cache'))
-
-        def ondio_backend(uri, okw):
-            self.calls.append((uri, okw))
-            return self.store
-
-        monkeypatch.setattr(_shared, 'ondio_backend', ondio_backend)
-
-        def old_client(*a, **kw):
-            raise AssertionError('old storage client used')
-
-        for mod in (io_aws, io_gcs):
-            monkeypatch.setattr(mod, '_get_client', old_client, raising=False)
-        monkeypatch.setattr(requests, 'get', old_client)
-
-    @property
-    def ranges(self):
-        return self.store.count('read_range')
-
-    @property
-    def downloads(self):
-        return self.store.count('download')
 
 
 @pytest.fixture

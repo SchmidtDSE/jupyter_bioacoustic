@@ -1144,3 +1144,98 @@ class TestAnnotatorSort:
         assert ba._sort_order == 'desc'
         # valid keys — no unknown-key errors
         assert ba.validate()['valid']
+
+
+#
+# _cloud_get_bytes and the public-bucket retry (no network)
+#
+from ondio import AuthError, NetworkError
+
+from jupyter_bioacoustic.api import _cloud_get_bytes
+from jupyter_bioacoustic.audio import _shared
+from tests._fakes import _FakeRemote
+
+_DATA = bytes(range(10))
+
+
+@pytest.fixture
+def remote(monkeypatch, tmp_path):
+    """_DATA in the default store and in the public store."""
+    src = tmp_path / 'x.bin'
+    src.write_bytes(_DATA)
+    fake = _FakeRemote(monkeypatch, tmp_path)
+    for uri in ('s3://b/x.bin', 'gs://b/x.bin', 'https://h/x.bin'):
+        fake.store.put(uri, str(src))
+        fake.public.put(uri, str(src))
+    return fake
+
+
+class TestCloudGetBytes:
+
+    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin',
+                                     'https://h/x.bin'])
+    def test_whole(self, remote, uri):
+        assert _cloud_get_bytes(uri) == _DATA
+        assert remote.store.count('read') == 1
+        assert remote.public_calls == []
+
+    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin',
+                                     'https://h/x.bin'])
+    def test_range_inclusive(self, remote, uri):
+        assert _cloud_get_bytes(uri, (2, 5)) == _DATA[2:6]
+
+    def test_local_path(self, remote, tmp_path):
+        assert _cloud_get_bytes(str(tmp_path / 'x.bin'), (2, 5)) == _DATA[2:6]
+        assert remote.calls == []
+
+    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin'])
+    def test_public_retry(self, remote, uri):
+        remote.store.fail['read'] = AuthError('no credentials')
+        assert _cloud_get_bytes(uri) == _DATA
+        assert remote.public_calls == [uri]
+        assert remote.public.count('read') == 1
+
+    @pytest.mark.parametrize('uri', ['s3://b/x.bin', 'gs://b/x.bin'])
+    def test_public_retry_when_backend_fails(self, remote, uri):
+        # GCS, and S3 with an unknown profile, fail when the backend is built.
+        remote.backend_fails = AuthError('no credentials')
+        assert _cloud_get_bytes(uri, (2, 5)) == _DATA[2:6]
+        assert remote.public_calls == [uri]
+
+    def test_no_retry_on_network_error(self, remote):
+        remote.store.fail['read'] = NetworkError('reset')
+        with pytest.raises(NetworkError):
+            _cloud_get_bytes('s3://b/x.bin')
+        assert remote.public_calls == []
+
+    def test_https_no_retry(self, remote):
+        remote.store.fail['read'] = AuthError('denied')
+        with pytest.raises(AuthError):
+            _cloud_get_bytes('https://h/x.bin')
+        assert remote.public_calls == []
+
+    def test_gcs_alias(self, remote):
+        assert _cloud_get_bytes('gcs://b/x.bin') == _DATA
+        assert [c[0] for c in remote.calls] == ['gs://b/x.bin']
+
+
+class TestPublicBackend:
+    # These constructors make no request.
+
+    def test_s3_is_unsigned(self):
+        from botocore import UNSIGNED
+        from ondio.backends.aws import AwsBackend
+        b = _shared.public_backend('s3://b/k')
+        assert isinstance(b, AwsBackend)
+        assert b._client.meta.config.signature_version is UNSIGNED
+
+    def test_gs_is_anonymous(self):
+        from google.auth.credentials import AnonymousCredentials
+        from ondio.backends.gcs import GcsBackend
+        b = _shared.public_backend('gs://b/k')
+        assert isinstance(b, GcsBackend)
+        assert isinstance(b._client._credentials, AnonymousCredentials)
+
+    def test_other_scheme(self):
+        with pytest.raises(ValueError):
+            _shared.public_backend('https://h/k')
