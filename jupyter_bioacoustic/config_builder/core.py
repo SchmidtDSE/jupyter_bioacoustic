@@ -645,14 +645,14 @@ class ConfigBuilder:
         reads a short segment to confirm reachability + sample rate (no
         duration). Raises on failure so the caller can surface the error.
         """
-        from ..audio import _shared, read_segment
+        from ..audio import _partial, read_segment
         from ..api import _cloud_get_bytes
         _log.info('check_audio_url: %s', str(value)[:120])
 
         if value.split('?')[0].lower().endswith('.flac'):
             try:
-                header = _cloud_get_bytes(value, (0, _shared.HEADER_BYTES - 1))
-                sr, dur = _shared.parse_flac_header(header)
+                header = _cloud_get_bytes(value, (0, _partial.HEADER_BYTES - 1))
+                sr, dur = _partial.parse_flac_header(header)
                 return {'ok': True, 'sample_rate': int(sr), 'duration': float(dur)}
             except Exception as err:
                 # No ffmpeg-free duration available — fall back to a segment read.
