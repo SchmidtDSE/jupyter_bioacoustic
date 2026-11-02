@@ -32,7 +32,6 @@ import uuid
 import warnings
 from datetime import datetime
 from typing import Any, Iterator, Optional
-from pprint import pprint
 from IPython import get_ipython
 from IPython.display import display, Javascript, HTML, Markdown
 
@@ -1004,7 +1003,7 @@ _CONFIG_PARAMS = {
 # Public API
 #
 def print_md(value):
-    """ print markdown utility """
+    """Print markdown utility"""
     display(Markdown(value))
 
 
@@ -1900,7 +1899,7 @@ class BioacousticAnnotator:
 
 
     def describe(self, print_config: bool = True) -> None:
-        """ print description of instance """
+        """Print description of instance"""
         if self.project_path or self.config_path or self.form_path:
             print_md('---')
             print_md('**Configuration Files**')
