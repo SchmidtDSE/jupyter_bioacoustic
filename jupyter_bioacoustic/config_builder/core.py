@@ -21,9 +21,6 @@ from IPython.display import display, HTML
 
 from .._validation import (
     SKIP_KEYS,
-    VALID_ANNOTATION_TOOLS,
-    VALID_CONFIG_KEYS,
-    VALID_FORM_KEYS,
     validate_config,
 )
 
