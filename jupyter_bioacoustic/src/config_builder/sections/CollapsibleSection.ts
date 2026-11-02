@@ -1,3 +1,8 @@
+/**
+ * CollapsibleSection
+ *
+ * License: BSD 3-Clause
+ */
 import { Signal } from '@lumino/signaling';
 import { COLORS, lockIconSvg } from '../../styles';
 
@@ -13,7 +18,6 @@ export abstract class CollapsibleSection {
   protected _sectionName: string;
   private _targetToggle: HTMLSelectElement | null = null;
   private _targetLockBadge: HTMLSpanElement | null = null;
-  private _hasTargetToggle: boolean;
   private _chevron: HTMLSpanElement;
   private _summary: HTMLElement;
   private _bodyLockBanner: HTMLDivElement | null = null;
@@ -23,7 +27,6 @@ export abstract class CollapsibleSection {
 
   constructor(title: string, sectionName: string, open = false, showTargetToggle = false, targetOptions?: string[]) {
     this._sectionName = sectionName;
-    this._hasTargetToggle = showTargetToggle;
 
     this.element = document.createElement('details');
     if (open) this.element.open = true;
