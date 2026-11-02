@@ -1,23 +1,49 @@
 /**
- * YamlPanel
+ * The builder's collapsible right-hand pane: per-section docs (field cards highlighted as the
+ * user edits) or a preview of the three generated YAML files, with Edit -> Apply, Save File
+ * and Reload YAML.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { COLORS, btnStyle, inputStyle } from '../styles';
 import { DOCS } from './docs';
+import type { YamlTexts } from './types';
 
+
+//
+// Constants
+//
+const EXPANDED_WIDTH = '350px';
+const COLLAPSED_WIDTH = '36px';
+/** YAML tabs: kernel config type -> tab label. */
+const YAML_TABS: ReadonlyArray<[string, string]> = [
+  ['project', 'project'], ['config', 'config'], ['form_config', 'form'],
+];
+/** Docs heading per section, where it differs from the section name. */
+const SECTION_TITLES: Record<string, string> = { project: 'Setup', app: 'Application' };
+
+
+//
+// Public
+//
 export class YamlPanel {
   readonly element: HTMLDivElement;
+  /** Apply clicked on edited YAML (``configType``: project / config / form_config). */
   readonly configEdited = new Signal<this, { yaml: string; configType: string }>(this);
+  /** Save File clicked (payload: the shown config type). */
   readonly saveSingleRequested = new Signal<this, string>(this);
+  /** Reload YAML clicked. */
   readonly refreshRequested = new Signal<this, void>(this);
 
   private _expanded = true;
   private _editing = false;
   private _configType = 'project';
   private _mode: 'docs' | 'yaml' = 'docs';
-  private _yamls = { project_yaml: '', config_yaml: '', form_yaml: '' };
+  private _yamls: YamlTexts = { project_yaml: '', config_yaml: '', form_yaml: '' };
 
   private _toggleBtn: HTMLButtonElement;
   private _modeBar: HTMLDivElement;
@@ -40,7 +66,7 @@ export class YamlPanel {
   constructor() {
     this.element = document.createElement('div');
     this.element.style.cssText =
-      `display:flex;flex-direction:column;width:350px;overflow:hidden;` +
+      `display:flex;flex-direction:column;width:${EXPANDED_WIDTH};overflow:hidden;` +
       `border-left:1px solid ${COLORS.bgSurface0};transition:width 0.2s ease;flex-shrink:0;`;
 
     const header = document.createElement('div');
@@ -85,9 +111,9 @@ export class YamlPanel {
     this._yamlTabBar.style.cssText =
       `display:none;gap:0;background:${COLORS.bgMantle};border-bottom:1px solid ${COLORS.bgSurface0};flex-shrink:0;`;
 
-    for (const t of ['project', 'config', 'form_config']) {
+    for (const [t, label] of YAML_TABS) {
       const btn = document.createElement('button');
-      btn.textContent = t === 'form_config' ? 'form' : t;
+      btn.textContent = label;
       btn.style.cssText =
         `flex:1;padding:4px 8px;font-size:11px;border:none;cursor:pointer;` +
         `background:${t === 'project' ? COLORS.bgSurface0 : 'transparent'};` +
@@ -157,6 +183,66 @@ export class YamlPanel {
     this._renderDocs('project');
   }
 
+  /** Collapse to a thin strip / expand again. */
+  toggle(): void {
+    this._expanded = !this._expanded;
+    if (this._expanded) {
+      this.element.style.width = EXPANDED_WIDTH;
+      this._modeBar.style.display = 'flex';
+      this._setMode(this._mode);
+    } else {
+      this.element.style.width = COLLAPSED_WIDTH;
+      this._modeBar.style.display = 'none';
+      this._docsContent.style.display = 'none';
+      this._yamlContent.style.display = 'none';
+      this._yamlTabBar.style.display = 'none';
+      this._editBtn.style.display = 'none';
+      if (this._editing) this._cancelEdit();
+    }
+    this._toggleBtn.textContent = this._expanded ? '▶' : '◀';
+  }
+
+  /** Show YAML tab ``tab`` (project / config / form_config). */
+  switchToTab(tab: string): void {
+    this._switchYamlTab(tab);
+  }
+
+  /** New YAML previews from the kernel. */
+  updateYaml(yamls: YamlTexts): void {
+    this._yamls = yamls;
+    this._updateYamlDisplay(yamls);
+  }
+
+  /** A section was focused: show its YAML file and its docs. */
+  showForSection(section: string, yamls: YamlTexts): void {
+    if (section === 'form') {
+      this._configType = 'form_config';
+    } else if (section === 'project') {
+      this._configType = 'project';
+    } else {
+      this._configType = 'config';
+    }
+    this._highlightYamlTab();
+    this._yamls = yamls;
+    this._updateYamlDisplay(yamls);
+    this._renderDocs(section);
+  }
+
+  /** Highlight and scroll to the docs card of ``fieldKey`` (if the section documents it). */
+  scrollToField(fieldKey: string): void {
+    if (this._activeField) {
+      this._activeField.style.borderLeftColor = COLORS.bgSurface1;
+    }
+    const el = this._docsContent.querySelector(`[data-field="${fieldKey}"]`) as HTMLElement | null;
+    if (el) {
+      el.style.borderLeftColor = COLORS.sapphire;
+      this._activeField = el;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      this._activeField = null;
+    }
+  }
+
   private _modeTabStyle(active: boolean): string {
     return `flex:1;padding:5px 8px;font-size:11px;font-weight:600;border:none;cursor:pointer;` +
       `background:${active ? COLORS.bgSurface0 : 'transparent'};` +
@@ -182,76 +268,17 @@ export class YamlPanel {
     }
   }
 
-  toggle(): void {
-    this._expanded = !this._expanded;
-    if (this._expanded) {
-      this.element.style.width = '350px';
-      this._modeBar.style.display = 'flex';
-      this._setMode(this._mode);
-    } else {
-      this.element.style.width = '36px';
-      this._modeBar.style.display = 'none';
-      this._docsContent.style.display = 'none';
-      this._yamlContent.style.display = 'none';
-      this._yamlTabBar.style.display = 'none';
-      this._editBtn.style.display = 'none';
-      if (this._editing) this._cancelEdit();
-    }
-    this._toggleBtn.textContent = this._expanded ? '▶' : '◀';
-  }
-
-  get configType(): string {
-    return this._configType;
-  }
-
-  switchToTab(tab: string): void {
-    this._switchYamlTab(tab);
-  }
-
   private _switchYamlTab(tab: string): void {
     this._configType = tab;
-    for (const [t, btn] of this._yamlTabs) {
-      btn.style.background = t === tab ? COLORS.bgSurface0 : 'transparent';
-      btn.style.color = t === tab ? COLORS.textPrimary : COLORS.textMuted;
-    }
+    this._highlightYamlTab();
     if (this._editing) this._cancelEdit();
     this._updateYamlDisplay(this._yamls);
   }
 
-  updateYaml(yamls: { project_yaml: string; config_yaml: string; form_yaml: string }): void {
-    this._yamls = yamls;
-    this._updateYamlDisplay(yamls);
-  }
-
-  showForSection(section: string, yamls: { project_yaml: string; config_yaml: string; form_yaml: string }): void {
-
-    if (section === 'form') {
-      this._configType = 'form_config';
-    } else if (section === 'project') {
-      this._configType = 'project';
-    } else {
-      this._configType = 'config';
-    }
+  private _highlightYamlTab(): void {
     for (const [t, btn] of this._yamlTabs) {
       btn.style.background = t === this._configType ? COLORS.bgSurface0 : 'transparent';
       btn.style.color = t === this._configType ? COLORS.textPrimary : COLORS.textMuted;
-    }
-    this._yamls = yamls;
-    this._updateYamlDisplay(yamls);
-    this._renderDocs(section);
-  }
-
-  scrollToField(fieldKey: string): void {
-    if (this._activeField) {
-      this._activeField.style.borderLeftColor = COLORS.bgSurface1;
-    }
-    const el = this._docsContent.querySelector(`[data-field="${fieldKey}"]`) as HTMLElement | null;
-    if (el) {
-      el.style.borderLeftColor = COLORS.sapphire;
-      this._activeField = el;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      this._activeField = null;
     }
   }
 
@@ -264,9 +291,8 @@ export class YamlPanel {
       return;
     }
 
-    const sectionTitles: Record<string, string> = { project: 'Setup',  app: 'Application' };
     const title = document.createElement('h3');
-    title.textContent = sectionTitles[section] || section;
+    title.textContent = SECTION_TITLES[section] || section;
     title.style.cssText =
       `margin:0 0 8px 0;font-size:14px;font-weight:700;color:${COLORS.blue};` +
       `text-transform:capitalize;`;
@@ -354,7 +380,7 @@ export class YamlPanel {
     return fieldEl;
   }
 
-  private _updateYamlDisplay(yamls: { project_yaml: string; config_yaml: string; form_yaml: string }): void {
+  private _updateYamlDisplay(yamls: YamlTexts): void {
     let yaml = '';
     if (this._configType === 'project') yaml = yamls.project_yaml;
     else if (this._configType === 'config') yaml = yamls.config_yaml;
@@ -374,14 +400,11 @@ export class YamlPanel {
 
   private _applyEdit(): void {
     const yaml = this._editor.value;
-    this._editing = false;
-    this._editor.style.display = 'none';
-    this._display.style.display = 'block';
-    this._editBar.style.display = 'none';
-    this._editBtn.style.display = '';
+    this._cancelEdit();
     this.configEdited.emit({ yaml, configType: this._configType });
   }
 
+  /** Leave edit mode without applying. */
   private _cancelEdit(): void {
     this._editing = false;
     this._editor.style.display = 'none';
