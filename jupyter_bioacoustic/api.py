@@ -23,7 +23,7 @@ old underscore names (``_load_data``, ``_resolve_templates``, ...) because the
 config builder, the TypeScript frontend and the tests import them from here.
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
