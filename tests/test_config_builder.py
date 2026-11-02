@@ -14,65 +14,67 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jupyter_bioacoustic.config_builder.core import (
-    _ensure_ext,
-    _prep_for_yaml,
-    _resolve_path,
-    _LiteralStr,
     ConfigBuilder,
     SKIP_KEYS,
+)
+from jupyter_bioacoustic.config_builder.files import (
+    LiteralStr,
+    ensure_ext,
+    prep_for_yaml,
+    resolve_path,
 )
 
 
 #
-# _ensure_ext
+# ensure_ext
 #
 class TestEnsureExt:
 
     def test_adds_yaml(self):
-        assert _ensure_ext('config') == 'config.yaml'
+        assert ensure_ext('config') == 'config.yaml'
 
     def test_keeps_yaml(self):
-        assert _ensure_ext('config.yaml') == 'config.yaml'
+        assert ensure_ext('config.yaml') == 'config.yaml'
 
     def test_keeps_yml(self):
-        assert _ensure_ext('config.yml') == 'config.yml'
+        assert ensure_ext('config.yml') == 'config.yml'
 
     def test_non_matching_ext_gets_appended(self):
-        assert _ensure_ext('config.json') == 'config.json.yaml'
+        assert ensure_ext('config.json') == 'config.json.yaml'
 
     def test_empty_string(self):
-        assert _ensure_ext('') == '.yaml'
+        assert ensure_ext('') == '.yaml'
 
 
 #
-# _prep_for_yaml
+# prep_for_yaml
 #
 class TestPrepForYaml:
 
     def test_plain_string_unchanged(self):
-        result = _prep_for_yaml('hello')
+        result = prep_for_yaml('hello')
         assert result == 'hello'
-        assert not isinstance(result, _LiteralStr)
+        assert not isinstance(result, LiteralStr)
 
     def test_multiline_becomes_literal(self):
-        result = _prep_for_yaml('line1\nline2')
-        assert isinstance(result, _LiteralStr)
+        result = prep_for_yaml('line1\nline2')
+        assert isinstance(result, LiteralStr)
         assert result == 'line1\nline2'
 
     def test_nested_dict(self):
-        result = _prep_for_yaml({'a': 'plain', 'b': 'has\nnewline'})
-        assert not isinstance(result['a'], _LiteralStr)
-        assert isinstance(result['b'], _LiteralStr)
+        result = prep_for_yaml({'a': 'plain', 'b': 'has\nnewline'})
+        assert not isinstance(result['a'], LiteralStr)
+        assert isinstance(result['b'], LiteralStr)
 
     def test_list(self):
-        result = _prep_for_yaml(['plain', 'has\nnewline'])
-        assert not isinstance(result[0], _LiteralStr)
-        assert isinstance(result[1], _LiteralStr)
+        result = prep_for_yaml(['plain', 'has\nnewline'])
+        assert not isinstance(result[0], LiteralStr)
+        assert isinstance(result[1], LiteralStr)
 
     def test_non_string_passthrough(self):
-        assert _prep_for_yaml(42) == 42
-        assert _prep_for_yaml(True) is True
-        assert _prep_for_yaml(None) is None
+        assert prep_for_yaml(42) == 42
+        assert prep_for_yaml(True) is True
+        assert prep_for_yaml(None) is None
 
 
 #
@@ -236,28 +238,28 @@ class TestConfigBuilderValidate:
 
 
 #
-# _resolve_path
+# resolve_path
 #
 class TestResolvePath:
 
     def test_absolute_exists(self, tmp_path):
         p = tmp_path / 'config.yaml'
         p.write_text('test')
-        result = _resolve_path(str(p), '/other/dir')
+        result = resolve_path(str(p), '/other/dir')
         assert result == str(p)
 
     def test_absolute_missing(self):
-        result = _resolve_path('/nonexistent/config.yaml', '/base')
+        result = resolve_path('/nonexistent/config.yaml', '/base')
         assert result is None
 
     def test_relative_in_base_dir(self, tmp_path):
         p = tmp_path / 'config.yaml'
         p.write_text('test')
-        result = _resolve_path('config.yaml', str(tmp_path))
+        result = resolve_path('config.yaml', str(tmp_path))
         assert result == str(p)
 
     def test_relative_not_found(self, tmp_path):
-        result = _resolve_path('missing.yaml', str(tmp_path))
+        result = resolve_path('missing.yaml', str(tmp_path))
         assert result is None
 
 
@@ -646,7 +648,7 @@ class TestLoadConfigReplacesState:
             assert stale not in merged
 
     def test_load_infers_description_target(self, tmp_path):
-        cfg = self._write(tmp_path, 'c.yaml', 'description: {title: In config}\n')
+        self._write(tmp_path, 'c.yaml', 'description: {title: In config}\n')
         proj = self._write(tmp_path, 'p.yaml', 'project_name: P\nconfig: c.yaml\n')
         cb = ConfigBuilder()
         state = cb.load_config(proj)
@@ -710,3 +712,169 @@ class TestReadColumns:
         p = tmp_path / 'd.parquet'
         pd.DataFrame({'id': [1], 'species': ['a']}).to_parquet(p)
         assert ConfigBuilder().read_columns(str(p)) == ['id', 'species']
+
+
+#
+# load_config: type detection, followed references, inferred targets
+#
+class TestLoadConfigBranches:
+
+    FORM = 'form:\n  - textbox: {label: n, column: n}\n'
+
+    def _files(self, tmp_path, monkeypatch, files):
+        monkeypatch.chdir(tmp_path)
+        for rel, text in files.items():
+            p = tmp_path / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            ConfigBuilder().load_config(str(tmp_path / 'nope.yaml'))
+
+    def test_form_file(self, tmp_path, monkeypatch):
+        self._files(tmp_path, monkeypatch, {'f.yaml': self.FORM})
+        cb = ConfigBuilder()
+        state = cb.load_config('f.yaml')
+        assert state['detected_type'] == 'form'
+        assert state['loaded_paths'] == {'loaded': 'f.yaml', 'form': 'f.yaml'}
+        assert cb._project == {'form_path': 'f.yaml', 'form_enabled': True,
+                               'project_enabled': False, 'config_enabled': False}
+        assert cb._form_config['form'][0]['textbox']['label'] == 'n'
+
+    def test_project_follows_config_and_form_refs(self, tmp_path, monkeypatch):
+        self._files(tmp_path, monkeypatch, {
+            'p.yaml': 'project_name: P\nconfig: cfg/c.yaml\ndata: {path: d.csv}\n',
+            'cfg/c.yaml': 'data: {start_time: s}\naudio: {column: f}\nsort: a\n'
+                          'form_config: ../forms/f.yaml\n',
+            'forms/f.yaml': self.FORM,
+        })
+        cb = ConfigBuilder()
+        state = cb.load_config('p.yaml')
+        assert state['detected_type'] == 'project'
+        assert state['loaded_paths'] == {'loaded': 'p.yaml', 'project': 'p.yaml',
+                                         'config': os.path.join('cfg', 'c.yaml'),
+                                         'form': 'forms/f.yaml'}
+        targets = state['section_targets']
+        assert (targets['data'], targets['audio'], targets['output'], targets['app']) == (
+            'split', 'config', 'project', 'config')
+        assert cb._project['form_enabled'] is True and cb._project['config_enabled'] is True
+        assert 'form_config' not in cb._config
+        assert cb._config['sort'] == 'a'
+
+    def test_project_with_missing_config_ref(self, tmp_path, monkeypatch):
+        self._files(tmp_path, monkeypatch, {'p.yaml': 'config: sub/none.yaml\ndata: {path: d}\n'})
+        cb = ConfigBuilder()
+        state = cb.load_config('p.yaml')
+        assert cb._project['config_path'] == os.path.join('sub', 'none.yaml')
+        assert cb._project['config_enabled'] is True
+        assert cb._project['form_enabled'] is False
+        assert all(state['section_targets'][s] == 'project'
+                   for s in ('data', 'audio', 'output', 'app'))
+        assert 'config' not in state['loaded_paths']
+
+    def test_project_without_config_ref(self, tmp_path, monkeypatch):
+        self._files(tmp_path, monkeypatch, {
+            'inline.yaml': 'data: {path: d}\naudio: {column: c}\nform_config: {title: t}\n',
+            'noform.yaml': 'project_name: P\n',
+        })
+        cb = ConfigBuilder()
+        assert cb.load_config('inline.yaml')['detected_type'] == 'project'
+        assert cb._form_config == {'title': 't'}
+        assert cb._project['form_enabled'] is False
+        assert cb._project['config_enabled'] is False
+        cb.load_config('noform.yaml', 'project')
+        assert 'form_enabled' not in cb._project      # no form reference: left unset
+
+    def test_config_file_with_missing_form(self, tmp_path, monkeypatch):
+        self._files(tmp_path, monkeypatch, {'c.yaml': 'sort: a\nform_config: gone.yaml\n'})
+        cb = ConfigBuilder()
+        state = cb.load_config('c.yaml')
+        assert state['detected_type'] == 'config'
+        assert cb._project == {'config_path': 'c.yaml', 'config_enabled': True,
+                               'project_enabled': False, 'form_enabled': False}
+        assert cb._config == {'sort': 'a'}
+        assert all(state['section_targets'][s] == 'config'
+                   for s in ('data', 'audio', 'output', 'app'))
+
+    def test_file_type_overrides_detection(self, tmp_path, monkeypatch):
+        self._files(tmp_path, monkeypatch, {'f.yaml': self.FORM})
+        assert ConfigBuilder().load_config('f.yaml', 'config')['detected_type'] == 'config'
+
+
+#
+# set_section_target moves existing values
+#
+class TestSetSectionTarget:
+
+    def test_split_to_project_merges_with_project_winning(self):
+        cb = ConfigBuilder()
+        cb._project['data'] = {'path': 'p.csv', 'index_column': 'p'}
+        cb._config['data'] = {'index_column': 'c', 'start_time': 's'}
+        cb.set_section_target('data', 'project')
+        assert cb._project['data'] == {'index_column': 'p', 'start_time': 's', 'path': 'p.csv'}
+        assert 'data' not in cb._config
+
+    def test_project_to_config_moves_section(self):
+        cb = ConfigBuilder()
+        cb.update_section('audio', {'column': 'f', 'uri': 'u'}, target='project')
+        cb.set_section_target('audio', 'config')
+        assert cb._config['audio'] == {'column': 'f', 'uri': 'u'}
+        assert 'audio' not in cb._project
+
+    def test_app_keys_move(self):
+        cb = ConfigBuilder()
+        cb.update_section('app', {'sort': 'a', 'width': 3})       # default target: config
+        cb.set_section_target('app', 'project')
+        assert cb._project['sort'] == 'a' and cb._project['width'] == 3
+        assert 'sort' not in cb._config
+
+    def test_invalid_section_or_target_is_ignored(self):
+        cb = ConfigBuilder()
+        before = dict(cb._section_targets)
+        cb.set_section_target('nope', 'config')
+        cb.set_section_target('data', 'nowhere')
+        assert cb._section_targets == before
+
+
+#
+# save_single / save_all
+#
+class TestSave:
+
+    def test_save_single_respects_lock_and_type(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cb = ConfigBuilder()
+        cb.update_section('app', {'sort': 'a'})        # (an app payload without a name clears it)
+        cb.update_section('project', {'project_name': 'P', 'config_locked': True})
+        assert cb.save_single('config') == ''
+        assert cb.save_single('bogus') == ''
+        assert cb.save_single('project') == 'projects/p.yaml'
+        assert 'config: config/p.yaml' in (tmp_path / 'projects/p.yaml').read_text()
+
+    def test_save_all_writes_multiline_as_block(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cb = ConfigBuilder()
+        cb.update_section('description', {'description': {'text': 'a\nb'}})
+        saved = cb.save_all()
+        assert saved == {'project': 'projects/config.yaml', 'config': 'config/config.yaml',
+                         'form': 'forms/config.yaml'}
+        assert 'text: |-\n' in (tmp_path / 'projects/config.yaml').read_text()
+        assert cb._saved_path == 'projects/config.yaml' and cb._dirty is False
+
+
+#
+# check_audio_url: FLAC header path
+#
+class TestCheckAudioUrl:
+
+    def test_flac_header(self, monkeypatch):
+        import struct
+        from jupyter_bioacoustic import api
+        streaminfo = bytearray(34)
+        streaminfo[10:13] = struct.pack('>I', (16000 << 4) & 0xFFFFF0)[1:]
+        streaminfo[13:18] = struct.pack('>Q', 32000)[3:]
+        header = b'fLaC' + bytes([0x80]) + (34).to_bytes(3, 'big') + bytes(streaminfo)
+        monkeypatch.setattr(api, '_cloud_get_bytes', lambda value, byte_range: header)
+        assert ConfigBuilder().check_audio_url('s3://b/k.flac?x=1') == {
+            'ok': True, 'sample_rate': 16000, 'duration': 2.0}
