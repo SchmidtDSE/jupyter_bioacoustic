@@ -19,7 +19,7 @@ global.document = {
       return new (global.HTMLDetailsElement as any)();
     }
     if (tagName === 'summary') {
-      return new (global.HTMLSummaryElement as any)();
+      return new ((global as any).HTMLSummaryElement as any)();
     }
     if (tagName === 'span') {
       return new (global.HTMLSpanElement as any)();
@@ -55,7 +55,7 @@ global.HTMLElement = class {
 } as any;
 global.HTMLDivElement = class extends (global.HTMLElement as any) {} as any;
 global.HTMLDetailsElement = class extends (global.HTMLElement as any) {} as any;
-global.HTMLSummaryElement = class extends (global.HTMLElement as any) {} as any;
+(global as any).HTMLSummaryElement = class extends (global.HTMLElement as any) {} as any;
 global.HTMLSpanElement = class extends (global.HTMLElement as any) {} as any;
 global.HTMLInputElement = class extends (global.HTMLElement as any) {
   private _value = '';
