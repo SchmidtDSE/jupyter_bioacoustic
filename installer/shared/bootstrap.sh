@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# Shared bootstrap/launch logic for the macOS .app and Linux .desktop wrappers.
+# Shared bootstrap/launch logic for the POSIX launch wrappers (today: the macOS .app's
+# Contents/MacOS/launch; Windows has its own launch.cmd).
 # Sourced (not executed) by a thin per-platform launcher that sets:
 #   APP_SUPPORT   per-user data dir (holds pixi binary + env/)
 #   PAYLOAD       installer payload dir (holds the bundled pixi binary + manifest + lock)
-#   NOTIFY        optional fn(msg) for a native toast (macOS: osascript)
+#   JBA_LAUNCHER  path to jba_launcher.py (JBA_ICON: optional tray PNG)
+# and may define these optional hook functions:
+#   _notify_impl MSG   native toast (macOS: osascript)
+#   _prompt_update     ask to update; exit status 0 = yes (without it, updates are skipped)
+#   _setup_start       show the persistent first-run "Setting up…" splash (sets _SETUP_PID)
+#   _setup_done        close that splash (used on failure; the launcher closes it on success)
+#
+# License: BSD 3-Clause
 #
 # Design notes:
 #  - pixi is BUNDLED (copied from PAYLOAD), pinned + checksum-verified — no network fetch of pixi.
