@@ -450,3 +450,170 @@ class TestBucketRoot:
             pass
         with pytest.raises(ImportError, match=r"jupyter-bioacoustic\[gcs\]"):
             io_gcs._get_client()
+
+
+#
+# _shared helpers used by every backend
+#
+class TestSharedHelpers:
+
+    def test_split_bucket_uri(self):
+        assert _shared.split_bucket_uri('s3://b/a/k.flac', 's3://') == ('b', 'a/k.flac')
+        assert _shared.split_bucket_uri('gs://b', 'gs://') == ('b', '')
+        assert _shared.split_bucket_uri('b/k', 's3://') == ('b', 'k')     # scheme optional
+
+    @pytest.mark.parametrize('start,end,expected', [
+        (None, None, None), (5, 9, 'bytes=5-9'), (5, None, 'bytes=5-'), (None, 9, 'bytes=0-9'),
+        (0, None, 'bytes=0-'),
+    ])
+    def test_range_header(self, start, end, expected):
+        assert _shared.range_header(start, end) == expected
+
+    def test_save_or_return(self, tmp_path):
+        assert _shared.save_or_return(b'abc', None) == b'abc'
+        dest = str(tmp_path / 'deep' / 'dir' / 'f.bin')
+        assert _shared.save_or_return(b'abc', dest) == dest
+        assert open(dest, 'rb').read() == b'abc'
+
+    def test_write_chunks(self, tmp_path):
+        dest = str(tmp_path / 'sub' / 'f.bin')
+        assert _shared.write_chunks(iter([b'ab', b'', b'cd']), dest) == dest
+        assert open(dest, 'rb').read() == b'abcd'
+
+    def test_is_directory_upload(self, tmp_path):
+        f = tmp_path / 'f.txt'
+        f.write_text('x')
+        assert _shared.is_directory_upload(str(f), recursive=False) is False
+        assert _shared.is_directory_upload(str(tmp_path), recursive=True) is True
+        with pytest.raises(ValueError, match='recursive=False'):
+            _shared.is_directory_upload(str(tmp_path), recursive=False)
+
+    def test_iter_upload_keys(self, tmp_path):
+        (tmp_path / 'sub').mkdir()
+        (tmp_path / 'a.txt').write_text('a')
+        (tmp_path / 'sub' / 'b.txt').write_text('b')
+        pairs = sorted(_shared.iter_upload_keys(str(tmp_path), 'out/'))
+        assert pairs == [(str(tmp_path / 'a.txt'), 'out/a.txt'),
+                         (str(tmp_path / 'sub' / 'b.txt'), 'out/sub/b.txt')]
+        assert sorted(k for _, k in _shared.iter_upload_keys(str(tmp_path), 'out')) == [
+            'out/a.txt', 'out/sub/b.txt']
+
+    @pytest.mark.parametrize('prefix,expected', [('', ''), ('a', 'a/'), ('a/', 'a/')])
+    def test_list_prefix(self, prefix, expected):
+        assert _shared.list_prefix(prefix) == expected
+
+
+#
+# backend read / write through the shared helpers
+#
+class _FakeUploadS3:
+    """boto3-like client recording uploads; ``existing`` keys answer head_object."""
+
+    class exceptions:
+        class ClientError(Exception):
+            pass
+
+    def __init__(self, existing=(), body=b'0123456789'):
+        self.existing, self.body, self.uploads, self.gets = set(existing), body, [], []
+
+    def head_object(self, Bucket, Key):
+        if Key not in self.existing:
+            raise self.exceptions.ClientError('404')
+        return {'ContentLength': len(self.body)}
+
+    def upload_file(self, local, bucket, key):
+        self.uploads.append((local, bucket, key))
+
+    def get_object(self, **params):
+        self.gets.append(params)
+        body = self.body
+        return {'Body': type('Body', (), {'read': lambda _self: body})()}
+
+
+class TestBackendWrites:
+
+    def _tree(self, tmp_path):
+        src = tmp_path / 'src'
+        (src / 'sub').mkdir(parents=True)
+        (src / 'a.txt').write_text('a')
+        (src / 'sub' / 'b.txt').write_text('b')
+        return src
+
+    def test_local_read_range_and_dest(self, tmp_path):
+        f = tmp_path / 'f.bin'
+        f.write_bytes(b'0123456789')
+        assert io_local.read(str(f), start_byte=2, end_byte=4) == b'234'
+        assert io_local.read(str(f), end_byte=1) == b'01'
+        dest = str(tmp_path / 'o' / 'x.bin')
+        assert io_local.read(str(f), dest=dest, start_byte=8) == dest
+        assert open(dest, 'rb').read() == b'89'
+
+    def test_local_write(self, tmp_path):
+        src = self._tree(tmp_path)
+        with pytest.raises(ValueError):
+            io_local.write(str(src), str(tmp_path / 'dst'))
+        dst = str(tmp_path / 'dst')
+        assert io_local.write(str(src), dst, recursive=True) == dst
+        assert (tmp_path / 'dst' / 'sub' / 'b.txt').read_text() == 'b'
+        with pytest.raises(FileExistsError):
+            io_local.write(str(src), dst, recursive=True, overwrite=False)
+        with pytest.raises(FileExistsError):
+            io_local.write(str(src / 'a.txt'), str(tmp_path / 'dst' / 'a.txt'), overwrite=False)
+        io_local.write(str(src / 'a.txt'), str(tmp_path / 'new' / 'a.txt'))
+        assert (tmp_path / 'new' / 'a.txt').read_text() == 'a'
+
+    def test_s3_write_directory_and_file(self, tmp_path):
+        src = self._tree(tmp_path)
+        client = _FakeUploadS3()
+        assert io_aws.write(str(src), 's3://b/out', recursive=True, client=client) == 's3://b/out'
+        assert sorted(k for _, _, k in client.uploads) == ['out/a.txt', 'out/sub/b.txt']
+        io_aws.write(str(src / 'a.txt'), 's3://b/one.txt', client=client)
+        assert client.uploads[-1] == (str(src / 'a.txt'), 'b', 'one.txt')
+        with pytest.raises(ValueError):
+            io_aws.write(str(src), 's3://b/out', client=client)
+
+    def test_s3_write_no_overwrite(self, tmp_path):
+        src = self._tree(tmp_path)
+        client = _FakeUploadS3(existing={'one.txt', 'out/sub/b.txt'})
+        with pytest.raises(FileExistsError, match='s3://b/one.txt'):
+            io_aws.write(str(src / 'a.txt'), 's3://b/one.txt', overwrite=False, client=client)
+        io_aws.write(str(src / 'a.txt'), 's3://b/two.txt', overwrite=False, client=client)
+        assert client.uploads == [(str(src / 'a.txt'), 'b', 'two.txt')]
+        with pytest.raises(FileExistsError, match='out/sub/b.txt'):
+            io_aws.write(str(src), 's3://b/out/', recursive=True, overwrite=False, client=client)
+
+    def test_s3_read_range_header(self, tmp_path):
+        client = _FakeUploadS3()
+        assert io_aws.read('s3://b/k', client=client) == client.body
+        io_aws.read('s3://b/k', start_byte=3, client=client)
+        dest = str(tmp_path / 'd' / 'k')
+        assert io_aws.read('s3://b/k', end_byte=4, dest=dest, client=client) == dest
+        assert client.gets == [{'Bucket': 'b', 'Key': 'k'},
+                               {'Bucket': 'b', 'Key': 'k', 'Range': 'bytes=3-'},
+                               {'Bucket': 'b', 'Key': 'k', 'Range': 'bytes=0-4'}]
+        assert open(dest, 'rb').read() == client.body
+
+    def test_gcs_write_directory_and_no_overwrite(self, tmp_path):
+        src = self._tree(tmp_path)
+        uploads, existing = [], {'out/sub/b.txt', 'one.txt'}
+
+        class Blob:
+            def __init__(self, name):
+                self.name = name
+
+            def exists(self):
+                return self.name in existing
+
+            def upload_from_filename(self, local):
+                uploads.append((local, self.name))
+
+        bucket = type('Bucket', (), {'blob': lambda self, name: Blob(name)})()
+        client = type('Client', (), {'bucket': lambda self, name: bucket})()
+        io_gcs.write(str(src), 'gs://b/out', recursive=True, client=client)
+        assert sorted(n for _, n in uploads) == ['out/a.txt', 'out/sub/b.txt']
+        with pytest.raises(FileExistsError, match='gs://b/one.txt exists'):
+            io_gcs.write(str(src / 'a.txt'), 'gs://b/one.txt', overwrite=False, client=client)
+        with pytest.raises(FileExistsError, match='gs://b/out/sub/b.txt'):
+            io_gcs.write(str(src), 'gs://b/out', recursive=True, overwrite=False, client=client)
+        with pytest.raises(ValueError):
+            io_gcs.write(str(src), 'gs://b/out', client=client)
