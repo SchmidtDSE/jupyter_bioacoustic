@@ -39,62 +39,13 @@ def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = Tr
 def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
           **kwargs: Any) -> str:
     """Write files to GCS."""
-    from google.cloud import storage
-    bucket_name, prefix = _parse_gcs_uri(dest)
-    client = kwargs.get('client') or _get_client(**kwargs)
-    bucket = client.bucket(bucket_name)
-
-    if os.path.isdir(src):
-        if not recursive:
-            raise ValueError(f"src is a directory but recursive=False: {src}")
-        for root, _dirs, files in os.walk(src):
-            for fname in files:
-                local_path = os.path.join(root, fname)
-                rel_path = os.path.relpath(local_path, src)
-                blob_name = (prefix.rstrip('/') + '/' +
-                             rel_path.replace(os.sep, '/'))
-                blob = bucket.blob(blob_name)
-                if not overwrite and blob.exists():
-                    raise FileExistsError(
-                        f"gs://{bucket_name}/{blob_name} exists and "
-                        f"overwrite=False")
-                blob.upload_from_filename(local_path)
-                _log.debug('uploaded %s -> gs://%s/%s', local_path,
-                           bucket_name, blob_name)
-        _log.info('GCS write: uploaded directory to %s', dest)
-        return dest
-    else:
-        blob = bucket.blob(prefix)
-        if not overwrite and blob.exists():
-            raise FileExistsError(f"gs://{bucket_name}/{prefix} exists and "
-                                  f"overwrite=False")
-        blob.upload_from_filename(src)
-        _log.info('GCS write: uploaded %s -> gs://%s/%s', src, bucket_name,
-                  prefix)
-        return dest
+    return _remote.write('gs', src, dest, recursive, overwrite, **kwargs)
 
 
 def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
     """List files in GCS bucket prefix."""
-    from google.cloud import storage
-    bucket_name, prefix = _parse_gcs_uri(path)
-    _log.debug('GCS list_files: bucket=%s prefix=%s recursive=%s', bucket_name,
-               prefix, recursive)
-    client = kwargs.get('client') or _get_client(**kwargs)
+    return _remote.list_files('gs', path, recursive, **kwargs)
 
-    if not prefix.endswith('/'):
-        prefix += '/'
-
-    list_kwargs = {'prefix': prefix}
-    if not recursive:
-        list_kwargs['delimiter'] = '/'
-
-    results = []
-    for blob in client.list_blobs(bucket_name, **list_kwargs):
-        if blob.name != prefix:
-            results.append(f'gs://{bucket_name}/{blob.name}')
-
-    return sorted(results)
 
 #
 # Internal

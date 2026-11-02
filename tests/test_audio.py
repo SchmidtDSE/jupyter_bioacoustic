@@ -174,10 +174,14 @@ class _DiskStore:
         self.root = str(root)
         self.calls = []
         self.fail = {}
+        self.listing = []
         self._local = LocalBackend()
 
     def path(self, uri):
-        return os.path.join(self.root, uri.split('://', 1)[1].split('?')[0])
+        key = uri.split('://', 1)[1].split('?')[0]
+        # A file system merges '//'; object stores do not.
+        assert '//' not in key, f'empty path segment in {uri}'
+        return os.path.join(self.root, key)
 
     def put(self, uri, src):
         import shutil
@@ -211,6 +215,20 @@ class _DiskStore:
     def download(self, uri, out_path):
         self._call('download', uri, out_path)
         self._local.download(self.path(uri), out_path)
+
+    def upload(self, uri, source_path):
+        self._call('upload', uri, source_path)
+        os.makedirs(os.path.dirname(self.path(uri)), exist_ok=True)
+        self._local.upload(self.path(uri), source_path)
+
+    def list_files(self, uri_prefix, *, recursive=True, **kwargs):
+        self._call('list_files', uri_prefix, recursive)
+        return self.listing
+
+    def object(self, uri):
+        """The stored bytes at *uri*, or None."""
+        p = self.path(uri)
+        return open(p, 'rb').read() if os.path.isfile(p) else None
 
 
 class _FakeRemote:
@@ -437,6 +455,120 @@ class TestRemoteRead:
         raw, sr = io.read_segment('s3://b/a.wav', 0, 1)
         assert sr == _VBR_SR and len(raw) == _VBR_SR
         assert fake.downloads == 2
+
+
+@pytest.fixture
+def store(monkeypatch, tmp_path):
+    return _FakeRemote(monkeypatch, tmp_path).store
+
+
+def _tree(root):
+    """A local folder with a.txt and sub/b.txt."""
+    (root / 'sub').mkdir(parents=True)
+    (root / 'a.txt').write_bytes(b'A')
+    (root / 'sub' / 'b.txt').write_bytes(b'B')
+    return str(root)
+
+
+_BUCKETS = ['s3://b', 'gs://b']
+
+
+class TestRemoteWrite:
+
+    @pytest.mark.parametrize('bucket', _BUCKETS)
+    def test_write_file(self, store, tmp_path, bucket):
+        src = tmp_path / 'f.txt'
+        src.write_bytes(b'data')
+        assert io.write(str(src), f'{bucket}/k/f.txt') == f'{bucket}/k/f.txt'
+        assert store.object(f'{bucket}/k/f.txt') == b'data'
+
+    def test_write_file_relative_src(self, store, tmp_path, monkeypatch):
+        (tmp_path / 'f.txt').write_bytes(b'data')
+        monkeypatch.chdir(tmp_path)
+        assert io.write('f.txt', 's3://b/f.txt') == 's3://b/f.txt'
+        assert store.object('s3://b/f.txt') == b'data'
+
+    @pytest.mark.parametrize('bucket', _BUCKETS)
+    def test_write_overwrite_false_existing(self, store, tmp_path, bucket):
+        old, new = tmp_path / 'old', tmp_path / 'new'
+        old.write_bytes(b'old')
+        new.write_bytes(b'new')
+        store.put(f'{bucket}/f', str(old))
+        with pytest.raises(FileExistsError, match='exists and overwrite=False'):
+            io.write(str(new), f'{bucket}/f', overwrite=False)
+        assert store.object(f'{bucket}/f') == b'old'
+        assert store.count('upload') == 0
+
+    def test_write_overwrite_false_absent(self, store, tmp_path):
+        src = tmp_path / 'f'
+        src.write_bytes(b'new')
+        assert io.write(str(src), 's3://b/f', overwrite=False) == 's3://b/f'
+        assert store.object('s3://b/f') == b'new'
+
+    @pytest.mark.parametrize('bucket', _BUCKETS)
+    @pytest.mark.parametrize('slash', ['', '/'])
+    def test_write_dir_recursive(self, store, tmp_path, bucket, slash):
+        src = _tree(tmp_path / 'src')
+        dest = f'{bucket}/out{slash}'
+        assert io.write(src, dest, recursive=True) == dest
+        assert store.object(f'{bucket}/out/a.txt') == b'A'
+        assert store.object(f'{bucket}/out/sub/b.txt') == b'B'
+        assert store.count('upload') == 2
+
+    def test_write_dir_not_recursive(self, store, tmp_path):
+        with pytest.raises(ValueError, match='recursive=False'):
+            io.write(_tree(tmp_path / 'src'), 's3://b/out')
+        assert store.calls == []
+
+    def test_write_dir_overwrite_false_stops(self, store, tmp_path):
+        src = _tree(tmp_path / 'src')
+        old = tmp_path / 'old'
+        old.write_bytes(b'old')
+        store.put('s3://b/out/a.txt', str(old))
+        with pytest.raises(FileExistsError, match='exists and overwrite=False'):
+            io.write(src, 's3://b/out', recursive=True, overwrite=False)
+        assert store.object('s3://b/out/a.txt') == b'old'
+
+    def test_write_options_reach_ondio(self, monkeypatch, tmp_path):
+        fake = _FakeRemote(monkeypatch, tmp_path)
+        src = tmp_path / 'f'
+        src.write_bytes(b'x')
+        io.write(str(src), 's3://b/f', profile_name='p')
+        assert {c[1]['profile_name'] for c in fake.calls} == {'p'}
+
+    def test_write_other_scheme_is_refused(self, store, tmp_path):
+        src = tmp_path / 'f'
+        src.write_bytes(b'x')
+        with pytest.raises(ValueError):
+            io.write(str(src), str(tmp_path / 'g'), platform='aws')
+        assert store.calls == []
+        assert not (tmp_path / 'g').exists()
+
+    @pytest.mark.parametrize('bucket', _BUCKETS)
+    @pytest.mark.parametrize('recursive', [False, True])
+    def test_list_files_folder_prefix(self, store, bucket, recursive):
+        store.listing = [f'{bucket}/p/a', f'{bucket}/p/b']
+        for path in (f'{bucket}/p', f'{bucket}/p/'):
+            store.calls.clear()
+            assert io.list_files(path, recursive=recursive) == store.listing
+            assert store.calls == [('list_files', f'{bucket}/p/', recursive)]
+
+    def test_list_files_default_not_recursive(self, store):
+        io.list_files('s3://b/p')
+        assert store.calls == [('list_files', 's3://b/p/', False)]
+
+    def test_list_files_other_scheme_is_refused(self, store, tmp_path):
+        with pytest.raises(ValueError):
+            io.list_files(str(tmp_path), platform='gcs')
+        assert store.calls == []
+
+    def test_local_dir_overwrite_false(self, tmp_path):
+        src = _tree(tmp_path / 'src')
+        dest = tmp_path / 'dest'
+        dest.mkdir()
+        with pytest.raises(FileExistsError):
+            io.write(src, str(dest), recursive=True, overwrite=False)
+        assert list(dest.iterdir()) == []
 
 
 _CLIENT = object()

@@ -86,42 +86,7 @@ def write(
     Returns:
         Destination S3 URI
     """
-    import boto3
-    bucket, prefix = _parse_s3_uri(dest)
-    client = kwargs.get('client') or _get_client(**kwargs)
-
-    if os.path.isdir(src):
-        if not recursive:
-            raise ValueError(f"src is a directory but recursive=False: {src}")
-        uploaded = []
-        for root, _dirs, files in os.walk(src):
-            for fname in files:
-                local_path = os.path.join(root, fname)
-                rel_path = os.path.relpath(local_path, src)
-                key = (prefix.rstrip(PATH_SEPARATOR) + PATH_SEPARATOR +
-                       rel_path.replace(os.sep, PATH_SEPARATOR))
-                if not overwrite:
-                    try:
-                        client.head_object(Bucket=bucket, Key=key)
-                        raise FileExistsError(f"s3://{bucket}/{key} exists and overwrite=False")
-                    except client.exceptions.ClientError:
-                        pass
-                client.upload_file(local_path, bucket, key)
-                uploaded.append(f's3://{bucket}/{key}')
-                _log.debug('uploaded %s -> s3://%s/%s', local_path, bucket, key)
-        _log.info('S3 write: uploaded %d files to %s', len(uploaded), dest)
-        return dest
-    else:
-        key = prefix
-        if not overwrite:
-            try:
-                client.head_object(Bucket=bucket, Key=key)
-                raise FileExistsError(f"s3://{bucket}/{key} exists and overwrite=False")
-            except client.exceptions.ClientError:
-                pass
-        client.upload_file(src, bucket, key)
-        _log.info('S3 write: uploaded %s -> s3://%s/%s', src, bucket, key)
-        return dest
+    return _remote.write('s3', src, dest, recursive, overwrite, **kwargs)
 
 
 def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
@@ -135,28 +100,8 @@ def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
     Returns:
         List of S3 URIs
     """
-    import boto3
-    bucket, prefix = _parse_s3_uri(path)
-    _log.debug('S3 list_files: bucket=%s prefix=%s recursive=%s', bucket, prefix, recursive)
-    client = kwargs.get('client') or _get_client(**kwargs)
+    return _remote.list_files('s3', path, recursive, **kwargs)
 
-    if not prefix.endswith(PATH_SEPARATOR):
-        prefix += PATH_SEPARATOR
-
-    results = []
-    paginator = client.get_paginator('list_objects_v2')
-
-    list_kwargs = {'Bucket': bucket, 'Prefix': prefix}
-    if not recursive:
-        list_kwargs['Delimiter'] = PATH_SEPARATOR
-
-    for page in paginator.paginate(**list_kwargs):
-        for obj in page.get('Contents', []):
-            key = obj['Key']
-            if key != prefix:
-                results.append(f's3://{bucket}/{key}')
-
-    return sorted(results)
 
 #
 # Internal

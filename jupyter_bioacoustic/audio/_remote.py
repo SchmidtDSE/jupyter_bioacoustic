@@ -98,8 +98,66 @@ def read_segment(
     return io_local.read_segment(cache, start_sec, dur_sec)
 
 
+def write(
+    scheme: str,
+    src: str,
+    dest: str,
+    recursive: bool = False,
+    overwrite: bool = True,
+    **kwargs: Any,
+) -> str:
+    """Upload a local file, or a local folder with *recursive*, to *dest*.
+
+    With *overwrite* False, stop with FileExistsError at the first object
+    that exists. Files uploaded before it stay. Returns *dest*.
+    """
+    _shared.check_scheme(dest, _SCHEMES[scheme])
+    backend = _shared.ondio_backend(dest, _shared.ondio_kwargs(scheme, kwargs))
+    if not os.path.isdir(src):
+        _upload(src, dest, overwrite, backend)
+        _log.info('%s write: uploaded %s -> %s', scheme, src, dest)
+        return dest
+
+    if not recursive:
+        raise ValueError(f'src is a directory but recursive=False: {src}')
+    count = 0
+    for root, _dirs, files in os.walk(src):
+        for fname in files:
+            local_path = os.path.join(root, fname)
+            rel = os.path.relpath(local_path, src).replace(os.sep, '/')
+            _upload(local_path, f"{dest.rstrip('/')}/{rel}", overwrite, backend)
+            count += 1
+    _log.info('%s write: uploaded %d files to %s', scheme, count, dest)
+    return dest
+
+
+def list_files(
+    scheme: str,
+    path: str,
+    recursive: bool = False,
+    **kwargs: Any,
+) -> list[str]:
+    """List the objects in the folder *path*, sorted.
+
+    Without *recursive*, list only the objects directly in the folder.
+    """
+    _shared.check_scheme(path, _SCHEMES[scheme])
+    folder = path.rstrip('/') + '/'
+    backend = _shared.ondio_backend(folder, _shared.ondio_kwargs(scheme, kwargs))
+    _log.debug('%s list_files: %s recursive=%s', scheme, folder, recursive)
+    # ondio's default is recursive=True, so always pass it.
+    return ondio.list_files(folder, recursive=recursive, backend=backend)
+
+
 #
 # Internal
 #
+def _upload(src: str, dest: str, overwrite: bool, backend: Any) -> None:
+    if not overwrite and ondio.exists(dest, backend=backend):
+        raise FileExistsError(f'{dest} exists and overwrite=False')
+    ondio.upload(dest, src, backend=backend)
+    _log.debug('uploaded %s -> %s', src, dest)
+
+
 _LOG_URI_MAX_LEN = 80
 _log = logging.getLogger('jupyter_bioacoustic.audio')
