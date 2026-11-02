@@ -1,21 +1,44 @@
 /**
- * FileBrowser
+ * Modal file / folder picker for the builder, listing directories through the kernel's
+ * ``list_files`` (so it sees the kernel's filesystem, not the browser's). Folder mode adds
+ * "Select this folder" and New Folder.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { COLORS, btnStyle } from '../styles';
+import { errorMessage } from '../util';
 import { KernelBridge } from '../kernel';
-import { extractJson, listFiles, createDirectory } from './python';
+import { ListFilesReply, createDirectory, extractJson, listFiles } from './python';
 
-interface FileEntry {
-  name: string;
-  is_dir: boolean;
-}
 
+//
+// Constants
+//
+/** The browser's compact, flexible text inputs (filename, new folder). */
+const SMALL_INPUT_STYLE = () =>
+  `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
+  `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
+  `font-size:11px;flex:1;box-sizing:border-box;`;
+
+
+//
+// Types
+//
+type FileEntry = ListFilesReply['files'][number];
+
+
+//
+// Public
+//
 export class FileBrowser {
   readonly element: HTMLDivElement;
+  /** A file (or, in folder mode, a folder) was chosen; the path is relative to the start dir. */
   readonly fileSelected = new Signal<this, string>(this);
+  /** Closed without a choice. */
   readonly dismissed = new Signal<this, void>(this);
 
   private _kernel: KernelBridge;
@@ -31,6 +54,13 @@ export class FileBrowser {
   private _footerRow: HTMLDivElement;
   private _rootDir?: string;
 
+  /**
+   * @param kernel - Kernel to list files with.
+   * @param startDir - Directory to open (a file path opens its directory).
+   * @param extensions - Only show files with these extensions (all when empty).
+   * @param dirOnly - Pick a folder instead of a file.
+   * @param rootDir - Root that emitted paths are made relative to.
+   */
   constructor(
     kernel: KernelBridge,
     startDir: string,
@@ -89,10 +119,7 @@ export class FileBrowser {
     this._filenameInput = document.createElement('input');
     this._filenameInput.type = 'text';
     this._filenameInput.placeholder = 'new_file.yaml';
-    this._filenameInput.style.cssText =
-      `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
-      `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
-      `font-size:11px;flex:1;box-sizing:border-box;`;
+    this._filenameInput.style.cssText = SMALL_INPUT_STYLE();
     this._filenameInput.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter') this._confirmFilename();
     });
@@ -130,7 +157,7 @@ export class FileBrowser {
 
     try {
       const raw = await this._kernel.exec(listFiles(dir, this._extensions, this._rootDir));
-      const result = JSON.parse(extractJson(raw));
+      const result = JSON.parse(extractJson(raw)) as ListFilesReply;
       if (result.resolved) {
         this._cwd = result.resolved;
         if (!this._startDir) {
@@ -141,11 +168,11 @@ export class FileBrowser {
         }
         this._pathBar.textContent = this._displayPath();
       }
-      const entries = result.files as FileEntry[];
+      const entries = result.files;
       this._renderEntries(entries);
       this._statusEl.textContent = `${entries.length} items`;
-    } catch (e: any) {
-      this._statusEl.textContent = `Error: ${String(e.message ?? e)}`;
+    } catch (e: unknown) {
+      this._statusEl.textContent = `Error: ${errorMessage(e)}`;
     }
   }
 
@@ -173,10 +200,7 @@ export class FileBrowser {
       const nfInput = document.createElement('input');
       nfInput.type = 'text';
       nfInput.placeholder = 'new folder name';
-      nfInput.style.cssText =
-        `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
-        `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
-        `font-size:11px;flex:1;box-sizing:border-box;`;
+      nfInput.style.cssText = SMALL_INPUT_STYLE();
       const nfBtn = document.createElement('button');
       nfBtn.textContent = '+ New Folder';
       nfBtn.style.cssText = btnStyle() + `font-size:11px;padding:3px 8px;`;
@@ -187,8 +211,8 @@ export class FileBrowser {
         try {
           await this._kernel.exec(createDirectory(newPath));
           void this._loadDir(newPath);
-        } catch (e: any) {
-          this._statusEl.textContent = `Error: ${String(e.message ?? e)}`;
+        } catch (e: unknown) {
+          this._statusEl.textContent = `Error: ${errorMessage(e)}`;
         }
       };
       nfBtn.addEventListener('click', doCreate);
