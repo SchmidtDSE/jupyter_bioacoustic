@@ -1291,3 +1291,129 @@ class TestAnnotatorNoDictMutation:
         cfg.write_text(f'data: {{path: {a}}}\naudio: {{column: audio_path}}\n')
         ba = BioacousticAnnotator(config=str(cfg), data_path=str(b))
         assert ba.config['data'] == {'path': str(a)}
+
+
+#
+# api.py re-exports the helpers that moved to _templates/_data_sources/_audio_sources/_config
+#
+class TestApiReExports:
+
+    def test_old_names_still_importable(self):
+        import jupyter_bioacoustic.api as api
+        from jupyter_bioacoustic import _audio_sources, _config, _data_sources, _templates
+        assert api._resolve_templates is _templates.resolve_templates
+        assert api._resolve_templates_in_structure is _templates.resolve_templates_in_structure
+        assert api._load_data is _data_sources.load_data
+        assert api._read_data is _data_sources.read_data
+        assert api._resolve_secrets is _data_sources.resolve_secrets
+        assert api._cloud_get_bytes is _data_sources.cloud_get_bytes
+        assert api._read_data_from_url is _data_sources.read_data_from_url
+        assert api._read_data_from_sql is _data_sources.read_data_from_sql
+        assert api._temporary_environ is _data_sources.temporary_environ
+        assert api._resolve_audio_config is _audio_sources.resolve_audio_config
+        assert api._detect_audio_type is _audio_sources.detect_audio_type
+        assert api._load_config is _config.load_config
+        assert api._merge_project_over_config is _config.merge_project_over_config
+        assert api._filter_session_args is _config.filter_session_args
+        assert api._CONFIG_PARAMS is _config.CONFIG_PARAMS
+
+    def test_config_params_match_constructor(self):
+        import inspect
+        from jupyter_bioacoustic.api import _CONFIG_PARAMS
+        params = set(inspect.signature(BioacousticAnnotator.__init__).parameters)
+        assert params - {'self', 'project', 'kwargs'} == _CONFIG_PARAMS
+
+
+#
+# small module helpers used by BioacousticAnnotator.__init__
+#
+class TestAnnotatorHelpers:
+
+    def test_cascade_secrets(self):
+        from jupyter_bioacoustic.api import _cascade_secrets
+        g = {'key': 'K'}
+        assert _cascade_secrets(None, g) is g
+        assert _cascade_secrets(False, g) is None
+        s = [{'key': 'S'}]
+        assert _cascade_secrets(s, g) is s
+
+    def test_single_flat_source(self):
+        from jupyter_bioacoustic.api import _single_flat_source
+        assert _single_flat_source({'path': None, 'url': None}, 'x') is None
+        assert _single_flat_source({'path': 'p', 'url': None}, 'x') == ('path', 'p')
+        with pytest.raises(ValueError, match='Only one of a, b may be set'):
+            _single_flat_source({'a': 1, 'b': 2}, 'a, b')
+
+    def test_sync_button_label(self):
+        from jupyter_bioacoustic.api import _sync_button_label
+        assert _sync_button_label('Push') == 'Push'
+        assert _sync_button_label(True) == 'Sync'
+        assert _sync_button_label(False) == ''
+
+    def test_dict_index_column(self):
+        from jupyter_bioacoustic.api import _dict_index_column
+        assert _dict_index_column({'index_column': 'a'}, {'index_column': 'b'}) == 'a'
+        assert _dict_index_column({}, {'index_column': 'b'}) is None
+        assert _dict_index_column('x.csv', {'index_column': 'b'}) == 'b'
+        assert _dict_index_column('x.csv', None) is None
+
+    def test_default_project_name(self):
+        from jupyter_bioacoustic.api import DEFAULT_PROJECT_NAME, _default_project_name
+        assert _default_project_name('projects/my_survey-2024.yaml') == 'My Survey 2024'
+        assert _default_project_name({'data': 'x'}) == DEFAULT_PROJECT_NAME
+        assert _default_project_name(None) == DEFAULT_PROJECT_NAME
+
+    def test_drop_keys(self):
+        from jupyter_bioacoustic.api import _drop_keys
+        d = {'path': 1, 'value': 2, 'prefix': 3}
+        _drop_keys(d, frozenset({'path', 'value', 'url'}))
+        assert d == {'prefix': 3}
+
+    def test_resolve_precedence(self, tmp_path):
+        cfg = tmp_path / 'c.yaml'
+        cfg.write_text('audio: audio_path\nwidth: 700\nsort: null\n')
+        ba = BioacousticAnnotator(config=str(cfg), data=_make_df(), player_height=99)
+        assert ba._resolve('player_height', 1) == 99      # argument wins
+        assert ba._resolve('width', 1) == 700             # then the config file
+        assert ba._resolve('sort', 'x') is None           # a config null counts as set
+        assert ba._resolve('capture_dir', 'dflt') == 'dflt'
+
+
+#
+# setup() writes every _BA_* variable the frontend reads (src/python.ts readKernelVars)
+#
+class TestSetupContract:
+
+    FRONTEND_VARS = {
+        '_BA_APP_TITLE', '_BA_AUDIO', '_BA_CAPTURE', '_BA_CAPTURE_DIR', '_BA_CAPTURE_HEIGHT',
+        '_BA_CLIP_TABLE_HEIGHT', '_BA_CONFIG_PATH', '_BA_DATA', '_BA_DATA_COLS',
+        '_BA_DATA_INDEX_COL', '_BA_DEFAULT_BUFFER', '_BA_DESCRIPTION', '_BA_DESCRIPTION_HEIGHT',
+        '_BA_DUPLICATE_ENTRIES', '_BA_FORM_CONFIG', '_BA_FORM_PANEL_HEIGHT', '_BA_FORM_PATH',
+        '_BA_INFO_CARD_HEIGHT', '_BA_INFO_CARD_TEXT', '_BA_INFO_CARD_TITLE', '_BA_INSTANCE',
+        '_BA_MERGED_CONFIG', '_BA_OUTPUT', '_BA_OUTPUT_INDEX_COL', '_BA_PLAYER_HEIGHT',
+        '_BA_PROJECT_PATH', '_BA_SORT', '_BA_SORT_ORDER', '_BA_SPEC_RESOLUTIONS',
+        '_BA_SYNC_CONFIG', '_BA_VIZ_META',
+    }
+
+    def test_setup_writes_frontend_vars(self, monkeypatch):
+        import types
+        import jupyter_bioacoustic.api as api
+        ns = {}
+        monkeypatch.setattr(api, 'get_ipython', lambda: types.SimpleNamespace(user_ns=ns))
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', data_index_column='id',
+            form_config={'title': {'value': 'T'}}, capture=False,
+        )
+        ba.setup()
+        assert self.FRONTEND_VARS <= set(ns)
+        assert ns['_BA_INSTANCE'] is ba
+        assert ns['_BA_CAPTURE'] == ''
+        assert ns['_BA_DATA_INDEX_COL'] == 'id'
+        assert json.loads(ns['_BA_AUDIO'])['type'] == 'column'
+
+    def test_setup_outside_kernel_raises(self, monkeypatch):
+        import jupyter_bioacoustic.api as api
+        monkeypatch.setattr(api, 'get_ipython', lambda: None)
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
+        with pytest.raises(RuntimeError):
+            ba.setup()
