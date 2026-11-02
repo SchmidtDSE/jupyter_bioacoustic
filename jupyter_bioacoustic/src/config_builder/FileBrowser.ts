@@ -1,3 +1,8 @@
+/**
+ * FileBrowser
+ *
+ * License: BSD 3-Clause
+ */
 import { Signal } from '@lumino/signaling';
 import { COLORS, btnStyle } from '../styles';
 import { KernelBridge } from '../kernel';
