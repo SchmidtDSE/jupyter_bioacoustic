@@ -1,3 +1,8 @@
+/**
+ * python
+ *
+ * License: BSD 3-Clause
+ */
 import { escPy } from '../util';
 
 const DELIM = '___CB_JSON___';
