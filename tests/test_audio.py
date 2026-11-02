@@ -14,8 +14,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from jupyter_bioacoustic.audio import io, _shared
-from jupyter_bioacoustic.audio._shared import cache_path, parse_flac_header
+from jupyter_bioacoustic.audio import io, _partial, _shared
+from jupyter_bioacoustic.audio._partial import parse_flac_header
+from jupyter_bioacoustic.audio._shared import cache_path
 from jupyter_bioacoustic.audio import io_local, io_aws, io_gcs, io_https
 
 
@@ -196,7 +197,7 @@ def _assert_partial_matches_local(path, windows):
     get_size, get_range, _ = _range_callables(path)
     for start, dur in windows:
         expected, sr = io_local.read_segment(str(path), start, dur)
-        got, got_sr = _shared.read_remote_partial(start, dur, get_size, get_range)
+        got, got_sr = _partial.read_remote_partial(start, dur, get_size, get_range)
         assert got_sr == sr
         assert got.shape == expected.shape, (start, dur, got.shape, expected.shape)
         assert np.array_equal(got, expected), (start, dur)
@@ -217,15 +218,15 @@ class TestReadRemotePartial:
         path = _write_vbr_flac(tmp_path / 'padded.flac', seconds=20)
         _insert_metadata_block(path, 1, bytes(70000))            # PADDING block
         get_size, get_range, _ = _range_callables(path)
-        info = _shared._read_flac_info(get_range, get_size())
-        assert info.audio_offset > _shared.HEADER_BYTES
+        info = _partial._read_flac_info(get_range, get_size())
+        assert info.audio_offset > _partial.HEADER_BYTES
         _assert_partial_matches_local(path, _windows(20, 16000, n_random=15))
 
     def test_uses_seektable(self, tmp_path):
         path = _write_vbr_flac(tmp_path / 'seek.flac', seconds=20)
         get_size, get_range, _ = _range_callables(path)
-        info = _shared._read_flac_info(get_range, get_size())
-        frames = _shared._find_frame_chain(get_range(0, get_size() - 1), 0, info)
+        info = _partial._read_flac_info(get_range, get_size())
+        frames = _partial._find_frame_chain(get_range(0, get_size() - 1), 0, info)
         points = b''.join(
             f.first_sample.to_bytes(8, 'big')
             + (f.offset - info.audio_offset).to_bytes(8, 'big')
@@ -234,13 +235,13 @@ class TestReadRemotePartial:
         )
         _insert_metadata_block(path, 3, points)                  # SEEKTABLE block
         get_size, get_range, _ = _range_callables(path)
-        assert len(_shared._read_flac_info(get_range, get_size()).seekpoints) == len(frames[::10])
+        assert len(_partial._read_flac_info(get_range, get_size()).seekpoints) == len(frames[::10])
         _assert_partial_matches_local(path, _windows(20, 16000, n_random=15))
 
     def test_fetches_only_part_of_the_file(self, tmp_path):
         path = _write_vbr_flac(tmp_path / 'vbr.flac')
         get_size, get_range, stats = _range_callables(path)
-        _shared.read_remote_partial(30, 1, get_size, get_range)
+        _partial.read_remote_partial(30, 1, get_size, get_range)
         assert stats['bytes'] < get_size() / 4
 
     def test_unsupported_format_raises(self, tmp_path):
@@ -249,8 +250,8 @@ class TestReadRemotePartial:
         ogg = tmp_path / 'a.ogg'
         sf.write(str(ogg), np.zeros(8000), 8000, format='OGG')
         get_size, get_range, _ = _range_callables(ogg)
-        with pytest.raises(_shared.UnsupportedPartialFormat):
-            _shared.read_remote_partial(0, 0.01, get_size, get_range)
+        with pytest.raises(_partial.UnsupportedPartialFormat):
+            _partial.read_remote_partial(0, 0.01, get_size, get_range)
 
     @pytest.mark.parametrize('fmt,subtype', [
         ('WAV', 'PCM_U8'), ('WAV', 'PCM_16'), ('WAV', 'PCM_24'), ('WAV', 'PCM_32'),
@@ -271,10 +272,10 @@ class TestReadRemotePartial:
         path = tmp_path / 'long.wav'
         sf.write(str(path), np.zeros(16000 * 60), 16000, subtype='PCM_16')
         get_size, get_range, stats = _range_callables(path)
-        raw, sr = _shared.read_remote_partial(30, 3, get_size, get_range)
+        raw, sr = _partial.read_remote_partial(30, 3, get_size, get_range)
         assert raw.shape == (3 * sr, 1)
         assert stats['requests'] == 2                           # header + samples
-        assert stats['bytes'] <= _shared.HEADER_BYTES + 3 * sr * 2
+        assert stats['bytes'] <= _partial.HEADER_BYTES + 3 * sr * 2
 
     def test_wav_data_chunk_past_header_fetch(self, tmp_path):
         """A big chunk (e.g. LIST/bext metadata) before 'data' pushes it past the first 4 KB."""
@@ -293,7 +294,7 @@ class TestReadRemotePartial:
     def test_corrupt_audio_raises_runtime_error(self, tmp_path):
         path = _write_vbr_flac(tmp_path / 'vbr.flac', seconds=10)
         get_size, get_range, _ = _range_callables(path)
-        info = _shared._read_flac_info(get_range, get_size())
+        info = _partial._read_flac_info(get_range, get_size())
 
         def zeros_after_header(start, end):
             data = bytearray(get_range(start, end))
@@ -302,7 +303,7 @@ class TestReadRemotePartial:
             return bytes(data)
 
         with pytest.raises(RuntimeError):
-            _shared.read_remote_partial(5, 1, get_size, zeros_after_header)
+            _partial.read_remote_partial(5, 1, get_size, zeros_after_header)
 
     def test_s3_backend_partial_and_fallback(self, tmp_path):
         """io_aws wiring: partial path matches local; unsupported formats fall back cleanly."""
@@ -334,7 +335,7 @@ class TestReadRemotePartial:
         sf.write(str(ogg), np.zeros(8000), 8000, format='OGG')
         uri = f's3://b/{os.getpid()}-nofallback.ogg'
         client = _FakeS3(ogg)
-        with pytest.raises(_shared.UnsupportedPartialFormat):
+        with pytest.raises(_partial.UnsupportedPartialFormat):
             io.read_segment(uri, 0, 0.1, fallback=False, client=client)
         assert client.downloads == 0
         assert not os.path.exists(_shared.cache_path(uri))
