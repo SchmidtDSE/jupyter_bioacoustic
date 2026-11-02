@@ -1,14 +1,16 @@
 /**
- * Styling helpers for the BioacousticWidget.
+ * Styling helpers shared by the annotator widget and the config builder.
  *
- * All inline CSS strings and the color palette live here so the main widget
- * file focuses on behavior, not presentation.
+ * The color palette (Catppuccin Mocha) and the inline-CSS string factories live here so
+ * components focus on behavior, not presentation. ``injectGlobalStyles`` adds the few rules
+ * that can't be inline (placeholders, hover, table fixes), including some config-builder ones.
  *
  * License: BSD 3-Clause
  */
-
-// ─── Color palette (Catppuccin Mocha) ─────────────────────────
-
+//
+// Constants
+//
+/** The color palette (Catppuccin Mocha). */
 export const COLORS = {
   // Backgrounds
   bgBase:       '#1e1e2e',
@@ -45,23 +47,34 @@ export const COLORS = {
   lockAmber:    '#cf9268',  // deadened peach — a locked file's lock toggle
 };
 
+/** Colors cycled through for multibox boxes and multi-row reviewed cards. */
 export const DISPLAY_CHIP_COLORS = [
   COLORS.green, COLORS.mauve, COLORS.peach, COLORS.sky, COLORS.red,
 ];
 
-// ─── CSS helper functions ─────────────────────────────────────
+/** Id of the injected global ``<style>`` element. */
+const GLOBAL_STYLE_ID = 'jp-bioacoustic-global-styles';
 
+
+//
+// Public
+//
+// ── Inputs, buttons, bars ─────────────────────────────────────
+/** Text / number input of width ``w``. */
 export const inputStyle = (w = '80px') =>
   `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:4px;color:${COLORS.textPrimary};` +
   `padding:3px 6px;font-size:12px;width:${w};box-sizing:border-box;`;
 
+/** A ``<select>``. */
 export const selectStyle = () =>
   `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};border-radius:4px;color:${COLORS.textPrimary};` +
   `padding:3px 5px;font-size:12px;`;
 
+/** An inline label wrapping its control. */
 export const labelStyle = () =>
   `display:flex;align-items:center;gap:5px;color:${COLORS.textSubtle};font-size:11px;white-space:nowrap;`;
 
+/** A button; ``primary`` is the filled blue call-to-action. */
 export const btnStyle = (primary = false) =>
   primary
     ? `background:${COLORS.blue};border:none;border-radius:4px;color:${COLORS.bgBase};padding:4px 12px;` +
@@ -69,69 +82,75 @@ export const btnStyle = (primary = false) =>
     : `background:${COLORS.bgSurface1};border:none;border-radius:4px;color:${COLORS.textPrimary};padding:4px 10px;` +
       `font-size:12px;cursor:pointer;`;
 
+/** A horizontal toolbar row. */
 export const barStyle = () =>
   `display:flex;align-items:center;gap:8px;padding:6px 12px;` +
   `background:${COLORS.bgMantle};flex-wrap:wrap;flex-shrink:0;`;
 
+/** Toolbar with a bottom border. */
 export const barBottomStyle = () =>
   barStyle() + `border-bottom:1px solid ${COLORS.bgSurface0};`;
 
+/** Toolbar with top and bottom borders. */
 export const barTopBottomStyle = () =>
   barStyle() +
   `border-top:1px solid ${COLORS.bgSurface0};border-bottom:1px solid ${COLORS.bgSurface0};`;
 
-// ─── Label / text helpers ─────────────────────────────────────
-
+// ── Labels / text ─────────────────────────────────────────────
+/** Small non-wrapping label. */
 export const smallLabelStyle = () =>
   `color:${COLORS.textSubtle};font-size:11px;white-space:nowrap;flex-shrink:0;`;
 
+/** A form-field label (``fontSize`` px). */
 export const formLabelStyle = (fontSize: number = 13) =>
   labelStyle() + `font-size:${fontSize}px;gap:7px;`;
 
+/** An upper-case section title. */
 export const sectionTitleStyle = () =>
   `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:${COLORS.textMuted};`;
 
+/** Small monospaced numbers (time displays). */
 export const monoTextStyle = () =>
   `font-variant-numeric:tabular-nums;font-size:11px;color:${COLORS.textSubtle};` +
   `font-family:ui-monospace,monospace;`;
 
+/** Muted helper text, optionally with a width / font size. */
 export const mutedTextStyle = (opts: { width?: string; fontSize?: number } = {}) => {
   const size = opts.fontSize ?? 11;
   const width = opts.width ? `width:${opts.width};` : '';
   return `color:${COLORS.textSubtle};font-size:${size}px;${width}`;
 };
 
-// ─── Form row containers ──────────────────────────────────────
-
+// ── Containers / dividers ─────────────────────────────────────
+/** A wrapping row of form fields (``display:none`` when ``hidden``). */
 export const formRowStyle = (hidden: boolean = false) =>
   `display:${hidden ? 'none' : 'flex'};align-items:center;gap:16px;flex-wrap:wrap;`;
 
-// ─── Divider ──────────────────────────────────────────────────
-
+/** Horizontal rule with the given margin. */
 export const dividerStyle = (margin: string = '0 -2px') =>
   `border-top:1px solid ${COLORS.bgSurface0};margin:${margin};`;
 
+/** Full-width horizontal rule. */
 export const fullWidthDividerStyle = () =>
   `border-top:1px solid ${COLORS.bgSurface0};width:100%;margin:2px 0;`;
 
-// ─── Filter chip ──────────────────────────────────────────────
-
+// ── Filter chips ──────────────────────────────────────────────
+/** A clip-table filter chip. */
 export const filterChipStyle = () =>
   `display:inline-flex;align-items:center;gap:4px;` +
   `background:${COLORS.bgSurface1};color:${COLORS.textPrimary};` +
   `border-radius:12px;padding:2px 6px 2px 10px;font-size:11px;` +
   `white-space:nowrap;margin:2px;`;
 
+/** The × on a filter chip. */
 export const filterChipDismissStyle = () =>
   `background:none;border:none;color:${COLORS.textMuted};cursor:pointer;` +
   `font-size:14px;padding:0 2px;line-height:1;`;
 
-// ─── Utility ──────────────────────────────────────────────────
-
-export const cssSize = (val: any): string =>
+// ── Utilities / icons ─────────────────────────────────────────
+/** A config size as CSS: numbers are px, strings pass through (``'50%'``). */
+export const cssSize = (val: number | string): string =>
   typeof val === 'number' ? `${val}px` : String(val);
-
-// ─── Icons ──────────────────────────────
 
 /**
  * Inline padlock SVG markup (closed when `locked`, open otherwise). Uses
@@ -149,17 +168,15 @@ export const lockIconSvg = (locked: boolean, size = 14): string => {
   );
 };
 
-// ─── Global stylesheet injection ──────────────────────────────
-
+// ── Global stylesheet ─────────────────────────────────────────
 /**
  * Inject a <style> tag with rules that can't be applied via inline styles
  * (pseudo-elements, etc.). Idempotent — only injects once per document.
  */
 export function injectGlobalStyles(): void {
-  const ID = 'jp-bioacoustic-global-styles';
-  if (document.getElementById(ID)) return;
+  if (document.getElementById(GLOBAL_STYLE_ID)) return;
   const styleEl = document.createElement('style');
-  styleEl.id = ID;
+  styleEl.id = GLOBAL_STYLE_ID;
   styleEl.textContent = `
     .jp-BA-chip-dismiss:hover { color: ${COLORS.red}; }
     .jp-BA-filter-input::placeholder {
