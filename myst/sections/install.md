@@ -3,8 +3,8 @@
 
 There are three ways to install, depending on how you work:
 
-1. **[pixi](#install-pixi)** *(recommended)* — a reproducible, cross-platform environment that
-   installs `ffmpeg` for you. Best choice if you're comfortable with a terminal.
+1. **[pixi](#install-pixi)** *(recommended)* — a reproducible, cross-platform environment. Best
+   choice if you're comfortable with a terminal.
 2. **[pip](#install-pip)** — if you already manage your own Python / JupyterLab environment.
 3. **[Desktop app](#install-desktop)** — a no-code, no-terminal download for the small set of users
    who don't work in Python tooling at all.
@@ -18,15 +18,15 @@ zero setup and is aimed at non-technical reviewers — see the [caveats](#instal
 ## 1. pixi (recommended)
 
 [pixi](https://pixi.sh) builds an isolated, lock-fileable environment and pulls both conda-forge
-packages (Python, JupyterLab, **ffmpeg**) and PyPI packages (`jupyter-bioacoustic`) in one step — so
-you get `ffmpeg` automatically on macOS, Linux, and Windows with no separate install.
+packages (Python, JupyterLab) and PyPI packages (`jupyter-bioacoustic`) in one step, on macOS, Linux,
+and Windows.
 
 ### Quick start (new project)
 
 ```bash
 pixi init my-annotations
 cd my-annotations
-pixi add jupyterlab ffmpeg "python>=3.11"   # conda-forge
+pixi add jupyterlab "python>=3.11"          # conda-forge
 pixi add --pypi jupyter-bioacoustic          # PyPI
 pixi run jupyter lab
 ```
@@ -37,7 +37,6 @@ pixi run jupyter lab
 [tool.pixi.dependencies]
 python = ">=3.11"
 jupyterlab = ">=4.0,<5"
-ffmpeg = "*"
 
 [tool.pixi.pypi-dependencies]
 jupyter-bioacoustic = ">=0.9,<1.0"
@@ -68,12 +67,6 @@ step needed):
 ```bash
 pip install jupyter_bioacoustic-0.9.2-py3-none-any.whl
 ```
-
-:::{important}
-**`ffmpeg` is not a pip dependency** — install it separately for partial byte-range downloads of
-remote audio (S3 / HTTPS / GCS) and for `ffprobe`. Without it, remote files are fully downloaded and
-cached on first access. (pixi users get this for free; see [Requirements](#install-requirements).)
-:::
 
 (install-desktop)=
 ## 3. Desktop app (no-code)
@@ -108,8 +101,7 @@ via a menu-bar / system-tray icon. When released it will be on
 ### Command-line tools (optional)
 
 The app is self-contained, so its `jba` CLI (`jba lab`, `jba validate`, …) isn't on your `PATH`. If you
-*do* want it in a terminal, add a small shell function pointing at the app's bundled environment (this
-also puts the app's `ffmpeg` on `PATH` for that command):
+*do* want it in a terminal, add a small shell function pointing at the app's bundled environment:
 
 ```bash
 # macOS (zsh)
@@ -184,22 +176,8 @@ The tray menu's **"Page blank or crashed? — Help"** item shows these same step
 
 - **Python** ≥ 3.9
 - **JupyterLab** ≥ 4.0
-- **ffmpeg** *(recommended)* — bundles `ffprobe` and enables partial byte-range downloads for remote
-  audio (S3, HTTPS, GCS). Not a pip dependency, so pip users install it separately. **pixi and the
-  desktop app include it automatically.**
 
-```bash
-# macOS (Homebrew)
-brew install ffmpeg
-# Linux — Debian/Ubuntu
-sudo apt install ffmpeg
-# Linux — Fedora
-sudo dnf install ffmpeg
-# Windows (winget) — or: choco install ffmpeg
-winget install ffmpeg
-# conda (cross-platform)
-conda install -c conda-forge ffmpeg
-```
+Remote FLAC clips (S3, HTTPS, GCS) are read with byte-range requests. No system tools are needed.
 
 The extension auto-registers on install — just launch JupyterLab and go.
 

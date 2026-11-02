@@ -596,7 +596,7 @@ class ConfigBuilder:
     def check_audio_url(self, value: str) -> dict:
         """Best-effort reachability check for a remote audio file.
 
-        For FLAC, parses the file header (ffmpeg-free) for sample rate **and**
+        For FLAC, parses the file header for sample rate **and**
         duration. For other formats — or if the FLAC header can't be read —
         reads a short segment to confirm reachability + sample rate (no
         duration). Raises on failure so the caller can surface the error.
@@ -611,7 +611,7 @@ class ConfigBuilder:
                 sr, dur = _shared.parse_flac_header(header)
                 return {'ok': True, 'sample_rate': int(sr), 'duration': float(dur)}
             except Exception as err:
-                # No ffmpeg-free duration available — fall back to a segment read.
+                # A segment read still checks reachability, with no duration.
                 _log.info('FLAC header read failed (%s); using segment read', err)
 
         raw, sr = read_segment(value, 0.0, 0.5, partial=True)

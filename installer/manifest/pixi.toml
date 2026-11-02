@@ -20,8 +20,6 @@ platforms = ["osx-arm64", "osx-64", "win-64", "linux-64"]
 
 [dependencies]
 python = ">=3.11,<3.13"
-# ffmpeg powers partial/remote audio reads (e.g. FLAC on s3) — bundle for robustness.
-ffmpeg = "*"
 
 [pypi-dependencies]
 jupyter-bioacoustic = ">=0.9,<1.0"

@@ -27,31 +27,7 @@ _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 pip install jupyter-bioacoustic
 ```
 
-### ffmpeg (recommended)
-
-`ffmpeg` (which includes `ffprobe`) enables **partial byte-range downloads** for remote audio (S3, HTTPS, GCS), so multi-hour recordings load in seconds. It is **not** a pip dependency — install it separately. Without it, remote files are fully downloaded and cached on first access (slower, but everything still works).
-
-```bash
-# macOS (Homebrew)
-brew install ffmpeg
-
-# Linux — Debian/Ubuntu
-sudo apt install ffmpeg
-# Linux — Fedora
-sudo dnf install ffmpeg
-
-# Windows (winget) — or: choco install ffmpeg
-winget install ffmpeg
-```
-
-Or pull it into a [pixi](https://pixi.sh) project (cross-platform, no system install) — `pixi add ffmpeg`, or in `pyproject.toml`:
-
-```toml
-[tool.pixi.dependencies]
-ffmpeg = "*"
-```
-
-(`conda install -c conda-forge ffmpeg` works too.)
+Remote FLAC clips (S3, GCS, HTTPS) are read with byte-range requests, so multi-hour recordings load in seconds. No extra install is needed.
 
 See the [Development wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) for building from source.
 
@@ -267,7 +243,7 @@ form_config:
 | `capture_height` | int | `None` | Capture image height in pixels. Defaults to `player_height` if not set. |
 | `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. Prefix an item with `selected::` to set the default (e.g. `[1000, 'selected::2000', 4000]`). |
 | `visualizations` | list | `['linear', 'mel']` | Visualization types for the dropdown. Built-in strings (`'linear'`, `'mel'`, `'log_frequency'`, `'bandpass'`, `'waveform'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#custom-visualizations). |
-| `partial_download` | bool | `True` | Use byte-range downloads for remote audio (requires ffmpeg/pydub). Set to `False` to always download and cache the full file. |
+| `partial_download` | bool | `True` | Read remote FLAC clips with byte-range downloads. Clips are sample-exact. If a byte-range read fails, the full file is downloaded and cached. Set to `False` to always download and cache the full file. |
 | `width` | str | `'100%'` | Inline widget width. |
 | `height` | int | `900` | Inline widget height. |
 | `config` | str | `None` | Path to YAML/JSON config file |

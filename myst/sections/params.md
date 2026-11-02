@@ -96,9 +96,9 @@ Use `audio_sql` or `audio_api` with `audio_property` to resolve the audio path d
 
 ### Partial byte-range downloads
 
-Remote audio (S3, HTTPS, GCS) uses partial byte-range downloads by default — only the FLAC header and the estimated segment range are fetched. Multi-hour recordings load in seconds.
+Remote FLAC audio (S3, HTTPS, GCS) uses partial byte-range downloads by default — only the FLAC header and the bytes around the clip are fetched. Multi-hour recordings load in seconds. Clips are sample-exact: they hold the same samples as a read of the full file.
 
-This requires **ffmpeg** (via `pydub`). Without ffmpeg, it falls back to downloading and caching the full file. Disable partial downloads with `partial_download=False`.
+If a byte-range read fails, the full file is downloaded and cached, and a warning is shown. Other formats always use the cached full download. Disable partial downloads with `partial_download=False`.
 
 
 ## Forms
@@ -200,7 +200,7 @@ dynamic_forms:
 | `capture_height` | `None` | Capture image height in pixels. Defaults to `player_height` if not set |
 | `spectrogram_resolution` | `[1000, 2000, 4000]` | Image width(s) in px. `selected::` prefix for default |
 | `visualizations` | `['linear', 'mel']` | Built-in strings or callables |
-| `partial_download` | `True` | Byte-range downloads for remote audio (requires ffmpeg) |
+| `partial_download` | `True` | Byte-range downloads for remote FLAC; falls back to a cached full download |
 | `width` | `'100%'` | Inline widget width |
 | `clip_table_height` | `175` | Clip table height (px) |
 | `player_height` | `260` | Player/spectrogram height (px). **Sets spectrogram resolution height.** |

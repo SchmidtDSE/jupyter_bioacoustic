@@ -1,7 +1,7 @@
 """HTTPS IO Backend
 
-Audio I/O for HTTPS URLs with support for partial
-downloads and range requests.
+Audio I/O for HTTPS URLs. FLAC windows use sample-exact
+byte-range reads.
 
 License: BSD 3-Clause
 """
@@ -11,6 +11,8 @@ import os
 import logging
 from typing import Any, Optional, Union
 
+from ondio import OndioError
+
 from . import _shared
 
 
@@ -18,9 +20,7 @@ from . import _shared
 # Constants
 #
 DEFAULT_TIMEOUT = 120
-RANGE_REQUEST_TIMEOUT = 30
 CHUNK_SIZE = 8192
-HEADER_RANGE_SIZE = 4095
 LOG_URL_MAX_LEN = 80
 
 
@@ -99,25 +99,15 @@ def read_segment(
     Returns:
         (raw, sr) audio segment.
     """
-    import requests
-
-    rk = _request_kwargs(kwargs)
-    if partial:
-        _log.debug(
-            'HTTPS partial read: %s  '
-            'start=%.1fs dur=%.1fs',
-            path[:LOG_URL_MAX_LEN], start_sec, dur_sec,
-        )
+    if partial and _shared.is_flac(path):
+        okw = _shared.ondio_kwargs('https', kwargs)
         try:
-            result = _read_partial(
-                path, start_sec, dur_sec, rk,
+            return _shared.read_remote_flac(
+                path, start_sec, dur_sec, **okw,
             )
-            _log.debug(
-                'HTTPS partial read succeeded: %s',
-                path[:LOG_URL_MAX_LEN],
-            )
-            return result
-        except Exception as e:
+        # A bad window is ValueError. Both fall back,
+        # as before.
+        except (OndioError, ValueError) as e:
             msg = (
                 f'Partial download failed '
                 f'({type(e).__name__}: {e}). '
@@ -126,6 +116,7 @@ def read_segment(
             _log.warning(msg)
             _shared.last_warning = msg
 
+    rk = _request_kwargs(kwargs)
     _log.debug(
         'HTTPS full download: %s',
         path[:LOG_URL_MAX_LEN],
@@ -193,78 +184,3 @@ def _request_kwargs(
             f"Bearer {kwargs['token']}"
         )
     return rk
-
-
-def _read_partial(
-    path: str,
-    start_sec: float,
-    dur_sec: float,
-    rk: dict[str, Any],
-) -> Any:
-    """Perform partial byte-range download."""
-    import requests
-
-    def get_header() -> bytes:
-        h = dict(rk.get('headers', {}))
-        h['Range'] = f'bytes=0-{HEADER_RANGE_SIZE}'
-        r = requests.get(
-            path, headers=h,
-            timeout=rk.get('timeout', DEFAULT_TIMEOUT),
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        r.raise_for_status()
-        if r.status_code != 206:
-            raise ValueError(
-                f'Server returned {r.status_code} '
-                f'instead of 206'
-            )
-        return r.content
-
-    def get_size() -> int:
-        r = requests.head(
-            path, timeout=RANGE_REQUEST_TIMEOUT,
-            allow_redirects=True,
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        r.raise_for_status()
-        length = r.headers.get('Content-Length')
-        if length:
-            return int(length)
-        r2 = requests.get(
-            path, headers={'Range': 'bytes=0-0'},
-            timeout=RANGE_REQUEST_TIMEOUT,
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        cr = r2.headers.get('Content-Range', '')
-        if '/' in cr:
-            return int(cr.split('/')[-1])
-        raise ValueError('Cannot determine file size')
-
-    def get_range(sb: int, eb: int) -> bytes:
-        h = dict(rk.get('headers', {}))
-        h['Range'] = f'bytes={sb}-{eb}'
-        r = requests.get(
-            path, headers=h,
-            timeout=rk.get('timeout', DEFAULT_TIMEOUT),
-            verify=rk.get('verify', True),
-            cookies=rk.get('cookies'),
-            auth=rk.get('auth'),
-        )
-        r.raise_for_status()
-        if r.status_code != 206:
-            raise ValueError(
-                f'Server returned {r.status_code} '
-                f'instead of 206'
-            )
-        return r.content
-
-    return _shared.read_remote_partial(
-        start_sec, dur_sec,
-        get_header, get_size, get_range,
-    )

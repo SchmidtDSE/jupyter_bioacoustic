@@ -10,12 +10,13 @@ import os
 import logging
 from typing import Optional, Any, Union
 
+from ondio import OndioError
+
 from . import _shared
 
 #
 # Constants
 #
-DEFAULT_HEADER_BYTES = 4095
 S3_SCHEME = 's3://'
 PATH_SEPARATOR = '/'
 
@@ -85,31 +86,19 @@ def read_segment(
     Returns:
         Audio data for the specified segment
     """
-    bucket, key = _parse_s3_uri(path)
-    client = kwargs.get('client') or _get_client(**kwargs)
-    if partial:
-        _log.debug('S3 partial read: %s  start=%.1fs dur=%.1fs', path, start_sec, dur_sec)
+    if partial and _shared.is_flac(path):
+        okw = _shared.ondio_kwargs('s3', kwargs)
         try:
-            result = _shared.read_remote_partial(
-                start_sec, dur_sec,
-                get_header=lambda: client.get_object(
-                    Bucket=bucket, Key=key, Range=f'bytes=0-{DEFAULT_HEADER_BYTES}'
-                )['Body'].read(),
-                get_size=lambda: client.head_object(
-                    Bucket=bucket, Key=key
-                )['ContentLength'],
-                get_range=lambda sb, eb: client.get_object(
-                    Bucket=bucket, Key=key, Range=f'bytes={sb}-{eb}'
-                )['Body'].read(),
-            )
-            _log.debug('S3 partial read succeeded: %s', path)
-            return result
-        except Exception as e:
+            return _shared.read_remote_flac(path, start_sec, dur_sec, **okw)
+        # A bad window is ValueError. Both fall back, as before.
+        except (OndioError, ValueError) as e:
             msg = (f'Partial download failed ({type(e).__name__}: {e}). '
                    f'Falling back to full download')
             _log.warning(msg)
             _shared.last_warning = msg
 
+    bucket, key = _parse_s3_uri(path)
+    client = kwargs.get('client') or _get_client(**kwargs)
     _log.debug('S3 full download: %s', path)
     cache = _shared.cache_path(path)
     if not os.path.exists(cache):

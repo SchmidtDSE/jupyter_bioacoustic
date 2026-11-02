@@ -10,13 +10,14 @@ import os
 import logging
 from typing import Any
 
+from ondio import OndioError
+
 from . import _shared
 
 #
 # Constants
 #
 
-_DEFAULT_HEADER_SIZE: int = 4095
 _GCS_URI_PREFIX: str = 'gs://'
 
 #
@@ -54,32 +55,20 @@ def read(src: str, dest: str | None = None, start_byte: int | None = None,
 def read_segment(path: str, start_sec: float, dur_sec: float, partial: bool = True,
                  **kwargs: Any) -> Any:
     """Read audio segment from GCS blob."""
-    from google.cloud import storage
-    bucket_name, blob_name = _parse_gcs_uri(path)
-    client = kwargs.get('client') or _get_client(**kwargs)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-
-    if partial:
-        _log.debug('GCS partial read: %s  start=%.1fs dur=%.1fs', path,
-                   start_sec, dur_sec)
+    if partial and _shared.is_flac(path):
+        okw = _shared.ondio_kwargs('gs', kwargs)
         try:
-            result = _shared.read_remote_partial(
-                start_sec, dur_sec,
-                get_header=lambda: blob.download_as_bytes(start=0,
-                                                          end=_DEFAULT_HEADER_SIZE),
-                get_size=lambda: _blob_size(blob),
-                get_range=lambda sb, eb: blob.download_as_bytes(start=sb,
-                                                                end=eb),
-            )
-            _log.debug('GCS partial read succeeded: %s', path)
-            return result
-        except Exception as e:
+            return _shared.read_remote_flac(path, start_sec, dur_sec, **okw)
+        # A bad window is ValueError. Both fall back, as before.
+        except (OndioError, ValueError) as e:
             msg = (f'Partial download failed ({type(e).__name__}: {e}). '
                    f'Falling back to full download')
             _log.warning(msg)
             _shared.last_warning = msg
 
+    bucket_name, blob_name = _parse_gcs_uri(path)
+    client = kwargs.get('client') or _get_client(**kwargs)
+    blob = client.bucket(bucket_name).blob(blob_name)
     _log.debug('GCS full download: %s', path)
     cache = _shared.cache_path(path)
     if not os.path.exists(cache):
@@ -170,11 +159,3 @@ def _get_client(project: str | None = None, credentials: Any | None = None,
     if credentials:
         client_kwargs['credentials'] = credentials
     return storage.Client(**client_kwargs)
-
-
-def _blob_size(blob: Any) -> int:
-    blob.reload()
-    if blob.size is None:
-        _log.error('GCS blob size is None for %s', blob.name)
-        raise ValueError(f'Could not determine blob size')
-    return blob.size

@@ -2,8 +2,8 @@
 Audio Shared (Internal)
 
 Shared utilities for audio IO backends: caching, FLAC
-header parsing, partial-range downloading, and path
-helpers.
+header parsing, sample-exact remote FLAC windows, and
+path helpers.
 
 License: BSD 3-Clause
 """
@@ -14,7 +14,7 @@ import hashlib
 import logging
 import os
 import struct
-import tempfile
+from typing import Any
 
 import numpy as np
 
@@ -26,7 +26,15 @@ _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 CACHE_DIR = '/tmp/jba_audio_cache'
 HEADER_BYTES = 4096
-PADDING_RATIO = 0.25
+
+# Caller options passed on to ondio, per scheme.
+_ONDIO_OPTIONS = {
+    's3': ('profile_name', 'region_name'),
+    'gs': ('project', 'credentials'),
+}
+_HTTPS_OPTIONS = (
+    'headers', 'cookies', 'auth', 'verify', 'timeout', 'allow_redirects',
+)
 
 last_warning: str | None = None
 
@@ -94,88 +102,63 @@ def parse_flac_header(
     raise ValueError('No STREAMINFO block found')
 
 
-def read_remote_partial(
+def is_flac(path: str) -> bool:
+    """Return True if *path* names a FLAC file."""
+    return path.split('?')[0].lower().endswith('.flac')
+
+
+def ondio_kwargs(
+    scheme: str, kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Map caller options to ondio backend kwargs.
+
+    Options that the JBA backends ignore are also ignored here.
+    """
+    if scheme in ('s3', 'gs'):
+        # ondio refuses a client together with other options;
+        # JBA ignores the other options when a client is given.
+        if kwargs.get('client') is not None:
+            return {'client': kwargs['client']}
+        names = _ONDIO_OPTIONS[scheme]
+        return {k: kwargs[k] for k in names if kwargs.get(k)}
+    okw = {k: kwargs[k] for k in _HTTPS_OPTIONS if k in kwargs}
+    if 'token' in kwargs:
+        okw['headers'] = {
+            **okw.get('headers', {}),
+            'Authorization': f"Bearer {kwargs['token']}",
+        }
+    return okw
+
+
+def ondio_backend(uri: str, okw: dict[str, Any]) -> Any:
+    """Build the ondio backend for *uri* from mapped caller options."""
+    from ondio.registry import get_backend
+    return get_backend(uri, **okw)
+
+
+def read_remote_flac(
+    uri: str,
     start_sec: float,
     dur_sec: float,
-    get_header,
-    get_size,
-    get_range,
+    **backend_kwargs: Any,
 ) -> tuple[np.ndarray, int]:
-    """Download a partial FLAC segment via byte-range.
-
-    Args:
-        start_sec: Start time in seconds.
-        dur_sec: Duration in seconds.
-        get_header: Callable returning FLAC header bytes.
-        get_size: Callable returning total file size.
-        get_range: Callable(start, end) returning bytes.
+    """Read a window of a remote FLAC with sample-exact ranged reads.
 
     Returns:
-        (raw, sample_rate) where raw is 2-D float32.
+        (raw, sample_rate) where raw is 2-D float32. The window is
+        samples [round(start_sec * sr), round((start_sec + dur_sec) * sr)),
+        clipped at EOF.
     """
-    from pydub import AudioSegment
+    import ondio
 
     _log.debug(
-        'read_remote_partial: start=%.1fs dur=%.1fs',
-        start_sec, dur_sec,
+        'read_remote_flac: %s start=%.3fs dur=%.3fs',
+        uri[:80], start_sec, dur_sec,
     )
-    header = get_header()
-    sr, total_dur = parse_flac_header(header)
-    _log.debug(
-        'FLAC header: sr=%d total_dur=%.1fs',
-        sr, total_dur,
+    return ondio.read_flac(
+        uri, start_sec, start_sec + dur_sec, use_range=True,
+        backend=ondio_backend(uri, backend_kwargs),
     )
-
-    file_size = get_size()
-    pad = dur_sec * PADDING_RATIO
-    padded_start = max(0, start_sec - pad)
-    padded_end = min(total_dur, start_sec + dur_sec + pad)
-    bps = file_size / total_dur
-    start_byte = int(padded_start * bps)
-    end_byte = min(file_size - 1, int(padded_end * bps))
-    _log.debug(
-        'partial byte range: %d-%d (%.1fMB)',
-        start_byte, end_byte,
-        (end_byte - start_byte) / (1024 * 1024),
-    )
-
-    audio_bytes = get_range(start_byte, end_byte)
-
-    with tempfile.NamedTemporaryFile(
-        suffix='.flac', delete=False,
-    ) as tmp:
-        tmp.write(audio_bytes)
-        tmp_path = tmp.name
-
-    try:
-        audio = AudioSegment.from_file(
-            tmp_path, format='flac',
-        )
-        rel_start_ms = int(
-            (start_sec - padded_start) * 1000,
-        )
-        dur_ms = int(dur_sec * 1000)
-        chunk = audio[rel_start_ms:rel_start_ms + dur_ms]
-        _log.debug(
-            'pydub extracted %dms '
-            '(channels=%d sr=%d)',
-            len(chunk), chunk.channels, chunk.frame_rate,
-        )
-
-        samples = np.array(
-            chunk.get_array_of_samples(), dtype=np.float32,
-        )
-        samples = samples / (
-            2 ** (chunk.sample_width * 8 - 1)
-        )
-        if chunk.channels > 1:
-            samples = samples.reshape(-1, chunk.channels)
-        else:
-            samples = samples.reshape(-1, 1)
-
-        return samples, chunk.frame_rate
-    finally:
-        os.unlink(tmp_path)
 
 
 def ensure_parent_dirs(path: str) -> None:
