@@ -1,14 +1,25 @@
 /**
- * AppSection
+ * Application section: annotator-wide settings (project name, clip-table display columns,
+ * info card templates, sort, duplicate entries, buffer, capture, sizes, secrets). Display
+ * columns become draggable chips once the data columns are known.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
+import { fillSelect, makeButton, makeInput, makeSelect } from '../dom';
 import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
 
+
+//
+// Public
+//
 export class AppSection extends CollapsibleSection {
+  /** Browse clicked for capture_dir (payload: the current dir, or ``.``). */
   readonly browseRequested = new Signal<this, string>(this);
 
   private _projectNameInput: HTMLInputElement;
@@ -39,11 +50,11 @@ export class AppSection extends CollapsibleSection {
   constructor() {
     super('Application', 'app', false, true);
 
-    this._projectNameInput = this._makeInput('e.g. Bird Review', '250px');
+    this._projectNameInput = makeInput('e.g. Bird Review', '250px');
     this._projectNameInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('project_name', this._projectNameInput));
 
-    this._dispTextInput = this._makeInput('col1, col2, col3', '250px');
+    this._dispTextInput = makeInput('col1, col2, col3', '250px');
     this._dispTextInput.addEventListener('input', () => {
       this._dispColsSet = true;
       this._dispCols = this._dispTextInput.value.split(',').map(s => s.trim()).filter(Boolean);
@@ -60,19 +71,19 @@ export class AppSection extends CollapsibleSection {
     );
     this._body.appendChild(dispWrap);
 
-    this._titleInput = this._makeInput('[[common_name]]', '220px');
+    this._titleInput = makeInput('[[common_name]]', '220px');
     this._titleInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('info_card_title', this._titleInput));
 
-    this._textInput = this._makeInput('species: [[species]] | confidence: [[confidence]]', '220px');
+    this._textInput = makeInput('species: [[species]] | confidence: [[confidence]]', '220px');
     this._textInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('info_card_text', this._textInput));
 
-    this._sortInput = this._makeInput('column (default: file order)', '180px');
+    this._sortInput = makeInput('column (default: file order)', '180px');
     this._sortInput.addEventListener('input', () => this._emitChanged());
     // dropdown shown once data columns are known; writes back into _sortInput
     // (the canonical value). Empty option = None (file order).
-    this._sortSelect = this._makeSelect([], '');
+    this._sortSelect = makeSelect([], '');
     this._sortSelect.style.display = 'none';
     this._sortSelect.addEventListener('change', () => {
       this._sortInput.value = this._sortSelect.value;
@@ -82,7 +93,7 @@ export class AppSection extends CollapsibleSection {
     sortRow.appendChild(this._sortSelect);
     this._body.appendChild(sortRow);
 
-    this._sortOrderSelect = this._makeSelect(['asc', 'desc'], 'asc');
+    this._sortOrderSelect = makeSelect(['asc', 'desc'], 'asc');
     this._sortOrderSelect.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('sort_order', this._sortOrderSelect));
 
@@ -91,7 +102,7 @@ export class AppSection extends CollapsibleSection {
     this._duplicateCb.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(dupRow);
 
-    this._bufferInput = this._makeInput('3', '80px');
+    this._bufferInput = makeInput('3', '80px');
     this._bufferInput.type = 'number';
     this._bufferInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('default_buffer', this._bufferInput));
@@ -102,35 +113,29 @@ export class AppSection extends CollapsibleSection {
     this._captureCb.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(capRow);
 
-    const capDirRow = this._makeRow();
-    capDirRow.addEventListener('focusin', () => this.fieldFocused.emit('capture_dir'));
-    capDirRow.addEventListener('click', () => this.fieldFocused.emit('capture_dir'));
-    capDirRow.appendChild(this._makeLabel('capture_dir'));
-    this._captureDirInput = this._makeInput('captures/', '160px');
+    const capDirRow = this._makeFocusRow('capture_dir', 'capture_dir');
+    this._captureDirInput = makeInput('captures/', '160px');
     this._captureDirInput.addEventListener('input', () => this._emitChanged());
-    const capDirBrowse = this._makeButton('Browse');
+    const capDirBrowse = makeButton('Browse');
     capDirBrowse.addEventListener('click', () => {
       this.browseRequested.emit(this._captureDirInput.value || '.');
     });
     capDirRow.append(this._captureDirInput, capDirBrowse);
     this._body.appendChild(capDirRow);
 
-    this._widthInput = this._makeInput('100%', '100px');
+    this._widthInput = makeInput('100%', '100px');
     this._widthInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('width', this._widthInput));
 
-    const heightRow = this._makeRow();
-    heightRow.addEventListener('focusin', () => this.fieldFocused.emit('clip_table_height'));
-    heightRow.addEventListener('click', () => this.fieldFocused.emit('clip_table_height'));
-    heightRow.appendChild(this._makeLabel('heights'));
+    const heightRow = this._makeFocusRow('clip_table_height', 'heights');
 
-    this._clipTableHeightInput = this._makeInput('175', '60px');
+    this._clipTableHeightInput = makeInput('175', '60px');
     this._clipTableHeightInput.type = 'number';
-    this._playerHeightInput = this._makeInput('260', '60px');
+    this._playerHeightInput = makeInput('260', '60px');
     this._playerHeightInput.type = 'number';
-    this._infoCardHeightInput = this._makeInput('34', '60px');
+    this._infoCardHeightInput = makeInput('34', '60px');
     this._infoCardHeightInput.type = 'number';
-    this._formPanelHeightInput = this._makeInput('140', '60px');
+    this._formPanelHeightInput = makeInput('140', '60px');
     this._formPanelHeightInput.type = 'number';
 
     for (const inp of [this._clipTableHeightInput, this._playerHeightInput,
@@ -138,7 +143,7 @@ export class AppSection extends CollapsibleSection {
       inp.addEventListener('input', () => this._emitChanged());
     }
 
-    this._captureHeightInput = this._makeInput('', '60px');
+    this._captureHeightInput = makeInput('', '60px');
     this._captureHeightInput.type = 'number';
     this._captureHeightInput.addEventListener('input', () => this._emitChanged());
 
@@ -158,6 +163,146 @@ export class AppSection extends CollapsibleSection {
     this._secrets.changed.connect(() => this._emitChanged());
     this._secrets.focused.connect(() => this.fieldFocused.emit('secrets'));
     this._body.appendChild(this._secrets.element);
+  }
+
+  /** Set capture_dir (e.g. from Browse). */
+  setCaptureDir(path: string): void {
+    this._captureDirInput.value = path;
+    this._emitChanged();
+  }
+
+  /** Offer the data columns: sort dropdown and display-column chips (free text without). */
+  setColumnOptions(cols: string[]): void {
+    this._availableCols = cols;
+    // sort field: dropdown of [None] + columns when columns are known,
+    // otherwise fall back to the free-text input
+    fillSelect(this._sortSelect, cols, 'None');
+    const curSort = this._sortInput.value.trim();
+    this._sortSelect.value = cols.includes(curSort) ? curSort : '';
+    const hasCols = cols.length > 0;
+    this._sortSelect.style.display = hasCols ? '' : 'none';
+    this._sortInput.style.display = hasCols ? 'none' : '';
+
+    if (cols.length > 0) {
+      if (this._dispCols.length === 0 && this._dispTextInput.value.trim()) {
+        this._dispCols = this._dispTextInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      this._dispTextInput.style.display = 'none';
+      this._dispChipsArea.style.display = '';
+      this._rebuildChips(this._dispChipsArea, this._dispCols);
+    } else {
+      this._dispTextInput.value = this._dispCols.join(', ');
+      this._dispTextInput.style.display = '';
+      this._dispChipsArea.style.display = 'none';
+    }
+    this._rebuildPicker(this._dispPickerArea, this._dispCols);
+  }
+
+  getData(): Record<string, any> {
+    const result: Record<string, any> = {};
+    const pn = this._projectNameInput.value.trim();
+    if (pn) result.project_name = pn;
+    if (this._dispColsSet) result.display_columns = this._dispCols.length > 0 ? [...this._dispCols] : [];
+
+    result.info_card_title = this._titleInput.value.trim();
+    result.info_card_text = this._textInput.value.trim();
+
+    const sortCol = this._sortInput.value.trim();
+    if (sortCol) {
+      result.sort = sortCol;
+      if (this._sortOrderSelect.value === 'desc') result.sort_order = 'desc';
+    }
+
+    if (this._duplicateCb.checked) result.duplicate_entries = true;
+
+    const bufStr = this._bufferInput.value.trim();
+    if (bufStr !== '') {
+      const buf = parseFloat(bufStr);
+      if (!isNaN(buf) && buf !== 3) result.default_buffer = buf;
+    }
+
+    if (this._captureCb.checked) result.capture = true;
+    else result.capture = false;
+    if (this._captureDirInput.value) result.capture_dir = this._captureDirInput.value;
+
+    const w = this._widthInput.value;
+    if (w && w !== '100%') result.width = w;
+
+    const cth = parseInt(this._clipTableHeightInput.value);
+    if (!isNaN(cth) && cth !== 175) result.clip_table_height = cth;
+    const ph = parseInt(this._playerHeightInput.value);
+    if (!isNaN(ph) && ph !== 260) result.player_height = ph;
+    const ich = parseInt(this._infoCardHeightInput.value);
+    if (!isNaN(ich) && ich !== 34) result.info_card_height = ich;
+    const fph = parseInt(this._formPanelHeightInput.value);
+    if (!isNaN(fph) && fph !== 140) result.form_panel_height = fph;
+    const ch = parseInt(this._captureHeightInput.value);
+    if (!isNaN(ch) && ch > 0) result.capture_height = ch;
+
+    const secrets = this._secrets.getData();
+    if (secrets !== undefined) result.secrets = secrets;
+
+    return result;
+  }
+
+  /** Set project_name (e.g. from Setup > Create New). */
+  setProjectName(name: string): void {
+    this._projectNameInput.value = name;
+    this._emitChanged();
+  }
+
+  override reset(): void {
+    for (const el of [
+      this._projectNameInput, this._dispTextInput, this._titleInput, this._textInput,
+      this._sortInput, this._bufferInput, this._captureDirInput, this._widthInput,
+      this._clipTableHeightInput, this._playerHeightInput, this._infoCardHeightInput,
+      this._formPanelHeightInput, this._captureHeightInput,
+    ]) {
+      el.value = '';
+    }
+    this._sortSelect.value = '';
+    this._sortOrderSelect.value = 'asc';
+    this._duplicateCb.checked = false;
+    this._captureCb.checked = true;
+    this._dispCols = [];
+    this._dispColsSet = false;
+    if (this._availableCols.length > 0) this._rebuildChips(this._dispChipsArea, this._dispCols);
+    this._rebuildPicker(this._dispPickerArea, this._dispCols);
+    this._secrets.reset();
+  }
+
+  setData(data: Record<string, any>): void {
+    if (data.project_name !== undefined) this._projectNameInput.value = data.project_name;
+    if ('display_columns' in data && Array.isArray(data.display_columns)) {
+      this._dispCols = [...data.display_columns];
+      this._dispColsSet = true;
+      this._dispTextInput.value = this._dispCols.join(', ');
+      if (this._availableCols.length > 0) {
+        this._dispTextInput.style.display = 'none';
+        this._dispChipsArea.style.display = '';
+        this._rebuildChips(this._dispChipsArea, this._dispCols);
+      }
+      this._rebuildPicker(this._dispPickerArea, this._dispCols);
+    }
+    if (data.info_card_title) this._titleInput.value = data.info_card_title;
+    if (data.info_card_text) this._textInput.value = data.info_card_text;
+    if (data.sort !== undefined) {
+      const sv = data.sort ? String(data.sort) : '';
+      this._sortInput.value = sv;
+      this._sortSelect.value = this._availableCols.includes(sv) ? sv : '';
+    }
+    if (data.sort_order !== undefined) this._sortOrderSelect.value = String(data.sort_order) === 'desc' ? 'desc' : 'asc';
+    if (data.duplicate_entries) this._duplicateCb.checked = true;
+    if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
+    if (data.capture === false) this._captureCb.checked = false;
+    if (data.capture_dir) this._captureDirInput.value = data.capture_dir;
+    if (data.width) this._widthInput.value = String(data.width);
+    if (data.clip_table_height) this._clipTableHeightInput.value = String(data.clip_table_height);
+    if (data.player_height) this._playerHeightInput.value = String(data.player_height);
+    if (data.info_card_height) this._infoCardHeightInput.value = String(data.info_card_height);
+    if (data.form_panel_height) this._formPanelHeightInput.value = String(data.form_panel_height);
+    if (data.capture_height) this._captureHeightInput.value = String(data.capture_height);
+    if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 
   private _makeChipsArea(): HTMLDivElement {
@@ -191,47 +336,6 @@ export class AppSection extends CollapsibleSection {
     row.append(lbl);
     row.addEventListener('click', () => this.fieldFocused.emit(fieldKey));
     return row;
-  }
-
-  setCaptureDir(path: string): void {
-    this._captureDirInput.value = path;
-    this._emitChanged();
-  }
-
-  setColumnOptions(cols: string[]): void {
-    this._availableCols = cols;
-    // sort field: dropdown of [None] + columns when columns are known,
-    // otherwise fall back to the free-text input
-    this._sortSelect.innerHTML = '';
-    const noneOpt = document.createElement('option');
-    noneOpt.value = '';
-    noneOpt.textContent = 'None';
-    this._sortSelect.appendChild(noneOpt);
-    for (const col of cols) {
-      const o = document.createElement('option');
-      o.value = col;
-      o.textContent = col;
-      this._sortSelect.appendChild(o);
-    }
-    const curSort = this._sortInput.value.trim();
-    this._sortSelect.value = cols.includes(curSort) ? curSort : '';
-    const hasCols = cols.length > 0;
-    this._sortSelect.style.display = hasCols ? '' : 'none';
-    this._sortInput.style.display = hasCols ? 'none' : '';
-
-    if (cols.length > 0) {
-      if (this._dispCols.length === 0 && this._dispTextInput.value.trim()) {
-        this._dispCols = this._dispTextInput.value.split(',').map(s => s.trim()).filter(Boolean);
-      }
-      this._dispTextInput.style.display = 'none';
-      this._dispChipsArea.style.display = '';
-      this._rebuildChips(this._dispChipsArea, this._dispCols);
-    } else {
-      this._dispTextInput.value = this._dispCols.join(', ');
-      this._dispTextInput.style.display = '';
-      this._dispChipsArea.style.display = 'none';
-    }
-    this._rebuildPicker(this._dispPickerArea, this._dispCols);
   }
 
   private _rebuildPicker(area: HTMLDivElement, selected: string[]): void {
@@ -440,111 +544,5 @@ export class AppSection extends CollapsibleSection {
     }
 
     area.appendChild(container);
-  }
-
-  getData(): Record<string, any> {
-    const result: Record<string, any> = {};
-    const pn = this._projectNameInput.value.trim();
-    if (pn) result.project_name = pn;
-    if (this._dispColsSet) result.display_columns = this._dispCols.length > 0 ? [...this._dispCols] : [];
-
-    result.info_card_title = this._titleInput.value.trim();
-    result.info_card_text = this._textInput.value.trim();
-
-    const sortCol = this._sortInput.value.trim();
-    if (sortCol) {
-      result.sort = sortCol;
-      if (this._sortOrderSelect.value === 'desc') result.sort_order = 'desc';
-    }
-
-    if (this._duplicateCb.checked) result.duplicate_entries = true;
-
-    const bufStr = this._bufferInput.value.trim();
-    if (bufStr !== '') {
-      const buf = parseFloat(bufStr);
-      if (!isNaN(buf) && buf !== 3) result.default_buffer = buf;
-    }
-
-    if (this._captureCb.checked) result.capture = true;
-    else result.capture = false;
-    if (this._captureDirInput.value) result.capture_dir = this._captureDirInput.value;
-
-    const w = this._widthInput.value;
-    if (w && w !== '100%') result.width = w;
-
-    const cth = parseInt(this._clipTableHeightInput.value);
-    if (!isNaN(cth) && cth !== 175) result.clip_table_height = cth;
-    const ph = parseInt(this._playerHeightInput.value);
-    if (!isNaN(ph) && ph !== 260) result.player_height = ph;
-    const ich = parseInt(this._infoCardHeightInput.value);
-    if (!isNaN(ich) && ich !== 34) result.info_card_height = ich;
-    const fph = parseInt(this._formPanelHeightInput.value);
-    if (!isNaN(fph) && fph !== 140) result.form_panel_height = fph;
-    const ch = parseInt(this._captureHeightInput.value);
-    if (!isNaN(ch) && ch > 0) result.capture_height = ch;
-
-    const secrets = this._secrets.getData();
-    if (secrets !== undefined) result.secrets = secrets;
-
-    return result;
-  }
-
-  setProjectName(name: string): void {
-    this._projectNameInput.value = name;
-    this._emitChanged();
-  }
-
-  override reset(): void {
-    for (const el of [
-      this._projectNameInput, this._dispTextInput, this._titleInput, this._textInput,
-      this._sortInput, this._bufferInput, this._captureDirInput, this._widthInput,
-      this._clipTableHeightInput, this._playerHeightInput, this._infoCardHeightInput,
-      this._formPanelHeightInput, this._captureHeightInput,
-    ]) {
-      el.value = '';
-    }
-    this._sortSelect.value = '';
-    this._sortOrderSelect.value = 'asc';
-    this._duplicateCb.checked = false;
-    this._captureCb.checked = true;
-    this._dispCols = [];
-    this._dispColsSet = false;
-    if (this._availableCols.length > 0) this._rebuildChips(this._dispChipsArea, this._dispCols);
-    this._rebuildPicker(this._dispPickerArea, this._dispCols);
-    this._secrets.reset();
-  }
-
-  setData(data: Record<string, any>): void {
-    if (data.project_name !== undefined) this._projectNameInput.value = data.project_name;
-    if ('display_columns' in data && Array.isArray(data.display_columns)) {
-      this._dispCols = [...data.display_columns];
-      this._dispColsSet = true;
-      this._dispTextInput.value = this._dispCols.join(', ');
-      if (this._availableCols.length > 0) {
-        this._dispTextInput.style.display = 'none';
-        this._dispChipsArea.style.display = '';
-        this._rebuildChips(this._dispChipsArea, this._dispCols);
-      }
-      this._rebuildPicker(this._dispPickerArea, this._dispCols);
-    }
-    if (data.info_card_title) this._titleInput.value = data.info_card_title;
-    if (data.info_card_text) this._textInput.value = data.info_card_text;
-    if (data.sort !== undefined) {
-      const sv = data.sort ? String(data.sort) : '';
-      this._sortInput.value = sv;
-      this._sortSelect.value = this._availableCols.includes(sv) ? sv : '';
-    }
-    if (data.sort_order !== undefined) this._sortOrderSelect.value = String(data.sort_order) === 'desc' ? 'desc' : 'asc';
-    if (data.duplicate_entries) this._duplicateCb.checked = true;
-    if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
-    if (data.capture === false) this._captureCb.checked = false;
-    if (data.capture_dir) this._captureDirInput.value = data.capture_dir;
-    if (data.width) this._widthInput.value = String(data.width);
-    if (data.clip_table_height) this._clipTableHeightInput.value = String(data.clip_table_height);
-    if (data.player_height) this._playerHeightInput.value = String(data.player_height);
-    if (data.info_card_height) this._infoCardHeightInput.value = String(data.info_card_height);
-    if (data.form_panel_height) this._formPanelHeightInput.value = String(data.form_panel_height);
-    if (data.capture_height) this._captureHeightInput.value = String(data.capture_height);
-    if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 }
