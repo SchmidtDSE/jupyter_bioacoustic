@@ -6,19 +6,10 @@ License: BSD 3-Clause
 """
 from __future__ import annotations
 
-import os
-import logging
 from typing import Optional, Any, Union
 
-from ondio import OndioError
+from . import _remote
 
-from . import _remote, _shared
-
-#
-# Constants
-#
-S3_SCHEME = 's3://'
-PATH_SEPARATOR = '/'
 
 #
 # Public API
@@ -101,32 +92,3 @@ def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
         List of S3 URIs
     """
     return _remote.list_files('s3', path, recursive, **kwargs)
-
-
-#
-# Internal
-#
-_log = logging.getLogger('jupyter_bioacoustic.audio')
-
-
-def _parse_s3_uri(uri: str) -> tuple[str, str]:
-    """Parse an S3 URI into bucket and key components."""
-    path = uri.replace(S3_SCHEME, '')
-    slash = path.index(PATH_SEPARATOR)
-    return path[:slash], path[slash + 1:]
-
-
-def _get_client(
-    profile_name: Optional[str] = None,
-    region_name: Optional[str] = None,
-    **kwargs: Any
-) -> Any:
-    """Create and return an S3 client."""
-    import boto3
-    session_kwargs = {}
-    if profile_name:
-        session_kwargs['profile_name'] = profile_name
-    if region_name:
-        session_kwargs['region_name'] = region_name
-    session = boto3.Session(**session_kwargs)
-    return session.client('s3')

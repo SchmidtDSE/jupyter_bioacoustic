@@ -50,22 +50,24 @@ Set `sync_button: false` in the config to hide the button while still allowing `
 
 ## Audio IO Module
 
-Sync is powered by the `jupyter_bioacoustic.audio` module, which can also be used directly for generic file reads and writes across local, S3, GCS, and HTTPS backends. The router dispatches based on the URI scheme — dependencies are imported lazily so only the backend you use needs to be installed.
+Sync is powered by the `jupyter_bioacoustic.audio` module, which can also be used directly for generic file reads and writes across local, S3, GCS, and HTTPS backends. The router dispatches based on the URI scheme. Remote reads and writes go through [ondio](https://pypi.org/project/ondio/). S3, GCS and HTTPS support comes with JBA; no extra install is needed.
 
 ```python
 from jupyter_bioacoustic.audio import io
 ```
 
-| Prefix | Backend | Dependency |
-|--------|---------|------------|
-| `s3://` | AWS S3 | `boto3` |
-| `gs://` | Google Cloud Storage | `google-cloud-storage` |
-| `http://`, `https://` | HTTPS (read-only) | `requests` |
-| anything else | Local filesystem | (none) |
+| Prefix | Backend |
+|--------|---------|
+| `s3://` | AWS S3 |
+| `gs://` | Google Cloud Storage |
+| `http://`, `https://` | HTTPS (read-only) |
+| anything else | Local filesystem |
+
+With `platform=`, the URI must have that platform's scheme. For example, `io.read('/data/x.csv', platform='aws')` raises `ValueError`.
 
 ### Reading Audio
 
-`io.read_segment()` decodes an audio segment from any source. For remote files it uses **partial byte-range downloads** by default — only the bytes around the requested segment are transferred.
+`io.read_segment()` decodes an audio segment from any source. For a remote FLAC file it uses **byte-range reads** by default: it reads only the bytes of the requested window, and the clip has exactly the samples that a read of the full file gives. Other remote formats, or a failed range read, use a full download that is cached in `/tmp/jba_audio_cache`.
 
 ```python
 raw, sr = io.read_segment('s3://bucket/recording.flac', start_sec=100, dur_sec=15)
@@ -90,12 +92,16 @@ Auth kwargs are passed through to the backend:
 |---------|--------|
 | **S3** | `profile_name`, `region_name`, `client` |
 | **GCS** | `project`, `credentials`, `client` |
-| **HTTPS** | `cookies`, `auth`, `token` (Bearer), `headers` |
+| **HTTPS** | `cookies`, `auth`, `token` (Bearer), `headers`, `verify`, `timeout`, `allow_redirects` |
 
 ```python
 io.write('output.csv', 's3://bucket/output.csv', profile_name='my-profile')
 io.read('https://example.com/data.csv', dest='local.csv', token='my-token')
 ```
+
+- **HTTPS timeout:** the default is 10 s to connect and 60 s between bytes. Set `timeout` to change it.
+- **HTTPS redirects:** on a redirect to another host, your `headers`, `token` and `cookies` are not sent to the new host.
+- **Public buckets:** when JBA loads a data file or checks an audio URL on `s3://` or `gs://`, and your credentials fail, it tries again with no credentials. It does not try again after other errors, such as a network error or a missing file. `io.read`, `io.write` and `io.list_files` use only the credentials you give.
 
 ---
 

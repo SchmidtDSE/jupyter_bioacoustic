@@ -7,21 +7,9 @@ License: BSD 3-Clause
 """
 from __future__ import annotations
 
-import os
-import logging
 from typing import Any, Optional, Union
 
-from ondio import OndioError
-
-from . import _remote, _shared
-
-
-#
-# Constants
-#
-DEFAULT_TIMEOUT = 120
-CHUNK_SIZE = 8192
-LOG_URL_MAX_LEN = 80
+from . import _remote
 
 
 #
@@ -87,37 +75,3 @@ def list_files(
     raise NotImplementedError(
         "Cannot list files over HTTPS."
     )
-
-
-#
-# Internal
-#
-_log = logging.getLogger('jupyter_bioacoustic.audio')
-
-
-def _request_kwargs(
-    kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    """Build requests kwargs from caller kwargs."""
-    rk: dict[str, Any] = {
-        'timeout': kwargs.get(
-            'timeout', DEFAULT_TIMEOUT,
-        ),
-        'verify': kwargs.get('verify', True),
-        'allow_redirects': kwargs.get(
-            'allow_redirects', True,
-        ),
-    }
-    if 'cookies' in kwargs:
-        rk['cookies'] = kwargs['cookies']
-    if 'auth' in kwargs:
-        rk['auth'] = kwargs['auth']
-    if 'headers' in kwargs:
-        rk['headers'] = dict(kwargs['headers'])
-    else:
-        rk['headers'] = {}
-    if 'token' in kwargs:
-        rk['headers']['Authorization'] = (
-            f"Bearer {kwargs['token']}"
-        )
-    return rk

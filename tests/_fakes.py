@@ -9,7 +9,7 @@ import requests
 from google.cloud import storage
 from ondio.backends.local import LocalBackend
 
-from jupyter_bioacoustic.audio import _shared, io_aws, io_gcs
+from jupyter_bioacoustic.audio import _shared
 
 # The test FLAC in conftest.py: 60 s at 48 kHz.
 VBR_SR = 48000
@@ -120,8 +120,6 @@ class _FakeRemote:
 
             create_anonymous_client = staticmethod(old_client)
 
-        for mod in (io_aws, io_gcs):
-            monkeypatch.setattr(mod, '_get_client', old_client, raising=False)
         monkeypatch.setattr(requests, 'get', old_client)
         monkeypatch.setattr(boto3, 'client', old_client)
         monkeypatch.setattr(storage, 'Client', OldGcsClient)

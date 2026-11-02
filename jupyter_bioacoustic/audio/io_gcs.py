@@ -6,19 +6,10 @@ License: BSD 3-Clause
 """
 from __future__ import annotations
 
-import os
-import logging
 from typing import Any
 
-from ondio import OndioError
+from . import _remote
 
-from . import _remote, _shared
-
-#
-# Constants
-#
-
-_GCS_URI_PREFIX: str = 'gs://'
 
 #
 # Public API
@@ -45,26 +36,3 @@ def write(src: str, dest: str, recursive: bool = False, overwrite: bool = True,
 def list_files(path: str, recursive: bool = False, **kwargs: Any) -> list[str]:
     """List files in GCS bucket prefix."""
     return _remote.list_files('gs', path, recursive, **kwargs)
-
-
-#
-# Internal
-
-_log = logging.getLogger('jupyter_bioacoustic.audio')
-
-
-def _parse_gcs_uri(uri: str) -> tuple[str, str]:
-    path = uri.replace(_GCS_URI_PREFIX, '')
-    slash = path.index('/')
-    return path[:slash], path[slash + 1:]
-
-
-def _get_client(project: str | None = None, credentials: Any | None = None,
-                **kwargs: Any) -> Any:
-    from google.cloud import storage
-    client_kwargs = {}
-    if project:
-        client_kwargs['project'] = project
-    if credentials:
-        client_kwargs['credentials'] = credentials
-    return storage.Client(**client_kwargs)
