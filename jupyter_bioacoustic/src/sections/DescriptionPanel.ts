@@ -1,3 +1,8 @@
+/**
+ * DescriptionPanel
+ *
+ * License: BSD 3-Clause
+ */
 import { COLORS } from '../styles';
 import { escapeHtml } from '../util';
 
