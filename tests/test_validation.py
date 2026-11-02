@@ -5,7 +5,6 @@ Tests for the shared _validation module and session_args filtering.
 
 License: BSD 3-Clause
 """
-import pytest
 
 from jupyter_bioacoustic._validation import validate_config
 from jupyter_bioacoustic.api import _filter_session_args
