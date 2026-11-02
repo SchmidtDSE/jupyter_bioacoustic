@@ -1,23 +1,44 @@
 /**
- * SecretsEditor
+ * Editor for a section's ``secrets:`` list ({key, value} pairs such as an Authorization
+ * header), with an optional "opt out of global" checkbox that writes ``secrets: false``.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { SECRETS_HINT } from '../text';
 
+
+//
+// Types
+//
+/** One secret: ``value`` is ``env:VAR``, ``dialog`` or a literal. */
+export interface SecretEntry {
+  key: string;
+  value: string;
+}
+
+
+//
+// Public
+//
 export class SecretsEditor {
   readonly element: HTMLDivElement;
+  /** An entry or the opt-out changed. */
   readonly changed = new Signal<this, void>(this);
+  /** The editor was clicked / focused (highlights ``secrets`` in the docs). */
   readonly focused = new Signal<this, void>(this);
 
-  private _entries: { key: string; value: string }[] = [];
+  private _entries: SecretEntry[] = [];
   private _listEl: HTMLDivElement;
   private _optOutCb: HTMLInputElement;
   private _optedOut = false;
   private _showOptOut: boolean;
 
+  /** @param showOptOut - Show the "opt out of global" checkbox (section-level secrets). */
   constructor(showOptOut = false) {
     this._showOptOut = showOptOut;
     this.element = document.createElement('div');
@@ -80,6 +101,55 @@ export class SecretsEditor {
     this.element.appendChild(this._listEl);
   }
 
+  /**
+   * The ``secrets`` value to write:
+   * - ``false`` — opted out of the global secrets (only with the opt-out checkbox);
+   * - ``undefined`` — no complete entries, so omit the key;
+   * - otherwise the entries that have both a key and a value.
+   */
+  getData(): SecretEntry[] | false | undefined {
+    if (this._showOptOut && this._optedOut) return false;
+    const valid = this._entries.filter(e => e.key && e.value);
+    if (valid.length === 0) return undefined;
+    return valid.map(e => ({ key: e.key, value: e.value }));
+  }
+
+  /** Back to the empty, not-opted-out state. */
+  reset(): void {
+    this._optedOut = false;
+    if (this._optOutCb) this._optOutCb.checked = false;
+    this._listEl.style.display = 'flex';
+    this._entries = [];
+    this._rebuild();
+  }
+
+  /** Load ``secrets`` YAML: ``false`` (opted out), a list of entries, or a single entry. */
+  setData(data: unknown): void {
+    if (data === false) {
+      this._optedOut = true;
+      this._optOutCb.checked = true;
+      this._listEl.style.display = 'none';
+      this._entries = [];
+    } else if (Array.isArray(data)) {
+      this._optedOut = false;
+      this._optOutCb.checked = false;
+      this._listEl.style.display = 'flex';
+      this._entries = data.map((e: Partial<SecretEntry>) => ({
+        key: String(e.key || ''),
+        value: String(e.value || ''),
+      }));
+    } else if (data && typeof data === 'object' && 'key' in data) {
+      const entry = data as Partial<SecretEntry>;
+      this._optedOut = false;
+      this._optOutCb.checked = false;
+      this._listEl.style.display = 'flex';
+      this._entries = [{ key: String(entry.key || ''), value: String(entry.value || '') }];
+    } else {
+      this._entries = [];
+    }
+    this._rebuild();
+  }
+
   private _rebuild(): void {
     this._listEl.innerHTML = '';
     for (let i = 0; i < this._entries.length; i++) {
@@ -87,31 +157,11 @@ export class SecretsEditor {
       const row = document.createElement('div');
       row.style.cssText = `display:flex;align-items:center;gap:4px;`;
 
-      const keyInput = document.createElement('input');
-      keyInput.type = 'text';
-      keyInput.placeholder = 'key (e.g. Authorization)';
-      keyInput.value = entry.key;
-      keyInput.style.cssText =
-        `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};` +
-        `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
-        `font-size:11px;width:130px;box-sizing:border-box;`;
-      keyInput.addEventListener('input', () => {
-        this._entries[i].key = keyInput.value;
-        this.changed.emit(void 0);
-      });
-
-      const valInput = document.createElement('input');
-      valInput.type = 'text';
-      valInput.placeholder = 'value (env:VAR / dialog / literal)';
-      valInput.value = entry.value;
-      valInput.style.cssText =
-        `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};` +
-        `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
-        `font-size:11px;width:170px;box-sizing:border-box;`;
-      valInput.addEventListener('input', () => {
-        this._entries[i].value = valInput.value;
-        this.changed.emit(void 0);
-      });
+      const keyInput = this._makeEntryInput(
+        'key (e.g. Authorization)', entry.key, '130px', v => { this._entries[i].key = v; });
+      const valInput = this._makeEntryInput(
+        'value (env:VAR / dialog / literal)', entry.value, '170px',
+        v => { this._entries[i].value = v; });
 
       const rmBtn = document.createElement('button');
       rmBtn.textContent = '✕';
@@ -129,44 +179,21 @@ export class SecretsEditor {
     }
   }
 
-  getData(): any {
-    if (this._showOptOut && this._optedOut) return false;
-    const valid = this._entries.filter(e => e.key && e.value);
-    if (valid.length === 0) return undefined;
-    return valid.map(e => ({ key: e.key, value: e.value }));
-  }
-
-  /** Back to the empty, not-opted-out state. */
-  reset(): void {
-    this._optedOut = false;
-    if (this._optOutCb) this._optOutCb.checked = false;
-    this._listEl.style.display = 'flex';
-    this._entries = [];
-    this._rebuild();
-  }
-
-  setData(data: any): void {
-    if (data === false) {
-      this._optedOut = true;
-      this._optOutCb.checked = true;
-      this._listEl.style.display = 'none';
-      this._entries = [];
-    } else if (Array.isArray(data)) {
-      this._optedOut = false;
-      this._optOutCb.checked = false;
-      this._listEl.style.display = 'flex';
-      this._entries = data.map((e: any) => ({
-        key: String(e.key || ''),
-        value: String(e.value || ''),
-      }));
-    } else if (data && typeof data === 'object' && 'key' in data) {
-      this._optedOut = false;
-      this._optOutCb.checked = false;
-      this._listEl.style.display = 'flex';
-      this._entries = [{ key: String(data.key || ''), value: String(data.value || '') }];
-    } else {
-      this._entries = [];
-    }
-    this._rebuild();
+  private _makeEntryInput(
+    placeholder: string, value: string, width: string, onInput: (value: string) => void,
+  ): HTMLInputElement {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = placeholder;
+    input.value = value;
+    input.style.cssText =
+      `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};` +
+      `border-radius:4px;color:${COLORS.textPrimary};padding:3px 6px;` +
+      `font-size:11px;width:${width};box-sizing:border-box;`;
+    input.addEventListener('input', () => {
+      onInput(input.value);
+      this.changed.emit(void 0);
+    });
+    return input;
   }
 }
