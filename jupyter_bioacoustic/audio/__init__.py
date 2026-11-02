@@ -7,4 +7,6 @@ S3, GCS, and HTTPS backends.
 License: BSD 3-Clause
 """
 
-from .io import read, read_segment, write, list_files
+from .io import list_files, read, read_segment, write
+
+__all__ = ['list_files', 'read', 'read_segment', 'write']
