@@ -11,7 +11,7 @@ import os
 import pytest
 from click.testing import CliRunner
 
-from jupyter_bioacoustic.cli import main, _find_yaml
+from jupyter_bioacoustic.cli import main, _find_yaml, _load_target
 
 
 #
@@ -170,6 +170,47 @@ class TestDescribe:
     def test_describe_missing_directory(self, runner):
         result = runner.invoke(main, ['describe', 'x', '-d', '/nonexistent'])
         assert result.exit_code == 1
+
+
+#
+# jba validate
+#
+class TestValidate:
+
+    def test_validate_reports_errors_and_exits_1(self, runner, config_dir):
+        # a form with no data_index_column anywhere is invalid
+        result = runner.invoke(main, ['validate', 'simple', '-d', str(config_dir), '-f'])
+        assert 'Form:' in result.output
+        assert 'Errors (' in result.output
+        assert 'Invalid' in result.output
+        assert result.exit_code == 1
+
+    def test_validate_by_file_path(self, runner, config_dir):
+        path = str(config_dir / 'forms' / 'simple')
+        result = runner.invoke(main, ['validate', '-f', path])
+        assert 'simple.yaml' in result.output
+
+    def test_validate_not_found(self, runner, config_dir):
+        result = runner.invoke(main, ['validate', 'nonexistent', '-d', str(config_dir)])
+        assert result.exit_code == 1
+        assert 'No configuration found' in result.output
+
+
+#
+# _load_target
+#
+class TestLoadTarget:
+
+    def test_returns_builder_path_scope_label(self, config_dir):
+        cb, path, scope, label = _load_target('simple', str(config_dir), None, None, True)
+        assert path.stem == 'simple'
+        assert scope == 'form'
+        assert label == 'Form'
+        assert cb is not None
+
+    def test_exits_when_missing(self, config_dir):
+        with pytest.raises(SystemExit):
+            _load_target('nope', str(config_dir), None, None, None)
 
 
 #
