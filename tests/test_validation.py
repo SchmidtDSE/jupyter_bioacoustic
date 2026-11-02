@@ -492,3 +492,68 @@ class TestSyncButton:
             'output': {'path': 'out.csv'},
         })
         assert result['valid']
+
+
+#
+# internal form/annotation helpers
+#
+class TestFormHelpers:
+
+    def test_collect_defined_forms_list_and_dict(self):
+        from jupyter_bioacoustic._validation import _collect_defined_forms
+        assert _collect_defined_forms({'dynamic_forms': [{'a': []}, {'b': []}]}) == {'a', 'b'}
+        assert _collect_defined_forms({'dynamic_forms': {'c': []}}) == {'c'}
+        assert _collect_defined_forms({}) == set()
+
+    def test_collect_annotation_configs(self):
+        from jupyter_bioacoustic._validation import _collect_annotation_configs
+        top = {'tools': ['time_select']}
+        nested = {'tools': ['bounding_box']}
+        fc = {'annotation': top, 'form': [{'annotation': nested}, {'select': {}}]}
+        assert _collect_annotation_configs(fc) == [top, nested]
+
+    def test_collect_referenced_forms(self):
+        from jupyter_bioacoustic._validation import _collect_referenced_forms
+        fc = {
+            'form': [
+                {'select': {'items': [{'value': 'x', 'form': 'f1'}]}},
+                {'checkbox': {'checked_form': 'f2'}},
+            ],
+            'checkbox': {'unchecked_form': 'f3'},
+            'dynamic_forms': {'f1': [{'checkbox': {'checked_form': 'f4'}}]},
+        }
+        annots = [{'form': 'f5'}, 'not-a-dict']
+        assert _collect_referenced_forms(fc, annots) == {'f1', 'f2', 'f3', 'f4', 'f5'}
+
+    def test_collect_active_tools_reports_unknown(self):
+        from jupyter_bioacoustic._validation import _collect_active_tools
+        errors: list[str] = []
+        tools = ['time_select', 'nope', {'bounding_box': {}, 'bogus': {}}]
+        assert _collect_active_tools(tools, errors) == {'time_select', 'bounding_box'}
+        assert len(errors) == 2
+        assert any('"nope"' in e for e in errors)
+        assert any('"bogus"' in e for e in errors)
+
+    def test_collect_active_tools_fixed_duration_window_conflict(self):
+        from jupyter_bioacoustic._validation import _collect_active_tools
+        errors: list[str] = []
+        tools = [{'fixed_duration': {'window': 1, 'initial_window': 2}}]
+        assert _collect_active_tools(tools, errors) == {'fixed_duration'}
+        assert errors and 'not both' in errors[0]
+
+    def test_validate_annotation_missing_and_extra_fields(self):
+        from jupyter_bioacoustic._validation import _validate_annotation
+        errors: list[str] = []
+        warns: list[str] = []
+        annot = {'tools': ['time_select'], 'end_time': 'e'}
+        _validate_annotation(annot, errors, warns)
+        assert errors == [
+            'Annotation tool "time_select" requires field "start_time" in annotation config',
+        ]
+        assert len(warns) == 1 and '"end_time"' in warns[0]
+
+    def test_validate_annotation_no_tools(self):
+        from jupyter_bioacoustic._validation import _validate_annotation
+        errors: list[str] = []
+        _validate_annotation({'tools': []}, errors, [])
+        assert len(errors) == 1 and 'at least one tool' in errors[0]
