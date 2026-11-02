@@ -3,7 +3,7 @@
 # launch.cmd) for early testers, built ON macOS/Linux — no Windows, no Inno Setup.
 #
 # This is the Windows analog of macos/make-dist.sh: it bundles the pinned Windows
-# pixi.exe + the arch-neutral scripts/manifest/icon; the env (python, ffmpeg,
+# pixi.exe + the arch-neutral scripts/manifest/icon; the env (python,
 # jupyter-bioacoustic, pystray, pillow) is built on the Windows machine on first run.
 #
 #   installer/dist/JupyterBioacoustic-windows-x86_64.zip
