@@ -147,3 +147,15 @@ describe('numberOr', () => {
     expect([numberOr('', 7), numberOr('  ', 7), numberOr('abc', 7)]).toEqual([7, 7, 7]);
   });
 });
+
+describe('errorMessage / slugify', () => {
+  const { errorMessage, slugify } = require('../util');
+  it('reads the message of anything thrown', () => {
+    expect(errorMessage(new Error('boom'))).toBe('boom');
+    expect(errorMessage({ message: 'kernel said no' })).toBe('kernel said no');
+    expect(errorMessage('plain')).toBe('plain');
+  });
+  it('slugifies like core.py', () => {
+    expect(slugify('  Bird Review #2! ')).toBe('bird_review_2');
+  });
+});
