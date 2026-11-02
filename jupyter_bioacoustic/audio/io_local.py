@@ -12,7 +12,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import _shared
+from . import _partial, _shared
 
 #
 # Constants
@@ -61,7 +61,7 @@ def read_segment(
     )
     with sf.SoundFile(path) as f:
         sr = f.samplerate
-        start, n_samples = _shared.segment_frames(start_sec, dur_sec, sr)
+        start, n_samples = _partial.segment_frames(start_sec, dur_sec, sr)
         f.seek(start)
         raw = f.read(n_samples, dtype=DEFAULT_DTYPE, always_2d=True)
     _log.debug('local read_segment: %d samples, sr=%d', raw.shape[0], sr)
