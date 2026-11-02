@@ -1,13 +1,15 @@
 /**
- * DescriptionSection
- *
- * Collapsible section for the optional annotator description panel.
- * Contains title, text (markdown), path, open toggle, and height.
+ * Description section: the annotator's optional description panel (``description:`` — title,
+ * markdown text or a file path, open by default — and ``description_height``).
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
+import { makeButton, makeInput } from '../dom';
 import { CollapsibleSection } from './CollapsibleSection';
 
 
@@ -15,6 +17,7 @@ import { CollapsibleSection } from './CollapsibleSection';
 // Public
 //
 export class DescriptionSection extends CollapsibleSection {
+  /** Browse clicked (payload: the current path, or ``.``). */
   readonly browseRequested = new Signal<this, string>(this);
 
   private _titleInput: HTMLInputElement;
@@ -26,7 +29,7 @@ export class DescriptionSection extends CollapsibleSection {
   constructor() {
     super('Description', 'description', false, true, ['project', 'config']);
 
-    this._titleInput = this._makeInput('', '200px');
+    this._titleInput = makeInput('', '200px');
     this._titleInput.placeholder = 'e.g. Instructions';
     this._titleInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('title', this._titleInput));
@@ -41,13 +44,10 @@ export class DescriptionSection extends CollapsibleSection {
     this._textArea.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('text', this._textArea));
 
-    const pathRow = this._makeRow();
-    pathRow.addEventListener('focusin', () => this.fieldFocused.emit('description_path'));
-    pathRow.addEventListener('click', () => this.fieldFocused.emit('description_path'));
-    pathRow.appendChild(this._makeLabel('path'));
-    this._pathInput = this._makeInput('docs/instructions.md', '200px');
+    const pathRow = this._makeFocusRow('description_path', 'path');
+    this._pathInput = makeInput('docs/instructions.md', '200px');
     this._pathInput.addEventListener('input', () => this._emitChanged());
-    const browseBtn = this._makeButton('Browse');
+    const browseBtn = makeButton('Browse');
     browseBtn.addEventListener('click', () => {
       this.browseRequested.emit(this._pathInput.value || '.');
     });
@@ -60,13 +60,14 @@ export class DescriptionSection extends CollapsibleSection {
     this._openCb.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(openRow);
 
-    this._heightInput = this._makeInput('', '60px');
+    this._heightInput = makeInput('', '60px');
     this._heightInput.type = 'number';
     this._heightInput.placeholder = 'auto';
     this._heightInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('height', this._heightInput));
   }
 
+  /** Set the description file path (e.g. from Browse). */
   setDescriptionPath(path: string): void {
     this._pathInput.value = path;
     this._emitChanged();
@@ -99,6 +100,7 @@ export class DescriptionSection extends CollapsibleSection {
     this._openCb.checked = true;
   }
 
+  /** Accepts the ``description: {...}`` block and the flat ``description_*`` keys. */
   setData(data: Record<string, any>): void {
     if (data.description_height) this._heightInput.value = String(data.description_height);
     const d = data.description;
