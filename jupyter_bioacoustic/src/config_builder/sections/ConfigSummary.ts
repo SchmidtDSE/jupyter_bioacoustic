@@ -1,3 +1,8 @@
+/**
+ * ConfigSummary
+ *
+ * License: BSD 3-Clause
+ */
 import { COLORS } from '../../styles';
 
 const S = {
