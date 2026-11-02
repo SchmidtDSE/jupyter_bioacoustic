@@ -1,13 +1,26 @@
 /**
- * docs
+ * Per-section help shown in the builder's docs pane (YamlPanel). Keys are field names
+ * (``data-field`` targets for highlighting); ``_intro`` leads the section, ``_sub:<title>``
+ * starts a sub-heading and ``_group:<name>`` nests related fields. A leading ``(tag)`` in a
+ * text becomes a badge (e.g. ``(required)``).
  *
  * License: BSD 3-Clause
  */
+//
+// Types
+//
+/** One section's docs (see the module comment for the key conventions). */
 export interface SectionDocs {
   _intro: string;
   [field: string]: string | Record<string, string>;
 }
 
+
+
+//
+// Constants
+//
+/** Docs per section name. */
 export const DOCS: Record<string, SectionDocs> = {
   setup: {
     _intro: `Start a project: "Create New" from scratch, "Create from Template" from a ready-made config, or "Load Existing" to open saved files. File names and locations are managed in the Configuration Files section below.`,
