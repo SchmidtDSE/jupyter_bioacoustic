@@ -4,6 +4,8 @@
  * Owns column-type detection, filter GUI (column/operator/value dropdowns + chips),
  * sorting, pagination, row rendering, and reviewed-row styling.
  * Emits `rowSelected` when the user clicks a row or navigates via controls.
+ *
+ * License: BSD 3-Clause
  */
 import { Signal } from '@lumino/signaling';
 import { Detection, FilterClause, FilterColumnMeta } from '../types';
@@ -197,8 +199,6 @@ export class ClipTable {
 
     const row = this._filtered[this._selectedIdx];
     const reviewed = this._form.isReviewed(row);
-    const baseBg = rowIndexOnPage % 2 === 0 ? COLORS.bgBase : COLORS.bgAltRow;
-
     // Update row background (selected rows keep selected background)
     tr.style.background = COLORS.bgSelected; // Keep selected state
 
