@@ -1,52 +1,94 @@
 /**
  * FormPanel — the bottom panel of the BioacousticWidget.
  *
- * Owns the dynamic form built from `form_config`: all inputs, submission
- * buttons, progress tracker, annotation tool UI, reviewed-view (for
+ * Owns the dynamic form built from `form_config`: all inputs, submission buttons, progress
+ * tracker, annotation tool UI (incl. multibox cards), the reviewed view (for
  * already-submitted rows), and output file writing.
  *
- * Communicates with the rest of the widget via Lumino signals.
+ * Communicates with the rest of the widget via Lumino signals. Related modules under
+ * ``form/``: ``annotationConfig`` (parsing the annotation element), ``selectItems`` /
+ * ``inputs`` (select parsing and DOM), ``multiboxCards`` (box cards and per-box forms),
+ * ``reviewed`` (reviewed view), ``progress`` (progress text / accuracy), ``formConfig``.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
-import { AnnotConfig, AnnotField, Detection, MultiboxEntry } from '../types';
+
 import { KernelBridge, KernelError } from '../kernel';
-import { escPy, AccuracyConfig, parseAccuracyConfig, isTruthyValue, resolveTemplate, hasTemplatePlaceholders } from '../util';
-import { HINT, TOOLTIP } from '../text';
 import {
-  countOutputRows,
-  readOutputRows,
+  INVALIDATE_OUTPUT_CACHE, countOutputRows, deleteOutputRow, loadSelectItems, readOutputRows,
   writeOutputRows,
-  deleteOutputRow,
-  loadSelectItems,
-  INVALIDATE_OUTPUT_CACHE,
 } from '../python';
 import {
   COLORS,
   DISPLAY_CHIP_COLORS,
-  inputStyle,
-  selectStyle,
-  labelStyle,
   btnStyle,
-  formLabelStyle,
-  sectionTitleStyle,
-  mutedTextStyle,
-  formRowStyle,
-  dividerStyle,
-  fullWidthDividerStyle,
   cssSize,
+  dividerStyle,
+  formLabelStyle,
+  formRowStyle,
+  fullWidthDividerStyle,
+  inputStyle,
+  labelStyle,
+  mutedTextStyle,
+  sectionTitleStyle,
+  selectStyle,
 } from '../styles';
+import { HINT } from '../text';
+import { AnnotConfig, AnnotField, Detection, MultiboxEntry, SyncConfig } from '../types';
+import {
+  AccuracyConfig, errorMessage, escPy, hasTemplatePlaceholders, parseAccuracyConfig,
+  resolveTemplate, showDialog,
+} from '../util';
+import { parseAnnotationConfig } from './form/annotationConfig';
+import { asElementList, requiredColumns } from './form/formConfig';
+import { buildSelect } from './form/inputs';
+import { buildBoxCard, buildBoxForm } from './form/multiboxCards';
+import { accuracyPercent, formatProgress } from './form/progress';
+import { buildReviewedView, reviewedAnnotation } from './form/reviewed';
+import {
+  RawSelectItem, loadRawSelectItems, parseSelectItems, selectItemOptions,
+} from './form/selectItems';
 
-// ─── Constants ────────────────────────────────────────────────
 
+//
+// Constants
+//
 const DEFAULT_FORM_MIN_HEIGHT = 140;
 
+/** Top-level form-config keys that are not named form sections. */
+const TOPLEVEL_KEYS = new Set([
+  'title', 'progress_tracker', 'pass_value', 'fixed_value',
+  'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
+  'annotation',
+]);
+
+/** Input types allowed directly at the top level of a form config. */
+const TOPLEVEL_INPUTS = new Set(['select', 'textbox', 'checkbox', 'number']);
+
+/** Annotation bounds in output-column order. */
+const ANNOT_FIELDS: AnnotField[] = ['startTime', 'endTime', 'minFreq', 'maxFreq'];
+
+
+//
+// Types
+//
+/** A registered form input element. */
+type InputEl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+
+//
+// Public
+//
+/** The annotation form section of the annotator. */
 export class FormPanel {
   /** The root element — append to the widget. */
   readonly element: HTMLDivElement;
 
-  // ─── Signals ───────────────────────────────────────────────
+  // ── Signals ──────────────────────────────────────────────────
 
   /** Emitted after a successful submit. Values have been written to the output file. */
   readonly submitted = new Signal<this, Record<string, any>>(this);
@@ -73,41 +115,39 @@ export class FormPanel {
   /** A status message to show in the widget header. */
   readonly statusChanged = new Signal<this, { message: string; error: boolean }>(this);
 
-  // ─── DOM refs ──────────────────────────────────────────────
+  // ── DOM refs ─────────────────────────────────────────────────
+  private readonly _dynFormEl: HTMLDivElement;
 
-  private _dynFormEl!: HTMLDivElement;
-
-  // ─── Form state ────────────────────────────────────────────
-
+  // ── Form state ───────────────────────────────────────────────
   private _formConfig: any = null;
   private _formValues: Record<string, any> = {};
   private _submitBtns: HTMLButtonElement[] = [];
   /** Named form sections (top-level config keys referenced by select form: items). */
-  private _namedSections: Map<string, HTMLDivElement> = new Map();
+  private readonly _namedSections: Map<string, HTMLDivElement> = new Map();
   private _requiredInputs: Array<{ col: string; el: HTMLElement }> = [];
-  private _inputRefs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
+  private readonly _inputRefs: Map<string, InputEl> = new Map();
   /** Each input's state right after build (value, or checked for checkboxes): restored per row. */
-  private _inputInitial: Map<string, string | boolean> = new Map();
+  private readonly _inputInitial: Map<string, string | boolean> = new Map();
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
   private _templateElements: Array<{ el: HTMLElement | Text; template: string }> = [];
 
-  // Progress tracking
+  // ── Progress tracking ────────────────────────────────────────
   private _sessionCount = 0;
   private _fileCount = 0;
   private _accuracy: number | null = null;
   private _progressEls: HTMLSpanElement[] = [];
   private _accuracyConfig: AccuracyConfig | null = null;
 
-  // Annotation tool
+  // ── Annotation tool ──────────────────────────────────────────
   private _annotConfig: AnnotConfig | null = null;
   private _activeTool = '';
-  private _annotInputs: Map<string, HTMLInputElement> = new Map();
+  private readonly _annotInputs: Map<string, HTMLInputElement> = new Map();
   private _fixedDurationValue = 0;
   private _fixedDurationInput: HTMLInputElement | null = null;
   private _fixedDurationLabel: HTMLLabelElement | null = null;
 
-  // Multibox state
+  // ── Multibox state ───────────────────────────────────────────
   private _multiboxEntries: MultiboxEntry[] = [];
   private _activeBoxIndex = -1;
   private _multiboxFormName: string | null = null;
@@ -115,28 +155,31 @@ export class FormPanel {
   private _multiboxColorIdx = 0;
   private _multiboxContainer: HTMLDivElement | null = null;
 
-  // Reviewed state (for duplicate_entries=false)
-  private _reviewedMap: Map<string | number, Record<string, any>[]> = new Map();
+  // ── Reviewed state (for duplicate_entries=false) ─────────────
+  private readonly _reviewedMap: Map<string | number, Record<string, any>[]> = new Map();
   private _showingReviewedView = false;
   private _reviewedTool = '';
+  private _reviewedMultiboxEntries: MultiboxEntry[] = [];
 
-  // Context provided by the orchestrator
+  // ── Context provided by the orchestrator ─────────────────────
   private _rows: Detection[] = [];
   private _duplicateEntries = false;
   private _outputPath = '';
   private _dataIndexCol = '';
   private _outputIndexCol = '';
-  private _syncConfig: { uri?: string; button?: string; recursive?: boolean } = {};
+  private _syncConfig: SyncConfig = {};
   private _syncBtn: HTMLButtonElement | null = null;
   private _selectedIdx = -1;
+  private _filteredLength = 0;
+  /** The row the form is showing (needed by submit / delete). */
+  private _currentRow: Detection | null = null;
   private _submitting = false;
   /** Async form-structure work (rebuilds) runs one job at a time, in call order. */
   private _formWork: Promise<void> = Promise.resolve();
   private _formWorkPending = 0;
-  private _filteredLength = 0;
 
-  constructor(private _kernel: KernelBridge) {
-    // Build the section shell
+  /** @param _kernel - Runs select-file loads and output-file reads/writes. */
+  constructor(private readonly _kernel: KernelBridge) {
     this.element = document.createElement('div');
     this.element.style.cssText =
       `flex:0 0 auto;min-height:${DEFAULT_FORM_MIN_HEIGHT}px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
@@ -146,24 +189,21 @@ export class FormPanel {
     this._dynFormEl.style.cssText = `display:flex;flex-direction:column;gap:10px;`;
     this.element.append(this._dynFormEl);
 
-    // Enter to submit when form is focused
+    // Enter submits (when allowed) — except in textareas and text inputs
     this.element.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        // Don't intercept Enter in textareas or inputs
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'TEXTAREA') return;
-        if (tag === 'INPUT' && (e.target as HTMLInputElement).type === 'text') return;
-        // Check if submit is enabled
-        const btn = this._submitBtns.find(b => !b.disabled);
-        if (btn) {
-          e.preventDefault();
-          btn.click();
-        }
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' && (e.target as HTMLInputElement).type === 'text') return;
+      const btn = this._submitBtns.find(b => !b.disabled);
+      if (btn) {
+        e.preventDefault();
+        btn.click();
       }
     });
   }
 
-  // ─── Public API ────────────────────────────────────────────
+  // ── Public API: setup ────────────────────────────────────────
 
   /** Set context needed by the form (called once after reading kernel vars). */
   setContext(opts: {
@@ -173,9 +213,8 @@ export class FormPanel {
     outputPath: string;
     dataIndexCol: string;
     outputIndexCol: string;
-    syncConfig?: { uri?: string; button?: string; recursive?: boolean };
+    syncConfig?: SyncConfig;
     height?: number;
-    projectSaveBtn?: string;
   }): void {
     if (opts.height) {
       this.element.style.minHeight = `${opts.height}px`;
@@ -196,33 +235,14 @@ export class FormPanel {
     this._filteredLength = filteredLength;
   }
 
-  /** Build the form from the current form config. */
+  /** Build the form from the current form config (top-level keys in config order). */
   async build(): Promise<void> {
-    this._dynFormEl.innerHTML = '';
-    this._formValues = {};
-    this._submitBtns = [];
-    this._namedSections.clear();
-    this._requiredInputs = [];
-    this._inputRefs.clear();
-    this._inputInitial.clear();
-    this._sourceValueFields = [];
-    this._passValueDefs = [];
-    this._templateElements = [];
-    this._annotConfig = null;
-    this._activeTool = '';
-    this._annotInputs.clear();
-    this._showingReviewedView = false;
-    this._sessionCount = 0;
-    this._accuracy = null;
-    this._progressEls = [];
-    this._accuracyConfig = null;
+    this._resetFormState();
 
     if (this._dataIndexCol) {
-      this._passValueDefs.push({
-        sourceCol: this._dataIndexCol,
-        col: this._outputIndexCol || this._dataIndexCol,
-      });
-      this._formValues[this._outputIndexCol || this._dataIndexCol] = null;
+      const col = this._outputIndexCol || this._dataIndexCol;
+      this._passValueDefs.push({ sourceCol: this._dataIndexCol, col });
+      this._formValues[col] = null;
     }
 
     const cfg = this._formConfig;
@@ -233,12 +253,6 @@ export class FormPanel {
     this.element.style.display = 'flex';
 
     await this._registerDynamicForms(cfg.dynamic_forms);
-
-    const TOPLEVEL_KEYS = new Set([
-      'title', 'progress_tracker', 'pass_value', 'fixed_value',
-      'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
-      'annotation',
-    ]);
 
     for (const key of Object.keys(cfg)) {
       if (key === 'title') {
@@ -253,40 +267,31 @@ export class FormPanel {
       } else if (key === 'annotation') {
         await this._buildAnnotationElement(cfg.annotation, this._dynFormEl);
       } else if (key === 'form') {
-        if (Array.isArray(cfg.form)) {
-          await this._buildFormSection(cfg.form, this._dynFormEl);
-        }
+        if (Array.isArray(cfg.form)) await this._buildFormSection(cfg.form, this._dynFormEl);
       } else if (key === 'submission_buttons') {
-        await this._buildSubmissionButtons(cfg.submission_buttons);
+        this._buildSubmissionButtons(cfg.submission_buttons);
       } else if (key === '_fixed_kwargs') {
         for (const item of cfg._fixed_kwargs) {
           if (item.fixed_value) this._registerFixedValue(item.fixed_value);
         }
-      } else if (key === 'dynamic_forms') {
-        // already handled above
       } else if (!TOPLEVEL_KEYS.has(key)) {
         const sectionData = cfg[key];
         if (Array.isArray(sectionData)) {
-          const sectionDiv = document.createElement('div');
-          sectionDiv.dataset.formSection = key;
-          sectionDiv.style.cssText = formRowStyle(true);
+          const sectionDiv = this._createSectionDiv(key);
           await this._buildFormSection(sectionData, sectionDiv);
           this._dynFormEl.appendChild(sectionDiv);
           this._namedSections.set(key, sectionDiv);
-        } else if (key === 'select' || key === 'textbox' || key === 'checkbox' || key === 'number') {
+        } else if (TOPLEVEL_INPUTS.has(key)) {
           await this._buildInputElement(key, sectionData, this._dynFormEl);
         }
       }
+      // 'dynamic_forms' was handled above
     }
 
     for (const el of this._namedSections.values()) {
       if (!el.parentElement) this._dynFormEl.appendChild(el);
     }
-
-    if (!cfg.submission_buttons) {
-      await this._buildSubmissionButtons({ submit: true });
-    }
-
+    if (!cfg.submission_buttons) this._buildSubmissionButtons({ submit: true });
     this._validateForm();
   }
 
@@ -296,8 +301,8 @@ export class FormPanel {
       this._showReviewedResult(row);
       return;
     }
-    // Rebuild form if it was replaced by a reviewed result view
     if (this._showingReviewedView) {
+      // the form was replaced by a reviewed result view: rebuild it
       this._showingReviewedView = false;
       this._reviewedTool = '';
       this._reviewedMultiboxEntries = [];
@@ -311,6 +316,49 @@ export class FormPanel {
       this._applyRow(row);
     }
   }
+
+  /** Load output-file progress counts (session + total + accuracy).
+   *  Called once during init. */
+  async loadOutputFileProgress(): Promise<void> {
+    if (!this._outputPath) return;
+    try {
+      const raw = await this._kernel.exec(countOutputRows(this._outputPath, this._outputExt()));
+      this._fileCount = (JSON.parse(raw) as { count: number }).count;
+    } catch {
+      // output file may not exist yet
+    }
+    await this._refreshAccuracy();
+    this._updateProgress();
+  }
+
+  /** Load reviewed state from the output file (called during init when
+   *  duplicate_entries=false). Matches output rows to input rows via
+   *  the configured data/output index columns. */
+  async loadReviewedState(): Promise<void> {
+    if (this._duplicateEntries || !this._outputPath) return;
+    this._reviewedMap.clear();
+
+    let outputRows: Record<string, any>[];
+    try {
+      outputRows = JSON.parse(
+        await this._kernel.exec(readOutputRows(this._outputPath, this._outputExt())));
+    } catch { return; }
+
+    const outCol = this._outputIndexCol;
+    const srcCol = this._dataIndexCol;
+    for (const outRow of outputRows) {
+      if (!outCol || outRow[outCol] === undefined) continue;
+      const outVal = outRow[outCol];
+      const match = this._rows.find(r => String(r[srcCol]) === String(outVal));
+      if (!match) continue;
+      const key = match[srcCol];
+      const arr = this._reviewedMap.get(key);
+      if (arr) arr.push(outRow);
+      else this._reviewedMap.set(key, [outRow]);
+    }
+  }
+
+  // ── Public API: annotation (for Player) ──────────────────────
 
   /** External setter used by the canvas drag (from Player). Does NOT re-emit
    *  annotationChanged to avoid circular updates. */
@@ -338,56 +386,44 @@ export class FormPanel {
     return this._formValues[col];
   }
 
-  // ─── Multibox public API (for Player) ───────────────────────
-
+  /** True when the multibox tool is active. */
   isMultiboxMode(): boolean {
     return this._activeTool === 'multibox';
   }
 
+  /** The drawn boxes (multibox mode), in drawing order. */
   getMultiboxEntries(): MultiboxEntry[] {
     return this._multiboxEntries;
   }
 
+  /** Index of the active (highlighted) box, or -1. */
   getActiveBoxIndex(): number {
     return this._activeBoxIndex;
   }
 
+  /** Add a drawn box (it becomes active, with the next chip color). */
   addMultiboxEntry(startTime: number, endTime: number, minFreq: number, maxFreq: number): void {
-    const colors = DISPLAY_CHIP_COLORS;
     const entry: MultiboxEntry = {
       id: this._multiboxNextId++,
       startTime, endTime, minFreq, maxFreq,
       formValues: {},
-      color: colors[this._multiboxColorIdx++ % colors.length],
+      color: DISPLAY_CHIP_COLORS[this._multiboxColorIdx++ % DISPLAY_CHIP_COLORS.length],
     };
     this._multiboxEntries.push(entry);
     this._activeBoxIndex = this._multiboxEntries.length - 1;
-    // Sync annotation inputs
-    if (this._annotConfig) {
-      if (this._annotConfig.startTime) this._setAnnotValueInternal('startTime', startTime, false);
-      if (this._annotConfig.endTime) this._setAnnotValueInternal('endTime', endTime, false);
-      if (this._annotConfig.minFreq) this._setAnnotValueInternal('minFreq', minFreq, false);
-      if (this._annotConfig.maxFreq) this._setAnnotValueInternal('maxFreq', maxFreq, false);
-    }
+    this._syncAnnotInputsToBox(entry);
     void this._rebuildAnnotFormUI();
     this.annotationChanged.emit(void 0);
     this._validateForm();
   }
 
+  /** Make box ``index`` active; the annotation inputs show its bounds. */
   setActiveBox(index: number): void {
-    if (index >= 0 && index < this._multiboxEntries.length) {
-      this._activeBoxIndex = index;
-      this._highlightActiveBoxCard();
-      // Update annotation inputs to reflect the active box
-      const entry = this._multiboxEntries[index];
-      if (entry && this._annotConfig) {
-        if (this._annotConfig.startTime) this._setAnnotValueInternal('startTime', entry.startTime, false);
-        if (this._annotConfig.endTime) this._setAnnotValueInternal('endTime', entry.endTime, false);
-        if (this._annotConfig.minFreq) this._setAnnotValueInternal('minFreq', entry.minFreq, false);
-        if (this._annotConfig.maxFreq) this._setAnnotValueInternal('maxFreq', entry.maxFreq, false);
-      }
-      this.annotationChanged.emit(void 0);
-    }
+    if (index < 0 || index >= this._multiboxEntries.length) return;
+    this._activeBoxIndex = index;
+    this._highlightActiveBoxCard();
+    this._syncAnnotInputsToBox(this._multiboxEntries[index]);
+    this.annotationChanged.emit(void 0);
   }
 
   /** Move one bound of box ``index`` (edge drag); the active box's inputs follow. */
@@ -401,6 +437,7 @@ export class FormPanel {
     this.annotationChanged.emit(void 0);
   }
 
+  /** Remove box ``index``. */
   removeMultiboxEntry(index: number): void {
     if (index < 0 || index >= this._multiboxEntries.length) return;
     this._multiboxEntries.splice(index, 1);
@@ -412,116 +449,91 @@ export class FormPanel {
     this._validateForm();
   }
 
+  /** Remove the active box (Delete key on the canvas). */
   removeActiveMultiboxEntry(): void {
     if (this._activeBoxIndex >= 0) this.removeMultiboxEntry(this._activeBoxIndex);
   }
 
-  // ─── End multibox API ──────────────────────────────────────
+  // ── Public API: reviewed state ───────────────────────────────
 
   /** Read the full reviewed map (for ClipTable row styling). */
   getReviewedMap(): Map<string | number, Record<string, any>[]> {
     return this._reviewedMap;
   }
 
-  /** The data index column name. */
-  get dataIndexCol(): string { return this._dataIndexCol; }
-
   /** True if a row has been reviewed and duplicate_entries is off. */
   isReviewed(row: Detection): boolean {
     return this._isRowReviewed(row);
   }
 
-  /** Load output-file progress counts (session + total + accuracy).
-   *  Called once during init. */
-  async loadOutputFileProgress(): Promise<void> {
-    if (!this._outputPath) return;
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-    const code = countOutputRows(this._outputPath, ext);
-
-    try {
-      const raw = await this._kernel.exec(code);
-      const result = JSON.parse(raw) as { count: number };
-      this._fileCount = result.count;
-    } catch {
-      // output file may not exist yet
-    }
-
-    await this._refreshAccuracy();
-    this._updateProgress();
+  /** True while the reviewed view replaces the form. */
+  isShowingReviewedView(): boolean {
+    return this._showingReviewedView;
   }
 
-  private async _refreshAccuracy(): Promise<void> {
-    if (!this._accuracyConfig || !this._outputPath) {
-      this._accuracy = null;
-      return;
-    }
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-    const code = readOutputRows(this._outputPath, ext);
-    try {
-      const rows = JSON.parse(await this._kernel.exec(code)) as Record<string, any>[];
-      if (rows.length === 0) { this._accuracy = null; return; }
-      const col = this._accuracyConfig.column;
-      const val = this._accuracyConfig.value;
-      const valid = rows.filter(r => this._isAccuracyValid(r[col], val)).length;
-      this._accuracy = Math.round(100 * valid / rows.length);
-    } catch {
-      this._accuracy = null;
-    }
+  /** The tool the reviewed annotation is drawn with ('' for none). */
+  getReviewedTool(): string {
+    return this._reviewedTool;
   }
 
-  /** Load reviewed state from the output file (called during init when
-   *  duplicate_entries=false). Matches output rows to input rows via
-   *  the configured data/output index columns. */
-  async loadReviewedState(): Promise<void> {
-    if (this._duplicateEntries || !this._outputPath) return;
-    this._reviewedMap.clear();
-
-    const ext = this._outputPath.split('.').pop()?.toLowerCase() ?? '';
-    const code = readOutputRows(this._outputPath, ext);
-
-    let outputRows: Record<string, any>[];
-    try {
-      outputRows = JSON.parse(await this._kernel.exec(code));
-    } catch { return; }
-
-    const outCol = this._outputIndexCol;
-    const srcCol = this._dataIndexCol;
-
-    for (const outRow of outputRows) {
-      if (!outCol || outRow[outCol] === undefined) continue;
-      const outVal = outRow[outCol];
-      const match = this._rows.find(
-        r => String(r[srcCol]) === String(outVal),
-      );
-      if (!match) continue;
-      const key = match[srcCol];
-      const arr = this._reviewedMap.get(key);
-      if (arr) arr.push(outRow);
-      else this._reviewedMap.set(key, [outRow]);
-    }
+  /** The reviewed boxes (when ``getReviewedTool()`` is ``multibox``). */
+  getReviewedMultiboxEntries(): MultiboxEntry[] {
+    return this._reviewedMultiboxEntries;
   }
 
-  // ─── Private: form building ────────────────────────────────
+  /** Show the sync button busy ("Syncing…", disabled) or ready; the widget calls this when a sync ends. */
+  setSyncBusy(busy: boolean): void {
+    if (!this._syncBtn) return;
+    this._syncBtn.disabled = busy;
+    this._syncBtn.style.opacity = busy ? '0.4' : '1';
+    this._syncBtn.textContent = busy ? 'Syncing…' : (this._syncConfig.button ?? 'Sync');
+  }
 
+  // ── Private: form building ───────────────────────────────────
+
+  /** Clear everything ``build()`` creates. */
+  private _resetFormState(): void {
+    this._dynFormEl.innerHTML = '';
+    this._formValues = {};
+    this._submitBtns = [];
+    this._namedSections.clear();
+    this._requiredInputs = [];
+    this._inputRefs.clear();
+    this._inputInitial.clear();
+    this._sourceValueFields = [];
+    this._passValueDefs = [];
+    this._templateElements = [];
+    this._annotConfig = null;
+    this._activeTool = '';
+    this._annotInputs.clear();
+    this._showingReviewedView = false;
+    this._sessionCount = 0;
+    this._accuracy = null;
+    this._progressEls = [];
+    this._accuracyConfig = null;
+  }
+
+  /** A hidden named-section container (shown when a select / checkbox picks it). */
+  private _createSectionDiv(name: string): HTMLDivElement {
+    const div = document.createElement('div');
+    div.dataset.formSection = name;
+    div.style.cssText = formRowStyle(true);
+    return div;
+  }
+
+  /** Build each ``dynamic_forms`` entry into a hidden named section. */
   private async _registerDynamicForms(dynForms: any): Promise<void> {
     if (!dynForms || typeof dynForms !== 'object' || Array.isArray(dynForms)) return;
-    for (const [formName, rawElements] of Object.entries(dynForms) as Array<[string, any]>) {
-      let formElements = rawElements;
-      if (!Array.isArray(formElements)) {
-        if (formElements && typeof formElements === 'object') {
-          formElements = Object.keys(formElements).map((k: string) => ({ [k]: formElements[k] }));
-        } else {
-          continue;
-        }
-      }
-      const sectionDiv = document.createElement('div');
-      sectionDiv.dataset.formSection = formName;
-      sectionDiv.style.cssText = formRowStyle(true);
-      await this._buildFormSection(formElements, sectionDiv);
+    for (const [formName, rawElements] of Object.entries(dynForms)) {
+      const elements = asElementList(rawElements);
+      if (!elements) continue;
+      const sectionDiv = this._createSectionDiv(formName);
+      await this._buildFormSection(elements, sectionDiv);
       this._namedSections.set(formName, sectionDiv);
     }
   }
 
+  /** Build a list of form elements (inputs, text, lines, titles...) into ``container``. */
   private async _buildFormSection(elements: any[], container: HTMLElement): Promise<void> {
     for (const item of elements) {
       if (!item || typeof item !== 'object') continue;
@@ -543,36 +555,40 @@ export class FormPanel {
         d.style.cssText = fullWidthDividerStyle();
         container.appendChild(d);
       } else if (type === 'text') {
-        const d = document.createElement('div');
-        d.style.cssText = mutedTextStyle({ width: '100%' });
-        const textVal = config && typeof config === 'object' ? (config.value ?? '') : config;
-        const textStr = String(textVal);
-        d.textContent = textStr;
-        if (textStr.includes('\n')) d.style.whiteSpace = 'pre-wrap';
-        if (hasTemplatePlaceholders(textStr)) {
-          this._templateElements.push({ el: d, template: textStr });
-        }
-        container.appendChild(d);
+        container.appendChild(this._textElement(config));
       } else {
         await this._buildInputElement(type, config, container);
       }
     }
   }
 
-  private async _buildInputElement(
-    type: string,
-    rawConfig: any,
-    container: HTMLElement
-  ): Promise<void> {
+  /** A ``text`` element (``[[column]]`` templates are resolved per row). */
+  private _textElement(config: any): HTMLDivElement {
+    const d = document.createElement('div');
+    d.style.cssText = mutedTextStyle({ width: '100%' });
+    const textStr = String(config && typeof config === 'object' ? (config.value ?? '') : config);
+    d.textContent = textStr;
+    if (textStr.includes('\n')) d.style.whiteSpace = 'pre-wrap';
+    if (hasTemplatePlaceholders(textStr)) this._templateElements.push({ el: d, template: textStr });
+    return d;
+  }
+
+  /**
+   * Build one input (textbox / select / checkbox / number) with its label, register it, and
+   * append it plus any named sections it can reveal.
+   */
+  private async _buildInputElement(type: string, rawConfig: any, container: HTMLElement): Promise<void> {
     const cfg = (rawConfig === true || rawConfig === null || rawConfig === undefined) ? {} : rawConfig;
+    const labelText: string = cfg.label ?? type;
+    const col: string = cfg.column ?? labelText;
 
-    let labelText: string;
-    let col: string;
-    let required: boolean;
-
-    labelText = cfg.label ?? type;
-    col = cfg.column ?? labelText;
-    required = cfg.required ?? false;
+    let built: { input: InputEl; element: HTMLElement; sections: string[] } | null;
+    if (type === 'textbox') built = this._buildTextbox(cfg, col);
+    else if (type === 'select') built = await this._buildSelectInput(cfg, col);
+    else if (type === 'checkbox') built = this._buildCheckbox(cfg, col);
+    else if (type === 'number') built = this._buildNumber(cfg, col);
+    else built = null;
+    if (!built) return;
 
     const lbl = document.createElement('label');
     lbl.style.cssText = formLabelStyle();
@@ -582,324 +598,125 @@ export class FormPanel {
       this._templateElements.push({ el: lblText, template: labelText });
     }
 
-    let inputEl: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-    const pendingFormSections: string[] = [];
-
-    if (type === 'textbox') {
-      if (cfg.multiline) {
-        const ta = document.createElement('textarea');
-        ta.rows = 1;
-        ta.style.cssText =
-          inputStyle(cfg.width ? cssSize(cfg.width) : '220px') +
-          `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
-        ta.addEventListener('input', () => { this._formValues[col] = ta.value; this._validateForm(); });
-        inputEl = ta;
-      } else {
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.style.cssText =
-          inputStyle(cfg.width ? cssSize(cfg.width) : '220px') + `font-size:13px;`;
-        inp.addEventListener('input', () => { this._formValues[col] = inp.value; this._validateForm(); });
-        inputEl = inp;
-      }
-      inputEl.value = cfg.default == null ? '' : String(cfg.default);
-      this._formValues[col] = cfg.default ?? '';
-
-    } else if (type === 'select') {
-      const sel = document.createElement('select');
-      sel.style.cssText = selectStyle() + `font-size:13px;max-width:260px;`;
-      if (cfg.width) sel.style.width = cssSize(cfg.width);
-      const emptyOpt = document.createElement('option');
-      emptyOpt.value = ''; emptyOpt.textContent = '— select —';
-      sel.appendChild(emptyOpt);
-
-      // Parse items config options
-      const itemsCfg = cfg.items;
-      const hasFilterBox = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.filter_box;
-      const hasCustomValue = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.custom_value;
-      const notAvailCfg = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) ? itemsCfg.not_available : undefined;
-
-      const items = await this._loadSelectItems(cfg.items);
-
-      // Prepend not_available option if configured
-      if (notAvailCfg) {
-        let naVal: string, naLabel: string;
-        if (notAvailCfg === true) {
-          naVal = naLabel = 'not-available';
-        } else if (typeof notAvailCfg === 'string') {
-          naVal = naLabel = notAvailCfg;
-        } else if (typeof notAvailCfg === 'object') {
-          naLabel = notAvailCfg.label ?? 'not-available';
-          naVal = notAvailCfg.value ?? naLabel;
-        } else {
-          naVal = naLabel = 'not-available';
-        }
-        items.unshift([naVal, naLabel]);
-      }
-
-      // Build all option data: [{val, label, formRef, isDefault}]
-      const allItems: Array<{ val: string; label: string; formRef?: string; isDefault: boolean }> = [];
-      const formRefs = new Map<string, string>();
-      let selectedDefault = '';
-      items.forEach(([v, l, formRef]) => {
-        const isDefault = v.startsWith('selected::');
-        const cleanVal = isDefault ? v.slice(10) : v;
-        const cleanLabel = l.startsWith('selected::') ? l.slice(10) : l;
-        allItems.push({ val: cleanVal, label: cleanLabel, formRef, isDefault });
-        if (isDefault) selectedDefault = cleanVal;
-        if (formRef) formRefs.set(cleanVal, formRef);
-      });
-      const allFormSections = new Set(formRefs.values());
-
-      // Helper: rebuild select options from filtered items
-      const rebuildOptions = (filter?: string) => {
-        // Remove all options except the empty one
-        while (sel.options.length > 1) sel.remove(1);
-        const f = (filter ?? '').toLowerCase();
-        allItems.forEach(item => {
-          if (f && !item.label.toLowerCase().includes(f) && !item.val.toLowerCase().includes(f)) return;
-          const o = document.createElement('option');
-          o.value = item.val; o.textContent = item.label;
-          if (item.isDefault && !f) o.selected = true;
-          sel.appendChild(o);
-        });
-      };
-      rebuildOptions();
-
-      // Change handler (shared)
-      const onSelectChange = () => {
-        this._formValues[col] = sel.value;
-        if (allFormSections.size > 0) {
-          const activeSection = formRefs.get(sel.value);
-          for (const sectionName of allFormSections) {
-            const sectionEl = this._namedSections.get(sectionName);
-            if (sectionEl) {
-              sectionEl.style.display = sectionName === activeSection ? 'flex' : 'none';
-            }
-          }
-        }
-        this._validateForm();
-      };
-      sel.addEventListener('change', onSelectChange);
-
-      if (hasFilterBox || hasCustomValue) {
-        // Wrap select with a filter input to the right (and optional Add button)
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = `display:inline-flex;align-items:center;gap:4px;`;
-
-        // Inject placeholder style directly into wrapper (avoids global stylesheet issues)
-        const phStyle = document.createElement('style');
-        phStyle.textContent = `.jp-BA-filter-input::placeholder{color:${COLORS.overlay}!important;opacity:0.7;font-style:italic;}`;
-        wrapper.appendChild(phStyle);
-
-        const filterInput = document.createElement('input');
-        filterInput.type = 'text';
-        filterInput.placeholder = 'filter options';
-        filterInput.className = 'jp-BA-filter-input';
-        filterInput.style.cssText = inputStyle('110px') + `font-size:13px;`;
-
-        let addBtn: HTMLButtonElement | null = null;
-        if (hasCustomValue) {
-          addBtn = document.createElement('button');
-          addBtn.textContent = '+ Add';
-          addBtn.style.cssText = btnStyle() + `font-size:11px;padding:2px 6px;display:none;`;
-          addBtn.addEventListener('click', () => {
-            const custom = filterInput.value.trim();
-            if (!custom) return;
-            allItems.push({ val: custom, label: custom, isDefault: false });
-            rebuildOptions();
-            sel.value = custom;
-            filterInput.value = '';
-            if (addBtn) addBtn.style.display = 'none';
-            onSelectChange();
-          });
-        }
-
-        filterInput.addEventListener('input', () => {
-          const f = filterInput.value.trim();
-          rebuildOptions(f);
-          // Open the dropdown so the user sees filtered results
-          sel.size = Math.min(8, sel.options.length);
-          if (!f) sel.size = 0; // collapse back when filter is cleared
-          // Show Add button if custom_value enabled and no exact match
-          if (addBtn) {
-            const hasExact = f && allItems.some(
-              item => item.val.toLowerCase() === f.toLowerCase() || item.label.toLowerCase() === f.toLowerCase());
-            addBtn.style.display = (f && !hasExact) ? '' : 'none';
-          }
-        });
-
-        // Arrow keys in filter input navigate the select; Enter selects
-        filterInput.addEventListener('keydown', (e) => {
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            sel.selectedIndex = Math.min(sel.selectedIndex + 1, sel.options.length - 1);
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            sel.selectedIndex = Math.max(sel.selectedIndex - 1, 0);
-          } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (sel.value) {
-              sel.size = 0;
-              filterInput.value = '';
-              onSelectChange();
-            }
-          }
-        });
-
-        // Collapse the expanded list when a selection is made
-        sel.addEventListener('change', () => { sel.size = 0; });
-
-        wrapper.append(sel, filterInput);
-        if (addBtn) wrapper.appendChild(addBtn);
-
-        // Replace the simple select with the wrapper in the label
-        if (cfg.default != null) sel.value = String(cfg.default);
-        this._formValues[col] = cfg.default ?? selectedDefault;
-        this._registerInput(col, sel);
-        if (cfg.source_value) this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
-        if (required) this._requiredInputs.push({ col, el: sel });
-        lbl.appendChild(wrapper);
-        container.appendChild(lbl);
-        for (const sn of allFormSections) {
-          const sec = this._namedSections.get(sn);
-          if (sec) container.appendChild(sec);
-        }
-        return;
-      }
-
-      if (cfg.default != null) sel.value = String(cfg.default);
-      this._formValues[col] = cfg.default ?? selectedDefault;
-      for (const sn of allFormSections) pendingFormSections.push(sn);
-      inputEl = sel;
-
-    } else if (type === 'checkbox') {
-      const checkedVal = cfg.checked_value ?? cfg.yes_value ?? true;
-      const uncheckedVal = cfg.unchecked_value ?? cfg.no_value ?? false;
-      const checkedForm = cfg.checked_form as string | undefined;
-      const uncheckedForm = cfg.unchecked_form as string | undefined;
-      const allCbForms = new Set<string>();
-      if (checkedForm) allCbForms.add(checkedForm);
-      if (uncheckedForm) allCbForms.add(uncheckedForm);
-      const inp = document.createElement('input');
-      inp.type = 'checkbox';
-      inp.checked = Boolean(cfg.default);
-      const updateCbForms = () => {
-        this._formValues[col] = inp.checked ? checkedVal : uncheckedVal;
-        if (allCbForms.size > 0) {
-          const activeForm = inp.checked ? checkedForm : uncheckedForm;
-          for (const sn of allCbForms) {
-            const el = this._namedSections.get(sn);
-            if (el) el.style.display = sn === activeForm ? 'flex' : 'none';
-          }
-        }
-        this._validateForm();
-      };
-      inp.addEventListener('change', updateCbForms);
-      this._formValues[col] = inp.checked ? checkedVal : uncheckedVal;
-      inputEl = inp;
-
-    } else if (type === 'number') {
-      const inp = document.createElement('input');
-      inp.type = 'number';
-      if (cfg.min !== undefined) inp.min = String(cfg.min);
-      if (cfg.max !== undefined) inp.max = String(cfg.max);
-      if (cfg.step !== undefined) inp.step = String(cfg.step);
-      if (cfg.placeholder) inp.placeholder = String(cfg.placeholder);
-      if (cfg.value !== undefined) inp.value = String(cfg.value);
-      inp.style.cssText =
-        inputStyle(cfg.width ? cssSize(cfg.width) : '80px') + `font-size:13px;`;
-      inp.addEventListener('input', () => {
-        this._formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
-        this._validateForm();
-      });
-      this._formValues[col] = cfg.value ?? null;
-      inputEl = inp;
-
-    } else {
-      return;
-    }
-
-    if (cfg.source_value) {
-      this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
-    }
-    if (required) this._requiredInputs.push({ col, el: inputEl });
-    this._registerInput(col, inputEl);
-    lbl.appendChild(inputEl);
+    if (cfg.source_value) this._sourceValueFields.push({ col, sourceCol: cfg.source_value });
+    if (cfg.required ?? false) this._requiredInputs.push({ col, el: built.input });
+    this._registerInput(col, built.input);
+    lbl.appendChild(built.element);
     container.appendChild(lbl);
-    if (type === 'checkbox') {
-      const cf = cfg.checked_form as string | undefined;
-      const uf = cfg.unchecked_form as string | undefined;
-      for (const fn of [cf, uf]) {
-        if (fn) pendingFormSections.push(fn);
-      }
-    }
-    for (const sn of pendingFormSections) {
-      const sec = this._namedSections.get(sn);
+    for (const name of built.sections) {
+      const sec = this._namedSections.get(name);
       if (sec) container.appendChild(sec);
     }
   }
 
-  /**
-   * Load select items. Returns [value, label, formRef?] tuples.
-   * formRef is the name of a named form section to show when this item is selected.
-   */
-  private async _loadSelectItems(items: any): Promise<Array<[string, string, string?]>> {
-    if (!items) return [];
-
-    if (Array.isArray(items)) {
-      return items.map(item => {
-        if (typeof item === 'string') return [item, item] as [string, string];
-        if (typeof item === 'object' && item !== null) {
-          // New form: {label, value, form} or {label, form} or legacy {key: val}
-          if ('label' in item || 'form' in item) {
-            const label = item.label ?? item.value ?? '';
-            const value = item.value ?? item.label ?? '';
-            const form = item.form as string | undefined;
-            return [String(value), String(label), form] as [string, string, string?];
-          }
-          const [k] = Object.keys(item);
-          return [k, String(item[k])] as [string, string];
-        }
-        return [String(item), String(item)] as [string, string];
-      });
+  /** A textbox (``multiline`` -> textarea). */
+  private _buildTextbox(cfg: any, col: string) {
+    const css = inputStyle(cfg.width ? cssSize(cfg.width) : '220px');
+    let input: HTMLInputElement | HTMLTextAreaElement;
+    if (cfg.multiline) {
+      const ta = document.createElement('textarea');
+      ta.rows = 1;
+      ta.style.cssText = css + `font-size:13px;resize:vertical;vertical-align:middle;height:28px;`;
+      input = ta;
+    } else {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.style.cssText = css + `font-size:13px;`;
+      input = inp;
     }
-
-    if (typeof items === 'string') {
-      return this._loadSelectItemsFromFile(items);
-    }
-
-    if (typeof items === 'object') {
-      if ('max' in items) {
-        const min = items.min ?? 0;
-        const max = items.max;
-        const step = items.step ?? 1;
-        const result: Array<[string, string]> = [];
-        for (let i = min; i <= max; i += step) result.push([String(i), String(i)]);
-        return result;
-      }
-      if ('path' in items) {
-        return this._loadSelectItemsFromFile(items.path, items.value, items.label);
-      }
-    }
-
-    return [];
+    input.addEventListener('input', () => { this._formValues[col] = input.value; this._validateForm(); });
+    input.value = cfg.default == null ? '' : String(cfg.default);
+    this._formValues[col] = cfg.default ?? '';
+    return { input, element: input, sections: [] };
   }
 
-  private async _loadSelectItemsFromFile(
-    path: string,
-    valueCol?: string,
-    labelCol?: string
-  ): Promise<Array<[string, string]>> {
-    try {
-      const result = await this._kernel.exec(loadSelectItems(path, valueCol, labelCol));
-      return JSON.parse(result) as Array<[string, string]>;
-    } catch {
-      return [];
+  /** A select; items with a ``form`` reveal that named section while selected. */
+  private async _buildSelectInput(cfg: any, col: string) {
+    const flags = selectItemOptions(cfg.items);
+    const { items, selectedDefault } = parseSelectItems(
+      await this._loadSelectItems(cfg.items), flags.notAvailable);
+    const formRefs = new Map<string, string>();
+    for (const item of items) if (item.formRef) formRefs.set(item.val, item.formRef);
+    const allFormSections = new Set(formRefs.values());
+
+    const built = buildSelect({
+      items, filterBox: flags.filterBox, customValue: flags.customValue, variant: 'main',
+      onChange: () => {
+        const sel = built.select;
+        this._formValues[col] = sel.value;
+        if (allFormSections.size > 0) this._showOnly(allFormSections, formRefs.get(sel.value));
+        this._validateForm();
+      },
+    });
+    if (cfg.width) built.select.style.width = cssSize(cfg.width);
+    if (cfg.default != null) built.select.value = String(cfg.default);
+    this._formValues[col] = cfg.default ?? selectedDefault;
+    return { input: built.select, element: built.element, sections: [...allFormSections] };
+  }
+
+  /** A checkbox with checked/unchecked values; ``checked_form`` / ``unchecked_form`` sections. */
+  private _buildCheckbox(cfg: any, col: string) {
+    const checkedVal = cfg.checked_value ?? cfg.yes_value ?? true;
+    const uncheckedVal = cfg.unchecked_value ?? cfg.no_value ?? false;
+    const checkedForm = cfg.checked_form as string | undefined;
+    const uncheckedForm = cfg.unchecked_form as string | undefined;
+    const forms = new Set<string>();
+    if (checkedForm) forms.add(checkedForm);
+    if (uncheckedForm) forms.add(uncheckedForm);
+
+    const inp = document.createElement('input');
+    inp.type = 'checkbox';
+    inp.checked = Boolean(cfg.default);
+    inp.addEventListener('change', () => {
+      this._formValues[col] = inp.checked ? checkedVal : uncheckedVal;
+      if (forms.size > 0) this._showOnly(forms, inp.checked ? checkedForm : uncheckedForm);
+      this._validateForm();
+    });
+    this._formValues[col] = inp.checked ? checkedVal : uncheckedVal;
+    const sections = [checkedForm, uncheckedForm].filter((f): f is string => !!f);
+    return { input: inp, element: inp, sections };
+  }
+
+  /** A number input (``value`` is its initial value). */
+  private _buildNumber(cfg: any, col: string) {
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    if (cfg.min !== undefined) inp.min = String(cfg.min);
+    if (cfg.max !== undefined) inp.max = String(cfg.max);
+    if (cfg.step !== undefined) inp.step = String(cfg.step);
+    if (cfg.placeholder) inp.placeholder = String(cfg.placeholder);
+    if (cfg.value !== undefined) inp.value = String(cfg.value);
+    inp.style.cssText = inputStyle(cfg.width ? cssSize(cfg.width) : '80px') + `font-size:13px;`;
+    inp.addEventListener('input', () => {
+      this._formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
+      this._validateForm();
+    });
+    this._formValues[col] = cfg.value ?? null;
+    return { input: inp, element: inp, sections: [] };
+  }
+
+  /** Show named section ``active`` and hide the other ``sections``. */
+  private _showOnly(sections: Set<string>, active: string | undefined): void {
+    for (const name of sections) {
+      const el = this._namedSections.get(name);
+      if (el) el.style.display = name === active ? 'flex' : 'none';
     }
   }
 
-  private async _buildSubmissionButtons(cfg: any): Promise<void> {
+  /** A select's items as raw ``[value, label, formRef?]`` tuples (files load in the kernel). */
+  private _loadSelectItems(items: any): Promise<RawSelectItem[]> {
+    return loadRawSelectItems(items, async (path, valueCol, labelCol) => {
+      try {
+        const result = await this._kernel.exec(loadSelectItems(path, valueCol, labelCol));
+        return JSON.parse(result) as RawSelectItem[];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  /** The submission row (Prev / Skip / Submit, sync button) plus inline extras. */
+  private _buildSubmissionButtons(cfg: any): void {
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px;`;
 
@@ -925,26 +742,7 @@ export class FormPanel {
         d.textContent = String(val);
         this._dynFormEl.appendChild(d);
       } else {
-        const btnCfg = (val === true) ? {} : (val as any);
-        const btn = document.createElement('button');
-        if (key === 'previous') {
-          btn.textContent = btnCfg.label ?? '◀ Prev';
-          btn.style.cssText = btnStyle() + `font-size:13px;`;
-          btn.addEventListener('click', () => this.prevRequested.emit(void 0));
-        } else if (key === 'next') {
-          const showIcon = btnCfg.icon !== false;
-          btn.textContent = (btnCfg.label ?? 'Skip') + (showIcon ? ' →' : '');
-          btn.style.cssText = btnStyle() + `font-size:13px;`;
-          btn.addEventListener('click', () => this.nextRequested.emit(void 0));
-        } else if (key === 'submit') {
-          const showIcon = btnCfg.icon !== false;
-          btn.textContent = (showIcon ? '✓ ' : '') + (btnCfg.label ?? 'Submit');
-          btn.style.cssText = btnStyle(true) + `font-size:13px;opacity:0.4;`;
-          btn.disabled = true;
-          btn.addEventListener('click', () => void this._onVerify());
-          this._submitBtns.push(btn);
-        }
-        btnContainer.appendChild(btn);
+        btnContainer.appendChild(this._submissionButton(key, val === true ? {} : (val as any)));
       }
     }
 
@@ -955,237 +753,169 @@ export class FormPanel {
       this._syncBtn = document.createElement('button');
       this._syncBtn.textContent = this._syncConfig.button;
       this._syncBtn.style.cssText = btnStyle() + `font-size:12px;`;
-      this._syncBtn.addEventListener('click', () => void this._onSync());
+      this._syncBtn.addEventListener('click', () => this._onSync());
       btnContainer.appendChild(this._syncBtn);
     }
 
     this._dynFormEl.appendChild(btnContainer);
   }
 
-  private async _onSync(): Promise<void> {
+  /** A ``previous`` / ``next`` / ``submit`` button (an empty button for unknown keys). */
+  private _submissionButton(key: string, btnCfg: any): HTMLButtonElement {
+    const btn = document.createElement('button');
+    const showIcon = btnCfg.icon !== false;
+    if (key === 'previous') {
+      btn.textContent = btnCfg.label ?? '◀ Prev';
+      btn.style.cssText = btnStyle() + `font-size:13px;`;
+      btn.addEventListener('click', () => this.prevRequested.emit(void 0));
+    } else if (key === 'next') {
+      btn.textContent = (btnCfg.label ?? 'Skip') + (showIcon ? ' →' : '');
+      btn.style.cssText = btnStyle() + `font-size:13px;`;
+      btn.addEventListener('click', () => this.nextRequested.emit(void 0));
+    } else if (key === 'submit') {
+      btn.textContent = (showIcon ? '✓ ' : '') + (btnCfg.label ?? 'Submit');
+      btn.style.cssText = btnStyle(true) + `font-size:13px;opacity:0.4;`;
+      btn.disabled = true;
+      btn.addEventListener('click', () => void this._onVerify());
+      this._submitBtns.push(btn);
+    }
+    return btn;
+  }
+
+  /** Sync button: show it busy and ask the widget to sync. */
+  private _onSync(): void {
     if (!this._syncBtn) return;
     this.setSyncBusy(true);
     this.syncRequested.emit(void 0);
   }
 
-  /** Show the sync button busy ("Syncing…", disabled) or ready; the widget calls this when a sync ends. */
-  setSyncBusy(busy: boolean): void {
-    if (!this._syncBtn) return;
-    this._syncBtn.disabled = busy;
-    this._syncBtn.style.opacity = busy ? '0.4' : '1';
-    this._syncBtn.textContent = busy ? 'Syncing…' : (this._syncConfig.button ?? 'Sync');
-  }
+  // ── Private: annotation element ──────────────────────────────
 
+  /**
+   * Build the annotation element: tool dropdown (several tools), fixed-window input, the
+   * bound inputs, and the annotation-form / multibox-card container.
+   */
   private async _buildAnnotationElement(config: any, container: HTMLElement): Promise<void> {
     if (!config || typeof config !== 'object') return;
-
-    const ac: AnnotConfig = { tools: [] };
-
-    if (config.start_time) {
-      const c = typeof config.start_time === 'string' ? { column: config.start_time } : config.start_time;
-      const col = c.column ?? c.label ?? 'start_time';
-      ac.startTime = { col, sourceValue: c.source_value };
-      this._formValues[col] = null;
-    }
-    if (config.end_time) {
-      const c = typeof config.end_time === 'string' ? { column: config.end_time } : config.end_time;
-      const col = c.column ?? c.label ?? 'end_time';
-      ac.endTime = { col, sourceValue: c.source_value };
-      this._formValues[col] = null;
-    }
-    if (config.min_frequency) {
-      const c = typeof config.min_frequency === 'string' ? { column: config.min_frequency } : config.min_frequency;
-      const col = c.column ?? c.label ?? 'min_frequency';
-      ac.minFreq = { col };
-      this._formValues[col] = null;
-    }
-    if (config.max_frequency) {
-      const c = typeof config.max_frequency === 'string' ? { column: config.max_frequency } : config.max_frequency;
-      const col = c.column ?? c.label ?? 'max_frequency';
-      ac.maxFreq = { col };
-      this._formValues[col] = null;
-    }
-
-    const rawTools = config.tools;
-    if (typeof rawTools === 'string') {
-      ac.tools = [rawTools];
-    } else if (Array.isArray(rawTools)) {
-      ac.tools = [];
-      for (const t of rawTools) {
-        if (typeof t === 'string') {
-          ac.tools.push(t);
-        } else if (typeof t === 'object' && t !== null) {
-          if ('fixed_duration' in t) {
-            ac.tools.push('fixed_duration');
-            const raw = t.fixed_duration;
-            if (typeof raw === 'number') {
-              ac.fixedDuration = { value: raw, editable: false };
-            } else if (typeof raw === 'object' && raw !== null) {
-              const hasInitial = raw.initial_window != null;
-              ac.fixedDuration = {
-                value: hasInitial ? raw.initial_window : (raw.window ?? 1),
-                editable: hasInitial,
-                min: raw.min,
-                max: raw.max,
-                step: raw.step,
-              };
-            }
-          }
-        }
-      }
-    } else {
-      ac.tools = ['time_select'];
-    }
-
-    const needsTime = ac.tools.some(t =>
-      ['time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration'].includes(t));
-    const needsEndTime = ac.tools.some(t =>
-      ['start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration'].includes(t));
-    const needsFreq = ac.tools.some(t =>
-      ['bounding_box', 'multibox'].includes(t));
-    if (needsTime && !ac.startTime) {
-      ac.startTime = { col: 'start_time', sourceValue: 'start_time' };
-      this._formValues['start_time'] = null;
-    }
-    if (needsEndTime && !ac.endTime) {
-      ac.endTime = { col: 'end_time', sourceValue: 'end_time' };
-      this._formValues['end_time'] = null;
-    }
-    if (needsFreq && !ac.minFreq) {
-      ac.minFreq = { col: 'min_frequency' };
-      this._formValues['min_frequency'] = null;
-    }
-    if (needsFreq && !ac.maxFreq) {
-      ac.maxFreq = { col: 'max_frequency' };
-      this._formValues['max_frequency'] = null;
-    }
-
-    // Parse annotation.form for multibox per-box forms
-    if (config.form) {
-      ac.form = typeof config.form === 'string' ? config.form : null;
-      this._multiboxFormName = ac.form ?? null;
-    }
-
+    const { config: ac, columns } = parseAnnotationConfig(config);
+    for (const col of columns) this._formValues[col] = null;
+    if (config.form) this._multiboxFormName = ac.form ?? null;
     this._annotConfig = ac;
     this._activeTool = ac.tools[0] ?? '';
 
     const wrapper = document.createElement('div');
     wrapper.style.cssText = `display:flex;align-items:center;gap:12px;flex-wrap:wrap;`;
+    if (ac.tools.length > 1) wrapper.appendChild(this._buildToolSelect(ac.tools));
+    if (ac.fixedDuration) wrapper.appendChild(this._buildFixedDurationInput(ac));
 
-    if (ac.tools.length > 1) {
-      const lbl = document.createElement('label');
-      lbl.style.cssText = formLabelStyle();
-      lbl.textContent = 'tool';
-      const sel = document.createElement('select');
-      sel.style.cssText = selectStyle() + `font-size:13px;`;
-      ac.tools.forEach(t => {
-        const o = document.createElement('option');
-        o.value = t;
-        o.textContent = t.replace(/_/g, ' ');
-        sel.appendChild(o);
-      });
-      sel.addEventListener('change', () => {
-        this._activeTool = sel.value;
-        this._updateFixedDurationState();
-        if (this._currentRow) this._applyAnnotValues(this._currentRow);
-        void this._rebuildAnnotFormUI();
-        this.activeToolChanged.emit(this._activeTool);
-        this.annotationChanged.emit(void 0);
-      });
-      lbl.appendChild(sel);
-      wrapper.appendChild(lbl);
-    }
-
-    if (ac.fixedDuration) {
-      this._fixedDurationValue = ac.fixedDuration.value;
-      const lbl = document.createElement('label');
-      lbl.style.cssText = labelStyle() + `font-size:12px;gap:5px;`;
-      lbl.textContent = 'window';
-      const inp = document.createElement('input');
-      inp.type = 'number';
-      inp.value = String(ac.fixedDuration.value);
-      inp.disabled = !ac.fixedDuration.editable;
-      inp.style.cssText = inputStyle('70px') + `font-size:12px;`;
-      if (ac.fixedDuration.step) inp.step = String(ac.fixedDuration.step);
-      if (ac.fixedDuration.min != null) inp.min = String(ac.fixedDuration.min);
-      if (ac.fixedDuration.max != null) inp.max = String(ac.fixedDuration.max);
-      const commitValue = () => {
-        let v = parseFloat(inp.value);
-        if (isNaN(v) || v < 0) return;
-        const fd = ac.fixedDuration!;
-        if (fd.min != null) v = Math.max(fd.min, v);
-        if (fd.max != null) v = Math.min(fd.max, v);
-        this._fixedDurationValue = v;
-        inp.value = String(v);
-        this._resizeFixedDuration();
-      };
-      inp.addEventListener('blur', commitValue);
-      inp.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-          requestAnimationFrame(commitValue);
-        }
-      });
-      inp.addEventListener('pointerup', () => requestAnimationFrame(commitValue));
-      const u = document.createElement('span');
-      u.textContent = 's';
-      u.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
-      lbl.append(inp, u);
-      this._fixedDurationInput = inp;
-      this._fixedDurationLabel = lbl;
-      const isActive = this._activeTool === 'fixed_duration';
-      const canEdit = ac.fixedDuration.editable && isActive;
-      inp.disabled = !canEdit;
-      inp.style.opacity = canEdit ? '1' : '0.5';
-      lbl.style.opacity = isActive ? '1' : '0.35';
-      wrapper.appendChild(lbl);
-    }
-
-    const mkInput = (field: string, label: string, unit = ''): void => {
-      const lbl = document.createElement('label');
-      lbl.style.cssText = labelStyle() + `font-size:12px;gap:5px;`;
-      lbl.textContent = label;
-      const inp = document.createElement('input');
-      inp.type = 'number';
-      inp.step = field.includes('Freq') ? '1' : '0.01';
-      inp.style.cssText = inputStyle('80px') + `font-size:12px;`;
-      inp.addEventListener('input', () => {
-        const v = inp.value === '' ? null : parseFloat(inp.value);
-        this._setAnnotValueInternal(field, v, /*emit*/ true);
-      });
-      if (unit) {
-        const u = document.createElement('span');
-        u.textContent = unit;
-        u.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
-        lbl.append(inp, u);
-      } else {
-        lbl.appendChild(inp);
-      }
-      this._annotInputs.set(field, inp);
-      wrapper.appendChild(lbl);
+    const labels: Record<AnnotField, string> = {
+      startTime: config.start_time?.label ?? 'start_time',
+      endTime: config.end_time?.label ?? 'end_time',
+      minFreq: config.min_frequency?.label ?? 'min_frequency',
+      maxFreq: config.max_frequency?.label ?? 'max_frequency',
     };
-
-    if (ac.startTime) mkInput('startTime', config.start_time?.label ?? 'start_time', 's');
-    if (ac.endTime) mkInput('endTime', config.end_time?.label ?? 'end_time', 's');
-    if (ac.minFreq) mkInput('minFreq', config.min_frequency?.label ?? 'min_frequency', 'Hz');
-    if (ac.maxFreq) mkInput('maxFreq', config.max_frequency?.label ?? 'max_frequency', 'Hz');
-
+    for (const field of ANNOT_FIELDS) {
+      if (ac[field]) wrapper.appendChild(this._buildAnnotInput(field, labels[field]));
+    }
     container.appendChild(wrapper);
 
-    // Annotation form container — shows per-box forms in multibox mode,
-    // or a single form instance for other annotation tools
+    // Annotation form container — per-box cards in multibox mode, or one form instance
     if (ac.form || ac.tools.includes('multibox')) {
       this._multiboxContainer = document.createElement('div');
-      this._multiboxContainer.style.cssText =
-        `display:flex;flex-direction:column;gap:6px;overflow-y:auto;`;
+      this._multiboxContainer.style.cssText = `display:flex;flex-direction:column;gap:6px;overflow-y:auto;`;
       container.appendChild(this._multiboxContainer);
-      // Build initial single-form view (will switch to multibox cards when tool changes).
       // Direct, not queued: build() may itself be running inside the queue.
       await this._renderAnnotFormUI();
     }
   }
 
-  // ─── Private: multibox UI ──────────────────────────────────
+  /** The "tool" dropdown. */
+  private _buildToolSelect(tools: string[]): HTMLLabelElement {
+    const lbl = document.createElement('label');
+    lbl.style.cssText = formLabelStyle();
+    lbl.textContent = 'tool';
+    const sel = document.createElement('select');
+    sel.style.cssText = selectStyle() + `font-size:13px;`;
+    for (const t of tools) {
+      const o = document.createElement('option');
+      o.value = t;
+      o.textContent = t.replace(/_/g, ' ');
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => {
+      this._activeTool = sel.value;
+      this._updateFixedDurationState();
+      if (this._currentRow) this._applyAnnotValues(this._currentRow);
+      void this._rebuildAnnotFormUI();
+      this.activeToolChanged.emit(this._activeTool);
+      this.annotationChanged.emit(void 0);
+    });
+    lbl.appendChild(sel);
+    return lbl;
+  }
+
+  /** The fixed-duration "window" input (editable only for ``initial_window`` configs). */
+  private _buildFixedDurationInput(ac: AnnotConfig): HTMLLabelElement {
+    const fd = ac.fixedDuration!;
+    this._fixedDurationValue = fd.value;
+    const lbl = document.createElement('label');
+    lbl.style.cssText = labelStyle() + `font-size:12px;gap:5px;`;
+    lbl.textContent = 'window';
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.value = String(fd.value);
+    inp.style.cssText = inputStyle('70px') + `font-size:12px;`;
+    if (fd.step) inp.step = String(fd.step);
+    if (fd.min != null) inp.min = String(fd.min);
+    if (fd.max != null) inp.max = String(fd.max);
+    const commitValue = () => {
+      let v = parseFloat(inp.value);
+      if (isNaN(v) || v < 0) return;
+      if (fd.min != null) v = Math.max(fd.min, v);
+      if (fd.max != null) v = Math.min(fd.max, v);
+      this._fixedDurationValue = v;
+      inp.value = String(v);
+      this._resizeFixedDuration();
+    };
+    inp.addEventListener('blur', commitValue);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') requestAnimationFrame(commitValue);
+    });
+    inp.addEventListener('pointerup', () => requestAnimationFrame(commitValue));
+    lbl.append(inp, this._unitSpan('s'));
+    this._fixedDurationInput = inp;
+    this._fixedDurationLabel = lbl;
+    this._updateFixedDurationState();
+    return lbl;
+  }
+
+  /** A number input for one annotation bound (typing updates the canvas). */
+  private _buildAnnotInput(field: AnnotField, label: string): HTMLLabelElement {
+    const lbl = document.createElement('label');
+    lbl.style.cssText = labelStyle() + `font-size:12px;gap:5px;`;
+    lbl.textContent = label;
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.step = field.includes('Freq') ? '1' : '0.01';
+    inp.style.cssText = inputStyle('80px') + `font-size:12px;`;
+    inp.addEventListener('input', () => {
+      this._setAnnotValueInternal(field, inp.value === '' ? null : parseFloat(inp.value), true);
+    });
+    lbl.append(inp, this._unitSpan(field.includes('Freq') ? 'Hz' : 's'));
+    this._annotInputs.set(field, inp);
+    return lbl;
+  }
+
+  /** A small muted unit label (``s``, ``Hz``). */
+  private _unitSpan(unit: string): HTMLSpanElement {
+    const u = document.createElement('span');
+    u.textContent = unit;
+    u.style.cssText = `color:${COLORS.textMuted};font-size:10px;`;
+    return u;
+  }
+
+  // ── Private: annotation form / multibox cards ────────────────
 
   /** Re-render the annotation form area (queued: rebuilds await the kernel and must not overlap). */
   private _rebuildAnnotFormUI(): Promise<void> {
@@ -1216,302 +946,57 @@ export class FormPanel {
     this._templateElements = this._templateElements.filter(t => !inside(t.el));
   }
 
+  /**
+   * Fill the annotation form container: one instance of the annotation form (other tools),
+   * or a card per box with its own form (multibox; a hint when there are no boxes).
+   */
   private async _renderAnnotFormUI(): Promise<void> {
-    if (!this._multiboxContainer) return;
-    this._forgetInputsIn(this._multiboxContainer);
-    this._multiboxContainer.innerHTML = '';
+    const host = this._multiboxContainer;
+    if (!host) return;
+    this._forgetInputsIn(host);
+    host.innerHTML = '';
+    const formCfg = this._multiboxFormName
+      ? asElementList(this._formConfig?.dynamic_forms?.[this._multiboxFormName])
+      : null;
 
-    // Non-multibox mode: show a single form instance
     if (!this.isMultiboxMode()) {
-      if (this._multiboxFormName) {
-        let formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
-        if (formCfg) {
-          if (!Array.isArray(formCfg) && typeof formCfg === 'object') {
-            formCfg = Object.keys(formCfg).map((k: string) => ({ [k]: formCfg[k] }));
-          }
-          if (Array.isArray(formCfg)) {
-            const formDiv = document.createElement('div');
-            formDiv.style.cssText = `display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;`;
-            await this._buildFormSection(formCfg, formDiv);
-            this._multiboxContainer.appendChild(formDiv);
-          }
-        }
+      if (formCfg) {
+        const formDiv = document.createElement('div');
+        formDiv.style.cssText = `display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;`;
+        await this._buildFormSection(formCfg, formDiv);
+        host.appendChild(formDiv);
       }
       this._validateForm();
       return;
     }
 
-    // Multibox mode
     if (this._multiboxEntries.length === 0) {
       const hint = document.createElement('div');
       hint.style.cssText = mutedTextStyle({ fontSize: 11 });
       hint.textContent = HINT.drawBoxes;
-      this._multiboxContainer.appendChild(hint);
+      host.appendChild(hint);
       return;
     }
 
     for (let i = 0; i < this._multiboxEntries.length; i++) {
       const entry = this._multiboxEntries[i];
-      const card = document.createElement('div');
-      card.dataset.multiboxIdx = String(i);
-      card.style.cssText =
-        `display:flex;flex-direction:column;gap:4px;padding:6px 8px;` +
-        `border-radius:4px;border-left:3px solid ${entry.color};` +
-        `background:${i === this._activeBoxIndex ? COLORS.bgSurface0 : COLORS.bgMantle};cursor:pointer;`;
-      card.addEventListener('click', () => this.setActiveBox(i));
-
-      // Header row: color dot + bounds + delete button
-      const headerRow = document.createElement('div');
-      headerRow.style.cssText = `display:flex;align-items:center;gap:8px;`;
-
-      const dot = document.createElement('span');
-      dot.style.cssText =
-        `width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${entry.color};`;
-      headerRow.appendChild(dot);
-
-      const bounds = document.createElement('span');
-      bounds.style.cssText = `font-size:10px;color:${COLORS.textSubtle};font-family:ui-monospace,monospace;white-space:nowrap;`;
-      bounds.textContent =
-        `${entry.startTime.toFixed(1)}–${entry.endTime.toFixed(1)}s` +
-        `  ${(entry.minFreq / 1000).toFixed(1)}–${(entry.maxFreq / 1000).toFixed(1)} kHz`;
-      headerRow.appendChild(bounds);
-
-      const spacer = document.createElement('span');
-      spacer.style.flex = '1';
-      headerRow.appendChild(spacer);
-
-      const delBtn = document.createElement('button');
-      delBtn.textContent = '×';
-      delBtn.title = TOOLTIP.removeBox;
-      delBtn.style.cssText = btnStyle() + `font-size:14px;padding:0 6px;line-height:1;`;
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.removeMultiboxEntry(i);
+      const card = buildBoxCard(entry, i, i === this._activeBoxIndex, {
+        onSelect: () => this.setActiveBox(i),
+        onRemove: () => this.removeMultiboxEntry(i),
       });
-      headerRow.appendChild(delBtn);
-      card.appendChild(headerRow);
-
-      // Per-box form (if configured)
-      if (this._multiboxFormName) {
-        let formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
-        if (formCfg) {
-          if (!Array.isArray(formCfg) && typeof formCfg === 'object') {
-            formCfg = Object.keys(formCfg).map((k: string) => ({ [k]: formCfg[k] }));
-          }
-          if (Array.isArray(formCfg)) {
-            const formDiv = document.createElement('div');
-            formDiv.style.cssText = `display:flex;align-items:center;gap:6px;flex-wrap:wrap;`;
-            await this._buildMultiboxFormSection(formCfg, formDiv, entry);
-            card.appendChild(formDiv);
-          }
-        }
+      if (formCfg) {
+        const formDiv = document.createElement('div');
+        formDiv.style.cssText = `display:flex;align-items:center;gap:6px;flex-wrap:wrap;`;
+        await buildBoxForm(
+          formCfg, formDiv, entry, items => this._loadSelectItems(items), () => this._validateForm());
+        card.appendChild(formDiv);
       }
-
-      this._multiboxContainer.appendChild(card);
+      host.appendChild(card);
     }
     this._validateForm();
   }
 
-  /** Build form elements for a multibox entry, writing to entry.formValues. */
-  private async _buildMultiboxFormSection(
-    elements: any[], container: HTMLElement, entry: MultiboxEntry
-  ): Promise<void> {
-    for (const item of elements) {
-      if (!item || typeof item !== 'object') continue;
-      const [type] = Object.keys(item);
-      const config = item[type];
-      if (type === 'text') {
-        const d = document.createElement('div');
-        d.style.cssText = mutedTextStyle({ width: '100%', fontSize: 11 });
-        const textVal = config && typeof config === 'object' ? (config.value ?? '') : config;
-        d.textContent = String(textVal);
-        container.appendChild(d);
-      } else if (type === 'break') {
-        container.appendChild(document.createElement('br'));
-      } else if (type === 'line') {
-        const d = document.createElement('div');
-        d.style.cssText = fullWidthDividerStyle();
-        container.appendChild(d);
-      } else if (type === 'select') {
-        const cfg = config ?? {};
-        const col = cfg.column ?? cfg.label ?? type;
-        const sel = document.createElement('select');
-        sel.style.cssText = selectStyle() + `font-size:11px;max-width:160px;`;
-        const emptyOpt = document.createElement('option');
-        emptyOpt.value = ''; emptyOpt.textContent = '— select —';
-        sel.appendChild(emptyOpt);
-
-        const itemsCfg = cfg.items;
-        const hasFilterBox = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.filter_box;
-        const hasCustomValue = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) && itemsCfg.custom_value;
-        const notAvailCfg = itemsCfg && typeof itemsCfg === 'object' && !Array.isArray(itemsCfg) ? itemsCfg.not_available : undefined;
-
-        const items = await this._loadSelectItems(cfg.items);
-
-        if (notAvailCfg) {
-          let naVal: string, naLabel: string;
-          if (notAvailCfg === true) {
-            naVal = naLabel = 'not-available';
-          } else if (typeof notAvailCfg === 'string') {
-            naVal = naLabel = notAvailCfg;
-          } else if (typeof notAvailCfg === 'object') {
-            naLabel = notAvailCfg.label ?? 'not-available';
-            naVal = notAvailCfg.value ?? naLabel;
-          } else {
-            naVal = naLabel = 'not-available';
-          }
-          items.unshift([naVal, naLabel]);
-        }
-
-        const allItems: Array<{ val: string; label: string; isDefault: boolean }> = [];
-        let selectedDefault = '';
-        items.forEach(([v, l]) => {
-          const isDefault = v.startsWith('selected::');
-          const cleanVal = isDefault ? v.slice(10) : v;
-          const cleanLabel = l.startsWith('selected::') ? l.slice(10) : l;
-          allItems.push({ val: cleanVal, label: cleanLabel, isDefault });
-          if (isDefault) selectedDefault = cleanVal;
-        });
-
-        const rebuildOptions = (filter?: string) => {
-          while (sel.options.length > 1) sel.remove(1);
-          const f = (filter ?? '').toLowerCase();
-          allItems.forEach(item => {
-            if (f && !item.label.toLowerCase().includes(f) && !item.val.toLowerCase().includes(f)) return;
-            const o = document.createElement('option');
-            o.value = item.val; o.textContent = item.label;
-            if (item.isDefault && !f) o.selected = true;
-            sel.appendChild(o);
-          });
-        };
-        rebuildOptions();
-
-        const onSelChange = () => { entry.formValues[col] = sel.value; this._validateForm(); };
-        sel.addEventListener('change', onSelChange);
-        entry.formValues[col] = entry.formValues[col] ?? selectedDefault;
-        if (entry.formValues[col]) sel.value = entry.formValues[col];
-
-        const lbl = document.createElement('label');
-        lbl.style.cssText = labelStyle() + `font-size:11px;`;
-        lbl.textContent = cfg.label ?? col;
-
-        if (hasFilterBox || hasCustomValue) {
-          const wrapper = document.createElement('div');
-          wrapper.style.cssText = `display:inline-flex;align-items:center;gap:4px;`;
-          const filterInput = document.createElement('input');
-          filterInput.type = 'text';
-          filterInput.placeholder = 'filter';
-          filterInput.style.cssText = inputStyle('80px') + `font-size:11px;`;
-
-          let addBtn: HTMLButtonElement | null = null;
-          if (hasCustomValue) {
-            addBtn = document.createElement('button');
-            addBtn.textContent = '+ Add';
-            addBtn.style.cssText = btnStyle() + `font-size:10px;padding:2px 6px;display:none;`;
-            addBtn.addEventListener('click', () => {
-              const custom = filterInput.value.trim();
-              if (!custom) return;
-              allItems.push({ val: custom, label: custom, isDefault: false });
-              rebuildOptions();
-              sel.value = custom;
-              filterInput.value = '';
-              if (addBtn) addBtn.style.display = 'none';
-              onSelChange();
-            });
-          }
-
-          filterInput.addEventListener('input', () => {
-            const f = filterInput.value.trim();
-            rebuildOptions(f);
-            sel.size = Math.min(8, sel.options.length);
-            if (!f) sel.size = 0;
-            if (addBtn) {
-              const hasExact = f && allItems.some(
-                item => item.val.toLowerCase() === f.toLowerCase() || item.label.toLowerCase() === f.toLowerCase());
-              addBtn.style.display = (f && !hasExact) ? '' : 'none';
-            }
-          });
-          filterInput.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              sel.selectedIndex = Math.min(sel.selectedIndex + 1, sel.options.length - 1);
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              sel.selectedIndex = Math.max(sel.selectedIndex - 1, 0);
-            } else if (e.key === 'Enter') {
-              e.preventDefault();
-              if (sel.value) {
-                sel.size = 0;
-                filterInput.value = '';
-                rebuildOptions();
-                onSelChange();
-              }
-            }
-          });
-          sel.addEventListener('change', () => { sel.size = 0; });
-          wrapper.append(sel, filterInput);
-          if (addBtn) wrapper.appendChild(addBtn);
-          lbl.appendChild(wrapper);
-        } else {
-          lbl.appendChild(sel);
-        }
-        container.appendChild(lbl);
-      } else if (type === 'textbox') {
-        const cfg = config ?? {};
-        const col = cfg.column ?? cfg.label ?? type;
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.style.cssText = inputStyle('100px') + `font-size:11px;`;
-        inp.addEventListener('input', () => { entry.formValues[col] = inp.value; this._validateForm(); });
-        entry.formValues[col] = entry.formValues[col] ?? '';
-        inp.value = entry.formValues[col];
-        const lbl = document.createElement('label');
-        lbl.style.cssText = labelStyle() + `font-size:11px;`;
-        lbl.textContent = cfg.label ?? col;
-        lbl.appendChild(inp);
-        container.appendChild(lbl);
-      } else if (type === 'number') {
-        const cfg = config ?? {};
-        const col = cfg.column ?? cfg.label ?? type;
-        const inp = document.createElement('input');
-        inp.type = 'number';
-        if (cfg.min !== undefined) inp.min = String(cfg.min);
-        if (cfg.max !== undefined) inp.max = String(cfg.max);
-        if (cfg.step !== undefined) inp.step = String(cfg.step);
-        inp.style.cssText = inputStyle('60px') + `font-size:11px;`;
-        inp.addEventListener('input', () => {
-          entry.formValues[col] = inp.value === '' ? null : parseFloat(inp.value);
-          this._validateForm();
-        });
-        entry.formValues[col] = entry.formValues[col] ?? null;
-        if (entry.formValues[col] != null) inp.value = String(entry.formValues[col]);
-        const lbl = document.createElement('label');
-        lbl.style.cssText = labelStyle() + `font-size:11px;`;
-        lbl.textContent = cfg.label ?? col;
-        lbl.appendChild(inp);
-        container.appendChild(lbl);
-      } else if (type === 'checkbox') {
-        const cfg = config ?? {};
-        const col = cfg.column ?? cfg.label ?? type;
-        const checkedVal = cfg.checked_value ?? cfg.yes_value ?? true;
-        const uncheckedVal = cfg.unchecked_value ?? cfg.no_value ?? false;
-        const inp = document.createElement('input');
-        inp.type = 'checkbox';
-        inp.checked = Boolean(entry.formValues[col] ?? cfg.default);
-        inp.addEventListener('change', () => {
-          entry.formValues[col] = inp.checked ? checkedVal : uncheckedVal;
-          this._validateForm();
-        });
-        entry.formValues[col] = inp.checked ? checkedVal : uncheckedVal;
-        const lbl = document.createElement('label');
-        lbl.style.cssText = labelStyle() + `font-size:11px;`;
-        lbl.textContent = cfg.label ?? col;
-        lbl.appendChild(inp);
-        container.appendChild(lbl);
-      }
-    }
-  }
-
+  /** Recolor the cards' left strips: the active box's color, transparent for the others. */
   private _highlightActiveBoxCard(): void {
     if (!this._multiboxContainer) return;
     const cards = this._multiboxContainer.querySelectorAll('[data-multibox-idx]');
@@ -1523,31 +1008,36 @@ export class FormPanel {
     });
   }
 
-  // ─── Private: value management ─────────────────────────────
+  /** Copy a box's bounds into the annotation inputs / values. */
+  private _syncAnnotInputsToBox(entry: MultiboxEntry | undefined): void {
+    if (!entry || !this._annotConfig) return;
+    for (const field of ANNOT_FIELDS) {
+      if (this._annotConfig[field]) this._setAnnotValueInternal(field, entry[field], false);
+    }
+  }
+
+  // ── Private: values ──────────────────────────────────────────
 
   /** Track an input and remember its just-built state, which ``_applyRow`` restores. */
-  private _registerInput(
-    col: string,
-    el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
-  ): void {
+  private _registerInput(col: string, el: InputEl): void {
     this._inputRefs.set(col, el);
     const isCheckbox = el instanceof HTMLInputElement && el.type === 'checkbox';
     this._inputInitial.set(col, isCheckbox ? (el as HTMLInputElement).checked : el.value);
   }
 
+  /**
+   * Show ``row`` in the form: clear boxes, hide named sections, reset inputs to their
+   * built state, then apply source values, annotation values, pass values and templates.
+   */
   private _applyRow(row: Detection): void {
     this._currentRow = row;
-    // Clear multibox state
     this._multiboxEntries = [];
     this._activeBoxIndex = -1;
     // multibox: clear the box cards. The single annotation sub-form is NOT rebuilt per row
     // (that re-registered its inputs every row); its inputs are reset below like the rest.
     if (this.isMultiboxMode()) void this._rebuildAnnotFormUI();
 
-    // Hide all named form sections
-    for (const sectionEl of this._namedSections.values()) {
-      sectionEl.style.display = 'none';
-    }
+    for (const sectionEl of this._namedSections.values()) sectionEl.style.display = 'none';
 
     // Reset every input to its state right after build (defaults, selected:: items, number
     // values, checkbox checked/unchecked values). Firing the input's own event recomputes
@@ -1563,26 +1053,21 @@ export class FormPanel {
       }
     }
 
-    // Apply source_value fields
     for (const { col, sourceCol } of this._sourceValueFields) {
       const val = row[sourceCol];
-      if (val !== undefined) {
-        const el = this._inputRefs.get(col);
-        if (el) {
-          (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value = String(val);
-          this._formValues[col] = val;
-        }
+      const el = this._inputRefs.get(col);
+      if (val !== undefined && el) {
+        el.value = String(val);
+        this._formValues[col] = val;
       }
     }
 
     this._applyAnnotValues(row);
 
-    // Apply pass_value fields
     for (const { sourceCol, col } of this._passValueDefs) {
       this._formValues[col] = row[sourceCol] ?? null;
     }
 
-    // Resolve [[column_name]] templates in text fields and labels
     for (const { el, template } of this._templateElements) {
       el.textContent = resolveTemplate(template, row);
     }
@@ -1592,34 +1077,31 @@ export class FormPanel {
     this._validateForm();
   }
 
+  /**
+   * Pre-fill the annotation from the row for the time tools (start / start+end from the
+   * row or its ``source_value`` columns); clear everything else.
+   */
   private _applyAnnotValues(row: Detection): void {
-    if (!this._annotConfig) return;
     const ac = this._annotConfig;
+    if (!ac) return;
     const tool = this._activeTool;
-    const fillStart = tool === 'time_select' || tool === 'start_end_time_select';
-    const fillEnd = tool === 'start_end_time_select';
+    const fromRow = (sv: string | undefined, fallback: number) =>
+      sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : fallback;
     if (ac.startTime) {
-      if (fillStart) {
-        const sv = ac.startTime.sourceValue;
-        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.start_time;
-        this._setAnnotValueInternal('startTime', v, false);
-      } else {
-        this._setAnnotValueInternal('startTime', null, false);
-      }
+      const fill = tool === 'time_select' || tool === 'start_end_time_select';
+      this._setAnnotValueInternal(
+        'startTime', fill ? fromRow(ac.startTime.sourceValue, row.start_time) : null, false);
     }
     if (ac.endTime) {
-      if (fillEnd) {
-        const sv = ac.endTime.sourceValue;
-        const v = sv && row[sv] !== undefined ? parseFloat(String(row[sv])) : row.end_time;
-        this._setAnnotValueInternal('endTime', v, false);
-      } else {
-        this._setAnnotValueInternal('endTime', null, false);
-      }
+      const fill = tool === 'start_end_time_select';
+      this._setAnnotValueInternal(
+        'endTime', fill ? fromRow(ac.endTime.sourceValue, row.end_time) : null, false);
     }
     if (ac.minFreq) this._setAnnotValueInternal('minFreq', null, false);
     if (ac.maxFreq) this._setAnnotValueInternal('maxFreq', null, false);
   }
 
+  /** Enable / dim the window input for the active tool. */
   private _updateFixedDurationState(): void {
     const ac = this._annotConfig;
     if (!ac?.fixedDuration || !this._fixedDurationInput || !this._fixedDurationLabel) return;
@@ -1630,11 +1112,11 @@ export class FormPanel {
     this._fixedDurationLabel.style.opacity = isActive ? '1' : '0.35';
   }
 
+  /** Resize the placed fixed window around its center after the window length changed. */
   private _resizeFixedDuration(): void {
     const ac = this._annotConfig;
-    if (!ac) return;
-    const stCol = ac.startTime?.col;
-    const etCol = ac.endTime?.col;
+    const stCol = ac?.startTime?.col;
+    const etCol = ac?.endTime?.col;
     if (!stCol || !etCol) return;
     const st = this._formValues[stCol];
     const et = this._formValues[etCol];
@@ -1646,14 +1128,9 @@ export class FormPanel {
     this.annotationChanged.emit(void 0);
   }
 
+  /** Set an annotation bound's value and input; re-validate; optionally notify the Player. */
   private _setAnnotValueInternal(field: string, val: number | null, emit: boolean): void {
-    const ac = this._annotConfig;
-    if (!ac) return;
-    let col: string | undefined;
-    if (field === 'startTime') col = ac.startTime?.col;
-    else if (field === 'endTime') col = ac.endTime?.col;
-    else if (field === 'minFreq') col = ac.minFreq?.col;
-    else if (field === 'maxFreq') col = ac.maxFreq?.col;
+    const col = this._annotConfig?.[field as AnnotField]?.col;
     if (!col) return;
     this._formValues[col] = val;
     const inp = this._annotInputs.get(field);
@@ -1662,45 +1139,26 @@ export class FormPanel {
     if (emit) this.annotationChanged.emit(void 0);
   }
 
+  /**
+   * Enable Submit when every visible required input has a value and, in multibox mode,
+   * there is at least one box and every box's required fields are filled.
+   */
   private _validateForm(): void {
-    // Check main form required inputs (skip those in detached/hidden sections)
+    const filled = (val: any) => val !== null && val !== undefined && val !== '';
     let allSatisfied = this._requiredInputs.every(({ col, el }) => {
       if (!el.isConnected) return true; // skip stale refs from rebuilt multibox forms
       const section = el.closest('[data-form-section]') as HTMLElement | null;
       if (section && section.style.display === 'none') return true;
-      const val = this._formValues[col];
-      return val !== null && val !== undefined && val !== '';
+      return filled(this._formValues[col]);
     });
-    // In multibox mode, require at least one box and check per-box required fields
     if (this.isMultiboxMode()) {
       if (this._multiboxEntries.length === 0) {
         allSatisfied = false;
       } else if (this._multiboxFormName) {
-        // Check each box has its required fields filled
-        let formCfg = this._formConfig?.dynamic_forms?.[this._multiboxFormName];
-        if (formCfg && !Array.isArray(formCfg) && typeof formCfg === 'object') {
-          formCfg = Object.keys(formCfg).map((k: string) => ({ [k]: formCfg[k] }));
-        }
-        if (Array.isArray(formCfg)) {
-          const requiredCols: string[] = [];
-          for (const item of formCfg) {
-            if (!item || typeof item !== 'object') continue;
-            const [type] = Object.keys(item);
-            const cfg = item[type] ?? {};
-            if (cfg.required) requiredCols.push(cfg.column ?? cfg.label ?? type);
-          }
-          if (requiredCols.length > 0) {
-            for (const entry of this._multiboxEntries) {
-              for (const col of requiredCols) {
-                const val = entry.formValues[col];
-                if (val === null || val === undefined || val === '') {
-                  allSatisfied = false;
-                  break;
-                }
-              }
-              if (!allSatisfied) break;
-            }
-          }
+        const formCfg = asElementList(this._formConfig?.dynamic_forms?.[this._multiboxFormName]);
+        const cols = formCfg ? requiredColumns(formCfg) : [];
+        if (!this._multiboxEntries.every(e => cols.every(c => filled(e.formValues[c])))) {
+          allSatisfied = false;
         }
       }
     }
@@ -1710,6 +1168,7 @@ export class FormPanel {
     });
   }
 
+  /** ``pass_value``: copy a data column into the output (``name`` or ``{source_column, column}``). */
   private _registerPassValue(config: any): void {
     if (typeof config === 'string') {
       this._passValueDefs.push({ sourceCol: config, col: config });
@@ -1722,6 +1181,7 @@ export class FormPanel {
     }
   }
 
+  /** ``fixed_value``: a constant output column (``{column, value}``). */
   private _registerFixedValue(config: any): void {
     if (!config || typeof config !== 'object') return;
     const col = config.column;
@@ -1729,19 +1189,14 @@ export class FormPanel {
     this._formValues[col] = config.value ?? null;
   }
 
-  private _collectFormValues(): Record<string, any> {
-    return { ...this._formValues };
+  /** The output file's extension (lower case). */
+  private _outputExt(): string {
+    return this._outputPath.split('.').pop()?.toLowerCase() ?? '';
   }
 
-  private _isAccuracyValid(cellValue: any, configValue: string | null): boolean {
-    if (configValue !== null) {
-      return String(cellValue ?? '').toLowerCase() === configValue.toLowerCase();
-    }
-    return isTruthyValue(cellValue);
-  }
+  // ── Private: titles / progress ───────────────────────────────
 
-  // ─── Private: display elements ────────────────────────────
-
+  /** A section title, optionally with the progress line on the right. */
   private _appendTitleEntry(config: any, container: HTMLElement): void {
     if (!config) return;
     const isObj = typeof config === 'object';
@@ -1750,7 +1205,6 @@ export class FormPanel {
 
     const d = document.createElement('div');
     d.style.cssText = sectionTitleStyle() + `display:flex;align-items:baseline;`;
-
     const span = document.createElement('span');
     span.textContent = text;
     d.appendChild(span);
@@ -1761,10 +1215,10 @@ export class FormPanel {
       spacer.style.flex = '1';
       d.append(spacer, this._createProgressEl());
     }
-
     container.appendChild(d);
   }
 
+  /** A full-width progress line. */
   private _appendProgressTracker(container: HTMLElement): void {
     const d = document.createElement('div');
     d.style.cssText = `width:100%;`;
@@ -1772,6 +1226,7 @@ export class FormPanel {
     container.appendChild(d);
   }
 
+  /** A progress text element (kept up to date by ``_updateProgress``). */
   private _createProgressEl(): HTMLSpanElement {
     const el = document.createElement('span');
     el.style.cssText =
@@ -1782,30 +1237,34 @@ export class FormPanel {
     return el;
   }
 
+  /** Refresh every progress element. */
   private _updateProgress(): void {
-    const total = this._rows.length;
-    const fileN = Math.min(this._fileCount, total);
-    const totalDone = fileN + this._sessionCount;
-    const parts: string[] = [];
-    if (this._sessionCount > 0) {
-      parts.push(`session ${this._sessionCount}/${total}`);
+    const text = formatProgress(this._sessionCount, this._fileCount, this._rows.length, this._accuracy);
+    for (const el of this._progressEls) el.textContent = text;
+  }
+
+  /** Recompute the accuracy from the output file (null without an accuracy check / rows). */
+  private async _refreshAccuracy(): Promise<void> {
+    if (!this._accuracyConfig || !this._outputPath) {
+      this._accuracy = null;
+      return;
     }
-    parts.push(`total ${totalDone}/${total}`);
-    if (this._accuracy !== null) {
-      parts.push(`accuracy ${this._accuracy}%`);
-    }
-    const text = parts.join(' \u00b7 ');
-    for (const el of this._progressEls) {
-      el.textContent = text;
+    try {
+      const rows = JSON.parse(
+        await this._kernel.exec(readOutputRows(this._outputPath, this._outputExt()))) as Record<string, any>[];
+      this._accuracy = accuracyPercent(rows, this._accuracyConfig);
+    } catch {
+      this._accuracy = null;
     }
   }
 
-  // ─── Private: reviewed state ────────────────────────────────
+  // ── Private: reviewed view ───────────────────────────────────
 
   private _isRowReviewed(row: Detection): boolean {
     return !this._duplicateEntries && this._reviewedMap.has(row[this._dataIndexCol]);
   }
 
+  /** Replace the form with the saved values of ``row`` and draw its saved annotation. */
   private _showReviewedResult(row: Detection): void {
     this._dynFormEl.innerHTML = '';
     this._submitBtns = [];
@@ -1813,149 +1272,22 @@ export class FormPanel {
     const rows = this._reviewedMap.get(row[this._dataIndexCol]);
     if (!rows || rows.length === 0) return;
 
-    const title = document.createElement('div');
-    title.style.cssText =
-      `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:${COLORS.green};`;
-    title.textContent = 'REVIEWED';
-    this._dynFormEl.appendChild(title);
+    this._dynFormEl.append(...buildReviewedView(rows, {
+      canPrev: this._selectedIdx !== 0,
+      canNext: this._selectedIdx < this._filteredLength - 1,
+      onPrev: () => this.prevRequested.emit(void 0),
+      onNext: () => this.nextRequested.emit(void 0),
+      onDelete: () => void this._onDeleteReview(row),
+    }));
 
-    const container = document.createElement('div');
-    container.style.cssText = `display:flex;flex-direction:column;gap:6px;padding:4px 0;overflow-y:auto;`;
-    const colors = DISPLAY_CHIP_COLORS;
-    for (let ri = 0; ri < rows.length; ri++) {
-      const data = rows[ri];
-      const card = document.createElement('div');
-      if (rows.length > 1) {
-        card.style.cssText =
-          `display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;padding:4px 8px;` +
-          `border-radius:4px;border-left:3px solid ${colors[ri % colors.length]};`;
-      } else {
-        card.style.cssText = `display:flex;flex-direction:column;gap:2px;`;
-      }
-      for (const [key, val] of Object.entries(data)) {
-        const line = document.createElement('span');
-        if (rows.length > 1) {
-          line.style.cssText = `display:inline-flex;gap:4px;font-size:12px;white-space:nowrap;`;
-        } else {
-          line.style.cssText = `display:flex;gap:8px;font-size:12px;`;
-        }
-        const keyEl = document.createElement('span');
-        keyEl.style.cssText = rows.length > 1
-          ? `color:${COLORS.textMuted};`
-          : `color:${COLORS.textMuted};min-width:140px;flex-shrink:0;`;
-        keyEl.textContent = key;
-        const valEl = document.createElement('span');
-        valEl.style.cssText = `color:${COLORS.textPrimary};`;
-        valEl.textContent = val != null && val !== '' ? String(val) : '—';
-        line.append(keyEl, valEl);
-        card.appendChild(line);
-      }
-      container.appendChild(card);
-    }
-    this._dynFormEl.appendChild(container);
-
-    this._setReviewedAnnotations(rows);
-
-    // Divider + buttons
-    const divider = document.createElement('div');
-    divider.style.cssText = dividerStyle('4px -2px');
-    this._dynFormEl.appendChild(divider);
-
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-top:2px;`;
-
-    const navBtnStyle = btnStyle() + `font-size:12px;width:75px;height:28px`;
-
-    const prevBtn = document.createElement('button');
-    prevBtn.textContent = '◀ Prev';
-    prevBtn.style.cssText = navBtnStyle;
-    prevBtn.disabled = this._selectedIdx === 0;
-    prevBtn.addEventListener('click', () => this.prevRequested.emit(void 0));
-
-    const nextBtn = document.createElement('button');
-    nextBtn.textContent = 'Next ▶';
-    nextBtn.style.cssText = navBtnStyle;
-    nextBtn.disabled = this._selectedIdx >= this._filteredLength - 1;
-    nextBtn.addEventListener('click', () => this.nextRequested.emit(void 0));
-
-    const spacer = document.createElement('span');
-    spacer.style.flex = '1';
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.textContent = 'Delete this review';
-    deleteBtn.style.cssText = btnStyle() + `font-size:12px;color:${COLORS.red};`;
-    deleteBtn.addEventListener('click', () => void this._onDeleteReview(row));
-
-    btnRow.append(prevBtn, nextBtn, spacer, deleteBtn);
-    this._dynFormEl.appendChild(btnRow);
-  }
-
-  getReviewedTool(): string {
-    return this._reviewedTool;
-  }
-
-  getReviewedMultiboxEntries(): MultiboxEntry[] {
-    return this._reviewedMultiboxEntries;
-  }
-
-  isShowingReviewedView(): boolean {
-    return this._showingReviewedView;
-  }
-
-  private _reviewedMultiboxEntries: MultiboxEntry[] = [];
-
-  private _setReviewedAnnotations(rows: Record<string, any>[]): void {
-    this._reviewedTool = '';
-    this._reviewedMultiboxEntries = [];
-    const ac = this._annotConfig;
-    if (!ac || rows.length === 0) {
-      this.annotationChanged.emit(void 0);
-      return;
-    }
-
-    const stCol = ac.startTime?.col;
-    const etCol = ac.endTime?.col;
-    const loCol = ac.minFreq?.col;
-    const hiCol = ac.maxFreq?.col;
-
-    const first = rows[0];
-    const hasSt = stCol && first[stCol] != null && first[stCol] !== '';
-    const hasEt = etCol && first[etCol] != null && first[etCol] !== '';
-    const hasLo = loCol && first[loCol] != null && first[loCol] !== '';
-    const hasHi = hiCol && first[hiCol] != null && first[hiCol] !== '';
-    const hasFreqs = hasLo && hasHi;
-
-    if (rows.length > 1 && hasSt && hasEt && hasFreqs) {
-      this._reviewedTool = 'multibox';
-      const colors = DISPLAY_CHIP_COLORS;
-      this._reviewedMultiboxEntries = rows.map((r, i) => ({
-        id: i,
-        startTime: parseFloat(String(r[stCol!])),
-        endTime: parseFloat(String(r[etCol!])),
-        minFreq: parseFloat(String(r[loCol!])),
-        maxFreq: parseFloat(String(r[hiCol!])),
-        formValues: {},
-        color: colors[i % colors.length],
-      }));
-    } else if (rows.length === 1 && hasSt && hasEt && hasFreqs) {
-      this._reviewedTool = 'bounding_box';
-      this._formValues[stCol!] = parseFloat(String(first[stCol!]));
-      this._formValues[etCol!] = parseFloat(String(first[etCol!]));
-      this._formValues[loCol!] = parseFloat(String(first[loCol!]));
-      this._formValues[hiCol!] = parseFloat(String(first[hiCol!]));
-    } else if (hasSt && hasEt) {
-      this._reviewedTool = 'start_end_time_select';
-      this._formValues[stCol!] = parseFloat(String(first[stCol!]));
-      this._formValues[etCol!] = parseFloat(String(first[etCol!]));
-    } else if (hasSt) {
-      this._reviewedTool = 'time_select';
-      this._formValues[stCol!] = parseFloat(String(first[stCol!]));
-    }
-
+    const ann = reviewedAnnotation(rows, this._annotConfig);
+    this._reviewedTool = ann.tool;
+    this._reviewedMultiboxEntries = ann.boxes;
+    Object.assign(this._formValues, ann.values);
     this.annotationChanged.emit(void 0);
   }
 
-  // ─── Private: submit / delete ─────────────────────────────
+  // ── Private: submit / delete ─────────────────────────────────
 
   /** Submit handler: one guarded write per submit (no double-clicks, no partial multibox saves). */
   private async _onVerify(): Promise<void> {
@@ -1975,13 +1307,12 @@ export class FormPanel {
     const multibox = this.isMultiboxMode() && this._multiboxEntries.length > 0;
     const rows = multibox
       ? this._multiboxEntries.map(entry => this._multiboxRow(entry))
-      : [this._collectFormValues()];
+      : [{ ...this._formValues }];
     try {
       await this._kernel.exec(writeOutputRows(this._outputPath, rows));
-    } catch (e: any) {
-      const summary = e instanceof KernelError ? e.message : String(e.message ?? e);
+    } catch (e: unknown) {
       if (e instanceof KernelError) console.error('[JBA] Write failed:', e.traceback);
-      this.statusChanged.emit({ message: `❌ Write failed: ${summary}`, error: true });
+      this.statusChanged.emit({ message: `❌ Write failed: ${errorMessage(e)}`, error: true });
       return;
     }
     const clipId = activeRow[this._dataIndexCol];
@@ -2003,16 +1334,12 @@ export class FormPanel {
 
   /** One output row for a multibox box: shared form values + the box bounds + its own form. */
   private _multiboxRow(entry: MultiboxEntry): Record<string, any> {
-    const row: Record<string, any> = this._collectFormValues();
-    const bounds: Array<[AnnotField, number]> = [
-      ['startTime', entry.startTime], ['endTime', entry.endTime],
-      ['minFreq', entry.minFreq], ['maxFreq', entry.maxFreq],
-    ];
-    for (const [field, value] of bounds) {
+    const row: Record<string, any> = { ...this._formValues };
+    for (const field of ANNOT_FIELDS) {
       const col = this._annotConfig?.[field]?.col;
       if (col) {
         delete row[col];            // re-add so the bound columns come last, after the form
-        row[col] = value;
+        row[col] = entry[field];
       }
     }
     return Object.assign(row, entry.formValues);
@@ -2027,48 +1354,39 @@ export class FormPanel {
     }
   }
 
-  private _currentRow: Detection | null = null;
-
+  /** "Delete this review": confirm, delete the row's output rows, then show the form again. */
   private async _onDeleteReview(row: Detection): Promise<void> {
-    if (!confirm('Delete this review? This cannot be undone.')) return;
+    const answer = await showDialog({
+      title: 'Delete review',
+      body: 'Delete this review? This cannot be undone.',
+      buttons: [{ label: 'Cancel' }, { label: 'Delete', primary: true }],
+    });
+    if (answer !== 'Delete') return;
 
-    const outCol = this._outputIndexCol;
     const rowIdx = row[this._dataIndexCol];
     const matchExpr =
-      `str(r.get('${escPy(outCol)}','')) == '${escPy(String(rowIdx))}'`;
-    const code = deleteOutputRow(this._outputPath, matchExpr);
-
+      `str(r.get('${escPy(this._outputIndexCol)}','')) == '${escPy(String(rowIdx))}'`;
     try {
-      await this._kernel.exec(code);
-    } catch (e: any) {
-      this.statusChanged.emit({ message: `❌ Delete failed: ${String(e.message ?? e)}`, error: true });
+      await this._kernel.exec(deleteOutputRow(this._outputPath, matchExpr));
+    } catch (e: unknown) {
+      this.statusChanged.emit({ message: `❌ Delete failed: ${errorMessage(e)}`, error: true });
       return;
     }
 
     this._reviewedMap.delete(rowIdx);
     this._reviewedTool = '';
     this._reviewedMultiboxEntries = [];
+    // the deleted rows were counted in the file total: recount it (and restart the session)
     this._sessionCount = 0;
     this._fileCount = 0;
     await this.loadOutputFileProgress();
 
-    // Rebuild the form and show it
     await this._enqueue(async () => {
       await this.build();
       this._applyRow(row);
     });
     this.statusChanged.emit({ message: `✓ Review deleted for clip ${rowIdx}`, error: false });
-
-    void this._kernel.exec(
-      INVALIDATE_OUTPUT_CACHE
-    ).catch(() => {});
-
+    void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
     this.reviewDeleted.emit(row);
   }
-
-  // Override _applyRow to remember the current row (needed by _onVerify and
-  // because the reviewed view is built from the row directly).
-  // We could refactor _applyRow to return/accept the row, but keeping a
-  // _currentRow field is simpler and the row is already passed in.
-
 }
