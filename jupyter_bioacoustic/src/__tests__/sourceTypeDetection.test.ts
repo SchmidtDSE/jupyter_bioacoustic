@@ -48,9 +48,9 @@ global.HTMLElement = class {
 } as any;
 global.HTMLDivElement = class extends (global.HTMLElement as any) {} as any;
 global.HTMLDetailsElement = class extends (global.HTMLElement as any) {} as any;
-global.HTMLSummaryElement = class extends (global.HTMLElement as any) {} as any;
+(global as any).HTMLSummaryElement = class extends (global.HTMLElement as any) {} as any;
 global.HTMLSpanElement = class extends (global.HTMLElement as any) {} as any;
-global.HTMLSelectElement = class extends (global.HTMLElement as any) {
+(global as any).HTMLSelectElement = class extends (global.HTMLElement as any) {
   value = '';
 } as any;
 global.HTMLInputElement = class extends (global.HTMLElement as any) {
