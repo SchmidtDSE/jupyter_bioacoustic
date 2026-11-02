@@ -3,6 +3,8 @@
  *
  * All inline CSS strings and the color palette live here so the main widget
  * file focuses on behavior, not presentation.
+ *
+ * License: BSD 3-Clause
  */
 
 // ─── Color palette (Catppuccin Mocha) ─────────────────────────
