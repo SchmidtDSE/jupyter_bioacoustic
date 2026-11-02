@@ -40,6 +40,18 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/** The message of a caught error (``catch (e: unknown)``), for status lines and dialogs. */
+export function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+  return String(e);
+}
+
+/** ``name`` as a snake_case slug (lowercase, non-alphanumerics -> ``_``), matching core.py's slugs. */
+export function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
 export function fmtTime(s: number): string {
   const sign = s < 0 ? '-' : '';
   const abs = Math.abs(s);
