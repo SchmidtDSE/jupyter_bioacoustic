@@ -11,6 +11,9 @@ and returns a list of ``SummarySection`` dicts.
 
 License: BSD 3-Clause
 """
+#
+# Imports
+#
 from __future__ import annotations
 
 from typing import Any
@@ -19,7 +22,11 @@ from typing import Any
 #
 # CONSTANTS
 #
-USER_INPUT_TYPES = frozenset({'select', 'textbox', 'checkbox', 'number'})
+# top-level form keys that hold a single input element
+TOP_LEVEL_INPUTS = ('select', 'textbox', 'checkbox', 'number')
+DATA_SOURCE_KEYS = ('path', 'url', 'sql', 'api')
+AUDIO_SOURCE_KEYS = ('path', 'url', 'uri', 'column')
+DESC_PREVIEW_CHARS = 60
 
 
 #
@@ -36,7 +43,8 @@ def build_summary(
 
     Args:
         project: Project-level configuration dict (``ConfigBuilder._project``).
-        config: Config-level configuration dict (``ConfigBuilder._config``).
+        config: Config-level configuration dict (``ConfigBuilder._config``). Not read (the
+            sections use ``merged``); accepted so callers can pass all of the builder's dicts.
         form_config: Form configuration dict (``ConfigBuilder._form_config``).
         merged: Merged configuration (``ConfigBuilder.get_merged_config()``).
         scope: One of ``'project'`` (all sections), ``'config'`` (data, audio,
@@ -72,6 +80,13 @@ def build_summary_from_builder(
     """Build a summary directly from a ``ConfigBuilder`` instance.
 
     Convenience wrapper for CLI and kernel bridge usage.
+
+    Args:
+        builder: A ``ConfigBuilder``.
+        scope: See ``build_summary``.
+
+    Returns:
+        See ``build_summary``.
     """
     return build_summary(
         project=builder._project,
@@ -110,7 +125,13 @@ def format_text(sections: list[dict[str, Any]]) -> str:
 # INTERNAL
 #
 def _format_row(lines: list[str], row: dict[str, Any], depth: int) -> None:
-    """Recursively format a single row and its children as text lines."""
+    """Recursively format a single row and its children as text lines.
+
+    Args:
+        lines: Output lines (appended to).
+        row: A summary row.
+        depth: Nesting depth (indent level).
+    """
     base_indent = '    ' + ('  ' * depth)
     key = row.get('key', '')
     value = row.get('value', '')
@@ -136,7 +157,18 @@ def _row(
     tag: str = '',
     children: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Create a summary row dict."""
+    """Create a summary row dict (optional fields only when set).
+
+    Args:
+        key: Row label.
+        value: Row value.
+        muted: Show the value de-emphasised (e.g. "not set").
+        tag: Element-type badge.
+        children: Nested rows.
+
+    Returns:
+        The row dict.
+    """
     r: dict[str, Any] = {'key': key, 'value': value}
     if muted:
         r['muted'] = True
@@ -148,7 +180,14 @@ def _row(
 
 
 def _secrets_summary(secrets: Any) -> str:
-    """Summarize a secrets configuration value."""
+    """Summarize a secrets configuration value.
+
+    Args:
+        secrets: ``False`` (opted out), a ``{key: ...}`` dict or a list of them.
+
+    Returns:
+        The secret keys, ``'opted out'``, or ``''``.
+    """
     if secrets is False:
         return 'opted out'
     if isinstance(secrets, list):
@@ -159,7 +198,14 @@ def _secrets_summary(secrets: Any) -> str:
 
 
 def _project_section(d: dict[str, Any]) -> dict[str, Any]:
-    """Build the Project section."""
+    """Build the Project section.
+
+    Args:
+        d: The builder's project dict.
+
+    Returns:
+        The section dict.
+    """
     rows: list[dict[str, Any]] = []
     name = d.get('project_name', '')
     rows.append(_row('name', name or '(unnamed)', muted=not name))
@@ -186,22 +232,18 @@ def _project_section(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _data_section(d: dict[str, Any]) -> dict[str, Any]:
-    """Build the Data section."""
+    """Build the Data section.
+
+    Args:
+        d: The merged configuration.
+
+    Returns:
+        The section dict.
+    """
     rows: list[dict[str, Any]] = []
     data = d.get('data', {})
     if isinstance(data, dict):
-        if data.get('value'):
-            rows.append(_row(
-                data.get('source_type') or 'value', str(data['value']),
-            ))
-        else:
-            source_key = next(
-                (k for k in ('path', 'url', 'sql', 'api') if data.get(k)), '',
-            )
-            if source_key:
-                rows.append(_row(source_key, str(data[source_key])))
-            else:
-                rows.append(_row('source', 'not set', muted=True))
+        rows.append(_source_row(data, DATA_SOURCE_KEYS))
         for field in ('start_time', 'end_time'):
             val = data.get(field)
             if val is not None and str(val) != field:
@@ -221,22 +263,18 @@ def _data_section(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _audio_section(d: dict[str, Any]) -> dict[str, Any]:
-    """Build the Audio section."""
+    """Build the Audio section.
+
+    Args:
+        d: The merged configuration.
+
+    Returns:
+        The section dict.
+    """
     rows: list[dict[str, Any]] = []
     audio = d.get('audio', {})
     if isinstance(audio, dict):
-        if audio.get('value'):
-            rows.append(_row(
-                audio.get('source_type') or 'value', str(audio['value']),
-            ))
-        else:
-            source_key = next(
-                (k for k in ('path', 'url', 'uri', 'column') if audio.get(k)), '',
-            )
-            if source_key:
-                rows.append(_row(source_key, str(audio[source_key])))
-            else:
-                rows.append(_row('source', 'not set', muted=True))
+        rows.append(_source_row(audio, AUDIO_SOURCE_KEYS))
         for field in ('prefix', 'suffix', 'fallback'):
             if audio.get(field):
                 rows.append(_row(field, str(audio[field])))
@@ -249,7 +287,14 @@ def _audio_section(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _output_section(d: dict[str, Any]) -> dict[str, Any]:
-    """Build the Output section."""
+    """Build the Output section.
+
+    Args:
+        d: The merged configuration.
+
+    Returns:
+        The section dict.
+    """
     rows: list[dict[str, Any]] = []
     output = d.get('output', {})
     if isinstance(output, dict):
@@ -275,7 +320,14 @@ def _output_section(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _app_section(d: dict[str, Any]) -> dict[str, Any]:
-    """Build the Application section."""
+    """Build the Application section.
+
+    Args:
+        d: The merged configuration.
+
+    Returns:
+        The section dict.
+    """
     rows: list[dict[str, Any]] = []
     if d.get('info_card_title'):
         rows.append(_row('title', d['info_card_title']))
@@ -299,8 +351,8 @@ def _app_section(d: dict[str, Any]) -> dict[str, Any]:
             rows.append(_row('desc title', desc['title']))
         if desc.get('text'):
             text_lines = desc['text'].strip().splitlines()
-            preview = text_lines[0][:60]
-            if len(text_lines[0]) > 60 or len(text_lines) > 1:
+            preview = text_lines[0][:DESC_PREVIEW_CHARS]
+            if len(text_lines[0]) > DESC_PREVIEW_CHARS or len(text_lines) > 1:
                 preview += '...'
             rows.append(_row('desc text', preview))
 
@@ -308,7 +360,14 @@ def _app_section(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _form_section(fc: dict[str, Any]) -> dict[str, Any]:
-    """Build the Form Config section."""
+    """Build the Form Config section.
+
+    Args:
+        fc: The form configuration.
+
+    Returns:
+        The section dict.
+    """
     rows: list[dict[str, Any]] = []
     if not fc:
         rows.append(_row(value='no form configured', muted=True))
@@ -354,7 +413,7 @@ def _form_section(fc: dict[str, Any]) -> dict[str, Any]:
         ))
         rows.append(_row('annotation', tools_str, children=annot_children or None))
 
-    for top_key in ('select', 'textbox', 'checkbox', 'number'):
+    for top_key in TOP_LEVEL_INPUTS:
         if top_key in fc and isinstance(fc[top_key], dict):
             line = _summarize_form_element(top_key, fc[top_key])
             children = _referenced_dyn_form_rows(top_key, fc[top_key], dyn_forms)
@@ -394,21 +453,20 @@ def _form_section(fc: dict[str, Any]) -> dict[str, Any]:
 
     remaining = [(k, v) for k, v in dyn_forms.items() if v is not None]
     for name, elems in remaining:
-        children: list[dict[str, Any]] = []
-        for el in elems:
-            if not isinstance(el, dict):
-                continue
-            for etype, ecfg in el.items():
-                children.append(_row(
-                    value=_summarize_form_element(etype, ecfg), tag=etype,
-                ))
-        rows.append(_row(value=f'dynamic form: {name}', tag='dynamic', children=children))
+        rows.append(_dyn_form_row(name, elems))
 
     return {'title': 'Form Config', 'rows': rows}
 
 
 def _parse_dynamic_forms(fc: dict[str, Any]) -> dict[str, list[Any] | None]:
-    """Parse dynamic_forms from form config into a mutable mapping."""
+    """Parse dynamic_forms from form config into a mutable mapping.
+
+    Args:
+        fc: The form configuration (``dynamic_forms`` may be a dict or a list of dicts).
+
+    Returns:
+        ``{form name: [elements]}``; a summarized form's entry is later set to None.
+    """
     result: dict[str, list[Any] | None] = {}
     dyn = fc.get('dynamic_forms')
     if isinstance(dyn, list):
@@ -427,29 +485,37 @@ def _referenced_dyn_form_rows(
     cfg: dict[str, Any],
     dyn_forms: dict[str, list[Any] | None],
 ) -> list[dict[str, Any]]:
-    """Build rows for dynamic forms referenced by a form element."""
+    """Build rows for dynamic forms referenced by a form element.
+
+    Each dynamic form is summarized once: its ``dyn_forms`` entry is set to None.
+
+    Args:
+        etype: The element type.
+        cfg: The element's config.
+        dyn_forms: From ``_parse_dynamic_forms`` (updated).
+
+    Returns:
+        One row per referenced, not yet summarized dynamic form.
+    """
     rows: list[dict[str, Any]] = []
     for form_name in _get_referenced_forms(etype, cfg):
         elems = dyn_forms.get(form_name)
         if elems is None:
             continue
-        children: list[dict[str, Any]] = []
-        for el in elems:
-            if not isinstance(el, dict):
-                continue
-            for et, ec in el.items():
-                children.append(_row(
-                    value=_summarize_form_element(et, ec), tag=et,
-                ))
-        rows.append(_row(
-            value=f'dynamic form: {form_name}', tag='dynamic', children=children,
-        ))
+        rows.append(_dyn_form_row(form_name, elems))
         dyn_forms[form_name] = None
     return rows
 
 
 def _annotation_field_rows(annot: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build rows for annotation field mappings."""
+    """Build rows for annotation field mappings.
+
+    Args:
+        annot: The ``annotation`` config.
+
+    Returns:
+        One row per mapped field (start/end time, min/max frequency).
+    """
     rows: list[dict[str, Any]] = []
     for field in ('start_time', 'end_time', 'min_frequency', 'max_frequency'):
         cfg = annot.get(field)
@@ -464,7 +530,15 @@ def _annotation_field_rows(annot: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _get_referenced_forms(etype: str, cfg: dict[str, Any]) -> list[str]:
-    """Get dynamic form names referenced by a form element."""
+    """Get dynamic form names referenced by a form element.
+
+    Args:
+        etype: The element type.
+        cfg: The element's config.
+
+    Returns:
+        The referenced dynamic form names, in order.
+    """
     forms: list[str] = []
     if etype == 'select' and isinstance(cfg.get('items'), list):
         for item in cfg['items']:
@@ -480,12 +554,20 @@ def _get_referenced_forms(etype: str, cfg: dict[str, Any]) -> list[str]:
 
 
 def _summarize_form_element(etype: str, cfg: Any) -> str:
-    """Produce a one-line summary of a form element."""
+    """Produce a one-line summary of a form element.
+
+    Args:
+        etype: The element type.
+        cfg: The element's config (a dict, or a shorthand value).
+
+    Returns:
+        The summary line.
+    """
     if not isinstance(cfg, dict):
         return str(cfg) if cfg is not True else ''
 
     if etype == 'select':
-        label = cfg.get('label') or cfg.get('column', '')
+        label = _label(cfg)
         items = cfg.get('items')
         if isinstance(items, list):
             count: str | int = len(items)
@@ -499,12 +581,12 @@ def _summarize_form_element(etype: str, cfg: Any) -> str:
         return f'{label} ({count} items{req}){form_ref}'
 
     if etype == 'textbox':
-        label = cfg.get('label') or cfg.get('column', '')
+        label = _label(cfg)
         ml = ' (multiline)' if cfg.get('multiline') else ''
         return f'{label}{ml}'
 
     if etype == 'checkbox':
-        parts = [cfg.get('label') or cfg.get('column', '')]
+        parts = [_label(cfg)]
         if cfg.get('checked_form'):
             parts.append(f"checked->{cfg['checked_form']}")
         if cfg.get('unchecked_form'):
@@ -512,7 +594,7 @@ def _summarize_form_element(etype: str, cfg: Any) -> str:
         return ' '.join(parts)
 
     if etype == 'number':
-        label = cfg.get('label') or cfg.get('column', '')
+        label = _label(cfg)
         has_range = cfg.get('min') is not None or cfg.get('max') is not None
         rng = f" [{cfg.get('min', '')}..{cfg.get('max', '')}]" if has_range else ''
         return f'{label}{rng}'
@@ -524,3 +606,52 @@ def _summarize_form_element(etype: str, cfg: Any) -> str:
         return ''
 
     return cfg.get('label') or cfg.get('column') or cfg.get('value') or ''
+
+
+def _source_row(section: dict[str, Any], source_keys: tuple[str, ...]) -> dict[str, Any]:
+    """Row naming a data/audio section's source.
+
+    Args:
+        section: The data or audio config dict.
+        source_keys: Keys to look for, in priority order, when there is no ``value``.
+
+    Returns:
+        ``<source_type>: <value>``, else the first set source key, else a muted "not set".
+    """
+    if section.get('value'):
+        return _row(section.get('source_type') or 'value', str(section['value']))
+    source_key = next((k for k in source_keys if section.get(k)), '')
+    if source_key:
+        return _row(source_key, str(section[source_key]))
+    return _row('source', 'not set', muted=True)
+
+
+def _dyn_form_row(name: str, elems: list[Any]) -> dict[str, Any]:
+    """Row for a dynamic form, with one child row per element.
+
+    Args:
+        name: The dynamic form's name.
+        elems: Its elements (non-dict entries are skipped).
+
+    Returns:
+        The row.
+    """
+    children: list[dict[str, Any]] = []
+    for el in elems:
+        if not isinstance(el, dict):
+            continue
+        for etype, ecfg in el.items():
+            children.append(_row(value=_summarize_form_element(etype, ecfg), tag=etype))
+    return _row(value=f'dynamic form: {name}', tag='dynamic', children=children)
+
+
+def _label(cfg: dict[str, Any]) -> str:
+    """An element's display label: ``label``, else ``column``.
+
+    Args:
+        cfg: The element's config.
+
+    Returns:
+        The label (``''`` if neither is set).
+    """
+    return cfg.get('label') or cfg.get('column', '')
