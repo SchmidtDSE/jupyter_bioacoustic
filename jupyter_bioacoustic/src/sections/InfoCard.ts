@@ -5,15 +5,26 @@
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { Detection } from '../types';
 import { fmtTime, resolveTemplate } from '../util';
 import { COLORS, btnStyle } from '../styles';
 
-// ─── Constants ────────────────────────────────────────────────
 
+
+//
+// Constants
+//
 const DEFAULT_INFO_CARD_MIN_HEIGHT = 34;
 
+
+//
+// Public
+//
+/** The info card between the clip table and the player. */
 export class InfoCard {
   readonly element: HTMLDivElement;
 
