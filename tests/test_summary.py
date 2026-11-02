@@ -6,7 +6,6 @@ structured summary generation and text formatting.
 
 License: BSD 3-Clause
 """
-import pytest
 
 from jupyter_bioacoustic.config_builder.summary import (
     build_summary,
