@@ -1,7 +1,6 @@
 /**
- * Python
+ * Python code snippets executed in the annotator's Jupyter kernel.
  *
- * Python code snippets executed in the Jupyter kernel.
  * Each function returns a Python code string. Template parameters are
  * interpolated into the code. All paths must be pre-escaped with
  * escPy(). Most heavy lifting is in jupyter_bioacoustic._kernel_helpers
@@ -9,20 +8,67 @@
  *
  * License: BSD 3-Clause
  */
-
-import {escPy} from './util';
+//
+// Imports
+//
+import { escPy } from './util';
 
 
 //
 // Constants
 //
+/** Import prefix for the kernel-side helper module. */
 const HELPERS = 'from jupyter_bioacoustic._kernel_helpers import';
+/** Spectrogram width (px) when no resolution is chosen. */
 const DEFAULT_SPEC_WIDTH = 2000;
 
+/** Drop the output-file cache after a write/delete (no-op if the instance has none). */
+export const INVALIDATE_OUTPUT_CACHE =
+  'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()';
+
 
 //
-// Kernel variable reading (plugin.ts _init)
+// Public
 //
+// ── Opening an annotator (plugin.ts) ──────────────────────────
+/**
+ * Validate a project file and set up an annotator for it in the kernel (raises on invalid
+ * config). Changes the kernel's cwd to ``workDir`` first, so relative project paths resolve.
+ *
+ * @param workDir - Absolute directory to ``chdir`` into (``~`` expanded).
+ * @param relPath - Project file path, relative to ``workDir`` (or absolute / remote URI).
+ */
+export function openProjectInKernel(workDir: string, relPath: string): string {
+  return [
+    `import os as _os`,
+    `_os.chdir(_os.path.expanduser('${escPy(workDir)}'))`,
+    `from jupyter_bioacoustic import BioacousticAnnotator as _BA`,
+    `from jupyter_bioacoustic import ConfigBuilder as _CB`,
+    `_cb = _CB()`,
+    `_cb.load_config('${escPy(relPath)}')`,
+    `_vr = _cb.validate()`,
+    `if _vr['errors']:`,
+    `    raise ValueError('Config validation failed:\\n' + '\\n'.join(_vr['errors']))`,
+    `_ba = _BA(project='${escPy(relPath)}')`,
+    `_ba.setup()`,
+  ].join('\n');
+}
+
+/**
+ * Copy the starter notebook into ``cwd``; prints ``{"path", "relative"}`` as JSON.
+ *
+ * @param cwd - Absolute directory to copy into (``~`` expanded).
+ */
+export function copyStarterNotebook(cwd: string): string {
+  return [
+    `import os as _os; _os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,
+    `from jupyter_bioacoustic.config_builder.notebook import copy_starter_notebook`,
+    `import json; print(json.dumps(copy_starter_notebook('.')))`,
+  ].join('\n');
+}
+
+// ── Kernel variable reading (BioacousticWidget._init) ─────────
+/** Print every ``_BA_*`` config global as one JSON object (see ``types.KernelVars``). */
 export function readKernelVars(): string {
   return [
     `import json as _j`,
@@ -61,10 +107,8 @@ export function readKernelVars(): string {
   ].join('\n');
 }
 
-
-//
-// Validation
-//
+// ── Validation ────────────────────────────────────────────────
+/** Validate a form config; prints the list of error strings as JSON. */
 export function validateFormConfig(formConfigJson: string): string {
   return [
     `import json as _j`,
@@ -74,10 +118,8 @@ export function validateFormConfig(formConfigJson: string): string {
   ].join('\n');
 }
 
-
-//
-// Spectrogram + WAV generation (Player)
-//
+// ── Spectrogram + WAV generation (Player) ─────────────────────
+/** Read ``durSec`` seconds of audio from ``startSec`` into the kernel globals ``_raw, _sr``. */
 export function readAudio(
   path: string,
   startSec: number,
@@ -92,6 +134,7 @@ export function readAudio(
   ].join('\n');
 }
 
+/** Print a built-in spectrogram (+ WAV) of ``_raw`` as JSON (run after ``readAudio``). */
 export function buildSpectrogram(
   spectType: 'mel' | 'linear',
   resolutionW?: number,
@@ -105,6 +148,10 @@ export function buildSpectrogram(
   ].join('\n');
 }
 
+/**
+ * Read audio and print its spectrogram JSON in one call: the built-in ``mel``/``linear`` view
+ * or custom visualization ``vizIndex``.
+ */
 export function spectrogramPipeline(
   path: string,
   startSec: number,
@@ -128,10 +175,8 @@ export function spectrogramPipeline(
   );
 }
 
-
-//
-// Select items loading (FormPanel)
-//
+// ── Select items loading (FormPanel) ──────────────────────────
+/** Load select ``[value, label]`` pairs from a CSV/YAML/... file; prints them as JSON. */
 export function loadSelectItems(
   path: string,
   valueCol?: string,
@@ -146,10 +191,8 @@ export function loadSelectItems(
   ].join('\n');
 }
 
-
-//
-// Output file operations (FormPanel)
-//
+// ── Output file operations (FormPanel) ────────────────────────
+/** Print ``{"count": n}`` — the number of rows in the output file. */
 export function countOutputRows(path: string, ext: string): string {
   const p = escPy(path);
   return [
@@ -158,6 +201,7 @@ export function countOutputRows(path: string, ext: string): string {
   ].join('\n');
 }
 
+/** Print every output-file row as a JSON list of objects. */
 export function readOutputRows(path: string, ext: string): string {
   const p = escPy(path);
   return [
@@ -199,6 +243,11 @@ export function writeOutputRows(
   ].join('\n');
 }
 
+/**
+ * Delete the output rows matching ``matchExpr``.
+ *
+ * @param matchExpr - Python expression over the row dict ``r`` (callers must escape values).
+ */
 export function deleteOutputRow(
   path: string,
   matchExpr: string,
@@ -211,10 +260,8 @@ export function deleteOutputRow(
   ].join('\n');
 }
 
-
-//
-// Capture (Player)
-//
+// ── Capture (Player) ──────────────────────────────────────────
+/** Save a base64 PNG to ``filename`` (relative to the kernel cwd). */
 export function savePng(filename: string, b64Data: string): string {
   const esc = escPy(filename);
   return [
@@ -223,13 +270,8 @@ export function savePng(filename: string, b64Data: string): string {
   ].join('\n');
 }
 
-
-//
-// Cache & project operations
-//
-export const INVALIDATE_OUTPUT_CACHE =
-  'if hasattr(_BA_INSTANCE, "_invalidate_output_cache"): _BA_INSTANCE._invalidate_output_cache()';
-
+// ── Sync & templates ──────────────────────────────────────────
+/** Upload the output file to its sync URI (or ``dest``); prints ``ok``. */
 export function syncOutput(dest?: string): string {
   const destArg = dest ? `dest='${escPy(dest)}'` : '';
   return [
@@ -238,13 +280,7 @@ export function syncOutput(dest?: string): string {
   ].join('\n');
 }
 
-export function checkFileExists(path: string): string {
-  return [
-    `import os, json`,
-    `print(json.dumps({'exists': os.path.exists('${escPy(path)}')}))`,
-  ].join('\n');
-}
-
+/** Resolve ``[[%Y%m%d]]``-style datetime placeholders; prints ``{"resolved": ...}``. */
 export function resolveOutputTemplates(template: string): string {
   return [
     `from jupyter_bioacoustic.api import _resolve_templates`,
@@ -258,6 +294,7 @@ export function resolveOutputTemplates(template: string): string {
 //
 // Internal
 //
+/** Run custom visualization ``vizIndex`` on ``_raw`` and print its JSON. */
 function _customVizCode(
   vizIndex: number,
   resolutionW: number,
