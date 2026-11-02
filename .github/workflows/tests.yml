@@ -34,6 +34,9 @@ jobs:
       - name: "Install JS dependencies"
         run: "pixi run jlpm-install"
 
+      - name: "Lint (ruff: PEP 8, docstrings, type hints)"
+        run: "pixi run -e test lint"
+
       - name: "Typecheck (tsc)"
         run: "pixi run typecheck"
 
