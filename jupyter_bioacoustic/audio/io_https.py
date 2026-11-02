@@ -1,14 +1,18 @@
-"""HTTPS IO Backend
+"""
+HTTPS IO Backend
 
-Audio I/O for HTTPS URLs with support for partial
-downloads and range requests.
+Audio IO for HTTP(S) URLs (read-only), with support for partial downloads via Range
+requests. Needs ``requests``.
 
 License: BSD 3-Clause
 """
+#
+# Imports
+#
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any, NoReturn, Optional, Union
 
 import numpy as np
 
@@ -16,8 +20,10 @@ from . import _shared
 
 
 #
-# Constants
+# CONSTANTS
 #
+_log = logging.getLogger('jupyter_bioacoustic.audio')
+
 DEFAULT_TIMEOUT = 120
 RANGE_REQUEST_TIMEOUT = 30
 CHUNK_SIZE = 8192
@@ -25,7 +31,7 @@ LOG_URL_MAX_LEN = 80
 
 
 #
-# Public API
+# PUBLIC
 #
 def read(
     src: str,
@@ -41,7 +47,9 @@ def read(
         dest: Local path to write to (returns bytes
             if None).
         start_byte: Starting byte offset.
-        end_byte: Ending byte offset.
+        end_byte: Ending byte offset (inclusive).
+        **kwargs: Request options: ``timeout``, ``verify``, ``allow_redirects``,
+            ``cookies``, ``auth``, ``headers``, ``token`` (sent as a Bearer header).
 
     Returns:
         Bytes if dest is None, otherwise dest path.
@@ -53,15 +61,9 @@ def read(
     )
 
     rk = _request_kwargs(kwargs)
-
-    if start_byte is not None and end_byte is not None:
-        rk['headers']['Range'] = (
-            f'bytes={start_byte}-{end_byte}'
-        )
-    elif start_byte is not None:
-        rk['headers']['Range'] = f'bytes={start_byte}-'
-    elif end_byte is not None:
-        rk['headers']['Range'] = f'bytes=0-{end_byte}'
+    byte_range = _shared.range_header(start_byte, end_byte)
+    if byte_range:
+        rk['headers']['Range'] = byte_range
 
     resp = requests.get(src, stream=True, **rk)
     resp.raise_for_status()
@@ -73,12 +75,7 @@ def read(
 
     if dest is None:
         return resp.content
-
-    _shared.ensure_parent_dirs(dest)
-    with open(dest, 'wb') as f:
-        for chunk in resp.iter_content(CHUNK_SIZE):
-            f.write(chunk)
-    return dest
+    return _shared.write_chunks(resp.iter_content(CHUNK_SIZE), dest)
 
 
 def read_segment(
@@ -99,9 +96,10 @@ def read_segment(
             server that honours Range requests (HTTP 206).
         fallback: If the partial read fails (or the format can't be range-read), download the
             whole file into the local cache instead. If False, raise instead.
+        **kwargs: Request options (see ``read``).
 
     Returns:
-        (raw, sr) audio segment.
+        (raw, sample_rate) where raw is float32 of shape (n_samples, channels).
     """
     rk = _request_kwargs(kwargs)
     return _shared.read_segment_remote(
@@ -114,8 +112,17 @@ def read_segment(
 
 def write(
     src: str, dest: str, **kwargs: Any,
-) -> None:
-    """Not supported — HTTPS is read-only."""
+) -> NoReturn:
+    """Not supported: HTTPS is read-only.
+
+    Args:
+        src: Ignored.
+        dest: Ignored.
+        **kwargs: Ignored.
+
+    Raises:
+        NotImplementedError: Always.
+    """
     raise NotImplementedError(
         "HTTPS is read-only. "
         "Use S3, GCS, or local for writes."
@@ -124,23 +131,35 @@ def write(
 
 def list_files(
     path: str, **kwargs: Any,
-) -> None:
-    """Not supported — cannot list files over HTTPS."""
+) -> NoReturn:
+    """Not supported: files can't be listed over HTTPS.
+
+    Args:
+        path: Ignored.
+        **kwargs: Ignored.
+
+    Raises:
+        NotImplementedError: Always.
+    """
     raise NotImplementedError(
         "Cannot list files over HTTPS."
     )
 
 
 #
-# Internal
+# INTERNAL
 #
-_log = logging.getLogger('jupyter_bioacoustic.audio')
-
-
 def _request_kwargs(
     kwargs: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build requests kwargs from caller kwargs."""
+    """Build ``requests`` keyword arguments from the caller's backend options.
+
+    Args:
+        kwargs: The caller's options (see ``read``).
+
+    Returns:
+        Keyword arguments for ``requests.get`` (always with a ``headers`` dict).
+    """
     rk: dict[str, Any] = {
         'timeout': kwargs.get(
             'timeout', DEFAULT_TIMEOUT,
