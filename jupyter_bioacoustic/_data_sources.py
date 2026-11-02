@@ -9,7 +9,7 @@ These helpers are re-exported from ``jupyter_bioacoustic.api`` under their
 old underscore names (``_load_data``, ``_read_data``, ...).
 
 License: BSD 3-Clause
-"""  # noqa: D415
+"""
 #
 # Imports
 #
