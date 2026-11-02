@@ -6,6 +6,8 @@
  * already-submitted rows), and output file writing.
  *
  * Communicates with the rest of the widget via Lumino signals.
+ *
+ * License: BSD 3-Clause
  */
 import { Signal } from '@lumino/signaling';
 import { AnnotConfig, AnnotField, Detection, MultiboxEntry } from '../types';
@@ -277,7 +279,7 @@ export class FormPanel {
       }
     }
 
-    for (const [name, el] of this._namedSections) {
+    for (const el of this._namedSections.values()) {
       if (!el.parentElement) this._dynFormEl.appendChild(el);
     }
 
@@ -1061,7 +1063,7 @@ export class FormPanel {
     // Parse annotation.form for multibox per-box forms
     if (config.form) {
       ac.form = typeof config.form === 'string' ? config.form : null;
-      this._multiboxFormName = ac.form;
+      this._multiboxFormName = ac.form ?? null;
     }
 
     this._annotConfig = ac;
@@ -2026,14 +2028,6 @@ export class FormPanel {
   }
 
   private _currentRow: Detection | null = null;
-  private _currentRowId(): string | number {
-    return this._currentRow?.[this._dataIndexCol] ?? -1;
-  }
-  private _rowById(id: string | number): number {
-    return this._rows.findIndex(
-      r => String(r[this._dataIndexCol]) === String(id),
-    );
-  }
 
   private async _onDeleteReview(row: Detection): Promise<void> {
     if (!confirm('Delete this review? This cannot be undone.')) return;
