@@ -1,13 +1,26 @@
 /**
- * DescriptionPanel
+ * DescriptionPanel — the collapsible project description at the top of the annotator,
+ * rendered from a small, safe Markdown subset (``renderMarkdown``).
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { COLORS } from '../styles';
 import { escapeHtml } from '../util';
 
+
+//
+// Constants
+//
 const DEFAULT_DESCRIPTION_TITLE = 'Description';
 
+
+//
+// Types
+//
+/** The ``description`` config: title, Markdown text, and whether it starts open. */
 export interface DescriptionConfig {
   title: string;
   text: string;
@@ -19,6 +32,11 @@ export interface DescriptionConfig {
  * Anything else (``javascript:``, ``data:``, ...) becomes ``#``. Browsers ignore tabs, newlines
  * and spaces inside a scheme (``java\tscript:``), so those are removed before checking.
  */
+
+
+//
+// Public
+//
 export function safeHref(url: string): string {
   const u = url.replace(/[\u0000-\u0020]/g, '');
   const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(u);
@@ -106,6 +124,7 @@ export function renderMarkdown(src: string): string {
   return out.join('\n');
 }
 
+/** The collapsible description section. */
 export class DescriptionPanel {
   readonly element: HTMLDetailsElement;
   private _body: HTMLDivElement;
