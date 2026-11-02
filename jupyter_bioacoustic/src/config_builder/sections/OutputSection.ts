@@ -1,13 +1,24 @@
 /**
- * OutputSection
+ * Output section: where submissions are written (``output:`` — path, index column, sync
+ * uri / button, recursive scan, secrets).
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
+import { makeButton, makeInput } from '../dom';
+import type { FileFlags, SectionRouting } from '../types';
 import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
 
+
+//
+// Public
+//
 export class OutputSection extends CollapsibleSection {
+  /** Browse clicked (payload: the current path, or ``.``). */
   readonly browseRequested = new Signal<this, string>(this);
 
   private _pathInput: HTMLInputElement;
@@ -22,24 +33,21 @@ export class OutputSection extends CollapsibleSection {
   constructor() {
     super('Output', 'output', false, true, ['split', 'project', 'config']);
 
-    this._indexColInput = this._makeInput('e.g. id', '150px');
+    this._indexColInput = makeInput('e.g. id', '150px');
     this._indexColInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('index_column', this._indexColInput, true));
 
-    const pathRow = this._makeRow();
-    pathRow.addEventListener('focusin', () => this.fieldFocused.emit('output path'));
-    pathRow.addEventListener('click', () => this.fieldFocused.emit('output path'));
-    pathRow.appendChild(this._makeLabel('path'));
-    this._pathInput = this._makeInput('outputs/my_project.csv', '200px');
+    const pathRow = this._makeFocusRow('output path', 'path');
+    this._pathInput = makeInput('outputs/my_project.csv', '200px');
     this._pathInput.addEventListener('input', () => this._emitChanged());
-    this._browseBtn = this._makeButton('Browse');
+    this._browseBtn = makeButton('Browse');
     this._browseBtn.addEventListener('click', () => {
       this.browseRequested.emit(this._pathInput.value || '.');
     });
     pathRow.append(this._pathInput, this._browseBtn);
     this._body.appendChild(pathRow);
 
-    this._uriInput = this._makeInput('s3://bucket/reviews.csv', '250px');
+    this._uriInput = makeInput('s3://bucket/reviews.csv', '250px');
     this._uriInput.addEventListener('input', () => {
       this._autoCheckSync();
       this._emitChanged();
@@ -51,7 +59,7 @@ export class OutputSection extends CollapsibleSection {
     this._syncBtnCb.addEventListener('change', () => this._emitChanged());
     this._body.appendChild(syncRow);
 
-    this._syncLabelInput = this._makeInput('Sync', '150px');
+    this._syncLabelInput = makeInput('Sync', '150px');
     this._syncLabelInput.addEventListener('input', () => {
       this._autoCheckSync();
       this._emitChanged();
@@ -69,22 +77,15 @@ export class OutputSection extends CollapsibleSection {
     this._body.appendChild(this._secrets.element);
   }
 
+  /** Set the output path (e.g. from Browse). */
   setOutputPath(path: string): void {
     this._pathInput.value = path;
     this._emitChanged();
   }
 
-  getOutputPath(): string {
-    return this._pathInput.value;
-  }
-
-  applyLocks(
-    locks: { project: boolean; config: boolean; form: boolean },
-    routing?: { project: string[]; config: string[] },
-  ): void {
-    const projKeys = new Set(routing?.project ?? []);
-    const target = this.getTarget();
-    const fields: { el: HTMLElement; key: string }[] = [
+  /** Disable the fields that write to a locked file (see ``_applyRoutedLocks``). */
+  applyLocks(locks: FileFlags, routing?: SectionRouting): void {
+    this._applyRoutedLocks([
       { el: this._pathInput, key: 'path' },
       { el: this._browseBtn, key: 'path' },
       { el: this._uriInput, key: 'uri' },
@@ -93,13 +94,7 @@ export class OutputSection extends CollapsibleSection {
       { el: this._recursiveCb, key: 'recursive' },
       { el: this._secrets.element, key: 'secrets' },
       { el: this._indexColInput, key: 'index_column' },
-    ];
-    for (const { el, key } of fields) {
-      const file = target === 'project' ? 'project'
-        : target === 'config' ? 'config'
-        : (projKeys.has(key) ? 'project' : 'config');
-      this._setControlDisabled(el, !!locks[file]);
-    }
+    ], locks, routing);
   }
 
   getData(): Record<string, any> {
@@ -116,9 +111,8 @@ export class OutputSection extends CollapsibleSection {
     return result;
   }
 
-  setColumnOptions(_cols: string[]): void {
-    // Output index_column is free-form text (may differ from data columns)
-  }
+  /** No-op: the output index_column is free-form text (it may differ from the data's). */
+  setColumnOptions(_cols: string[]): void {}
 
   override reset(): void {
     for (const el of [this._pathInput, this._indexColInput, this._uriInput, this._syncLabelInput]) {
@@ -141,9 +135,11 @@ export class OutputSection extends CollapsibleSection {
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
   }
 
+  /**
+   * Entering a sync URI or a sync button label implies the user wants the sync button shown,
+   * so check it automatically.
+   */
   private _autoCheckSync(): void {
-    // Entering a sync URI or a sync button label implies the user wants the
-    // sync button shown, so check it automatically.
     if (this._uriInput.value || this._syncLabelInput.value) {
       this._syncBtnCb.checked = true;
     }
