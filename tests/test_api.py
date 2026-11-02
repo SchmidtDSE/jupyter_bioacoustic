@@ -1165,7 +1165,9 @@ class TestAnnotatorFixedKwargs:
                       output=str(tmp_path / 'out.csv'), form_config=form)
         alice = BioacousticAnnotator(**common, reviewer='alice')
         bob = BioacousticAnnotator(**common, reviewer='bob')
-        values = lambda ba: [e['fixed_value']['value'] for e in ba._form_config['_fixed_kwargs']]
+        def values(ba):
+            return [e['fixed_value']['value'] for e in ba._form_config['_fixed_kwargs']]
+
         assert values(alice) == ['alice']
         assert values(bob) == ['bob']
 
