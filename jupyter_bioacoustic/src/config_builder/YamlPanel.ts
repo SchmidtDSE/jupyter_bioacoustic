@@ -1,3 +1,8 @@
+/**
+ * YamlPanel
+ *
+ * License: BSD 3-Clause
+ */
 import { Signal } from '@lumino/signaling';
 import { COLORS, btnStyle, inputStyle } from '../styles';
 import { DOCS } from './docs';
@@ -12,7 +17,6 @@ export class YamlPanel {
   private _editing = false;
   private _configType = 'project';
   private _mode: 'docs' | 'yaml' = 'docs';
-  private _currentSection = 'project';
   private _yamls = { project_yaml: '', config_yaml: '', form_yaml: '' };
 
   private _toggleBtn: HTMLButtonElement;
@@ -220,7 +224,6 @@ export class YamlPanel {
   }
 
   showForSection(section: string, yamls: { project_yaml: string; config_yaml: string; form_yaml: string }): void {
-    this._currentSection = section;
 
     if (section === 'form') {
       this._configType = 'form_config';
