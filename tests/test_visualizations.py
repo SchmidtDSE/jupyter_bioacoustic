@@ -101,6 +101,54 @@ class TestMel:
         assert mat.shape[0] > 0
 
 
+#
+# shared helpers
+#
+class TestSharedHelpers:
+
+    def test_mel_filterbank_shape_and_range(self):
+        from jupyter_bioacoustic.utils.visualizations import mel_filterbank
+        fb = mel_filterbank(SR, 512, 40, 80.0, SR / 2)
+        assert fb.shape == (40, 256)
+        assert fb.min() >= 0.0 and fb.max() <= 1.0
+
+    def test_mel_uses_filterbank(self):
+        from jupyter_bioacoustic.utils.visualizations import mel_filterbank
+        fb = mel_filterbank(SR, 512, 80, 80.0, SR / 2)
+        expected = fb @ _stft(MONO, fft=512, hop=128)
+        assert np.array_equal(mel(MONO, SR, 0, hop=128)['matrix'], expected)
+
+    def test_normalize_db_range(self):
+        from jupyter_bioacoustic.utils.visualizations import normalize_db
+        S = np.abs(np.random.default_rng(1).normal(size=(10, 20))) + 1e-3
+        out = normalize_db(S)
+        assert out.min() == 0.0
+        assert np.isclose(out.max(), 1.0)
+
+    def test_normalize_db_auto_detects_db_input(self):
+        from jupyter_bioacoustic.utils.visualizations import normalize_db
+        S_db = np.array([[-60.0, -20.0], [-40.0, 0.0]])
+        assert np.allclose(normalize_db(S_db, matrix_scale=None), (S_db + 60) / 60)
+
+    def test_matrix_to_png_is_png(self):
+        from jupyter_bioacoustic.utils.visualizations import matrix_to_png
+        png = matrix_to_png(np.random.default_rng(2).random((8, 8)), 50, 0.5)
+        assert png[:8] == b'\x89PNG\r\n\x1a\n'
+
+    def test_default_hop(self):
+        from jupyter_bioacoustic.utils.visualizations import _default_hop
+        assert _default_hop(1000, 10, 99) == 100
+        assert _default_hop(5, 10, 99) == 1
+        assert _default_hop(1000, 0, 99) == 99
+
+    def test_freq_ticks_linear_and_labels(self):
+        from jupyter_bioacoustic.utils.visualizations import _freq_ticks, _khz_labels
+        freqs, pos = _freq_ticks('linear', 0.0, 7000.0, 70)
+        assert len(freqs) == len(pos) == 8
+        assert pos[0] == 0 and pos[-1] == 70
+        assert _khz_labels(np.array([500.0, 2000.0])) == ['0.5', '2']
+
+
 def test_rendering_keeps_the_users_matplotlib_backend():
     """A7: importing / rendering used to call matplotlib.use('Agg'), breaking inline plots."""
     import subprocess
