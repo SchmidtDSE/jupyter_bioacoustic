@@ -16,7 +16,8 @@ jest.mock('../util', () => ({
   }),
 }));
 
-import { ConfigPanel, withYamlExt } from '../config_builder/ConfigPanel';
+import { withYamlExt } from '../config_builder/builderState';
+import { ConfigPanel } from '../config_builder/ConfigPanel';
 
 (globalThis as any).requestAnimationFrame ??= (cb: () => void) => setTimeout(cb, 0);
 (globalThis as any).ResizeObserver ??= class { observe() {} disconnect() {} };
@@ -44,8 +45,8 @@ function fakeKernel(existing: string[], savedPaths: Record<string, string>): any
 
 async function panelWithFiles(files: Record<string, any>, kernel: any): Promise<ConfigPanel> {
   const panel = new ConfigPanel(kernel);
-  await (panel as any)._readyPromise;
-  (panel as any)._configFiles.setData(files);
+  await (panel as any)._bk.ready;
+  (panel as any)._s.configFiles.setData(files);
   return panel;
 }
 

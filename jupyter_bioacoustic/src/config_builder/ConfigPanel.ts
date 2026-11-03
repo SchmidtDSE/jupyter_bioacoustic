@@ -1,86 +1,70 @@
 /**
- * ConfigPanel
+ * The config builder's main panel: composes the sections, the docs / YAML pane and the
+ * summary; forwards every section change to the kernel-side ``ConfigBuilder`` and applies the
+ * state it returns.
  *
- * Main orchestrator for the config builder. Wires all sections together,
- * manages kernel communication, state syncing, and YAML preview.
+ * Kernel calls go through ``BuilderKernel.call`` (builderKernel.ts); the sections and the
+ * logic spanning all of them are in builderSections.ts, the validate / save flows in
+ * saveFlow.ts, state helpers in builderState.ts, and the file-browser overlay / resize handle
+ * in panelChrome.ts.
  *
  * License: BSD 3-Clause
  */
-import { COLORS } from '../styles';
-import { showDialog } from '../util';
+//
+// Imports
+//
 import { KernelBridge } from '../kernel';
+import { errorMessage, showDialog } from '../util';
+import { BuilderKernel } from './builderKernel';
+import { BuilderSections } from './builderSections';
+import { activeFilePath, withYamlExt } from './builderState';
 import {
-  extractJson,
-  ensureSetup,
-  updateSection,
-  readColumns,
-  readColumnsFromSource,
-  checkAudioUrl,
-  updateConfigFromYaml,
-  saveAll,
-  saveSingleFile,
-  checkFileExists,
-  validateConfig,
-  loadConfig,
-  setSectionTarget,
-  getSummary,
-  changeCwd,
-  listTemplates,
-  loadTemplate,
-  applyTemplate,
-  getRoutingKeys,
+  AUDIO_EXTS, CONFIG_DIRS, DATA_EXTS, DATA_FILE_RE, DESCRIPTION_EXTS, ITEMS_FILE_EXTS,
+  OUTPUT_EXTS, YAML_EXTS,
+} from './constants';
+import { makeResizeHandle, openFileBrowserOverlay } from './panelChrome';
+import {
+  AudioCheckReply, BuilderState, ColumnsReply, TemplateSummary, applyTemplate, checkAudioUrl,
+  checkFileExists, getSummary, listTemplates, loadConfig, loadTemplate, readColumns,
+  readColumnsFromSource, saveSingleFile, setSectionTarget, updateConfigFromYaml, updateSection,
 } from './python';
-import { FileBrowser } from './FileBrowser';
-import { YamlPanel } from './YamlPanel';
-import { SetupSection } from './sections/SetupSection';
-import { ConfigFilesSection } from './sections/ConfigFilesSection';
-import { DataSection } from './sections/DataSection';
-import { AudioSection } from './sections/AudioSection';
-import { OutputSection } from './sections/OutputSection';
-import { AppSection } from './sections/AppSection';
-import { FormSection } from './sections/FormSection';
-import { DescriptionSection } from './sections/DescriptionSection';
+import { SaveFlow } from './saveFlow';
 import { CollapsibleSection } from './sections/CollapsibleSection';
-import { ConfigSummary } from './sections/ConfigSummary';
+import { ConfigSummary, SummarySection } from './sections/ConfigSummary';
+import type { SourceLoadRequest } from './sections/DataSection';
+import type { TemplateApplyRequest } from './sections/TemplateForm';
+import { StatusLine } from './statusLine';
+import type { YamlTexts } from './types';
+import { YamlPanel } from './YamlPanel';
 
 
-/** ``path`` with a ``.yaml`` extension unless it has .yaml/.yml (as the kernel saves it). */
-export function withYamlExt(path: string): string {
-  return /\.ya?ml$/i.test(path) ? path : `${path}.yaml`;
-}
+//
+// Constants
+//
+const MAX_STATUS_LABEL = 60;
 
+
+//
+// Public
+//
 export class ConfigPanel {
   readonly element: HTMLDivElement;
 
-  private _kernel: KernelBridge;
+  private _bk: BuilderKernel;
+  private _status = new StatusLine();
+  private _saveFlow: SaveFlow;
   private _yamlPanel: YamlPanel;
-  private _statusEl: HTMLSpanElement;
-  private _sections: Map<string, CollapsibleSection>;
-  private _yamls = { project_yaml: '', config_yaml: '', form_yaml: '' };
+  private _s = new BuilderSections();
+  private _yamls: YamlTexts = { project_yaml: '', config_yaml: '', form_yaml: '' };
   private _dirty = false;
   private _savedPath = '';
   private _suppressChanges = false;
-  private _ready = false;
-  private _debug = false;
-  private _readyPromise: Promise<void>;
-  private _routingKeys: Record<string, { project: string[]; config: string[] }> | null = null;
-  private _resolvedCwd = '';
-  private _cwdCallbacks: Array<(cwd: string) => void> = [];
   private _dirtyCallbacks: Array<() => void> = [];
 
-  private _setup: SetupSection;
-  private _configFiles: ConfigFilesSection;
-  private _data: DataSection;
-  private _audio: AudioSection;
-  private _output: OutputSection;
-  private _app: AppSection;
-  private _form: FormSection;
-  private _description: DescriptionSection;
-  private _summary: ConfigSummary;
+  private _summary = new ConfigSummary();
 
+  /** @param kernel - The builder widget's kernel (setup starts immediately). */
   constructor(kernel: KernelBridge) {
-    this._kernel = kernel;
-
     this.element = document.createElement('div');
     this.element.style.cssText =
       `display:flex;flex:1;overflow:hidden;position:relative;`;
@@ -89,133 +73,20 @@ export class ConfigPanel {
     left.style.cssText =
       `display:flex;flex-direction:column;flex:1;overflow-y:auto;min-width:0;`;
 
-    this._setup = new SetupSection();
-    this._configFiles = new ConfigFilesSection();
-    this._data = new DataSection();
-    this._audio = new AudioSection();
-    this._output = new OutputSection();
-    this._app = new AppSection();
-    this._form = new FormSection();
-    this._description = new DescriptionSection();
-    this._summary = new ConfigSummary();
-
-    this._sections = new Map<string, CollapsibleSection>([
-      ['setup', this._setup],
-      ['project', this._configFiles],
-      ['data', this._data],
-      ['audio', this._audio],
-      ['output', this._output],
-      ['app', this._app],
-      ['form', this._form],
-      ['description', this._description],
-    ]);
-
-    for (const [name, section] of this._sections) {
-      section.focused.connect(() => this._onSectionFocused(name));
-      section.fieldFocused.connect((_, field) => {
-        if (field.startsWith('description')) {
-          this._yamlPanel.switchToTab('config');
-        }
-        this._yamlPanel.scrollToField(field);
-      });
-      section.changed.connect(() => void this._onSectionChanged(name));
-      section.opened.connect(() => this._onAccordionOpen(section));
+    for (const [name, section] of this._s.all) {
+      this._wireSection(name, section);
       left.appendChild(section.element);
     }
-
-    this._form.changed.connect(() => void this._updateSummary());
-
-    for (const sec of [this._data, this._audio, this._output, this._app, this._form, this._description]) {
+    this._s.form.changed.connect(() => void this._updateSummary());
+    for (const sec of this._s.targeted) {
       sec.targetChanged.connect((_, { section, target }) => {
         void this._onTargetChanged(section, target);
       });
     }
-    this._app.setTarget('config');
-    this._form.setTarget('form');
-    this._description.setTarget('project');
     left.appendChild(this._summary.element);
 
-    this._setup.browseRequested.connect((_, { field, current }) => {
-      const configSubdirs: Record<string, string> = {
-        project: 'annotator_config/projects',
-        config: 'annotator_config/config',
-        form: 'annotator_config/forms',
-      };
-      if (field === 'project' || field === 'config' || field === 'form') {
-        const preferred = configSubdirs[field];
-        if (preferred) {
-          void this._resolveConfigDir(preferred).then(dir => {
-            this._openBrowser(dir, ['.yaml', '.yml'], (p) => {
-              this._setup.setLoadPath(p);
-            });
-          });
-        } else {
-          this._openBrowser(current, ['.yaml', '.yml'], (p) => {
-            this._setup.setLoadPath(p);
-          });
-        }
-      }
-    });
-
-    this._setup.projectCreated.connect((_, name) => {
-      this._app.setProjectName(name);
-      this._configFiles.initFromCreate(name);
-      void this._onSectionChanged('project');
-      void this._onSectionChanged('app');
-    });
-
-    this._configFiles.projectEnabledChanged.connect((_, enabled) => {
-      void this._onProjectEnabledChanged(enabled);
-    });
-    this._configFiles.fileStatesChanged.connect((_, states) => {
-      this._updateTargetOptions(states);
-    });
-    this._configFiles.lockStatesChanged.connect(() => this._applyFileLocks());
-    this._setup.loadConfigRequested.connect((_, { field, path }) => void this._onLoadConfig(path, field));
-
-    this._setup.templateListRequested.connect(() => void this._onListTemplates());
-    this._setup.templateSelected.connect((_, name) => void this._onLoadTemplate(name));
-    this._setup.applyTemplateRequested.connect((_, payload) => void this._onApplyTemplate(payload));
-    this._setup.templateBrowseRequested.connect((_, { key, exts, current }) => {
-      this._openBrowser(current, exts, (p) => this._setup.setTemplateFieldValue(key, p));
-    });
-    this._setup.templateColumnsRequested.connect((_, path) => void this._onTemplateColumns(path));
-
-    this._data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
-    this._data.sourceLoadRequested.connect((_, req) => void this._onLoadSourceColumns(req));
-    this._data.browseRequested.connect((_, dir) => {
-      this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv', '.jsonl'], (p) => this._data.setPath(p));
-    });
-    this._data.columnsLoaded.connect((_, cols) => {
-      this._app.setColumnOptions(cols);
-      this._audio.setColumnOptions(cols);
-      this._output.setColumnOptions(cols);
-    });
-
-    this._audio.browseRequested.connect((_, dir) => {
-      this._openBrowser(dir, ['.flac', '.wav', '.mp3', '.ogg', '.m4a', '.aac'], (p) => this._audio.setPath(p));
-    });
-    this._audio.validateRequested.connect((_, value) => void this._onValidateAudio(value));
-
-    this._output.browseRequested.connect((_, dir) => {
-      this._openBrowser(dir, ['.csv', '.parquet', '.json', '.tsv'], (p) => this._output.setOutputPath(p));
-    });
-
-    this._app.browseRequested.connect((_, dir) => {
-      this._openBrowser(dir, [], (p) => this._app.setCaptureDir(p), true);
-    });
-
-    this._description.browseRequested.connect((_, dir) => {
-      this._openBrowser(dir, ['.md', '.txt', '.html'], (p) => this._description.setDescriptionPath(p));
-    });
-
-    this._form.browseRequested.connect((_, { callback }) => {
-      this._openBrowser('.', ['.csv', '.parquet', '.json', '.tsv', '.txt'], callback);
-    });
-
-    this._form.columnsRequested.connect((_, { path, callback }) => {
-      void this._loadColumnsForCallback(path, callback);
-    });
+    this._wireSetup();
+    this._wireSources();
 
     this._yamlPanel = new YamlPanel();
     this._yamlPanel.configEdited.connect((_, { yaml, configType }) => {
@@ -228,125 +99,202 @@ export class ConfigPanel {
       void this._confirmAndRefresh();
     });
 
-    const handle = document.createElement('div');
-    handle.style.cssText =
-      `width:5px;cursor:col-resize;background:${COLORS.bgSurface0};flex-shrink:0;` +
-      `display:flex;align-items:center;justify-content:center;`;
-    const grip = document.createElement('div');
-    grip.style.cssText =
-      `width:3px;height:28px;border-radius:2px;background:${COLORS.overlay};`;
-    handle.appendChild(grip);
+    this.element.append(left, makeResizeHandle(this._yamlPanel.element), this._yamlPanel.element);
 
-    // document listeners exist only during a drag (they used to stay registered for every
-    // builder ever opened, keeping closed panels alive)
-    handle.addEventListener('mousedown', (e) => {
-      const startX = e.clientX;
-      const startW = this._yamlPanel.element.offsetWidth;
-      this._yamlPanel.element.style.transition = 'none';
-      e.preventDefault();
-      const onMove = (ev: MouseEvent) => {
-        const newW = Math.max(200, Math.min(800, startW + (startX - ev.clientX)));
-        this._yamlPanel.element.style.width = `${newW}px`;
-      };
-      const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        this._yamlPanel.element.style.transition = '';
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+    this._bk = new BuilderKernel(kernel, this._status);
+    this._saveFlow = new SaveFlow(this._bk, this._status, () => this._s.configFiles.getData());
+  }
+
+  /** The status message element (placed in the widget header). */
+  get statusEl(): HTMLSpanElement {
+    return this._status.element;
+  }
+
+  /** Unsaved changes in the kernel-side builder. */
+  get dirty(): boolean {
+    return this._dirty;
+  }
+
+  /** The builder's kernel. */
+  get kernel(): KernelBridge {
+    return this._bk.bridge;
+  }
+
+  /** Whether an enabled project file with a path is configured (Open Annotator shown). */
+  get isProjectConfigured(): boolean {
+    const d = this._s.configFiles.getData();
+    return !!(d.project_enabled && d.project_path);
+  }
+
+  /** The kernel's working directory. */
+  get cwd(): string {
+    return this._bk.cwd;
+  }
+
+  /** Run ``cb`` with the kernel's cwd once known. */
+  onCwdReady(cb: (cwd: string) => void): void {
+    this._bk.onCwdReady(cb);
+  }
+
+  /** Call ``cb`` on any section change and whenever the dirty flag may have changed. */
+  onAnyChanged(cb: () => void): void {
+    for (const section of this._s.all.values()) {
+      section.changed.connect(() => cb());
+    }
+    this._dirtyCallbacks.push(cb);
+  }
+
+  /** ``chdir`` the kernel; resolves to the new cwd or null. */
+  async setCwd(newDir: string): Promise<string | null> {
+    return this._bk.setCwd(newDir);
+  }
+
+  /** Pick a folder with the overlay file browser. */
+  browseDirectory(startDir: string, onSelect: (path: string) => void): void {
+    this._openBrowser(startDir, [], onSelect, true);
+  }
+
+  /** Validate and report the result. */
+  async validate(): Promise<void> {
+    await this._saveFlow.validate();
+  }
+
+  /** Validate (letting the user save despite errors) and save. */
+  async saveToFile(): Promise<void> {
+    await this._validateAndSave(false);
+  }
+
+  /** Validate (errors block) and save; resolves to the file to open, or null. */
+  async saveAndOpenAnnotator(): Promise<string | null> {
+    return this._validateAndSave(true);
+  }
+
+  /** Validate the unchanged files before opening; resolves to the file to open, or null. */
+  async validateAndOpen(): Promise<string | null> {
+    return this._saveFlow.validateForOpen();
+  }
+
+  private _wireSection(name: string, section: CollapsibleSection): void {
+    section.focused.connect(() => this._yamlPanel.showForSection(name, this._yamls));
+    section.fieldFocused.connect((_, field) => {
+      if (field.startsWith('description')) {
+        this._yamlPanel.switchToTab('config');
+      }
+      this._yamlPanel.scrollToField(field);
+    });
+    section.changed.connect(() => void this._onSectionChanged(name));
+    section.opened.connect(() => this._s.closeOthers(section));
+  }
+
+  /** Setup (create / template / load) and Configuration Files signals. */
+  private _wireSetup(): void {
+    this._s.setup.browseRequested.connect((_, { field }) => {
+      if (field === 'project' || field === 'config' || field === 'form') {
+        void this._resolveConfigDir(CONFIG_DIRS[field]).then(dir => {
+          this._openBrowser(dir, YAML_EXTS, (p) => this._s.setup.setLoadPath(p));
+        });
+      }
     });
 
-    this.element.append(left, handle, this._yamlPanel.element);
+    this._s.setup.projectCreated.connect((_, name) => {
+      this._s.app.setProjectName(name);
+      this._s.configFiles.initFromCreate(name);
+      void this._onSectionChanged('project');
+      void this._onSectionChanged('app');
+    });
 
-    this._statusEl = document.createElement('span');
-    this._statusEl.style.cssText =
-      `font-size:11px;color:${COLORS.green};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
+    this._s.configFiles.projectEnabledChanged.connect(() => void this._onProjectEnabledChanged());
+    this._s.configFiles.fileStatesChanged.connect((_, states) => this._s.updateTargetOptions(states));
+    this._s.configFiles.lockStatesChanged.connect(() => this._applyFileLocks());
+    this._s.setup.loadConfigRequested.connect((_, { field, path }) => void this._onLoadConfig(path, field));
 
-    this._readyPromise = this._ensureReady();
+    this._s.setup.templateListRequested.connect(() => void this._onListTemplates());
+    this._s.setup.templateSelected.connect((_, name) => void this._onLoadTemplate(name));
+    this._s.setup.applyTemplateRequested.connect((_, payload) => void this._onApplyTemplate(payload));
+    this._s.setup.templateBrowseRequested.connect((_, { key, exts, current }) => {
+      this._openBrowser(current, exts, (p) => this._s.setup.setTemplateFieldValue(key, p));
+    });
+    this._s.setup.templateColumnsRequested.connect((_, path) => void this._onTemplateColumns(path));
   }
 
-  private async _ensureReady(): Promise<void> {
-    this._setStatus('Initializing…');
-    try {
-      const raw = await this._kernel.exec(ensureSetup(this._kernel.cwd));
-      const result = JSON.parse(extractJson(raw));
-      this._ready = true;
-      this._debug = !!result.debug;
-      this._resolvedCwd = result.cwd || '';
-      if (this._debug) {
-        console.debug('[JBA] ConfigPanel ready, cwd:', result.cwd);
-      }
-      for (const cb of this._cwdCallbacks) cb(this._resolvedCwd);
-      this._cwdCallbacks = [];
-      // Cache the per-section split-routing key sets (single source of truth in
-      // core.py) so file-lock disabling needs no further kernel round-trips.
-      try {
-        const rk = await this._kernel.exec(getRoutingKeys());
-        this._routingKeys = JSON.parse(extractJson(rk));
-      } catch { /* lock disabling degrades to whole-section if absent */ }
-      this._setStatus('Ready');
-    } catch (e: any) {
-      this._setStatus(`Init failed: ${String(e.message ?? e)}`, true);
-    }
-  }
+  /** Data / audio / output / app / description / form browse and column signals. */
+  private _wireSources(): void {
+    this._s.data.fileLoadRequested.connect((_, path) => void this._onLoadColumns(path));
+    this._s.data.sourceLoadRequested.connect((_, req) => void this._onLoadSourceColumns(req));
+    this._s.data.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, DATA_EXTS, (p) => this._s.data.setPath(p));
+    });
+    this._s.data.columnsLoaded.connect((_, cols) => {
+      this._s.app.setColumnOptions(cols);
+      this._s.audio.setColumnOptions(cols);
+      this._s.output.setColumnOptions(cols);
+    });
 
-  private _dbg(...args: any[]): void {
-    if (this._debug) console.debug('[JBA]', ...args);
-  }
+    this._s.audio.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, AUDIO_EXTS, (p) => this._s.audio.setPath(p));
+    });
+    this._s.audio.validateRequested.connect((_, value) => void this._onValidateAudio(value));
 
-  get statusEl(): HTMLSpanElement {
-    return this._statusEl;
-  }
-
-  private _onSectionFocused(name: string): void {
-    this._yamlPanel.showForSection(name, this._yamls);
+    this._s.output.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, OUTPUT_EXTS, (p) => this._s.output.setOutputPath(p));
+    });
+    this._s.app.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, [], (p) => this._s.app.setCaptureDir(p), true);
+    });
+    this._s.description.browseRequested.connect((_, dir) => {
+      this._openBrowser(dir, DESCRIPTION_EXTS, (p) => this._s.description.setDescriptionPath(p));
+    });
+    this._s.form.browseRequested.connect((_, { callback }) => {
+      this._openBrowser('.', ITEMS_FILE_EXTS, callback);
+    });
+    this._s.form.columnsRequested.connect((_, { path, callback }) => {
+      void this._bk.call(readColumns(path), null, (r: ColumnsReply) => callback(r.columns));
+    });
   }
 
   private async _onSectionChanged(sectionName: string): Promise<void> {
     if (this._suppressChanges) return;
-    await this._readyPromise;
-    if (!this._ready) return;
-    const section = this._sections.get(sectionName);
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    const section = this._s.all.get(sectionName);
     if (!section) return;
 
-    let data = section.getData();
+    const data = section.getData();
     const uiTarget = section.getTarget();
     const target = uiTarget === 'form' ? 'form_config' : uiTarget;
-    this._dbg('sectionChanged', sectionName, data, 'target=', target);
-    this._setStatus('Updating…');
-
-    if (sectionName === 'output') {
-      try {
-        const raw = await this._kernel.exec(updateSection('output', data, target));
-        const state = JSON.parse(extractJson(raw));
-        this._applyStatePartial(state);
-        void this._updateSummary();
-        this._setStatus('Ready');
-      } catch (e: any) {
-        this._setStatus(`Error: ${String(e.message ?? e)}`, true);
-      }
-      return;
-    }
-
-    try {
-      const raw = await this._kernel.exec(updateSection(sectionName, data, target));
-      const state = JSON.parse(extractJson(raw));
+    this._bk.dbg('sectionChanged', sectionName, data, 'target=', target);
+    this._status.set('Updating…');
+    await this._bk.run(updateSection(sectionName, data, target), 'Error', (state: BuilderState) => {
       this._applyStatePartial(state);
       void this._updateSummary();
-      this._setStatus('Ready');
-    } catch (e: any) {
-      this._setStatus(`Error: ${String(e.message ?? e)}`, true);
-    }
+      this._status.set('Ready');
+    });
   }
 
+  private async _onProjectEnabledChanged(): Promise<void> {
+    await this._bk.call(
+      updateSection('project', this._s.configFiles.getData()), null,
+      (state: BuilderState) => this._applyStatePartial(state),
+    );
+  }
+
+  private async _onTargetChanged(section: string, target: string): Promise<void> {
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    this._status.set('Updating target…');
+    const pyTarget = target === 'form' ? 'form_config' : target;
+    await this._bk.run(setSectionTarget(section, pyTarget), 'Error', (state: BuilderState) => {
+      this._applyStatePartial(state);
+      this._applyFileLocks();
+      this._status.set('Ready');
+    });
+  }
+
+  /** ``preferred`` if it exists in the kernel's cwd, else ``.``. */
   private async _resolveConfigDir(preferred: string): Promise<string> {
-    try {
-      const raw = await this._kernel.exec(checkFileExists(preferred));
-      const result = JSON.parse(extractJson(raw));
-      if (result.exists) return preferred;
-    } catch { /* ignore */ }
-    return '.';
+    const exists = await this._bk.run(
+      checkFileExists(preferred), null, (r: { exists: boolean }) => r.exists);
+    return exists ? preferred : '.';
   }
 
   private _openBrowser(
@@ -355,235 +303,102 @@ export class ConfigPanel {
     onSelect: (path: string) => void,
     dirOnly = false,
   ): void {
-    if (this.element.querySelector('.jp-cb-filebrowser')) return;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'jp-cb-filebrowser';
-    overlay.style.cssText =
-      `position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;` +
-      `background:rgba(0,0,0,0.5);padding:24px;`;
-
-    const browserWrap = document.createElement('div');
-    browserWrap.style.cssText =
-      `position:relative;width:100%;max-width:500px;height:400px;`;
-
-    const browser = new FileBrowser(
-      this._kernel,
-      dir || '.',
-      extensions,
-      dirOnly,
-      '.',
-    );
-
-    browser.fileSelected.connect((_, path) => {
-      onSelect(path);
-      this._setStatus(`Selected: ${path}`);
-      overlay.remove();
+    openFileBrowserOverlay(this.element, this._bk.bridge, {
+      dir, extensions, dirOnly,
+      onSelect: (path) => {
+        onSelect(path);
+        this._status.set(`Selected: ${path}`);
+      },
     });
-
-    browser.dismissed.connect(() => {
-      overlay.remove();
-    });
-
-    browserWrap.appendChild(browser.element);
-    overlay.appendChild(browserWrap);
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
-    });
-    this.element.appendChild(overlay);
   }
 
   private async _saveSingleFile(configType: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    this._setStatus(`Saving ${configType} file…`);
-    try {
-      const raw = await this._kernel.exec(saveSingleFile(configType));
-      const result = JSON.parse(extractJson(raw));
-      this._setStatus(`Saved: ${result.saved_to}`);
-    } catch (e: any) {
-      this._setStatus(`Save failed: ${String(e.message ?? e)}`, true);
-    }
-  }
-
-  private async _loadColumnsForCallback(path: string, callback: (cols: string[]) => void): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    try {
-      const raw = await this._kernel.exec(readColumns(path));
-      const result = JSON.parse(extractJson(raw));
-      callback(result.columns as string[]);
-    } catch { /* ignore */ }
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    this._status.set(`Saving ${configType} file…`);
+    await this._bk.run(saveSingleFile(configType), 'Save failed', (r: { saved_to: string }) => {
+      this._status.set(`Saved: ${r.saved_to}`);
+    });
   }
 
   private async _onLoadColumns(pathOrDir: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    this._setStatus('Loading columns…');
-    try {
-      const raw = await this._kernel.exec(readColumns(pathOrDir));
-      const result = JSON.parse(extractJson(raw));
-      const cols = result.columns as string[];
-      this._data.setDetectedColumns(cols);
-      this._setStatus(`${cols.length} columns loaded`);
-    } catch (e: any) {
-      this._setStatus(`Error: ${String(e.message ?? e)}`, true);
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    this._status.set('Loading columns…');
+    await this._bk.run(readColumns(pathOrDir), 'Error', (r: ColumnsReply) => {
+      this._s.data.setDetectedColumns(r.columns);
+      this._status.set(`${r.columns.length} columns loaded`);
+    });
+  }
+
+  /** Load the data columns for ``path`` if it is a data file (after a load / template). */
+  private _loadDataColumnsIfFile(): void {
+    const dataPath = this._s.data.getPath();
+    if (dataPath && DATA_FILE_RE.test(dataPath)) {
+      void this._onLoadColumns(dataPath);
     }
   }
 
-  private async _onLoadSourceColumns(
-    req: { sourceType: string; value: string; secrets: any },
-  ): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    const label = req.value.length > 60 ? req.value.slice(0, 57) + '…' : req.value;
-    this._setStatus(`Loading ${label}…`);
-    try {
-      const raw = await this._kernel.exec(
-        readColumnsFromSource(req.sourceType, req.value, req.secrets),
-      );
-      const cols = (JSON.parse(extractJson(raw)).columns || []) as string[];
-      this._data.setDetectedColumns(cols);
-      this._data.setLoadStatus(true);
-      this._setStatus(`Loaded ${cols.length} columns from ${label}`);
-    } catch (e: any) {
-      this._data.setDetectedColumns([]);
-      this._data.setLoadStatus(false);
-      this._setStatus(`Load failed: ${String(e.message ?? e)}`, true);
-    }
-  }
-
-  private _fmtDuration(sec: number): string {
-    const s = Math.round(sec);
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const rem = s % 60;
-    if (h) return `${h}h ${m}m`;
-    if (m) return `${m}m ${rem}s`;
-    return `${rem}s`;
+  private async _onLoadSourceColumns(req: SourceLoadRequest): Promise<void> {
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    const label = this._shortLabel(req.value);
+    this._status.set(`Loading ${label}…`);
+    await this._bk.run(
+      readColumnsFromSource(req.sourceType, req.value, req.secrets),
+      (e) => {
+        this._s.data.setDetectedColumns([]);
+        this._s.data.setLoadStatus(false);
+        this._status.set(`Load failed: ${errorMessage(e)}`, 'error');
+      },
+      (r: ColumnsReply) => {
+        const cols = r.columns || [];
+        this._s.data.setDetectedColumns(cols);
+        this._s.data.setLoadStatus(true);
+        this._status.set(`Loaded ${cols.length} columns from ${label}`);
+      },
+    );
   }
 
   private async _onValidateAudio(value: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    const label = value.length > 60 ? value.slice(0, 57) + '…' : value;
-    this._setStatus(`Checking ${label}…`);
-    try {
-      const raw = await this._kernel.exec(checkAudioUrl(value));
-      const info = JSON.parse(extractJson(raw));
-      const parts: string[] = [];
-      if (typeof info.duration === 'number') parts.push(this._fmtDuration(info.duration));
-      parts.push(`${info.sample_rate} Hz`);
-      if (info.channels > 1) parts.push(`${info.channels} ch`);
-      this._audio.setValidateStatus(true);
-      this._setStatus(`Audio reachable — ${parts.join(' · ')}`);
-    } catch (e: any) {
-      this._audio.setValidateStatus(false);
-      this._setStatus(`Audio not reachable: ${String(e.message ?? e)}`, true);
-    }
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    this._status.set(`Checking ${this._shortLabel(value)}…`);
+    await this._bk.run(
+      checkAudioUrl(value),
+      (e) => {
+        this._s.audio.setValidateStatus(false);
+        this._status.set(`Audio not reachable: ${errorMessage(e)}`, 'error');
+      },
+      (info: AudioCheckReply) => {
+        const parts: string[] = [];
+        if (typeof info.duration === 'number') parts.push(_fmtDuration(info.duration));
+        parts.push(`${info.sample_rate} Hz`);
+        if ((info.channels ?? 0) > 1) parts.push(`${info.channels} ch`);
+        this._s.audio.setValidateStatus(true);
+        this._status.set(`Audio reachable — ${parts.join(' · ')}`);
+      },
+    );
   }
 
   private async _onYamlEdited(yaml: string, configType: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    this._setStatus('Applying edits…');
-    try {
-      const raw = await this._kernel.exec(updateConfigFromYaml(yaml, configType));
-      const state = JSON.parse(extractJson(raw));
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    this._status.set('Applying edits…');
+    await this._bk.run(updateConfigFromYaml(yaml, configType), 'Error', (state: BuilderState) => {
       if (state.update_ok) {
         this._applyState(state);
-        this._setStatus('Config updated');
+        this._status.set('Config updated');
       } else {
-        this._setStatus('Invalid YAML', true);
+        this._status.set('Invalid YAML', 'error');
       }
-    } catch (e: any) {
-      this._setStatus(`Error: ${String(e.message ?? e)}`, true);
-    }
-  }
-
-  async saveToFile(): Promise<void> {
-    await this._validateAndSave(false);
-  }
-
-  async saveAndOpenAnnotator(): Promise<string | null> {
-    return this._validateAndSave(true);
-  }
-
-  async validateAndOpen(): Promise<string | null> {
-    await this._readyPromise;
-    if (!this._ready) return null;
-
-    const projectData = this._configFiles.getData();
-    const enabled = [
-      projectData.project_enabled && !projectData.project_locked && projectData.project_path,
-      projectData.config_enabled && !projectData.config_locked && projectData.config_path,
-      projectData.form_enabled && !projectData.form_locked && projectData.form_path,
-    ].filter(Boolean);
-
-    if (enabled.length === 0) {
-      this._setStatus('Nothing to save — all files are disabled or locked', true);
-      return null;
-    }
-
-    this._setStatus('Validating…');
-    try {
-      const vRaw = await this._kernel.exec(validateConfig());
-      const vResult = JSON.parse(extractJson(vRaw));
-      const msgs: string[] = [];
-      if (vResult.errors?.length) msgs.push('Errors:\n• ' + vResult.errors.join('\n• '));
-      if (vResult.warnings?.length) msgs.push('Warnings:\n• ' + vResult.warnings.join('\n• '));
-      if (!vResult.valid) {
-        await showDialog({ title: 'Validation Failed', body: msgs.join('\n\n') });
-        this._setStatus('Validation failed', true);
-        return null;
-      }
-      if (msgs.length > 0) {
-        const choice = await showDialog({
-          title: 'Validation Warnings',
-          body: msgs.join('\n\n'),
-          buttons: [
-            { label: 'Cancel' },
-            { label: 'Open Anyway', primary: true },
-          ],
-        });
-        if (choice !== 'Open Anyway') {
-          this._setStatus('Cancelled', false, true);
-          return null;
-        }
-      }
-    } catch (e: any) {
-      this._setStatus(`Validation error: ${String(e.message ?? e)}`, true);
-      return null;
-    }
-
-    const path = (projectData.project_enabled && projectData.project_path) ||
-      (projectData.config_enabled && projectData.config_path) ||
-      (projectData.form_enabled && projectData.form_path) || '';
-    this._setStatus('Ready');
-    return path || null;
-  }
-
-  async refreshActive(): Promise<void> {
-    const { path } = this._activeFilePath();
-    if (!path) {
-      this._setStatus('No active file to refresh', true);
-      return;
-    }
-    await this._onLoadConfig(path);
-  }
-
-  private _activeFilePath(): { path: string; label: string } {
-    const d = this._configFiles.getData();
-    if (d.project_enabled && d.project_path) return { path: d.project_path, label: 'project' };
-    if (d.config_enabled && d.config_path) return { path: d.config_path, label: 'config' };
-    if (d.form_enabled && d.form_path) return { path: d.form_path, label: 'form' };
-    return { path: '', label: '' };
+    });
   }
 
   private async _confirmAndRefresh(): Promise<void> {
-    const { path } = this._activeFilePath();
+    const { path } = activeFilePath(this._s.configFiles.getData());
     if (!path) {
-      this._setStatus('No active file to reload', true);
+      this._status.set('No active file to reload', 'error');
       return;
     }
     const choice = await showDialog({
@@ -598,191 +413,130 @@ export class ConfigPanel {
     await this._onLoadConfig(path);
   }
 
-  get isProjectConfigured(): boolean {
-    const d = this._configFiles.getData();
-    return !!(d.project_enabled && d.project_path);
-  }
-
   private async _validateAndSave(blockOnErrors: boolean): Promise<string | null> {
-    await this._readyPromise;
-    if (!this._ready) return null;
-
-    const projectData = this._configFiles.getData();
-    const enabled = [
-      projectData.project_enabled && !projectData.project_locked && projectData.project_path,
-      projectData.config_enabled && !projectData.config_locked && projectData.config_path,
-      projectData.form_enabled && !projectData.form_locked && projectData.form_path,
-    ].filter(Boolean);
-
-    if (enabled.length === 0) {
-      this._setStatus('Nothing to save — all files are disabled or locked', true);
-      return null;
-    }
-
-    this._setStatus('Validating…');
-    try {
-      const vRaw = await this._kernel.exec(validateConfig());
-      const vResult = JSON.parse(extractJson(vRaw));
-      const msgs: string[] = [];
-      if (vResult.errors?.length) msgs.push('Errors:\n• ' + vResult.errors.join('\n• '));
-      if (vResult.warnings?.length) msgs.push('Warnings:\n• ' + vResult.warnings.join('\n• '));
-      if (!vResult.valid) {
-        if (blockOnErrors) {
-          await showDialog({ title: 'Validation Failed', body: msgs.join('\n\n') });
-          this._setStatus('Save cancelled — validation errors', true);
-          return null;
-        }
-        const choice = await showDialog({
-          title: 'Validation Failed',
-          body: msgs.join('\n\n'),
-          buttons: [
-            { label: 'Cancel' },
-            { label: 'Save Anyway', primary: true },
-          ],
-        });
-        if (choice !== 'Save Anyway') {
-          this._setStatus('Save cancelled', false, true);
-          return null;
-        }
-      } else if (msgs.length > 0) {
-        const choice = await showDialog({
-          title: 'Validation Warnings',
-          body: msgs.join('\n\n'),
-          buttons: [
-            { label: 'Cancel' },
-            { label: 'Save Anyway', primary: true },
-          ],
-        });
-        if (choice !== 'Save Anyway') {
-          this._setStatus('Save cancelled', false, true);
-          return null;
-        }
-      }
-    } catch (e: any) {
-      this._setStatus(`Validation error: ${String(e.message ?? e)}`, true);
-      return null;
-    }
-
-    // every file about to be written (project, config AND form), as the kernel will name it
-    const existing: string[] = [];
-    for (const path of enabled.map(p => withYamlExt(String(p)))) {
-      try {
-        const raw = await this._kernel.exec(checkFileExists(path));
-        if (JSON.parse(extractJson(raw)).exists) existing.push(path);
-      } catch { /* unknown: treat as new */ }
-    }
-    if (existing.length > 0) {
-      const choice = await showDialog({
-        title: 'Overwrite Files?',
-        body: `These files already exist and will be overwritten:\n• ${existing.join('\n• ')}`,
-        buttons: [
-          { label: 'Cancel' },
-          { label: 'Overwrite', primary: true },
-        ],
-      });
-      if (choice !== 'Overwrite') return null;
-    }
-
-    this._dbg('saveToFile', { enabled });
-    this._setStatus(`Saving ${enabled.length} file(s)…`);
-    try {
-      const raw = await this._kernel.exec(saveAll());
-      const state = JSON.parse(extractJson(raw));
+    return this._saveFlow.validateAndSave(blockOnErrors, (state) => {
       this._dirty = false;
       const paths = state.saved_paths || {};
-      this._dbg('saved', paths);
+      this._bk.dbg('saved', paths);
       const savedList = Object.values(paths).join(', ');
       // open the project file when it's enabled, even if locked (not rewritten, but it exists)
-      const active = this._activeFilePath().path;
-      this._savedPath = (active && withYamlExt(active)) || paths.project || paths.config || paths.form || '';
-      this._setStatus(`Saved: ${savedList}`);
+      const active = activeFilePath(this._s.configFiles.getData()).path;
+      this._savedPath =
+        (active && withYamlExt(active)) || paths.project || paths.config || paths.form || '';
+      this._status.set(`Saved: ${savedList}`);
       for (const cb of this._dirtyCallbacks) cb();
       return this._savedPath;
-    } catch (e: any) {
-      this._setStatus(`Save failed: ${String(e.message ?? e)}`, true);
-      return null;
+    });
+  }
+
+  private async _onListTemplates(): Promise<void> {
+    await this._bk.call(
+      listTemplates(), 'Failed to list templates',
+      (r: { templates?: TemplateSummary[] }) => this._s.setup.setTemplateList(r.templates || []),
+    );
+  }
+
+  private async _onTemplateColumns(path: string): Promise<void> {
+    // a bad/missing path just leaves the dropdown empty
+    await this._bk.call(readColumns(path), null, (r: ColumnsReply) => {
+      this._s.setup.setTemplateColumns(path, r.columns || []);
+    });
+  }
+
+  private async _onLoadTemplate(name: string): Promise<void> {
+    await this._bk.call(
+      loadTemplate(name), 'Failed to load template',
+      (r: { template?: Record<string, any> }) => this._s.setup.setTemplate(name, r.template || {}),
+    );
+  }
+
+  private async _onApplyTemplate(payload: TemplateApplyRequest): Promise<void> {
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    this._status.set('Applying template…');
+    const applied = await this._bk.run(
+      applyTemplate(payload.name, payload.scope, payload.projectName, payload.values),
+      'Template failed',
+      (state: BuilderState) => {
+        this._applyState(state);
+        this._loadDataColumnsIfFile();
+        return true;
+      },
+    );
+    if (!applied) return;
+    // Reuse the standard validate → overwrite-prompt → save flow.
+    const saved = await this._validateAndSave(true);
+    if (saved) {
+      // Lock the form (greyed, Edit button) and collapse Setup; reopening the
+      // section still shows the disabled form.
+      this._s.setup.markTemplateSaved();
+      this._s.setup.close();
+      this._status.set(`Created ${payload.projectName} — ${saved}`);
     }
   }
 
-  private _applyStatePartial(state: any): void {
-    this._yamls = {
-      project_yaml: state.project_yaml || '',
-      config_yaml: state.config_yaml || '',
-      form_yaml: state.form_yaml || '',
-    };
+  private async _onLoadConfig(path: string, fileType?: string): Promise<void> {
+    await this._bk.ready;
+    if (!this._bk.isReady) return;
+    this._bk.dbg('loadConfig', path, fileType);
+    this._status.set(`Loading ${path}…`);
+    await this._bk.run(
+      loadConfig(path, fileType),
+      (e) => {
+        const msg = errorMessage(e);
+        const fnf = msg.match(/FileNotFoundError:\s*(.+)/);
+        this._status.set(fnf ? `File not found: ${fnf[1]}` : `Load failed: ${msg}`, 'error');
+      },
+      (state: BuilderState) => {
+        this._applyState(state);
+        this._loadDataColumnsIfFile();
+        this._reportLoaded(state);
+      },
+    );
+  }
+
+  /** Status after a load: what was loaded, plus referenced files that weren't found. */
+  private _reportLoaded(state: BuilderState): void {
+    const detected = state.detected_type || 'config';
+    const paths = state.loaded_paths || {};
+    const loaded = Object.values(paths).filter(Boolean);
+    const projectData = state.project || {};
+    const missing: string[] = [];
+    for (const ft of ['config', 'form'] as const) {
+      if (projectData[`${ft}_enabled`] && projectData[`${ft}_path`] && !paths[ft]) {
+        missing.push(`${ft} not found: ${projectData[`${ft}_path`]}`);
+      }
+    }
+    const warn = missing.length ? ` (⚠ ${missing.join(', ')})` : '';
+    this._status.set(`Loaded as ${detected}: ${loaded.join(', ')}${warn}`,
+      missing.length > 0 ? 'error' : 'ok');
+  }
+
+  /** Take the kernel's YAML previews and dirty flag (after an edit; sections untouched). */
+  private _applyStatePartial(state: BuilderState): void {
+    this._setYamls(state);
     const wasDirty = this._dirty;
     this._dirty = !!state.dirty;
     this._savedPath = state.saved_path || '';
-    this._yamlPanel.updateYaml(this._yamls);
     if (this._dirty !== wasDirty) {
       for (const cb of this._dirtyCallbacks) cb();
     }
   }
 
-  private _applyState(state: any): void {
-    this._dbg('applyState', { targets: state.section_targets, projectKeys: Object.keys(state.project || {}), configKeys: Object.keys(state.config || {}) });
+  /** Replace every section's contents with a loaded / applied state. */
+  private _applyState(state: BuilderState): void {
+    this._bk.dbg('applyState', {
+      targets: state.section_targets,
+      projectKeys: Object.keys(state.project || {}),
+      configKeys: Object.keys(state.config || {}),
+    });
     this._suppressChanges = true;
     try {
-      this._yamls = {
-        project_yaml: state.project_yaml || '',
-        config_yaml: state.config_yaml || '',
-        form_yaml: state.form_yaml || '',
-      };
+      this._setYamls(state);
       this._dirty = !!state.dirty;
       this._savedPath = state.saved_path || '';
-      this._yamlPanel.updateYaml(this._yamls);
 
-      // loading replaces everything: clear every section first (setData only adds)
-      for (const section of this._sections.values()) section.reset();
-
-      if (state.project) {
-        const proj = state.project || {};
-        const conf = state.config || {};
-        this._configFiles.setData(proj);
-        const targets = state.section_targets || {};
-
-        if (proj.project_name) {
-          this._app.setProjectName(proj.project_name);
-        }
-
-        const mergedData = this._resolveSectionData('data', targets, proj, conf);
-        if (mergedData) this._data.setData(mergedData);
-        const mergedAudio = this._resolveSectionData('audio', targets, proj, conf);
-        if (mergedAudio) this._audio.setData(mergedAudio);
-
-        const mergedOutput = this._resolveSectionData('output', targets, proj, conf);
-        const outputData: Record<string, any> = mergedOutput ? { ...mergedOutput } : {};
-        const outputPath = proj.output?.path || proj.output_path;
-        if (outputPath) outputData.path = outputPath;
-        if (Object.keys(outputData).length > 0) this._output.setData(outputData);
-
-        const appSource = targets.app === 'config' ? { ...proj, ...conf } : proj;
-        this._app.setData(appSource);
-
-        const descData: Record<string, any> = {};
-        for (const src of [proj, conf]) {
-          if (src.description) descData.description = src.description;
-          if (src.description_title) descData.description_title = src.description_title;
-          if (src.description_text) descData.description_text = src.description_text;
-          if (src.description_path) descData.description_path = src.description_path;
-          if (src.description_open !== undefined) descData.description_open = src.description_open;
-          if (src.description_height) descData.description_height = src.description_height;
-        }
-        if (Object.keys(descData).length > 0) this._description.setData(descData);
-      }
-      if (state.form_config && typeof state.form_config === 'object') {
-        this._form.setData(state.form_config);
-      }
-
-      if (state.section_targets) {
-        const targets = state.section_targets as Record<string, string>;
-        if (targets.data) this._data.setTarget(targets.data);
-        if (targets.audio) this._audio.setTarget(targets.audio);
-        if (targets.output) this._output.setTarget(targets.output);
-        if (targets.app) this._app.setTarget(targets.app);
-        if (targets.form) this._form.setTarget(targets.form === 'form_config' ? 'form' : targets.form);
-        if (targets.description) this._description.setTarget(targets.description);
-      }
+      this._s.fill(state);
 
       void this._updateSummary();
     } finally {
@@ -792,284 +546,43 @@ export class ConfigPanel {
     for (const cb of this._dirtyCallbacks) cb();
   }
 
-  get dirty(): boolean {
-    return this._dirty;
-  }
-
-  get kernel(): KernelBridge {
-    return this._kernel;
-  }
-
-  onProjectStateChanged(cb: () => void): void {
-    this._configFiles.projectEnabledChanged.connect(() => cb());
-    this._configFiles.changed.connect(() => cb());
-  }
-
-  onAnyChanged(cb: () => void): void {
-    for (const [, section] of this._sections) {
-      section.changed.connect(() => cb());
-    }
-    this._dirtyCallbacks.push(cb);
-  }
-
-  get cwd(): string {
-    return this._resolvedCwd || this._kernel.cwd || '.';
-  }
-
-  onCwdReady(cb: (cwd: string) => void): void {
-    if (this._resolvedCwd) {
-      cb(this._resolvedCwd);
-    } else {
-      this._cwdCallbacks.push(cb);
-    }
-  }
-
-  async setCwd(newDir: string): Promise<string | null> {
-    await this._readyPromise;
-    if (!this._ready) return null;
-    try {
-      const raw = await this._kernel.exec(changeCwd(newDir));
-      const result = JSON.parse(extractJson(raw));
-      this._resolvedCwd = result.cwd || '';
-      return result.cwd as string;
-    } catch (e: any) {
-      this._setStatus(`chdir failed: ${String(e.message ?? e)}`, true);
-      return null;
-    }
-  }
-
-  browseDirectory(startDir: string, onSelect: (path: string) => void): void {
-    this._openBrowser(startDir, [], onSelect, true);
-  }
-
-  private async _onListTemplates(): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    try {
-      const raw = await this._kernel.exec(listTemplates());
-      const items = JSON.parse(extractJson(raw)).templates || [];
-      this._setup.setTemplateList(items);
-    } catch (e: any) {
-      this._setStatus(`Failed to list templates: ${String(e.message ?? e)}`, true);
-    }
-  }
-
-  private async _onTemplateColumns(path: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    try {
-      const raw = await this._kernel.exec(readColumns(path));
-      const cols = JSON.parse(extractJson(raw)).columns || [];
-      this._setup.setTemplateColumns(path, cols);
-    } catch { /* a bad/missing path just leaves the dropdown empty */ }
-  }
-
-  private async _onLoadTemplate(name: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    try {
-      const raw = await this._kernel.exec(loadTemplate(name));
-      const tpl = JSON.parse(extractJson(raw)).template || {};
-      this._setup.setTemplate(name, tpl);
-    } catch (e: any) {
-      this._setStatus(`Failed to load template: ${String(e.message ?? e)}`, true);
-    }
-  }
-
-  private async _onApplyTemplate(payload: {
-    name: string; scope: string; projectName: string; values: Record<string, string>;
-  }): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    this._setStatus('Applying template…');
-    try {
-      const raw = await this._kernel.exec(
-        applyTemplate(payload.name, payload.scope, payload.projectName, payload.values),
-      );
-      const state = JSON.parse(extractJson(raw));
-      this._applyState(state);
-      const dataPath = this._data.getPath();
-      if (dataPath && /\.(csv|parquet|json|jsonl|tsv)$/i.test(dataPath)) {
-        void this._onLoadColumns(dataPath);
-      }
-    } catch (e: any) {
-      this._setStatus(`Template failed: ${String(e.message ?? e)}`, true);
-      return;
-    }
-    // Reuse the standard validate → overwrite-prompt → save flow.
-    const saved = await this._validateAndSave(true);
-    if (saved) {
-      // Lock the form (greyed, Edit button) and collapse Setup; reopening the
-      // section still shows the disabled form.
-      this._setup.markTemplateSaved();
-      this._setup.close();
-      this._setStatus(`Created ${payload.projectName} — ${saved}`);
-    }
-  }
-
-  private async _onLoadConfig(path: string, fileType?: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    this._dbg('loadConfig', path, fileType);
-    this._setStatus(`Loading ${path}…`);
-    try {
-      const raw = await this._kernel.exec(loadConfig(path, fileType));
-      const state = JSON.parse(extractJson(raw));
-      this._applyState(state);
-      const dataPath = this._data.getPath();
-      if (dataPath && /\.(csv|parquet|json|jsonl|tsv)$/i.test(dataPath)) {
-        void this._onLoadColumns(dataPath);
-      }
-      const detected = state.detected_type || 'config';
-      const paths = state.loaded_paths || {};
-      const loaded = Object.values(paths).filter(Boolean);
-      const projectData = state.project || {};
-      const missing: string[] = [];
-      if (projectData.config_enabled && projectData.config_path && !paths.config) {
-        missing.push(`config not found: ${projectData.config_path}`);
-      }
-      if (projectData.form_enabled && projectData.form_path && !paths.form) {
-        missing.push(`form not found: ${projectData.form_path}`);
-      }
-      const warn = missing.length ? ` (⚠ ${missing.join(', ')})` : '';
-      this._setStatus(`Loaded as ${detected}: ${loaded.join(', ')}${warn}`, missing.length > 0);
-    } catch (e: any) {
-      const msg = String(e.message ?? e);
-      const fnf = msg.match(/FileNotFoundError:\s*(.+)/);
-      this._setStatus(fnf ? `File not found: ${fnf[1]}` : `Load failed: ${msg}`, true);
-    }
-  }
-
-  async validate(): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    this._setStatus('Validating…');
-    try {
-      const raw = await this._kernel.exec(validateConfig());
-      const result = JSON.parse(extractJson(raw));
-      const msgs: string[] = [];
-      if (result.errors?.length) msgs.push('Errors:\n• ' + result.errors.join('\n• '));
-      if (result.warnings?.length) msgs.push('Warnings:\n• ' + result.warnings.join('\n• '));
-      if (result.valid && msgs.length === 0) {
-        this._setStatus('Validation passed');
-        await showDialog({ title: 'Validation Passed', body: 'No issues found.' });
-      } else if (result.valid) {
-        this._setStatus('Validation passed with warnings', false, true);
-        await showDialog({ title: 'Validation Passed', body: msgs.join('\n\n') });
-      } else {
-        this._setStatus('Validation failed', true);
-        await showDialog({ title: 'Validation Failed', body: msgs.join('\n\n') });
-      }
-    } catch (e: any) {
-      this._setStatus(`Validate error: ${String(e.message ?? e)}`, true);
-    }
-  }
-
-  private async _onProjectEnabledChanged(_enabled: boolean): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    try {
-      const raw = await this._kernel.exec(updateSection('project', this._configFiles.getData()));
-      const state = JSON.parse(extractJson(raw));
-      this._applyStatePartial(state);
-    } catch { /* ignore */ }
+  private _setYamls(state: BuilderState): void {
+    this._yamls = {
+      project_yaml: state.project_yaml || '',
+      config_yaml: state.config_yaml || '',
+      form_yaml: state.form_yaml || '',
+    };
+    this._yamlPanel.updateYaml(this._yamls);
   }
 
   private _applyFileLocks(): void {
-    const locks = this._configFiles.getLockStates();
-    const anyLocked = locks.project || locks.config || locks.form;
-    const fileOf = (t: string): 'project' | 'config' | 'form' =>
-      t === 'form' ? 'form' : t === 'config' ? 'config' : 'project';
-
-    // Freeze every target dropdown while any file is locked (so routing can't
-    // shift fields into/out of a locked file).
-    for (const [name, section] of this._sections) {
-      if (name !== 'project') section.setTargetEnabled(!anyLocked);
-    }
-
-    // Whole-section-target sections route entirely to one file.
-    this._app.setFieldsLocked(locks[fileOf(this._app.getTarget())]);
-    this._description.setFieldsLocked(locks[fileOf(this._description.getTarget())]);
-    this._form.setFieldsLocked(locks[fileOf(this._form.getTarget())]);
-
-    // Split sections disable per-field by routing (project-group vs config-group).
-    this._data.applyLocks(locks, this._routingKeys?.data);
-    this._audio.applyLocks(locks, this._routingKeys?.audio);
-    this._output.applyLocks(locks, this._routingKeys?.output);
-  }
-
-  private async _onTargetChanged(section: string, target: string): Promise<void> {
-    await this._readyPromise;
-    if (!this._ready) return;
-    this._setStatus('Updating target…');
-    const pyTarget = target === 'form' ? 'form_config' : target;
-    try {
-      const raw = await this._kernel.exec(setSectionTarget(section, pyTarget));
-      const state = JSON.parse(extractJson(raw));
-      this._applyStatePartial(state);
-      this._applyFileLocks();
-      this._setStatus('Ready');
-    } catch (e: any) {
-      this._setStatus(`Error: ${String(e.message ?? e)}`, true);
-    }
-  }
-
-  private _updateTargetOptions(states: { project: boolean; config: boolean; form: boolean }): void {
-    const baseOpts: string[] = [];
-    if (states.project) baseOpts.push('project');
-    if (states.config) baseOpts.push('config');
-    if (baseOpts.length === 0) baseOpts.push('project');
-
-    const splitOpts = states.project && states.config
-      ? ['split', ...baseOpts] : [...baseOpts];
-    for (const sec of [this._data, this._audio]) {
-      sec.setTargetOptions(splitOpts);
-    }
-    this._output.setTargetOptions(splitOpts);
-    this._app.setTargetOptions(baseOpts);
-    this._description.setTargetOptions(baseOpts);
-
-    const formOpts: string[] = [...baseOpts];
-    if (states.form) formOpts.push('form');
-    this._form.setTargetOptions(formOpts);
-  }
-
-  private _onAccordionOpen(opened: CollapsibleSection): void {
-    for (const [, section] of this._sections) {
-      if (section !== opened && !section.isPinned) {
-        section.close();
-      }
-    }
+    this._s.applyFileLocks(this._bk.routingKeys);
   }
 
   private async _updateSummary(): Promise<void> {
-    if (!this._ready) return;
-    try {
-      const raw = await this._kernel.exec(getSummary());
-      const sections = JSON.parse(extractJson(raw));
+    if (!this._bk.isReady) return;
+    await this._bk.run(getSummary(), null, (sections: SummarySection[]) => {
       this._summary.update(sections);
-    } catch { /* ignore summary errors */ }
+    });
   }
 
-  private _resolveSectionData(
-    section: string,
-    targets: Record<string, string>,
-    proj: Record<string, any>,
-    conf: Record<string, any>,
-  ): Record<string, any> | null {
-    const t = targets[section];
-    const pData = proj[section];
-    const cData = conf[section];
-    if (t === 'split') {
-      if (!pData && !cData) return null;
-      return { ...(typeof cData === 'object' ? cData : {}), ...(typeof pData === 'object' ? pData : {}) };
-    }
-    const source = t === 'config' ? cData : pData;
-    return source && typeof source === 'object' ? source : null;
+  /** ``value`` cut to the status line's width. */
+  private _shortLabel(value: string): string {
+    return value.length > MAX_STATUS_LABEL ? value.slice(0, MAX_STATUS_LABEL - 3) + '…' : value;
   }
+}
 
-  private _setStatus(msg: string, error = false, warning = false): void {
-    this._statusEl.textContent = msg;
-    this._statusEl.style.color = error ? COLORS.red : warning ? COLORS.yellow : COLORS.green;
-  }
+
+//
+// Internal
+//
+/** ``sec`` as "1h 2m" / "3m 4s" / "5s". */
+function _fmtDuration(sec: number): string {
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${rem}s`;
+  return `${rem}s`;
 }
