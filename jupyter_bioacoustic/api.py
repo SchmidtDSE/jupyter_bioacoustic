@@ -30,6 +30,7 @@ License: BSD 3-Clause
 from __future__ import annotations
 
 import copy
+import difflib
 import json
 import logging
 import os
@@ -1066,6 +1067,7 @@ class BioacousticAnnotator:
             raw_form = _load_config(raw_form)
         self._session_args = self._resolve('session_args', None)
         kwargs, self._stripped_args = _filter_session_args(self._session_args, kwargs)
+        _warn_on_likely_typos(kwargs)
         self._init_kwargs = dict(kwargs)
         if kwargs:
             # copy: the form dict may be the caller's (or a config file's) and is reused across
@@ -1288,6 +1290,25 @@ class BioacousticAnnotator:
 #
 # INTERNAL
 #
+def _warn_on_likely_typos(kwargs: dict[str, Any]) -> None:
+    """Warn when an extra keyword argument looks like a misspelled parameter.
+
+    Extra keywords become fixed output columns, so a typo such as ``audio_colum=`` would
+    otherwise silently add a column instead of setting the parameter.
+
+    Args:
+        kwargs: The extra constructor keyword arguments (after ``session_args`` filtering).
+    """
+    known = sorted(set(_CONFIG_PARAMS) | {'project', 'config', 'form_config'})
+    for key in kwargs:
+        match = difflib.get_close_matches(key, known, n=1, cutoff=0.8)
+        if match:
+            warnings.warn(
+                f"'{key}' isn't a BioacousticAnnotator parameter, so it will be saved as an "
+                f"output column. Did you mean '{match[0]}'?"
+            )
+
+
 def _default_project_name(project: Any) -> str:
     """Return the default widget title: from the project file name, or generic.
 
