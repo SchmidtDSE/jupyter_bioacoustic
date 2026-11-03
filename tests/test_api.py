@@ -1419,3 +1419,18 @@ class TestSetupContract:
         ba = BioacousticAnnotator(data=_make_df(), audio='audio_path')
         with pytest.raises(RuntimeError):
             ba.setup()
+
+
+#
+# extra kwargs that look like misspelled parameters
+#
+class TestTypoWarning:
+
+    def test_close_misspelling_warns(self):
+        with pytest.warns(UserWarning, match="Did you mean 'sort_order'"):
+            BioacousticAnnotator(data=_make_df(), audio='audio_path', sort_ordr='desc')
+
+    def test_real_custom_columns_are_silent(self, recwarn):
+        BioacousticAnnotator(data=_make_df(), audio='audio_path',
+                             annotator_name='a', reviewer_name='b', review_date=20260101)
+        assert not [w for w in recwarn if 'Did you mean' in str(w.message)]
