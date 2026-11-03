@@ -1,0 +1,19 @@
+title:
+  value: REVIEW
+  progress_tracker: true
+form:
+- select:
+    column: is_valid
+    items:
+    - 'yes'
+    - 'no'
+    label: Is [[common_name]] Valid
+    required: true
+submission_buttons:
+  line: true
+  next:
+    label: Skip
+    icon: true
+  submit:
+    label: Submit
+    icon: true
