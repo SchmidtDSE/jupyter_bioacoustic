@@ -7,7 +7,9 @@
  *
  * License: BSD 3-Clause
  */
-
+//
+// Constants
+//
 /** Configuration Files section — explains the per-file controls (HTML). */
 export const CONFIG_FILES_HELP =
   `A project is saved as up to three files — <b>project</b>, <b>config</b>, and <b>form</b>. ` +
