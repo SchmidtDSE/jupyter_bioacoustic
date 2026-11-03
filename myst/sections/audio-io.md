@@ -101,4 +101,4 @@ io.read('https://example.com/data.csv', dest='local.csv', token='my-token')
 
 ## Walkthrough Notebook
 
-The [Sync & Audio IO notebook](../demo/audio-io.ipynb) walks through sync configuration, reading, writing, listing, and standalone spectrogram rendering with working examples.
+The [Sync notebook](../../demo/sync-example.ipynb) walks through sync configuration, and the [Visualizations notebook](../../demo/visualizations.ipynb) covers standalone spectrogram rendering.
