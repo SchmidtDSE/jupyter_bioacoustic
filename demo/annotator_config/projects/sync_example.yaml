@@ -1,0 +1,9 @@
+project_name: sync_example
+config: annotator_config/config/sync_example.yaml
+data:
+  path: data/detections.N-dse.csv
+output:
+  index_column: detections_id
+  path: outputs/sync-example.csv
+  sync_button: Sync to S3
+  uri: s3://dse-soundhub/dev/annotations/sync-example.csv
