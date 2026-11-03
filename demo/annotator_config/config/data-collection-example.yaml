@@ -1,0 +1,25 @@
+# Config for data-collection-example.ipynb: data and audio are passed in the notebook.
+description:
+  title: Annotation Instructions
+  text: |
+    Pick a tool from the dropdown, mark the call on the spectrogram, then choose a species.
+
+    - `time_select`: a single draggable vertical line
+    - `start_end_time_select`: two draggable vertical lines (they can't cross)
+    - `bounding_box`: click and drag a rectangle; each edge can be dragged
+    - `multibox`: draw several boxes, each with its own species; submits one row per box
+    - `fixed_duration`: click to place a fixed-length time region
+  open: false
+data_index_column: id
+display_columns:
+  - common_name
+  - confidence
+  - deployment_placename
+  - start_time
+info_card_title: '[[common_name]]'
+info_card_text: '[[deployment_placename]] | confidence: [[confidence]]'
+capture: true
+capture_dir: spectrograms
+default_buffer: 0.5
+output: outputs/data-collection-example.csv
+form_config: annotator_config/forms/data-collection-example.yaml
