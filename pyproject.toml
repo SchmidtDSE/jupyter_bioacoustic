@@ -26,8 +26,6 @@ dependencies = [
     "matplotlib",
     "pandas",
     "soundfile",
-    "pydub",
-    "audioop-lts; python_version>='3.13'",
     "boto3",
     "pyyaml",
     "click>=8.0",
