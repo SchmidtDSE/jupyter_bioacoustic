@@ -56,8 +56,13 @@ class TestSectionWithIndex:
             'path': 'o.csv', 'index_column': 'id',
         }
 
-    def test_none_is_empty(self):
-        assert _config.section_with_index(None, 'id', is_data=True) == {}
+    def test_none_output_is_empty(self):
+        assert _config.section_with_index(None, 'id', is_data=False) == {}
+
+    def test_none_data_keeps_index(self):
+        """A flat data_path leaves no data section; the index must survive."""
+        assert _config.section_with_index(None, 'id', is_data=True) == {'index_column': 'id'}
+        assert _config.section_with_index(None, None, is_data=True) == {}
 
     def test_dataframe_is_path(self):
         df = pd.DataFrame({'a': [1]})
