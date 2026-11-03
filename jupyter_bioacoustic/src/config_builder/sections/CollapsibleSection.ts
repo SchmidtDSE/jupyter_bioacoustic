@@ -10,7 +10,7 @@
 //
 import { Signal } from '@lumino/signaling';
 import { COLORS, lockIconSvg } from '../../styles';
-import { fillSelect, makeButton, makeInput, makeLabel, makeRow, makeSelect } from '../dom';
+import { fillSelect, makeLabel, makeRow } from '../dom';
 import type { FileFlags, LockableField, SectionRouting } from '../types';
 
 
@@ -248,27 +248,7 @@ export abstract class CollapsibleSection {
     return { row, input: cb };
   }
 
-  // Thin aliases of the dom.ts factories, for subclasses.
-  protected _makeRow(): HTMLDivElement {
-    return makeRow();
-  }
-
-  protected _makeLabel(text: string, required = false): HTMLLabelElement {
-    return makeLabel(text, required);
-  }
-
-  protected _makeInput(placeholder = '', width = '200px'): HTMLInputElement {
-    return makeInput(placeholder, width);
-  }
-
-  protected _makeSelect(options: string[], selected?: string): HTMLSelectElement {
-    return makeSelect(options, selected);
-  }
-
-  protected _makeButton(text: string, primary = false): HTMLButtonElement {
-    return makeButton(text, primary);
-  }
-
+  /** Emit ``changed`` (the panel then sends ``getData()`` to the kernel). */
   protected _emitChanged(): void {
     this.changed.emit(void 0);
   }
