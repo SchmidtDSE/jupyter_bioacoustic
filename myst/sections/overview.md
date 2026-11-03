@@ -37,12 +37,13 @@ Clicking on the laucher tile gives the user 3 options:
 
 The app itself is composed of 3 distinct components: 
 
-1. [Clip Table](clip-table): for selecting, sorting, filtering audio-clips
-2. [Player and Visulizer](player-and-visulizer): for playing, visualizing, and annotating clips
-3. [Form and Panel](form-and-panel): for data collection and model review of the selected clip
+1. [Clip Table](#clip-table): for selecting, sorting, filtering audio-clips
+2. [Player and Visualizer](#player-and-visualizer): for playing, visualizing, and annotating clips
+3. [Form Panel](#form-panel): for data collection and model review of the selected clip
 
 ---
 
+(clip-table)=
 ### Clip Table
 
 ```{figure} ../../assets/list/filtered.png
@@ -59,7 +60,8 @@ The clip table displays your input data as a sortable, paginated table. Click an
 
 ---
 
-### Player and Visulizer
+(player-and-visualizer)=
+### Player and Visualizer
 
 ```{figure} ../../assets/vis/spectrogram-playing.png
 :class: bordered
@@ -67,8 +69,8 @@ The clip table displays your input data as a sortable, paginated table. Click an
 
 The spectrogram player renders each audio clip as an interactive spectrogram with playback controls:
 
-- **Visualization type** — switch between linear STFT, mel, log-frequency, or [custom visualizations](params) from a dropdown
-- **Resolution** — select rendering resolution from the [`spectrogram_resolution`](params) dropdown
+- **Visualization type** — switch between linear STFT, mel, log-frequency, or [custom visualizations](#params) from a dropdown
+- **Resolution** — select rendering resolution from the [`spectrogram_resolution`](#params) dropdown
 - **Buffer** — adjustable time padding before and after each clip
 - **Zoom** — `+`/`-`/`0` keys, zoom-to-selection box (⬚), click-and-drag to pan
 - **Playback** — play/pause with Space, restart with Shift+Space, drag the playhead to scrub
@@ -77,6 +79,7 @@ The spectrogram player renders each audio clip as an interactive spectrogram wit
 
 ---
 
+(form-panel)=
 ### Form Panel
 
 ```{figure} ../../assets/form_panel/multibox.png
