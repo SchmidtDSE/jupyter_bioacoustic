@@ -33,7 +33,7 @@ Optional extras:
 pip install "jupyter-bioacoustic[gcs]"    # gs:// audio, data and output sync
 ```
 
-`https://` audio and data loaded from a URL or an `api::` endpoint need `requests`, and SQL (`SELECT ...`) data needs `duckdb`. Install them if you use those sources.
+SQL (`SELECT ...`) data needs `duckdb` (`pip install duckdb`).
 
 ### Remote audio
 
