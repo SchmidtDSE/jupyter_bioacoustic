@@ -1,0 +1,14 @@
+capture: true
+data:
+  index_column: id
+audio:
+  column: audio_url
+default_buffer: 0.5
+display_columns:
+- deployment_code
+- common_name
+- scientific_name
+- confidence
+sort_order: desc
+sort: common_name
+form_config: annotator_config/forms/sync_example.yaml
