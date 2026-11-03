@@ -1,13 +1,20 @@
 /**
- * plugin
+ * The config builder's JupyterLab plugin: the "Bioacoustic Config Builder" command (main-area
+ * widget on its own kernel), the inline opener used from notebooks
+ * (``window._bioacousticOpenConfigBuilder``), and the widget shell around ConfigPanel (header
+ * with cwd + status, bottom bar with Validate / Save / Open Annotator / Dismiss).
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { ICommandPalette } from '@jupyterlab/apputils';
 import { PageConfig } from '@jupyterlab/coreutils';
 import { IDefaultFileBrowser } from '@jupyterlab/filebrowser';
 import { INotebookTracker } from '@jupyterlab/notebook';
+import type { Kernel } from '@jupyterlab/services';
 import { LabIcon } from '@jupyterlab/ui-components';
 import { Widget } from '@lumino/widgets';
 
@@ -15,15 +22,114 @@ import { COLORS, barBottomStyle, btnStyle, injectGlobalStyles } from '../styles'
 import {
   KernelBridge, KernelSource, acquireKernel, execInKernel, notebookSession,
 } from '../kernel';
-import { escPy, showDialog, suppressNotebookShortcuts } from '../util';
+import { errorMessage, showDialog, suppressNotebookShortcuts } from '../util';
 import { ConfigPanel } from './ConfigPanel';
-import { setupAnnotatorFromProject } from './python';
+import { initBuilder, setupAnnotatorFromProject } from './python';
 
+
+//
+// Constants
+//
+const COMMAND_ID = 'bioacoustic:open-config-builder';
+
+const builderIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+  <polyline points="14 2 14 8 20 8"/>
+  <line x1="16" y1="13" x2="8" y2="13"/>
+  <line x1="16" y1="17" x2="8" y2="17"/>
+  <line x1="10" y1="9" x2="8" y2="9"/>
+</svg>`;
+
+const builderIcon = new LabIcon({
+  name: 'jupyter-bioacoustic:config-builder-icon',
+  svgstr: builderIconSvg,
+});
+
+
+//
+// Types
+//
+/** Globals shared with the annotator plugin and the notebook-side Python. */
+interface BioacousticWindow {
+  _bioacousticOpenConfigBuilder?: (divId: string) => void;
+  _bioacousticOpenWithKernel?: (kernel: Kernel.IKernelConnection | null, inline: boolean) => void;
+}
+
+
+//
+// Public
+//
+export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
+  id: 'jupyter-bioacoustic:config-builder',
+  autoStart: true,
+  requires: [ICommandPalette, INotebookTracker],
+  optional: [IDefaultFileBrowser],
+  activate: (
+    app: JupyterFrontEnd,
+    palette: ICommandPalette,
+    tracker: INotebookTracker,
+    fileBrowser: IDefaultFileBrowser | null,
+  ) => {
+    (window as BioacousticWindow)._bioacousticOpenConfigBuilder = (divId: string) => {
+      const container = document.getElementById(divId);
+      if (!container) return;
+      const widget = new ConfigBuilderWidget({ session: notebookSession(tracker, container) });
+      widget.node.style.cssText += `position:absolute;inset:0;`;
+      suppressNotebookShortcuts(widget.node);
+      Widget.attach(widget, container);
+    };
+
+    app.commands.addCommand(COMMAND_ID, {
+      label: 'Bioacoustic Config Builder',
+      icon: builderIcon,
+      execute: () => _openBuilderCommand(app, tracker, fileBrowser),
+    });
+
+    palette.addItem({ command: COMMAND_ID, category: 'Bioacoustic' });
+  }
+};
+
+
+//
+// Internal
+//
 let _builderCounter = 0;
 
+
+/** The builder command: start a kernel, initialise the builder there, open the widget. */
+async function _openBuilderCommand(
+  app: JupyterFrontEnd, tracker: INotebookTracker, fileBrowser: IDefaultFileBrowser | null,
+): Promise<void> {
+  const acquired = await acquireKernel(app, tracker);
+  if (!acquired) {
+    void showDialog({ title: 'Error', body: 'Failed to start a Python kernel.' });
+    return;
+  }
+  const { kernel, owns: ownsKernel } = acquired;
+
+  const browserPath = fileBrowser?.model.path || '';
+  const serverRoot = PageConfig.getOption('serverRoot');
+  const cwd = browserPath
+    ? `${serverRoot}/${browserPath}`
+    : serverRoot;
+  const error = await execInKernel(kernel, initBuilder(cwd));
+
+  if (error) {
+    if (ownsKernel) kernel.shutdown().catch(() => {});
+    void showDialog({ title: 'Config Builder Error', body: error });
+    return;
+  }
+
+  const widget = new ConfigBuilderWidget(acquired.source, ownsKernel, cwd, browserPath);
+  app.shell.add(widget, 'main');
+  app.shell.activateById(widget.id);
+}
+
+
+/** The builder widget: header (title, cwd, status), ConfigPanel, bottom action bar. */
 class ConfigBuilderWidget extends Widget {
   private _kernelBridge: KernelBridge;
-  private _ownedKernel: any;
+  private _ownedKernel: Kernel.IKernelConnection | null;
   private _panel!: ConfigPanel;
   private _titleEl!: HTMLSpanElement;
   private _browserPath: string;
@@ -164,11 +270,11 @@ class ConfigBuilderWidget extends Widget {
     if (!savedPath) return;
     try {
       await this._panel.kernel.exec(setupAnnotatorFromProject(savedPath));
-    } catch (e: any) {
-      void showDialog({ title: 'Annotator Error', body: String(e.message ?? e) });
+    } catch (e: unknown) {
+      void showDialog({ title: 'Annotator Error', body: errorMessage(e) });
       return;
     }
-    const openFn = (window as any)._bioacousticOpenWithKernel;
+    const openFn = (window as BioacousticWindow)._bioacousticOpenWithKernel;
     if (openFn) {
       openFn(this._kernelBridge.activeKernel, false);
     }
@@ -189,76 +295,3 @@ class ConfigBuilderWidget extends Widget {
     this.dispose();
   }
 }
-
-const builderIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-  <polyline points="14 2 14 8 20 8"/>
-  <line x1="16" y1="13" x2="8" y2="13"/>
-  <line x1="16" y1="17" x2="8" y2="17"/>
-  <line x1="10" y1="9" x2="8" y2="9"/>
-</svg>`;
-
-const builderIcon = new LabIcon({
-  name: 'jupyter-bioacoustic:config-builder-icon',
-  svgstr: builderIconSvg,
-});
-
-export const configBuilderPlugin: JupyterFrontEndPlugin<void> = {
-  id: 'jupyter-bioacoustic:config-builder',
-  autoStart: true,
-  requires: [ICommandPalette, INotebookTracker],
-  optional: [IDefaultFileBrowser],
-  activate: (
-    app: JupyterFrontEnd,
-    palette: ICommandPalette,
-    tracker: INotebookTracker,
-    fileBrowser: IDefaultFileBrowser | null,
-  ) => {
-    (window as any)._bioacousticOpenConfigBuilder = (divId: string) => {
-      const container = document.getElementById(divId);
-      if (!container) return;
-      const widget = new ConfigBuilderWidget({ session: notebookSession(tracker, container) });
-      widget.node.style.cssText += `position:absolute;inset:0;`;
-      suppressNotebookShortcuts(widget.node);
-      Widget.attach(widget, container);
-    };
-
-    app.commands.addCommand('bioacoustic:open-config-builder', {
-      label: 'Bioacoustic Config Builder',
-      icon: builderIcon,
-      execute: async () => {
-        const acquired = await acquireKernel(app, tracker);
-        if (!acquired) {
-          void showDialog({ title: 'Error', body: 'Failed to start a Python kernel.' });
-          return;
-        }
-        const { kernel, owns: ownsKernel } = acquired;
-
-        const browserPath = fileBrowser?.model.path || '';
-        const serverRoot = PageConfig.getOption('serverRoot');
-        const cwd = browserPath
-          ? `${serverRoot}/${browserPath}`
-          : serverRoot;
-        const error = await execInKernel(kernel, [
-          `import os as _os`,
-          `_os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,
-          `from jupyter_bioacoustic.config_builder import ConfigBuilder`,
-          `_cb = ConfigBuilder()`,
-          `_cb.setup()`,
-        ].join('\n'));
-
-        if (error) {
-          if (ownsKernel) kernel.shutdown().catch(() => {});
-          void showDialog({ title: 'Config Builder Error', body: error });
-          return;
-        }
-
-        const widget = new ConfigBuilderWidget(acquired.source, ownsKernel, cwd, browserPath);
-        app.shell.add(widget, 'main');
-        app.shell.activateById(widget.id);
-      }
-    });
-
-    palette.addItem({ command: 'bioacoustic:open-config-builder', category: 'Bioacoustic' });
-  }
-};

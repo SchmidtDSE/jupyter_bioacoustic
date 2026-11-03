@@ -11,7 +11,7 @@ import {
   resolveOutputTemplates,
 } from '../python';
 import {
-  extractJson, ensureSetup, updateSection, listFiles, checkFileExists,
+  extractJson, ensureSetup, initBuilder, updateSection, listFiles, checkFileExists,
   updateConfigFromYaml, saveAll, saveSingleFile,
   createDirectory, readColumns, setSectionTarget,
   validateConfig, loadConfig, getSummary,
@@ -96,6 +96,15 @@ describe('ensureSetup', () => {
   test('escapes cwd path', () => {
     const code = ensureSetup("path's/dir");
     expect(code).toContain("\\'s");
+  });
+});
+
+describe('initBuilder', () => {
+  test('chdirs (escaped) and sets up a ConfigBuilder', () => {
+    const code = initBuilder("/my/proj's");
+    expect(code).toContain("chdir(_os.path.expanduser('/my/proj\\'s'))");
+    expect(code).toContain('ConfigBuilder()');
+    expect(code).toContain('_cb.setup()');
   });
 });
 

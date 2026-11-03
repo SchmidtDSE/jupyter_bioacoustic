@@ -135,6 +135,23 @@ export function ensureSetup(cwd?: string): string {
 
 
 /**
+ * ``chdir`` to ``cwd`` and create + ``setup()`` a fresh ``ConfigBuilder`` — run once when the
+ * builder command opens, before the widget exists. No JSON reply.
+ *
+ * @param cwd - Directory the builder works in (``~`` expanded).
+ */
+export function initBuilder(cwd: string): string {
+  return [
+    `import os as _os`,
+    `_os.chdir(_os.path.expanduser('${escPy(cwd)}'))`,
+    `from jupyter_bioacoustic.config_builder import ConfigBuilder`,
+    `_cb = ConfigBuilder()`,
+    `_cb.setup()`,
+  ].join('\n');
+}
+
+
+/**
  * ``update_section(section, data, target=...)``. Reply: ``BuilderState``.
  *
  * @param section - Builder section name (``data``, ``app``, ``project``, ...).
