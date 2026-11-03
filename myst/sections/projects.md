@@ -29,7 +29,7 @@ ba3 = BioacousticAnnotator(
     config='path/to/config.yaml')
 ```
 
-Here `ba1` and `ba2` use a single configuration. `ba3` also uses the same configuration, however we have overwritten the `display_columns` contained in `path/to/config.yaml`.
+Here `ba1` and `ba2` use a single configuration. `ba3` also uses the same configuration, however we have overwritten the `info_card_title` contained in `path/to/config.yaml`.
 
 Alternatively `projects` we could have done this:
 
@@ -88,6 +88,7 @@ project_name: My Review
 data: data/detections.csv
 audio: audio_path
 audio_prefix: audio/
+data_index_column: id      # required whenever there is a form
 info_card_title: '[[common_name]]'
 display_columns: [common_name, confidence, start_time]
 output: outputs/my-reviews.csv
@@ -96,11 +97,12 @@ form_config:
     title:
         value: REVIEW
         progress_tracker: true
-    select:
-        label: Is Valid
-        column: is_valid
-        required: true
-        items: ['yes', 'no']
+    form:
+        - select:
+              label: Is Valid
+              column: is_valid
+              required: true
+              items: ['yes', 'no']
 ```
 
 
@@ -147,7 +149,7 @@ audio: s3://my-bucket/recordings/
 output: outputs/reviews.csv
 ```
 
-The [Config Builder](config-builder) can help create and manage this multi-file structure interactively.
+The [Config Builder](#config-builder) can help create and manage this multi-file structure interactively.
 
 
 ## Opening a Project
