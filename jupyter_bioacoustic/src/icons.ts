@@ -1,5 +1,6 @@
 /**
- * SVG icons used by the annotator plugin (tab / launcher icon and launcher-dialog tiles).
+ * SVG icons shared by the annotator and config-builder plugins (tab / launcher icons and the
+ * launcher-dialog tiles): one copy of each.
  *
  * All icons are 24x24 line drawings using ``currentColor``, so they take the text color of
  * the element they are placed in.
@@ -38,6 +39,12 @@ export const builderIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="
     <line x1="16" y1="17" x2="8" y2="17"/>
     <line x1="10" y1="9" x2="8" y2="9"/>
   </svg>`;
+
+/** The config builder icon as a JupyterLab ``LabIcon`` (palette, launcher). */
+export const builderIcon = new LabIcon({
+  name: 'jupyter-bioacoustic:config-builder-icon',
+  svgstr: builderIconSvg,
+});
 
 /** The annotator icon as a JupyterLab ``LabIcon`` (tabs, launcher, palette). */
 export const bioacousticIcon = new LabIcon({
