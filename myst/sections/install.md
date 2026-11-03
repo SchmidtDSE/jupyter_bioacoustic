@@ -172,7 +172,6 @@ The tray menu's **"Page blank or crashed? — Help"** item shows these same step
 - **Python** ≥ 3.9
 - **JupyterLab** ≥ 4.0
 - **Optional packages**, depending on your sources:
-  - `requests` — `https://` audio, URL data and `api::` endpoints
   - `duckdb` — SQL (`SELECT ...`) data
   - `google-cloud-storage` — `gs://` audio, data and sync (`pip install "jupyter-bioacoustic[gcs]"`)
 
