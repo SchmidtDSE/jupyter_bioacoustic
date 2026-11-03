@@ -27,31 +27,17 @@ _A JupyterLab plugin for reviewing and annotating bioacoustic audio clips._
 pip install jupyter-bioacoustic
 ```
 
-### ffmpeg (recommended)
-
-`ffmpeg` (which includes `ffprobe`) enables **partial byte-range downloads** for remote audio (S3, HTTPS, GCS), so multi-hour recordings load in seconds. It is **not** a pip dependency — install it separately. Without it, remote files are fully downloaded and cached on first access (slower, but everything still works).
+Optional extras:
 
 ```bash
-# macOS (Homebrew)
-brew install ffmpeg
-
-# Linux — Debian/Ubuntu
-sudo apt install ffmpeg
-# Linux — Fedora
-sudo dnf install ffmpeg
-
-# Windows (winget) — or: choco install ffmpeg
-winget install ffmpeg
+pip install "jupyter-bioacoustic[gcs]"    # gs:// audio, data and output sync
 ```
 
-Or pull it into a [pixi](https://pixi.sh) project (cross-platform, no system install) — `pixi add ffmpeg`, or in `pyproject.toml`:
+`https://` audio and data loaded from a URL or an `api::` endpoint need `requests`, and SQL (`SELECT ...`) data needs `duckdb`. Install them if you use those sources.
 
-```toml
-[tool.pixi.dependencies]
-ffmpeg = "*"
-```
+### Remote audio
 
-(`conda install -c conda-forge ffmpeg` works too.)
+Remote FLAC and WAV files (`s3://`, `gs://`, `https://`) are read with byte-range requests, so only the clip being played is downloaded and multi-hour recordings open in seconds. Other formats, or a range read that fails, fall back to downloading and caching the whole file. Set `partial_download=False` to always download the whole file. No ffmpeg is needed.
 
 See the [Development wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Development) for building from source.
 
@@ -63,6 +49,7 @@ from jupyter_bioacoustic import BioacousticAnnotator
 BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
+    data_index_column='id',
     info_card_title='[[common_name]]',
     form_config='form-review.yaml',
     output='reviews.csv',
@@ -71,23 +58,23 @@ BioacousticAnnotator(
 
 ![JupyterBioacoustic Plugin](assets/app/inline.png)
 
-See the [Quick Start guide](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Quick-Start) for test files and more examples.
+See the [Getting Started guide](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Getting-Started) for test files and more examples.
 
 ## Features
 
 - **Player / Visualizer** — browse audio clips with interactive spectrograms and other visualizations (linear, mel, log-frequency, or custom)
 - **Configurable Forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, and conditional sections
-- **Annotation Tools** — time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
+- **Annotation Tools** — fixed-duration windows, time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
 - **Built-In & Custom Visualizations** — built-in linear and mel spectrograms, log-frequency, bandpass and waveform visualizations. Easily integrate third-party libraries (OpenSoundscape, librosa, SciPy, ...) or write your own
 - **Zoom and Capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
-- **Flexible data sources** — CSV, Parquet, SQL (DuckDB), API endpoints, S3 byte-range reads
+- **Flexible data sources** — CSV, Parquet, JSON, SQL (DuckDB), API endpoints; remote FLAC/WAV audio read by byte range
 - **Syncing** — sync local annotation files to remote storage such as S3 and GCS
 
 ## Documentation
 
 Full documentation is on the [wiki](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki):
 
-- [Quick Start](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Quick-Start) — Installation and first usage
+- [Getting Started](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Getting-Started) — Installation and first usage
 - [Configuration](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration) — All parameters, config files, capture, S3, kwargs
 - [Configurable Forms](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms) — YAML form layout reference
 - [Annotation Tools](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Annotation-Tools) — Spectrogram interaction tools
@@ -99,7 +86,7 @@ Full documentation is on the [wiki](https://github.com/SchmidtDSE/jupyter_bioaco
 
 ## Usage 
 
-The `BioacousticAnnotator` class has an extremely simple interface; having a few methods (`.open(inline=True)`, `.output(force=False)`, `.validate()`) and one property (`.source`).
+The `BioacousticAnnotator` class has a small interface. The main methods are `.open(inline=True)`, `.output(force=False)` and `.validate()`, and `.source` holds the input data. See the [API Reference](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/API-Reference) for the rest (`.sync()`, `.describe()`, `.configuration`, ...).
 
 ```python
 from jupyter_bioacoustic import BioacousticAnnotator
@@ -134,6 +121,7 @@ Consider the example above:
 BioacousticAnnotator(
     data='detections-test.csv',
     audio='test.flac',
+    data_index_column='id',
     info_card_title='[[common_name]]',
     form_config='form-review.yaml',
     output='reviews.csv',
@@ -152,6 +140,7 @@ BioacousticAnnotator(
 ```yaml
 # config/review-configuration.yaml
 audio: 'test.flac'
+data_index_column: 'id'
 info_card_title: '[[common_name]]'
 form_config: 'form-review.yaml'
 output: 'reviews.csv'
@@ -164,6 +153,7 @@ See [Configuration](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Confi
 ```yaml
 # BioacousticAnnotator Args
 audio: "audio_path"    # column name — auto-detected (no slashes or dots)
+data_index_column: id  # required whenever there is a form
 display_columns: ["common_name", "confidence", "start_time", "county", "audio_path"]
 info_card_title: '[[common_name]]'
 info_card_text: '[[confidence]] | [[county]] | [[start_time]]'
@@ -173,32 +163,26 @@ capture_dir: 'spectrograms'
 
 # Form
 form_config:
-    title:
-      value: 'REVIEW CLIP'
-      progress_tracker: true
-    select:
-      label: Is Valid
-      column: is_valid
-      required: true
-      items:
-        - label: 'yes'
-          value: 'yes'
-        - label: 'no'
-          value: 'no'
-          form: correction_form
-    textbox:
-      label: notes
-      column: notes
-    annotation:
-      start_time:
-        label: Start
-        column: start_time
-        source_value: start_time
-      end_time:
-        label: End
-        column: end_time
-        source_value: end_time
-      tools: start_end_time_select
+  title:
+    value: 'REVIEW CLIP'
+    progress_tracker: true
+  form:
+    - select:
+        label: Is Valid
+        column: is_valid
+        required: true
+        items:
+          - label: 'yes'
+            value: 'yes'
+          - label: 'no'
+            value: 'no'
+            form: correction_form   # shown when "no" is selected
+    - textbox:
+        label: notes
+        column: notes
+  annotation:
+    tools: start_end_time_select
+  dynamic_forms:
     correction_form:
       - select:
           label: verified name
@@ -214,27 +198,36 @@ form_config:
             - low
             - medium
             - high
-    submission_buttons:
-      line: true
-      next:
-        label: Skip
-      submit:
-        label: Verify
+  submission_buttons:
+    line: true
+    next:
+      label: Skip
+    submit:
+      label: Verify
 ```
 
 ### BioacousticAnnotator Parameters
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `data` | DataFrame / str / dict | *required** | Input data. String: file path, URL, `api::url`, or SQL (`SELECT ...`). Dict: `{path\|url\|uri\|api\|sql, secrets, columns}`. |
+| `data` | DataFrame / str / dict | *required** | Input data. String: file path (CSV, Parquet, JSON), URL, `api::url`, or SQL (`SELECT ...`). Dict: `{value(+source_type)\|path\|url\|uri\|api\|sql, secrets, columns, index_column, start_time, end_time, duration}`. |
+| `data_source_type` | str | `None` | How to read `data_value`: `path`, `url`, `sql` or `api`. Omitted ⇒ auto-detect. |
+| `data_value` | str | `None` | Data source string, read according to `data_source_type`. |
 | `data_path` | str | `None` | Explicit file path for data (overrides `data` source). |
 | `data_url` | str | `None` | Explicit URL for data (overrides `data` source). |
 | `data_sql` | str | `None` | Explicit SQL query for data (overrides `data` source). |
 | `data_api` | str | `None` | Explicit API endpoint for data (overrides `data` source). |
+| `data_index_column` | str | `None` | Column that uniquely identifies each input row. **Required when a form is configured.** |
+| `data_start_time` | str | `'start_time'` | Column with clip start times (seconds). |
+| `data_end_time` | str | `'end_time'` | Column with clip end times (seconds). |
+| `data_duration` | str / number | `None` | Column, or a fixed number of seconds, for clip duration (instead of `data_end_time`). |
 | `data_secrets` | dict, list, or `false` | `None` | Auth for data loading. `{key, value}` pairs. Value: `env:VAR`, `dialog`, or literal. Set to `false` to opt out of global `secrets` fallback. |
 | `display_columns` | list | `[]` | Columns for the clip table. |
-| `audio` | str or dict | *required** | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{path\|url\|uri\|column\|sql\|api\|src, prefix, suffix, fallback, secrets, property, response_index}`. |
-| `audio_src` | str | `None` | Audio source string (auto-detected as path, URL, or column name). Same as passing a bare string to `audio`. |
+| `sort` | str | `None` | Column to sort the clip table by (`None` keeps input order). |
+| `sort_order` | str | `'asc'` | `'asc'` or `'desc'`. |
+| `audio` | str or dict | *required** | Audio source. String: local path, URL/URI, or column name (auto-detected). Dict: `{value(+source_type)\|path\|url\|uri\|column\|sql\|api, prefix, suffix, fallback, secrets, property, response_index}`. |
+| `audio_source_type` | str | `None` | How to read `audio_value`: `path`, `url`, `uri`, `column`, `sql` or `api`. Omitted ⇒ auto-detect. |
+| `audio_value` | str | `None` | Audio source string, read according to `audio_source_type`. |
 | `audio_path` | str | `None` | Explicit local file path for audio (overrides `audio` source). |
 | `audio_url` | str | `None` | Explicit URL for audio (overrides `audio` source). |
 | `audio_uri` | str | `None` | Alias for `audio_url`. |
@@ -248,16 +241,20 @@ form_config:
 | `audio_property` | str | `None` | Field/column to extract from SQL/API response as the audio path. |
 | `audio_response_index` | int | `1` | 1-based row index for SQL/API response (1 = first row). |
 | `secrets` | dict or list | `None` | Global auth — fallback for `data_secrets`, `audio_secrets`, and `output_secrets`. Each can opt out by setting to `false`. |
-| `output` | str or dict | `''` | Output file path or sync config dict. String: local path. Dict: `{path, uri/url, sync_button, recursive, secrets}`. See [Output & Sync](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#output-parameters). |
+| `output` | str or dict | `''` | Output file path or sync config dict. String: local path. Dict: `{path, uri/url, sync_button, recursive, secrets, index_column}`. Without one, a form writes to `outputs/annotation_output-<timestamp>.csv`. See [Output & Sync](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#output-parameters). |
 | `output_path` | str | `None` | Explicit local output file path (overrides `output` string or `output.path` dict key). |
 | `output_url` | str | `None` | Remote sync destination (overrides `output.uri`/`output.url` dict key). |
 | `output_uri` | str | `None` | Alias for `output_url`. |
 | `output_sync_button` | bool / str | `None` | Show a sync button (`true` = "Sync", string = custom label). |
 | `output_recursive` | bool | `None` | Passed to `io.write()` for uploading directories. |
 | `output_secrets` | dict, list, or `false` | `None` | Auth for sync uploads (same format as `data_secrets`). Set to `false` to opt out of global `secrets` fallback. |
-| `project` | str | `None` | Project file path. No other config params allowed when set. |
+| `output_index_column` | str | `data_index_column` | Name of the row-identifier column in the output file. |
+| `project` | str / dict | `None` | Project file path (or dict). No other config params allowed when set. |
 | `project_name` | str | `None` | Widget header title. Auto-derived from project filename if not set. |
+| `config` | str / dict | `None` | Path to a YAML/JSON config file (or dict). |
 | `form_config` | dict / str | `None` | Form layout — YAML file, dict, or `None` for no form. |
+| `description` | str / dict | `None` | Collapsible description panel: markdown text, a `.md`/`.txt` path, or `{title, text, path, open, height}`. |
+| `description_title`, `description_text`, `description_path`, `description_open`, `description_height` | | `None` | The `description` dict keys as separate parameters. |
 | `info_card_title` | str | `''` | Info card title — supports `[[column_name]]` templates. Also used for capture filenames. |
 | `info_card_text` | str | `''` | Info card text — supports `[[column_name]]` templates. |
 | `duplicate_entries` | bool | `False` | Allow multiple submissions per row |
@@ -267,13 +264,16 @@ form_config:
 | `capture_height` | int | `None` | Capture image height in pixels. Defaults to `player_height` if not set. |
 | `spectrogram_resolution` | int / list | `[1000, 2000, 4000]` | Spectrogram width in pixels. List for a dropdown selector, single value for fixed. Prefix an item with `selected::` to set the default (e.g. `[1000, 'selected::2000', 4000]`). |
 | `visualizations` | list | `['linear', 'mel']` | Visualization types for the dropdown. Built-in strings (`'linear'`, `'mel'`, `'log_frequency'`, `'bandpass'`, `'waveform'`) or custom callables. See [Custom Visualizations](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#custom-visualizations). |
-| `partial_download` | bool | `True` | Use byte-range downloads for remote audio (requires ffmpeg/pydub). Set to `False` to always download and cache the full file. |
-| `width` | str | `'100%'` | Inline widget width. |
-| `height` | int | `900` | Inline widget height. |
-| `config` | str | `None` | Path to YAML/JSON config file |
-| `**kwargs` | | | Fixed columns in every output row |
+| `partial_download` | bool | `True` | Read only the clip's bytes from remote FLAC/WAV audio. Set to `False` to always download and cache the full file. |
+| `width` | str / int | `'100%'` | Widget width (pixels or a percentage string). |
+| `clip_table_height` | int | `175` | Clip table height in pixels. |
+| `player_height` | int | `260` | Player/spectrogram height in pixels. |
+| `info_card_height` | int | `34` | Info card height in pixels. |
+| `form_panel_height` | int | `175` | Form panel height in pixels. |
+| `session_args` | list / bool | `None` | Which `**kwargs` are allowed: a list of names, `True` (all) or `False` (none). |
+| `**kwargs` | | | Fixed columns in every output row. A name close to a real parameter (e.g. `sort_ordr`) gives a "Did you mean" warning. |
 
-> \* `data` is not required if `data_path`, `data_url`, `data_sql`, or `data_api` is provided. `audio` is not required if `audio_src`, `audio_path`, `audio_url`, `audio_uri`, `audio_column`, `audio_sql`, or `audio_api` is provided.
+> \* `data` is not required if `data_value`, `data_path`, `data_url`, `data_sql`, or `data_api` is provided. `audio` is not required if `audio_value`, `audio_path`, `audio_url`, `audio_uri`, `audio_column`, `audio_sql`, or `audio_api` is provided.
 
 ## Demo
 
@@ -325,7 +325,7 @@ curl -o audio/test3.flac https://dse-soundhub.s3.us-west-2.amazonaws.com/public/
 
 ### 3. Open a demo notebook
 
-Open `simple-example.ipynb` from the JupyterLab file browser. The notebook demonstrates both review and annotation workflows.
+Open `simple-examples.ipynb` from the JupyterLab file browser. The notebook demonstrates both review and annotation workflows.
 
 ## License
 
