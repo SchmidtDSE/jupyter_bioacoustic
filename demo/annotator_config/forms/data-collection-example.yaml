@@ -1,0 +1,38 @@
+title:
+  value: ANNOTATE CLIP
+  progress_tracker: true
+pass_value:
+  source_column: id
+  column: detection_id
+annotation:
+  tools:
+    - multibox
+    - bounding_box
+    - start_end_time_select
+    - time_select
+    - fixed_duration:
+        min: 0.5
+        step: 0.5
+        max: 10
+        initial_window: 3
+  form: species_form
+dynamic_forms:
+  species_form:
+    - select:
+        label: species
+        column: annotated_common_name
+        required: true
+        items:
+          path: data/species_counts.N-dse.csv
+          value: common_name
+          filter_box: true
+          custom_value: true
+          not_available:
+            label: Unknown Species
+            value: unknown
+submission_buttons:
+  line: true
+  next:
+    label: Skip
+  submit:
+    label: Submit
