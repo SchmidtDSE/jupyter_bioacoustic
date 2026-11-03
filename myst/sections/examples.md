@@ -15,11 +15,11 @@ For more advanced configurations it is suggested that to use a configurtion file
 
 Here's a basic example:
 
-```{literalinclude} ../../demo/config/simple-examples-3c2.yaml
+```{literalinclude} ../../demo/annotator_config/config/simple-examples-3.yaml
 :language: yaml
 ```    
 
-We have not included the data and audio parameters. Although they could be included, by keeping them external to the config the user can use the same configuration files across projects and end-users. 
+The data file itself is not in the config: it is set in the project file (`annotator_config/projects/simple-examples-3.yaml`) or passed in the notebook, so the same config can be reused across datasets and users. Because this config has a form, it sets the input's index column (`data: {index_column: id}`). 
 
 ---
 
@@ -32,21 +32,40 @@ Here we create a "species" select list populated with values from a csv:
 :class: bordered
 ```
 
-```{literalinclude} ../../demo/config/forms/simple-examples-3a.yaml
-:language: yaml
-```    
+```yaml
+form:
+  - select:
+      label: species
+      column: common_name
+      required: true
+      items:
+        path: data/species_counts.N-dse.csv
+        value: common_name
+```
 
 Additional functionality is easily added.  The config below, again creates a "species" select list but now adds a _filter box_, an _Unknown-option_ and the ability to add _custom-values_:
 
-```{literalinclude} ../../demo/config/forms/simple-examples-3a-search.yaml
-:language: yaml
+```yaml
+form:
+  - select:
+      label: species
+      column: common_name
+      required: true
+      items:
+        path: data/species_counts.N-dse.csv
+        value: common_name
+        filter_box: true
+        custom_value: true
+        not_available:
+          label: Unknown Species
+          value: unknown
 ```
 
 ---
 
 The following configuration below adds a custom title and a progress-tracker, passes the source _id_ to the output dataset with name _detection\_id_, and asks the user if the model has correctly identified the species.
 
-```{literalinclude} ../../demo/config/forms/simple-examples-3c2.yaml
+```{literalinclude} ../../demo/annotator_config/forms/simple-examples-3.yaml
 :language: yaml
 ```    
 
@@ -60,6 +79,6 @@ If the response is no the rejected_form allows the user to select the correct sp
 :class: bordered
 ```
 
-Additional examples are given in the [Customizable Forms](customizable-forms) section.
+Additional examples are given in the [Customizable Forms](#form-examples) section.
 
 
