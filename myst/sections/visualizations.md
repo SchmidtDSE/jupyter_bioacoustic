@@ -133,4 +133,4 @@ Any audio library can be wrapped as a custom visualization. The demo notebooks s
 
 ---
 
-See the [Custom Visualizations](../demo/custom-visualizations.ipynb) and [Third-Party Libraries](../demo/custom-visualizations-2.ipynb) notebooks for complete examples.
+See the [Visualizations](../../demo/visualizations.ipynb) and [3rd Party Visualizations](../../demo/visualizations-3rd_party.ipynb) notebooks for complete examples.
