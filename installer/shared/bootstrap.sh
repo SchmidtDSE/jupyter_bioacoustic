@@ -15,7 +15,7 @@
 #
 # Design notes:
 #  - pixi is BUNDLED (copied from PAYLOAD), pinned + checksum-verified — no network fetch of pixi.
-#  - the env is installed from a bundled pixi.lock → reproducible first run.
+#  - the env is installed from a bundled pixi.lock if the payload has one (none ships yet).
 #  - updates are CHECK-AND-PROMPT, throttled, constraint-bounded (see maybe_update).
 set -euo pipefail
 
