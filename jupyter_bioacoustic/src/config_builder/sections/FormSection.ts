@@ -1,34 +1,70 @@
 /**
- * FormSection
+ * Form section: builds the form YAML — element cards (add bar, drag / move / remove), dynamic
+ * forms, and the round trip to YAML. The fields inside each card are built in formCards.ts
+ * (with formAnnotationTools.ts and formSelectItems.ts); YAML conversion is formSerialization.ts.
  *
  * License: BSD 3-Clause
  */
+//
+// Imports
+//
 import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
-import { numberOr } from '../../util';
+import { makeButton, makeInput, makeRow } from '../dom';
+import {
+  CardConfig, ElementType, deserializeElement, serializeElement,
+} from '../formSerialization';
+import { FORM_ADD_HINT } from '../text';
 import { CollapsibleSection } from './CollapsibleSection';
-import { FORM_ADD_HINT, FORM_ADD_ITEMS_HINT } from '../text';
-import { ElementType, deserializeElement, serializeElement } from '../formSerialization';
+import { FormCardContext, buildElementFields, defaultElementConfig } from './formCards';
 
-const ALL_ANNOTATION_TOOLS = [
-  'time_select', 'start_end_time_select', 'bounding_box', 'multibox', 'fixed_duration',
+
+//
+// Constants
+//
+/** Element types that make a following title / annotation / ... go into the ``form:`` list. */
+const USER_INPUT_TYPES: ReadonlySet<string> = new Set(['select', 'textbox', 'checkbox', 'number']);
+/** Element types written as top-level keys when they come before any user input. */
+const TOP_LEVEL_TYPES: ReadonlySet<string> = new Set(['title', 'annotation', 'pass_value', 'fixed_value']);
+/** The add bar's button groups. */
+const ADD_BAR_COLUMNS: ReadonlyArray<{ header: string; rows: ElementType[][] }> = [
+  { header: 'Display', rows: [['title', 'text'], ['line', 'break']] },
+  { header: 'User Input', rows: [['annotation', 'select'], ['textbox', 'checkbox', 'number']] },
+  { header: 'Data', rows: [['pass_value'], ['fixed_value']] },
+  { header: 'Navigation', rows: [['submission_buttons']] },
 ];
 
+
+//
+// Types
+//
+/** One element card and the config it edits. */
 interface FormElement {
   type: ElementType;
-  config: Record<string, any>;
+  config: CardConfig;
   el: HTMLDivElement;
 }
 
-interface DynForm {
-  name: string;
+/** A list of cards (the main form, or one dynamic form). */
+interface CardList {
   elements: FormElement[];
-  el: HTMLDivElement;
   listEl: HTMLDivElement;
 }
 
+/** A named dynamic form. */
+interface DynForm extends CardList {
+  name: string;
+  el: HTMLDivElement;
+}
+
+
+//
+// Public
+//
 export class FormSection extends CollapsibleSection {
+  /** A card wants a file picked (``callback`` gets the path). */
   readonly browseRequested = new Signal<this, { callback: (path: string) => void }>(this);
+  /** A card wants a file's columns (``callback`` gets them). */
   readonly columnsRequested = new Signal<this, { path: string; callback: (cols: string[]) => void }>(this);
 
   private _elements: FormElement[] = [];
@@ -37,9 +73,17 @@ export class FormSection extends CollapsibleSection {
   private _addBar: HTMLDivElement;
   private _dynFormsContainer: HTMLDivElement;
   private _dragSrcCard: HTMLDivElement | null = null;
+  private _ctx: FormCardContext;
 
   constructor() {
     super('Form', 'form', false, true, ['project', 'config', 'form']);
+    this._ctx = {
+      changed: () => this._emitChanged(),
+      fieldRow: (label, input) => this._makeFieldRow(label, input),
+      checkbox: (label, checked) => this._makeCheckbox(label, checked),
+      browse: (callback) => this.browseRequested.emit({ callback }),
+      requestColumns: (path, callback) => this.columnsRequested.emit({ path, callback }),
+    };
 
     const hint = document.createElement('div');
     hint.textContent = FORM_ADD_HINT;
@@ -58,1098 +102,17 @@ export class FormSection extends CollapsibleSection {
       `display:flex;flex-direction:column;gap:6px;` +
       `border-top:1px solid ${COLORS.bgSurface0};padding-top:8px;margin-top:4px;`;
 
-    const dynHeader = this._makeRow();
+    const dynHeader = makeRow();
     const dynLabel = document.createElement('div');
     dynLabel.textContent = 'Dynamic Forms';
     dynLabel.style.cssText =
       `font-size:12px;font-weight:700;color:${COLORS.textMuted};letter-spacing:0.5px;`;
-    const addDynBtn = this._makeButton('+ Dynamic Form');
+    const addDynBtn = makeButton('+ Dynamic Form');
     addDynBtn.style.fontSize = '11px';
     addDynBtn.addEventListener('click', () => this._promptAddDynForm());
     dynHeader.append(dynLabel, addDynBtn);
     this._dynFormsContainer.appendChild(dynHeader);
     this._body.appendChild(this._dynFormsContainer);
-  }
-
-  private _makeAddBar(onAdd?: (type: ElementType) => void): HTMLDivElement {
-    const bar = document.createElement('div');
-    bar.style.cssText =
-      `display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:2px 8px;padding:6px 0;` +
-      `border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
-    const columns: { header: string; rows: ElementType[][] }[] = [
-      { header: 'Display', rows: [['title', 'text'], ['line', 'break']] },
-      { header: 'User Input', rows: [['annotation', 'select'], ['textbox', 'checkbox', 'number']] },
-      { header: 'Data', rows: [['pass_value'], ['fixed_value']] },
-      { header: 'Navigation', rows: [['submission_buttons']] },
-    ];
-    const mkBtn = (t: ElementType) => {
-      const btn = this._makeButton(`+ ${t}`);
-      btn.style.fontSize = '11px';
-      btn.style.padding = '3px 8px';
-      btn.addEventListener('click', () => {
-        this.fieldFocused.emit(t);
-        if (onAdd) { onAdd(t); } else { this._addElement(t); }
-      });
-      btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
-      return btn;
-    };
-    for (const col of columns) {
-      const hdr = document.createElement('div');
-      hdr.textContent = col.header;
-      hdr.style.cssText =
-        `font-size:10px;font-weight:700;color:${COLORS.textMuted};text-transform:uppercase;` +
-        `letter-spacing:0.5px;padding-bottom:2px;`;
-      bar.appendChild(hdr);
-    }
-    for (const col of columns) {
-      const cell = document.createElement('div');
-      cell.style.cssText = `display:flex;flex-direction:column;gap:2px;`;
-      for (const row of col.rows) {
-        const rowEl = document.createElement('div');
-        rowEl.style.cssText = `display:flex;gap:3px;`;
-        for (const t of row) {
-          const b = mkBtn(t);
-          b.style.flex = '1';
-          b.style.minWidth = '0';
-          rowEl.appendChild(b);
-        }
-        cell.appendChild(rowEl);
-      }
-      bar.appendChild(cell);
-    }
-    return bar;
-  }
-
-  private _addElement(type: ElementType, config?: Record<string, any>, target?: { elements: FormElement[]; listEl: HTMLDivElement }): void {
-    const cfg = config || this._defaultConfig(type);
-    const tgt = target || { elements: this._elements, listEl: this._listEl };
-    const card = this._buildElementCard(type, cfg, tgt);
-    const fe: FormElement = { type, config: cfg, el: card };
-    tgt.elements.push(fe);
-    tgt.listEl.appendChild(card);
-    this._emitChanged();
-  }
-
-  private _defaultConfig(type: ElementType): Record<string, any> {
-    switch (type) {
-      case 'title': return { value: 'REVIEW' };
-      case 'select': return { label: '', column: '', required: false, items: [] };
-      case 'textbox': return { label: '', column: '', multiline: false };
-      case 'checkbox': return { label: '', column: '' };
-      case 'number': return { label: '', column: '', min: 0, max: 1, step: 0.1 };
-      case 'annotation': return { tools: ['start_end_time_select'] };
-      case 'pass_value': return { source_column: '', column: '' };
-      case 'fixed_value': return { column: '', value: '' };
-      case 'submission_buttons': return { show_icon: true, submit: true, next: false, previous: false };
-      case 'break': return {};
-      case 'line': return {};
-      case 'text': return { value: '' };
-      default: return {};
-    }
-  }
-
-  private _buildElementCard(type: ElementType, cfg: Record<string, any>, target: { elements: FormElement[]; listEl: HTMLDivElement }): HTMLDivElement {
-    const card = document.createElement('div');
-    card.draggable = true;
-    card.style.cssText =
-      `background:${COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
-      `display:flex;flex-direction:column;gap:5px;cursor:grab;` +
-      `border:1px solid transparent;`;
-    card.addEventListener('focusin', () => this.fieldFocused.emit(type));
-    card.addEventListener('click', () => this.fieldFocused.emit(type));
-
-    card.addEventListener('dragstart', (e) => {
-      this._dragSrcCard = card;
-      card.style.opacity = '0.4';
-      e.dataTransfer!.effectAllowed = 'move';
-    });
-    card.addEventListener('dragend', () => {
-      card.style.opacity = '1';
-      this._dragSrcCard = null;
-    });
-    card.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.dataTransfer!.dropEffect = 'move';
-      card.style.borderColor = COLORS.blue;
-    });
-    card.addEventListener('dragleave', () => {
-      card.style.borderColor = 'transparent';
-    });
-    card.addEventListener('drop', (e) => {
-      e.preventDefault();
-      card.style.borderColor = 'transparent';
-      if (!this._dragSrcCard || this._dragSrcCard === card) return;
-      const srcIdx = target.elements.findIndex(el => el.el === this._dragSrcCard);
-      const dstIdx = target.elements.findIndex(el => el.el === card);
-      if (srcIdx < 0 || dstIdx < 0) return;
-      const [moved] = target.elements.splice(srcIdx, 1);
-      target.elements.splice(dstIdx, 0, moved);
-      target.listEl.innerHTML = '';
-      for (const el of target.elements) target.listEl.appendChild(el.el);
-      this._emitChanged();
-    });
-
-    const header = this._makeRow();
-    const typeLabel = document.createElement('span');
-    typeLabel.textContent = type;
-    typeLabel.style.cssText =
-      `font-size:12px;font-weight:700;color:${COLORS.blue};flex:1;`;
-
-    const moveUp = this._makeButton('▲');
-    moveUp.style.cssText += `font-size:10px;padding:2px 6px;`;
-    moveUp.addEventListener('click', () => this._moveElement(card, -1, target));
-
-    const moveDown = this._makeButton('▼');
-    moveDown.style.cssText += `font-size:10px;padding:2px 6px;`;
-    moveDown.addEventListener('click', () => this._moveElement(card, 1, target));
-
-    const removeBtn = this._makeButton('✕');
-    removeBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
-    removeBtn.addEventListener('click', () => this._removeElement(card, target));
-
-    header.append(typeLabel, moveUp, moveDown, removeBtn);
-    card.appendChild(header);
-
-    this._buildElementFields(card, type, cfg);
-    return card;
-  }
-
-  private _buildElementFields(card: HTMLDivElement, type: ElementType, cfg: Record<string, any>): void {
-    switch (type) {
-      case 'title':
-        this._addField(card, cfg, 'value', 'title text', '200px');
-        this._addCheckboxField(card, cfg, 'progress_tracker', 'progress_tracker');
-        break;
-      case 'select':
-        this._addLabelColumnFields(card, cfg);
-        this._addCheckboxField(card, cfg, 'required', 'required');
-        this._addSelectItemsBuilder(card, cfg);
-        break;
-      case 'textbox':
-        this._addLabelColumnFields(card, cfg);
-        this._addCheckboxField(card, cfg, 'multiline', 'multiline');
-        break;
-      case 'checkbox':
-        this._addLabelColumnFields(card, cfg);
-        this._addField(card, cfg, 'checked_value', 'checked_value', '100px');
-        this._addField(card, cfg, 'unchecked_value', 'unchecked_value', '100px');
-        this._addField(card, cfg, 'checked_form', 'checked_form', '150px');
-        this._addField(card, cfg, 'unchecked_form', 'unchecked_form', '150px');
-        break;
-      case 'number':
-        this._addLabelColumnFields(card, cfg);
-        this._addNumField(card, cfg, 'min', 'min', '60px');
-        this._addNumField(card, cfg, 'max', 'max', '60px');
-        this._addNumField(card, cfg, 'step', 'step', '60px');
-        break;
-      case 'annotation': {
-        this._buildAnnotationToolList(card, cfg);
-        this._addField(card, cfg, 'start_time_col', 'start_time col', '120px');
-        this._addField(card, cfg, 'end_time_col', 'end_time col', '120px');
-        this._addField(card, cfg, 'min_freq_col', 'min_freq col', '120px');
-        this._addField(card, cfg, 'max_freq_col', 'max_freq col', '120px');
-        this._addField(card, cfg, 'form', 'form (dynamic)', '150px');
-        break;
-      }
-      case 'pass_value':
-        this._addField(card, cfg, 'source_column', 'source_column', '150px');
-        this._addField(card, cfg, 'column', 'column', '150px');
-        break;
-      case 'fixed_value':
-        this._addField(card, cfg, 'column', 'column', '150px');
-        this._addField(card, cfg, 'value', 'value', '150px');
-        break;
-      case 'submission_buttons': {
-        this._addCheckboxField(card, cfg, 'line', 'line divider');
-        this._addCheckboxField(card, cfg, 'show_icon', 'show icon');
-        this._addInlineButtonField(card, cfg, 'previous', 'previous btn');
-        this._addInlineButtonField(card, cfg, 'next', 'next btn');
-        this._addInlineButtonField(card, cfg, 'submit', 'submit btn');
-        break;
-      }
-      case 'text': {
-        const ta = document.createElement('textarea');
-        ta.rows = 2;
-        ta.style.cssText =
-          `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
-          `border-radius:4px;color:${COLORS.textPrimary};padding:4px 8px;` +
-          `font-size:12px;width:250px;resize:vertical;font-family:inherit;box-sizing:border-box;`;
-        if (cfg.value != null) ta.value = String(cfg.value);
-        ta.addEventListener('input', () => {
-          cfg.value = ta.value;
-          this._emitChanged();
-        });
-        card.appendChild(this._makeFieldRow('text', ta));
-        break;
-      }
-      case 'break':
-      case 'line':
-        break;
-    }
-  }
-
-  private _addLabelColumnFields(card: HTMLDivElement, cfg: Record<string, any>): void {
-    const labelInp = this._makeInput('label', '150px');
-    if (cfg.label != null) labelInp.value = String(cfg.label);
-    const colInp = this._makeInput('column', '150px');
-    if (cfg.column != null) colInp.value = String(cfg.column);
-    const userEditedCol = { value: !!cfg.column };
-    labelInp.addEventListener('input', () => {
-      cfg.label = labelInp.value;
-      if (!userEditedCol.value) {
-        const snake = labelInp.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-        colInp.value = snake;
-        cfg.column = snake;
-      }
-      this._emitChanged();
-    });
-    colInp.addEventListener('input', () => {
-      userEditedCol.value = !!colInp.value;
-      cfg.column = colInp.value;
-      this._emitChanged();
-    });
-    card.appendChild(this._makeFieldRow('label', labelInp));
-    card.appendChild(this._makeFieldRow('column', colInp));
-  }
-
-  private _buildAnnotationToolList(card: HTMLDivElement, cfg: Record<string, any>): void {
-    if (!Array.isArray(cfg.tools)) cfg.tools = ['start_end_time_select'];
-
-    const TOOL_ROW_W = '400px';
-    const FD_INPUT_W = '60px';
-
-    const toolName = (t: any): string =>
-      typeof t === 'string' ? t : (typeof t === 'object' && t ? Object.keys(t)[0] : '');
-
-    const listEl = document.createElement('div');
-    listEl.style.cssText = `display:flex;flex-direction:column;gap:3px;width:${TOOL_ROW_W};`;
-
-    let dragSrcIdx: number | null = null;
-
-    const rebuild = () => {
-      listEl.innerHTML = '';
-      const currentEnabled = new Set((cfg.tools as any[]).map(toolName));
-      const currentDisabled = ALL_ANNOTATION_TOOLS.filter(t => !currentEnabled.has(t));
-
-      (cfg.tools as any[]).forEach((tool: any, idx: number) => {
-        const name = toolName(tool);
-        const row = document.createElement('div');
-        row.draggable = true;
-        row.style.cssText =
-          `display:flex;align-items:center;gap:6px;padding:3px 6px;` +
-          `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
-          `border-radius:4px;font-size:12px;color:${COLORS.textPrimary};cursor:grab;`;
-
-        row.addEventListener('dragstart', (e) => {
-          dragSrcIdx = idx;
-          row.style.opacity = '0.4';
-          e.dataTransfer!.effectAllowed = 'move';
-        });
-        row.addEventListener('dragend', () => {
-          row.style.opacity = '1';
-          dragSrcIdx = null;
-        });
-        row.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          e.dataTransfer!.dropEffect = 'move';
-          row.style.borderColor = COLORS.blue;
-        });
-        row.addEventListener('dragleave', () => {
-          row.style.borderColor = COLORS.bgSurface1;
-        });
-        row.addEventListener('drop', (e) => {
-          e.preventDefault();
-          row.style.borderColor = COLORS.bgSurface1;
-          if (dragSrcIdx == null || dragSrcIdx === idx) return;
-          const [moved] = cfg.tools.splice(dragSrcIdx, 1);
-          cfg.tools.splice(idx, 0, moved);
-          dragSrcIdx = null;
-          this._emitChanged();
-          rebuild();
-        });
-
-        const label = document.createElement('span');
-        label.textContent = name.replace(/_/g, ' ');
-        label.style.cssText = `flex:1;`;
-        row.appendChild(label);
-
-        const removeBtn = document.createElement('button');
-        removeBtn.textContent = '×';
-        removeBtn.title = 'Disable tool';
-        removeBtn.style.cssText =
-          `background:none;border:none;color:${COLORS.red};cursor:pointer;` +
-          `font-size:14px;padding:0 2px;line-height:1;`;
-        removeBtn.addEventListener('click', () => {
-          cfg.tools.splice(idx, 1);
-          this._emitChanged();
-          rebuild();
-        });
-        row.appendChild(removeBtn);
-
-        listEl.appendChild(row);
-
-        if (name === 'fixed_duration') {
-          let fdCfg: Record<string, any>;
-          if (typeof tool === 'object' && tool.fixed_duration != null) {
-            fdCfg = typeof tool.fixed_duration === 'object'
-              ? tool.fixed_duration : { window: tool.fixed_duration };
-          } else {
-            fdCfg = { window: 3 };
-            cfg.tools[idx] = { fixed_duration: fdCfg };
-          }
-
-          const isInitial = fdCfg.initial_window != null;
-
-          const detail = document.createElement('div');
-          detail.style.cssText =
-            `display:flex;gap:6px;flex-wrap:wrap;padding:2px 0 2px 12px;`;
-
-          const mkNum = (
-            key: string, placeholder: string, disabled = false,
-          ): HTMLInputElement => {
-            const inp = this._makeInput(placeholder, FD_INPUT_W);
-            inp.type = 'number';
-            inp.step = 'any';
-            if (fdCfg[key] != null) inp.value = String(fdCfg[key]);
-            inp.disabled = disabled;
-            inp.style.opacity = disabled ? '0.35' : '1';
-            inp.addEventListener('input', () => {
-              const v = parseFloat(inp.value);
-              if (inp.value === '') { delete fdCfg[key]; }
-              else if (!isNaN(v)) { fdCfg[key] = v; }
-              this._emitChanged();
-            });
-            return inp;
-          };
-
-          const valKey = isInitial ? 'initial_window' : 'window';
-          const modeSel = this._makeSelect(['window', 'initial_window'], valKey);
-          modeSel.style.cssText += `width:120px;font-size:11px;`;
-          modeSel.addEventListener('change', () => {
-            const v = fdCfg.window ?? fdCfg.initial_window ?? 3;
-            delete fdCfg.window;
-            delete fdCfg.initial_window;
-            fdCfg[modeSel.value] = v;
-            if (modeSel.value === 'initial_window') {
-              if (fdCfg.step == null) fdCfg.step = 1;
-            } else {
-              delete fdCfg.min;
-              delete fdCfg.max;
-              delete fdCfg.step;
-            }
-            this._emitChanged();
-            rebuild();
-          });
-          detail.appendChild(modeSel);
-          detail.appendChild(mkNum(valKey, valKey));
-          detail.appendChild(mkNum('min', 'min', !isInitial));
-          detail.appendChild(mkNum('max', 'max', !isInitial));
-          detail.appendChild(mkNum('step', 'step', !isInitial));
-
-          listEl.appendChild(detail);
-        }
-      });
-
-      if (currentDisabled.length > 0) {
-        const divider = document.createElement('div');
-        divider.style.cssText =
-          `border-top:1px solid ${COLORS.bgSurface1};margin:4px 0 2px;`;
-        listEl.appendChild(divider);
-
-        for (const name of currentDisabled) {
-          const row = document.createElement('div');
-          row.style.cssText =
-            `display:flex;align-items:center;gap:6px;padding:3px 6px;` +
-            `background:${COLORS.bgCrust};border:1px solid ${COLORS.bgSurface0};` +
-            `border-radius:4px;font-size:12px;color:${COLORS.textMuted};opacity:0.6;`;
-
-          const label = document.createElement('span');
-          label.textContent = name.replace(/_/g, ' ');
-          label.style.cssText = `flex:1;`;
-          row.appendChild(label);
-
-          const addBtn = document.createElement('button');
-          addBtn.textContent = '+';
-          addBtn.title = 'Enable tool';
-          addBtn.style.cssText =
-            `background:none;border:none;color:${COLORS.green};cursor:pointer;` +
-            `font-size:16px;padding:0 2px;line-height:1;font-weight:bold;`;
-          addBtn.addEventListener('click', () => {
-            if (name === 'fixed_duration') {
-              cfg.tools.push({ fixed_duration: { window: 3 } });
-            } else {
-              cfg.tools.push(name);
-            }
-            this._emitChanged();
-            rebuild();
-          });
-          row.appendChild(addBtn);
-
-          listEl.appendChild(row);
-        }
-      }
-    };
-
-    rebuild();
-
-    const container = document.createElement('div');
-    container.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
-    container.appendChild(listEl);
-    card.appendChild(this._makeFieldRow('tools', container));
-  }
-
-  private _addField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string, width: string): void {
-    const inp = this._makeInput(label, width);
-    if (cfg[key] !== undefined && cfg[key] !== null) inp.value = String(cfg[key]);
-    inp.addEventListener('input', () => {
-      cfg[key] = inp.value;
-      this._emitChanged();
-    });
-    card.appendChild(this._makeFieldRow(label, inp));
-  }
-
-  private _addNumField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string, width: string): void {
-    const inp = this._makeInput('', width);
-    inp.type = 'number';
-    inp.step = 'any';
-    if (cfg[key] !== undefined) inp.value = String(cfg[key]);
-    inp.addEventListener('input', () => {
-      const v = parseFloat(inp.value);
-      cfg[key] = isNaN(v) ? undefined : v;
-      this._emitChanged();
-    });
-    card.appendChild(this._makeFieldRow(label, inp));
-  }
-
-  private _addCheckboxField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string): void {
-    const { row, input } = this._makeCheckbox(label, !!cfg[key]);
-    input.addEventListener('change', () => {
-      cfg[key] = input.checked;
-      this._emitChanged();
-    });
-    card.appendChild(row);
-  }
-
-  private _addInlineButtonField(card: HTMLDivElement, cfg: Record<string, any>, key: string, label: string): void {
-    const row = this._makeRow();
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.style.cssText = `accent-color:${COLORS.blue};margin-right:6px;`;
-
-    // Use existing value if defined, otherwise use defaults from _defaultConfig
-    if (cfg[key] === undefined) {
-      const defaults = this._defaultConfig('submission_buttons');
-      cfg[key] = defaults[key] ?? false;
-    }
-    checkbox.checked = !!cfg[key];
-
-    const labelSpan = document.createElement('span');
-    labelSpan.textContent = label;
-    labelSpan.style.cssText = `color:${COLORS.textSubtle};font-size:11px;margin-left:-7px;width:70px;`;
-
-    const textInput = this._makeInput(`custom ${label.replace(' btn', '')} label`, '140px');
-    textInput.style.fontSize = '11px';
-
-    const labelKey = `${key}_label`;
-    if (cfg[labelKey]) textInput.value = cfg[labelKey];
-
-    // Update text input enabled state
-    const updateTextInputState = () => {
-      textInput.disabled = !checkbox.checked;
-      textInput.style.opacity = checkbox.checked ? '1' : '0.5';
-      textInput.style.backgroundColor = checkbox.checked ? COLORS.bgSurface0 : COLORS.bgSurface1;
-    };
-    updateTextInputState();
-
-    // Checkbox change handler
-    checkbox.addEventListener('change', () => {
-      cfg[key] = checkbox.checked;
-      updateTextInputState();
-      this._emitChanged();
-    });
-
-    // Text input change handler
-    textInput.addEventListener('input', () => {
-      cfg[labelKey] = textInput.value;
-      // Auto-check checkbox if user types in text field
-      if (textInput.value && !checkbox.checked) {
-        checkbox.checked = true;
-        cfg[key] = true;
-        updateTextInputState();
-      }
-      this._emitChanged();
-    });
-
-    row.append(checkbox, labelSpan, textInput);
-    card.appendChild(row);
-  }
-
-  private _addSelectItemsBuilder(card: HTMLDivElement, cfg: Record<string, any>): void {
-    const itemsArea = document.createElement('div');
-    itemsArea.style.cssText =
-      `display:flex;flex-direction:column;gap:4px;padding:4px 0;` +
-      `border-top:1px solid ${COLORS.bgSurface1};margin-top:4px;`;
-
-    const modeLabel = document.createElement('span');
-    modeLabel.textContent = 'Items source:';
-    modeLabel.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
-    itemsArea.appendChild(modeLabel);
-
-    const modeSel = this._makeSelect(['add items', 'from file', 'paste values', 'range'], 'add items');
-    itemsArea.appendChild(modeSel);
-
-    const itemsContent = document.createElement('div');
-    itemsContent.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
-    itemsArea.appendChild(itemsContent);
-
-    const detectMode = (): string => {
-      const items = cfg.items;
-      if (items && typeof items === 'object' && !Array.isArray(items)) {
-        if ('path' in items) return 'from file';
-        if ('max' in items) return 'range';
-      }
-      return 'add items';
-    };
-    const mode = detectMode();
-    modeSel.value = mode;
-
-    const buildForMode = (m: string) => {
-      itemsContent.innerHTML = '';
-      if (m === 'add items') {
-        this._buildAddItems(itemsContent, cfg);
-      } else if (m === 'from file') {
-        this._buildFileItems(itemsContent, cfg);
-      } else if (m === 'paste values') {
-        this._buildPasteValues(itemsContent, cfg);
-      } else {
-        this._buildRangeItems(itemsContent, cfg);
-      }
-    };
-    buildForMode(mode);
-
-    modeSel.addEventListener('change', () => buildForMode(modeSel.value));
-    card.appendChild(itemsArea);
-  }
-
-  private _buildAddItems(container: HTMLDivElement, cfg: Record<string, any>): void {
-    if (!Array.isArray(cfg.items)) cfg.items = [];
-
-    const listEl = document.createElement('div');
-    listEl.style.cssText = `display:flex;flex-direction:column;gap:2px;max-height:150px;overflow-y:auto;`;
-
-    const renderList = () => {
-      listEl.innerHTML = '';
-      if (!Array.isArray(cfg.items) || cfg.items.length === 0) {
-        const empty = document.createElement('span');
-        empty.textContent = '(no items)';
-        empty.style.cssText = `color:${COLORS.textSubtle};font-size:11px;font-style:italic;`;
-        listEl.appendChild(empty);
-        return;
-      }
-      for (let i = 0; i < cfg.items.length; i++) {
-        const it = cfg.items[i];
-        const row = document.createElement('div');
-        row.style.cssText = `display:flex;align-items:center;gap:4px;font-size:11px;`;
-
-        const txt = document.createElement('span');
-        txt.style.cssText = `flex:1;color:${COLORS.textPrimary};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
-        if (typeof it === 'string') {
-          txt.textContent = it;
-        } else if (it && typeof it === 'object') {
-          const parts = [];
-          if (it.label) parts.push(it.label);
-          if (it.value && it.value !== it.label) parts.push(`= ${it.value}`);
-          if (it.form) parts.push(`→ ${it.form}`);
-          txt.textContent = parts.join(' ');
-        }
-
-        const rm = this._makeButton('✕');
-        rm.style.cssText += `font-size:9px;padding:1px 4px;color:${COLORS.red};`;
-        rm.addEventListener('click', () => {
-          cfg.items.splice(i, 1);
-          renderList();
-          this._emitChanged();
-        });
-
-        row.append(txt, rm);
-        listEl.appendChild(row);
-      }
-    };
-    renderList();
-    container.appendChild(listEl);
-
-    const addRow = document.createElement('div');
-    addRow.style.cssText = `display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px;`;
-
-    const labelInp = this._makeInput('label', '90px');
-    const valueInp = this._makeInput('value', '90px');
-    const formInp = this._makeInput('form (opt)', '90px');
-
-    const addBtn = this._makeButton('+ Add');
-    addBtn.style.fontSize = '11px';
-    addBtn.addEventListener('click', () => {
-      const label = labelInp.value.trim();
-      const value = valueInp.value.trim();
-      const form = formInp.value.trim();
-      if (!label && !value) return;
-      if (!Array.isArray(cfg.items)) cfg.items = [];
-      const item: Record<string, any> = {};
-      if (label) item.label = label;
-      if (value) item.value = value;
-      else if (label) item.value = label;
-      if (form) item.form = form;
-      if (!item.label && item.value && !form) {
-        cfg.items.push(item.value);
-      } else {
-        if (!item.label) item.label = item.value;
-        cfg.items.push(item);
-      }
-      labelInp.value = '';
-      valueInp.value = '';
-      formInp.value = '';
-      renderList();
-      this._emitChanged();
-    });
-
-    addRow.append(labelInp, valueInp, formInp, addBtn);
-    container.appendChild(addRow);
-
-    const hint = document.createElement('span');
-    hint.textContent = FORM_ADD_ITEMS_HINT;
-    hint.style.cssText = `color:${COLORS.textSubtle};font-size:11px;`;
-    container.appendChild(hint);
-  }
-
-  private _buildPasteValues(container: HTMLDivElement, cfg: Record<string, any>): void {
-    const sepRow = document.createElement('div');
-    sepRow.style.cssText = `display:flex;align-items:center;gap:6px;`;
-
-    const lineDelimCb = document.createElement('input');
-    lineDelimCb.type = 'checkbox';
-    lineDelimCb.style.cssText = `accent-color:${COLORS.blue};`;
-
-    const lineLabel = document.createElement('label');
-    lineLabel.style.cssText = `display:flex;align-items:center;gap:4px;color:${COLORS.textSubtle};font-size:11px;cursor:pointer;`;
-    lineLabel.textContent = 'line delimited';
-    lineLabel.prepend(lineDelimCb);
-
-    const sepLabel = document.createElement('span');
-    sepLabel.textContent = 'separator:';
-    sepLabel.style.cssText = `color:${COLORS.textSubtle};font-size:11px;`;
-
-    const sepInp = this._makeInput(',', '40px');
-    sepInp.style.fontSize = '11px';
-
-    sepRow.append(sepLabel, sepInp, lineLabel);
-    container.appendChild(sepRow);
-
-    const textarea = document.createElement('textarea');
-    textarea.style.cssText =
-      `background:${COLORS.bgSurface0};border:1px solid ${COLORS.bgSurface1};` +
-      `border-radius:4px;color:${COLORS.textPrimary};padding:4px 8px;` +
-      `font-size:11px;width:250px;height:60px;resize:vertical;font-family:monospace;`;
-    textarea.placeholder = 'yes, no, maybe';
-
-    if (Array.isArray(cfg.items)) {
-      textarea.value = cfg.items.map((it: any) => {
-        if (typeof it === 'string') return it;
-        if (it && it.label) return it.label;
-        return String(it);
-      }).join(', ');
-    }
-
-    const parse = () => {
-      const raw = textarea.value;
-      const sep = lineDelimCb.checked ? '\n' : (sepInp.value || ',');
-      const tokens = raw.split(sep);
-      cfg.items = tokens.map(t => t.trim()).filter(Boolean);
-      this._emitChanged();
-    };
-
-    textarea.addEventListener('input', parse);
-    sepInp.addEventListener('input', parse);
-    lineDelimCb.addEventListener('change', () => {
-      sepInp.disabled = lineDelimCb.checked;
-      sepInp.style.opacity = lineDelimCb.checked ? '0.4' : '1';
-      parse();
-    });
-
-    container.appendChild(textarea);
-  }
-
-  private _buildFileItems(container: HTMLDivElement, cfg: Record<string, any>): void {
-    const pathRow = this._makeRow();
-    pathRow.appendChild(this._makeLabel('file path'));
-    const pathInp = this._makeInput('data/categories.csv', '160px');
-    if (cfg.items && typeof cfg.items === 'object' && !Array.isArray(cfg.items) && cfg.items.path) {
-      pathInp.value = cfg.items.path;
-    }
-
-    const valSel = this._makeSelect([], '');
-    valSel.style.width = '150px';
-    valSel.style.display = 'none';
-    valSel.addEventListener('change', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.value = valSel.value;
-      this._emitChanged();
-    });
-
-    const valInput = this._makeInput('value column', '150px');
-    if (cfg.items?.value) valInput.value = cfg.items.value;
-    valInput.addEventListener('input', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.value = valInput.value.trim();
-      this._emitChanged();
-    });
-
-    const lblSel = this._makeSelect(['(none)'], '');
-    lblSel.style.width = '150px';
-    lblSel.style.display = 'none';
-    lblSel.addEventListener('change', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.label = lblSel.value || undefined;
-      this._emitChanged();
-    });
-
-    const lblInput = this._makeInput('label column (optional)', '150px');
-    if (cfg.items?.label) lblInput.value = cfg.items.label;
-    lblInput.addEventListener('input', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.label = lblInput.value.trim() || undefined;
-      this._emitChanged();
-    });
-
-    const populateSelects = (cols: string[]) => {
-      valSel.innerHTML = '';
-      lblSel.innerHTML = '';
-      const noneOpt = document.createElement('option');
-      noneOpt.value = ''; noneOpt.textContent = '(none)';
-      lblSel.appendChild(noneOpt);
-      for (const col of cols) {
-        const o1 = document.createElement('option');
-        o1.value = col; o1.textContent = col;
-        valSel.appendChild(o1);
-        const o2 = document.createElement('option');
-        o2.value = col; o2.textContent = col;
-        lblSel.appendChild(o2);
-      }
-      const pendingVal = valInput.value.trim();
-      if (pendingVal && cols.includes(pendingVal)) valSel.value = pendingVal;
-      else if (cfg.items?.value && cols.includes(cfg.items.value)) valSel.value = cfg.items.value;
-      const pendingLbl = lblInput.value.trim();
-      if (pendingLbl && cols.includes(pendingLbl)) lblSel.value = pendingLbl;
-      else if (cfg.items?.label && cols.includes(cfg.items.label)) lblSel.value = cfg.items.label;
-      valInput.style.display = 'none';
-      valSel.style.display = '';
-      lblInput.style.display = 'none';
-      lblSel.style.display = '';
-    };
-
-    const revertToText = () => {
-      valSel.style.display = 'none';
-      valInput.style.display = '';
-      valInput.value = valSel.value || valInput.value;
-      lblSel.style.display = 'none';
-      lblInput.style.display = '';
-      lblInput.value = lblSel.value || lblInput.value;
-    };
-
-    const loadCols = (path: string) => {
-      if (path && /\.(csv|parquet|json|jsonl|tsv)$/i.test(path)) {
-        this.columnsRequested.emit({ path, callback: populateSelects });
-      } else {
-        revertToText();
-      }
-    };
-
-    pathInp.addEventListener('input', () => {
-      if (!cfg.items || typeof cfg.items !== 'object' || Array.isArray(cfg.items)) cfg.items = {};
-      cfg.items.path = pathInp.value;
-      this._emitChanged();
-    });
-    pathInp.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key !== 'Enter') return;
-      loadCols(pathInp.value.trim());
-    });
-    const browseBtn = this._makeButton('Browse');
-    browseBtn.addEventListener('click', () => {
-      this.browseRequested.emit({
-        callback: (path: string) => {
-          pathInp.value = path;
-          if (!cfg.items || typeof cfg.items !== 'object' || Array.isArray(cfg.items)) cfg.items = {};
-          cfg.items.path = path;
-          this._emitChanged();
-          loadCols(path);
-        }
-      });
-    });
-    pathRow.append(pathInp, browseBtn);
-    container.appendChild(pathRow);
-
-    const hintStyle = `color:${COLORS.textSubtle};font-size:12px;white-space:nowrap;`;
-
-    const valRow = this._makeRow();
-    valRow.appendChild(this._makeLabel('value column'));
-    valRow.append(valInput, valSel);
-    const valHint = document.createElement('span');
-    valHint.style.cssText = hintStyle;
-    valHint.textContent = '| source column whose value is written to output dataset';
-    valRow.appendChild(valHint);
-    container.appendChild(valRow);
-
-    const lblRow = this._makeRow();
-    lblRow.appendChild(this._makeLabel('label column'));
-    lblRow.append(lblInput, lblSel);
-    const lblHint = document.createElement('span');
-    lblHint.style.cssText = hintStyle;
-    lblHint.textContent = '| source column whose value is shown in dropdown (defaults to value column)';
-    lblRow.appendChild(lblHint);
-    container.appendChild(lblRow);
-
-    if (pathInp.value) loadCols(pathInp.value);
-
-    const { row: fbRow, input: fbCb } = this._makeCheckbox('filter_box', !!cfg.items?.filter_box);
-    fbCb.addEventListener('change', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.filter_box = fbCb.checked;
-      this._emitChanged();
-    });
-    container.appendChild(fbRow);
-
-    const { row: cvRow, input: cvCb } = this._makeCheckbox('custom_value', !!cfg.items?.custom_value);
-    cvCb.addEventListener('change', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      cfg.items.custom_value = cvCb.checked;
-      this._emitChanged();
-    });
-    container.appendChild(cvRow);
-
-    const naRow = this._makeRow();
-    const naCb = document.createElement('input');
-    naCb.type = 'checkbox';
-    naCb.style.cssText = `accent-color:${COLORS.blue};margin-right:6px;`;
-    const naVal = cfg.items?.not_available;
-    naCb.checked = !!naVal;
-
-    const naLabel = document.createElement('span');
-    naLabel.textContent = 'not_available';
-    naLabel.style.cssText = `color:${COLORS.textSubtle};font-size:11px;width:90px;`;
-
-    const naTextInput = this._makeInput('custom label', '140px');
-    naTextInput.style.fontSize = '11px';
-    if (typeof naVal === 'string') naTextInput.value = naVal;
-
-    const updateNaTextState = () => {
-      naTextInput.disabled = !naCb.checked;
-      naTextInput.style.opacity = naCb.checked ? '1' : '0.5';
-      naTextInput.style.backgroundColor = naCb.checked ? COLORS.bgSurface0 : COLORS.bgSurface1;
-    };
-    updateNaTextState();
-
-    naCb.addEventListener('change', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      if (naCb.checked) {
-        const label = naTextInput.value.trim();
-        cfg.items.not_available = label || true;
-      } else {
-        delete cfg.items.not_available;
-      }
-      updateNaTextState();
-      this._emitChanged();
-    });
-
-    naTextInput.addEventListener('input', () => {
-      if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-      const label = naTextInput.value.trim();
-      if (label && !naCb.checked) {
-        naCb.checked = true;
-        updateNaTextState();
-      }
-      cfg.items.not_available = label || true;
-      this._emitChanged();
-    });
-
-    naRow.append(naCb, naLabel, naTextInput);
-    container.appendChild(naRow);
-  }
-
-  private _buildRangeItems(container: HTMLDivElement, cfg: Record<string, any>): void {
-    const minInp = this._makeInput('1', '60px');
-    minInp.type = 'number';
-    const maxInp = this._makeInput('10', '60px');
-    maxInp.type = 'number';
-    const stepInp = this._makeInput('1', '60px');
-    stepInp.type = 'number';
-
-    if (cfg.items?.min !== undefined) minInp.value = String(cfg.items.min);
-    if (cfg.items?.max !== undefined) maxInp.value = String(cfg.items.max);
-    if (cfg.items?.step !== undefined) stepInp.value = String(cfg.items.step);
-
-    const update = () => {
-      cfg.items = {
-        min: numberOr(minInp.value, 1),
-        max: numberOr(maxInp.value, 10),
-        step: numberOr(stepInp.value, 1) > 0 ? numberOr(stepInp.value, 1) : 1,
-      };
-      this._emitChanged();
-    };
-
-    minInp.addEventListener('input', update);
-    maxInp.addEventListener('input', update);
-    stepInp.addEventListener('input', update);
-
-    const row = this._makeRow();
-    row.append(
-      this._makeLabel('min'), minInp,
-      this._makeLabel('max'), maxInp,
-      this._makeLabel('step'), stepInp,
-    );
-    container.appendChild(row);
-  }
-
-  private _promptAddDynForm(): void {
-    const overlay = document.createElement('div');
-    overlay.style.cssText =
-      `position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;` +
-      `background:rgba(0,0,0,0.5);`;
-
-    const dialog = document.createElement('div');
-    dialog.style.cssText =
-      `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};border-radius:8px;` +
-      `padding:16px;display:flex;flex-direction:column;gap:10px;min-width:260px;`;
-
-    const title = document.createElement('div');
-    title.textContent = 'New Dynamic Form';
-    title.style.cssText = `font-size:13px;font-weight:700;color:${COLORS.textPrimary};`;
-
-    const inp = this._makeInput('form name', '200px');
-    inp.style.fontSize = '13px';
-
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = `display:flex;gap:8px;justify-content:flex-end;`;
-
-    const cancelBtn = this._makeButton('Cancel');
-    cancelBtn.addEventListener('click', () => overlay.remove());
-
-    const createBtn = this._makeButton('Create', true);
-    createBtn.addEventListener('click', () => {
-      const name = inp.value.trim();
-      if (!name) return;
-      if (this._dynForms.some(df => df.name === name)) return;
-      this._createDynForm(name);
-      overlay.remove();
-      this._emitChanged();
-    });
-
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') createBtn.click();
-      if (e.key === 'Escape') overlay.remove();
-    });
-
-    btnRow.append(cancelBtn, createBtn);
-    dialog.append(title, inp, btnRow);
-    overlay.appendChild(dialog);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-    document.body.appendChild(overlay);
-    inp.focus();
-  }
-
-  private _createDynForm(name: string, elements?: FormElement[]): void {
-    const container = document.createElement('div');
-    container.style.cssText =
-      `background:${COLORS.bgMantle};border:1px solid ${COLORS.bgSurface1};border-radius:6px;` +
-      `padding:8px 10px;display:flex;flex-direction:column;gap:6px;`;
-
-    const header = this._makeRow();
-    const lbl = document.createElement('span');
-    lbl.textContent = name;
-    lbl.style.cssText = `font-size:12px;font-weight:700;color:${COLORS.mauve};flex:1;cursor:pointer;`;
-    lbl.title = 'Double-click to rename';
-
-    const startRename = () => {
-      const renameInp = this._makeInput(df.name, '160px');
-      renameInp.value = df.name;
-      renameInp.style.fontSize = '12px';
-      renameInp.style.fontWeight = '700';
-      lbl.replaceWith(renameInp);
-      renameInp.focus();
-      renameInp.select();
-      const commit = () => {
-        const newName = renameInp.value.trim();
-        if (newName && newName !== df.name && !this._dynForms.some(d => d !== df && d.name === newName)) {
-          df.name = newName;
-        }
-        lbl.textContent = df.name;
-        renameInp.replaceWith(lbl);
-        this._emitChanged();
-      };
-      renameInp.addEventListener('blur', commit);
-      renameInp.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); renameInp.blur(); }
-        if (e.key === 'Escape') { renameInp.value = df.name; renameInp.blur(); }
-      });
-    };
-
-    lbl.addEventListener('dblclick', startRename);
-
-    const renameBtn = this._makeButton('✎');
-    renameBtn.title = 'Rename form';
-    renameBtn.style.cssText += `font-size:12px;padding:2px 6px;color:${COLORS.textPrimary};`;
-    renameBtn.addEventListener('click', startRename);
-
-    const rmBtn = this._makeButton('✕');
-    rmBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
-    rmBtn.addEventListener('click', () => {
-      const idx = this._dynForms.findIndex(d => d === df);
-      if (idx >= 0) this._dynForms.splice(idx, 1);
-      container.remove();
-      this._emitChanged();
-    });
-
-    header.append(lbl, renameBtn, rmBtn);
-    container.appendChild(header);
-
-    const listEl = document.createElement('div');
-    listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
-    container.appendChild(listEl);
-
-    const df: DynForm = { name, elements: elements || [], el: container, listEl };
-
-    for (const fe of df.elements) {
-      const card = this._buildElementCard(fe.type, fe.config, df);
-      fe.el = card;
-      listEl.appendChild(card);
-    }
-
-    const addBar = this._makeAddBar((type) => this._addElement(type, undefined, df));
-    addBar.style.borderBottom = 'none';
-    addBar.style.paddingBottom = '0';
-    container.appendChild(addBar);
-
-    this._dynForms.push(df);
-    this._dynFormsContainer.appendChild(container);
-    requestAnimationFrame(() => container.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
-  }
-
-  private _moveElement(card: HTMLDivElement, direction: number, target: { elements: FormElement[]; listEl: HTMLDivElement }): void {
-    const idx = target.elements.findIndex(e => e.el === card);
-    if (idx < 0) return;
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= target.elements.length) return;
-    const [el] = target.elements.splice(idx, 1);
-    target.elements.splice(newIdx, 0, el);
-    target.listEl.innerHTML = '';
-    for (const e of target.elements) target.listEl.appendChild(e.el);
-    this._emitChanged();
-  }
-
-  private _removeElement(card: HTMLDivElement, target: { elements: FormElement[]; listEl: HTMLDivElement }): void {
-    const idx = target.elements.findIndex(e => e.el === card);
-    if (idx < 0) return;
-    target.elements.splice(idx, 1);
-    card.remove();
-    this._emitChanged();
   }
 
   /**
@@ -1158,8 +121,6 @@ export class FormSection extends CollapsibleSection {
    * the ``form:`` list. Every element (incl. dynamic forms) uses ``serializeElement``.
    */
   getData(): Record<string, any> {
-    const USER_INPUT_TYPES: Set<string> = new Set(['select', 'textbox', 'checkbox', 'number']);
-    const TOP_LEVEL_TYPES: Set<string> = new Set(['title', 'annotation', 'pass_value', 'fixed_value']);
     const result: Record<string, any> = {};
     const formList: any[] = [];
     let submissionButtons: any = null;
@@ -1237,5 +198,269 @@ export class FormSection extends CollapsibleSection {
         this._createDynForm(name, feList);
       }
     }
+  }
+
+  private _makeAddBar(onAdd?: (type: ElementType) => void): HTMLDivElement {
+    const bar = document.createElement('div');
+    bar.style.cssText =
+      `display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:2px 8px;padding:6px 0;` +
+      `border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
+    const columns = ADD_BAR_COLUMNS;
+    const mkBtn = (t: ElementType) => {
+      const btn = makeButton(`+ ${t}`);
+      btn.style.fontSize = '11px';
+      btn.style.padding = '3px 8px';
+      btn.addEventListener('click', () => {
+        this.fieldFocused.emit(t);
+        if (onAdd) { onAdd(t); } else { this._addElement(t); }
+      });
+      btn.addEventListener('mouseenter', () => this.fieldFocused.emit(t));
+      return btn;
+    };
+    for (const col of columns) {
+      const hdr = document.createElement('div');
+      hdr.textContent = col.header;
+      hdr.style.cssText =
+        `font-size:10px;font-weight:700;color:${COLORS.textMuted};text-transform:uppercase;` +
+        `letter-spacing:0.5px;padding-bottom:2px;`;
+      bar.appendChild(hdr);
+    }
+    for (const col of columns) {
+      const cell = document.createElement('div');
+      cell.style.cssText = `display:flex;flex-direction:column;gap:2px;`;
+      for (const row of col.rows) {
+        const rowEl = document.createElement('div');
+        rowEl.style.cssText = `display:flex;gap:3px;`;
+        for (const t of row) {
+          const b = mkBtn(t);
+          b.style.flex = '1';
+          b.style.minWidth = '0';
+          rowEl.appendChild(b);
+        }
+        cell.appendChild(rowEl);
+      }
+      bar.appendChild(cell);
+    }
+    return bar;
+  }
+
+  private _addElement(type: ElementType, config?: CardConfig, target?: CardList): void {
+    const cfg = config || defaultElementConfig(type);
+    const tgt = target || { elements: this._elements, listEl: this._listEl };
+    const card = this._buildElementCard(type, cfg, tgt);
+    const fe: FormElement = { type, config: cfg, el: card };
+    tgt.elements.push(fe);
+    tgt.listEl.appendChild(card);
+    this._emitChanged();
+  }
+
+  private _buildElementCard(type: ElementType, cfg: CardConfig, target: CardList): HTMLDivElement {
+    const card = document.createElement('div');
+    card.draggable = true;
+    card.style.cssText =
+      `background:${COLORS.bgSurface0};border-radius:6px;padding:8px 10px;` +
+      `display:flex;flex-direction:column;gap:5px;cursor:grab;` +
+      `border:1px solid transparent;`;
+    card.addEventListener('focusin', () => this.fieldFocused.emit(type));
+    card.addEventListener('click', () => this.fieldFocused.emit(type));
+
+    card.addEventListener('dragstart', (e) => {
+      this._dragSrcCard = card;
+      card.style.opacity = '0.4';
+      e.dataTransfer!.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.style.opacity = '1';
+      this._dragSrcCard = null;
+    });
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+      card.style.borderColor = COLORS.blue;
+    });
+    card.addEventListener('dragleave', () => {
+      card.style.borderColor = 'transparent';
+    });
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.style.borderColor = 'transparent';
+      if (!this._dragSrcCard || this._dragSrcCard === card) return;
+      const srcIdx = target.elements.findIndex(el => el.el === this._dragSrcCard);
+      const dstIdx = target.elements.findIndex(el => el.el === card);
+      if (srcIdx < 0 || dstIdx < 0) return;
+      const [moved] = target.elements.splice(srcIdx, 1);
+      target.elements.splice(dstIdx, 0, moved);
+      target.listEl.innerHTML = '';
+      for (const el of target.elements) target.listEl.appendChild(el.el);
+      this._emitChanged();
+    });
+
+    const header = makeRow();
+    const typeLabel = document.createElement('span');
+    typeLabel.textContent = type;
+    typeLabel.style.cssText =
+      `font-size:12px;font-weight:700;color:${COLORS.blue};flex:1;`;
+
+    const moveUp = makeButton('▲');
+    moveUp.style.cssText += `font-size:10px;padding:2px 6px;`;
+    moveUp.addEventListener('click', () => this._moveElement(card, -1, target));
+
+    const moveDown = makeButton('▼');
+    moveDown.style.cssText += `font-size:10px;padding:2px 6px;`;
+    moveDown.addEventListener('click', () => this._moveElement(card, 1, target));
+
+    const removeBtn = makeButton('✕');
+    removeBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
+    removeBtn.addEventListener('click', () => this._removeElement(card, target));
+
+    header.append(typeLabel, moveUp, moveDown, removeBtn);
+    card.appendChild(header);
+
+    buildElementFields(this._ctx, card, type, cfg);
+    return card;
+  }
+
+  private _promptAddDynForm(): void {
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+      `position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;` +
+      `background:rgba(0,0,0,0.5);`;
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText =
+      `background:${COLORS.bgBase};border:1px solid ${COLORS.bgSurface1};border-radius:8px;` +
+      `padding:16px;display:flex;flex-direction:column;gap:10px;min-width:260px;`;
+
+    const title = document.createElement('div');
+    title.textContent = 'New Dynamic Form';
+    title.style.cssText = `font-size:13px;font-weight:700;color:${COLORS.textPrimary};`;
+
+    const inp = makeInput('form name', '200px');
+    inp.style.fontSize = '13px';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = `display:flex;gap:8px;justify-content:flex-end;`;
+
+    const cancelBtn = makeButton('Cancel');
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    const createBtn = makeButton('Create', true);
+    createBtn.addEventListener('click', () => {
+      const name = inp.value.trim();
+      if (!name) return;
+      if (this._dynForms.some(df => df.name === name)) return;
+      this._createDynForm(name);
+      overlay.remove();
+      this._emitChanged();
+    });
+
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createBtn.click();
+      if (e.key === 'Escape') overlay.remove();
+    });
+
+    btnRow.append(cancelBtn, createBtn);
+    dialog.append(title, inp, btnRow);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    inp.focus();
+  }
+
+  private _createDynForm(name: string, elements?: FormElement[]): void {
+    const container = document.createElement('div');
+    container.style.cssText =
+      `background:${COLORS.bgMantle};border:1px solid ${COLORS.bgSurface1};border-radius:6px;` +
+      `padding:8px 10px;display:flex;flex-direction:column;gap:6px;`;
+
+    const header = makeRow();
+    const lbl = document.createElement('span');
+    lbl.textContent = name;
+    lbl.style.cssText = `font-size:12px;font-weight:700;color:${COLORS.mauve};flex:1;cursor:pointer;`;
+    lbl.title = 'Double-click to rename';
+
+    const startRename = () => {
+      const renameInp = makeInput(df.name, '160px');
+      renameInp.value = df.name;
+      renameInp.style.fontSize = '12px';
+      renameInp.style.fontWeight = '700';
+      lbl.replaceWith(renameInp);
+      renameInp.focus();
+      renameInp.select();
+      const commit = () => {
+        const newName = renameInp.value.trim();
+        if (newName && newName !== df.name && !this._dynForms.some(d => d !== df && d.name === newName)) {
+          df.name = newName;
+        }
+        lbl.textContent = df.name;
+        renameInp.replaceWith(lbl);
+        this._emitChanged();
+      };
+      renameInp.addEventListener('blur', commit);
+      renameInp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); renameInp.blur(); }
+        if (e.key === 'Escape') { renameInp.value = df.name; renameInp.blur(); }
+      });
+    };
+
+    lbl.addEventListener('dblclick', startRename);
+
+    const renameBtn = makeButton('✎');
+    renameBtn.title = 'Rename form';
+    renameBtn.style.cssText += `font-size:12px;padding:2px 6px;color:${COLORS.textPrimary};`;
+    renameBtn.addEventListener('click', startRename);
+
+    const rmBtn = makeButton('✕');
+    rmBtn.style.cssText += `font-size:10px;padding:2px 6px;color:${COLORS.red};`;
+    rmBtn.addEventListener('click', () => {
+      const idx = this._dynForms.findIndex(d => d === df);
+      if (idx >= 0) this._dynForms.splice(idx, 1);
+      container.remove();
+      this._emitChanged();
+    });
+
+    header.append(lbl, renameBtn, rmBtn);
+    container.appendChild(header);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
+    container.appendChild(listEl);
+
+    const df: DynForm = { name, elements: elements || [], el: container, listEl };
+
+    for (const fe of df.elements) {
+      const card = this._buildElementCard(fe.type, fe.config, df);
+      fe.el = card;
+      listEl.appendChild(card);
+    }
+
+    const addBar = this._makeAddBar((type) => this._addElement(type, undefined, df));
+    addBar.style.borderBottom = 'none';
+    addBar.style.paddingBottom = '0';
+    container.appendChild(addBar);
+
+    this._dynForms.push(df);
+    this._dynFormsContainer.appendChild(container);
+    requestAnimationFrame(() => container.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+
+  private _moveElement(card: HTMLDivElement, direction: number, target: CardList): void {
+    const idx = target.elements.findIndex(e => e.el === card);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= target.elements.length) return;
+    const [el] = target.elements.splice(idx, 1);
+    target.elements.splice(newIdx, 0, el);
+    target.listEl.innerHTML = '';
+    for (const e of target.elements) target.listEl.appendChild(e.el);
+    this._emitChanged();
+  }
+
+  private _removeElement(card: HTMLDivElement, target: CardList): void {
+    const idx = target.elements.findIndex(e => e.el === card);
+    if (idx < 0) return;
+    target.elements.splice(idx, 1);
+    card.remove();
+    this._emitChanged();
   }
 }
