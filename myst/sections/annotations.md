@@ -1,15 +1,17 @@
 (annotations)=
 # Annotation Tools
 
-The `annotation` form element adds interactive tools for marking time positions and frequency-time regions. Four annotation tools are available:
+The `annotation` form element adds interactive tools for marking time positions and frequency-time regions. Five annotation tools are available:
 
 * [`time_select`](#time-select): a single time marker
 * [`start_end_time_select`](#start-end-time-select): time markers for both start and end times
 * [`bounding_box`](#bounding-box): draw and label a bounding box (start/end-time, min/max-frequency)
 * [`multibox`](#multibox): draw and label multiple bounding boxes on a single visualization 
+* [`fixed_duration`](#fixed-duration): click to place a fixed-length time region
 
 Without an `annotation` element in the form config, the spectrogram has no click/drag interaction. When multiple tools are listed, a dropdown appears in the form panel to switch between them.
 
+(time-select)=
 ## Time Select
 
 ```{figure} ../../assets/annotation/time_select.png
@@ -33,6 +35,7 @@ annotation:
 When `tools` is a string instead of a list, no dropdown is shown — the tool is used directly.
 
 
+(start-end-time-select)=
 ## Start/End Time Select
 
 ```{figure} ../../assets/annotation/start_end_time_select.png
@@ -58,6 +61,7 @@ annotation:
 ```
 
 
+(bounding-box)=
 ## Bounding Box
 
 ```{figure} ../../assets/annotation/bounding_box.png
@@ -89,6 +93,7 @@ annotation:
 ```
 
 
+(multibox)=
 ## Multibox
 
 ```{figure} ../../assets/annotation/multibox.png
@@ -137,6 +142,28 @@ dynamic_forms:
 The `form` key references a section in `dynamic_forms`. For `multibox`, each box gets its own instance of that form. For all other tools, a single instance is shown alongside the annotation inputs.
 
 
+(fixed-duration)=
+## Fixed Duration
+
+A time region of a set length, centred where you click. Drag it to reposition, use the arrow
+keys to nudge it, and Delete to remove it. Give the length either as a fixed number of seconds
+(`fixed_duration: 3` or `{window: 3}`), or as `initial_window` that the user can change in the
+form panel, optionally within `min`/`max` in steps of `step`.
+
+- Records `start_time` and `end_time`
+- Useful when every annotation should be the same length (e.g. 3-second training clips)
+
+```yaml
+annotation:
+    tools:
+        - fixed_duration:
+              min: 0.5
+              max: 10
+              step: 0.5
+              initial_window: 3
+```
+
+
 ## Combining Tools
 
 List multiple tools to let the user switch between them from a dropdown:
@@ -147,6 +174,7 @@ tools:
     - start_end_time_select
     - bounding_box
     - multibox
+    - fixed_duration
 ```
 
 Values for all configured fields are always written to the output regardless of which tool is active.
@@ -172,12 +200,12 @@ max_frequency: max_freq
 
 ## Full Example
 
-The [Data Collection](../data-collection-example) notebook demonstrates all four tools with per-annotation species labeling:
+The [Data Collection](../../demo/data-collection-example.ipynb) notebook demonstrates all five tools with per-annotation species labeling:
 
 ```{figure} ../../assets/app/data-collection-mbox.png
 :class: bordered
 ```
 
-```{literalinclude} ../../demo/config/forms/data-collection-example.yaml
+```{literalinclude} ../../demo/annotator_config/forms/data-collection-example.yaml
 :language: yaml
 ```
