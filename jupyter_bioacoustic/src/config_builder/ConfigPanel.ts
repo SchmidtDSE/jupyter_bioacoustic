@@ -126,11 +126,6 @@ export class ConfigPanel {
     return !!(d.project_enabled && d.project_path);
   }
 
-  /** The kernel's working directory. */
-  get cwd(): string {
-    return this._bk.cwd;
-  }
-
   /** Run ``cb`` with the kernel's cwd once known. */
   onCwdReady(cb: (cwd: string) => void): void {
     this._bk.onCwdReady(cb);
