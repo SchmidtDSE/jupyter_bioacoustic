@@ -13,30 +13,38 @@ The `data` parameter specifies where input rows come from. The source type is au
 | Contains `SELECT` | SQL query (DuckDB) |
 | Starts with `api::` | API endpoint |
 | Starts with `http://`, `s3://`, etc. | URL / URI |
-| Everything else | Local file path |
+| Everything else | Local file path (`.csv`, `.parquet`, `.json`, `.jsonl`) |
 
-```{embed} nb.data.from-file
-:remove-output: true
+```python
+BioacousticAnnotator(data='data/detections.csv', audio='audio_path')  # CSV, Parquet, JSON
 ```
 
 ### DataFrame
 
-```{embed} nb.data.from-dataframe
-:remove-output: true
+```python
+df = pd.read_csv('data/detections.csv')
+BioacousticAnnotator(data=df[df.confidence > 0.8], audio='audio_path')
 ```
 
 ### SQL
 
-```{embed} nb.data.from-sql
-:remove-output: true
+```python
+BioacousticAnnotator(
+    data="SELECT * FROM 'data/detections.parquet' WHERE common_name = 'Tree Swallow'",
+    audio='audio_path',
+)  # needs duckdb
 ```
 
 ### Dict form
 
 For explicit control over the source type, secrets, and columns:
 
-```{embed} nb.data.dict-form
-:remove-output: true
+```python
+BioacousticAnnotator(
+    data={'path': 'data/detections.csv', 'index_column': 'id',
+          'columns': ['id', 'common_name', 'start_time', 'end_time', 'audio_path']},
+    audio='audio_path',
+)
 ```
 
 In YAML:
@@ -44,6 +52,7 @@ In YAML:
 ```yaml
 data:
   path: data/annotate-data.csv
+  index_column: id
   columns: [common_name, confidence, start_time, end_time]
   secrets:
     - key: Authorization
@@ -52,14 +61,19 @@ data:
 
 ### Top-level overrides
 
-`data_path`, `data_url`, `data_sql`, `data_api` override the source while keeping other settings in a dict or config file.
+`data_path`, `data_url`, `data_sql`, `data_api` override the source while keeping other settings in a dict or config file. `data_value` + `data_source_type` does the same with the type given explicitly.
+
+### Index column
+
+`data_index_column` (or `data: {index_column: ...}`) names the column that uniquely identifies each input row. **It is required whenever a form is configured**, because each output row is linked back to its input row through it. `output_index_column` (or `output: {index_column: ...}`) renames that column in the output; it defaults to `data_index_column`.
 
 ### Time columns
 
 By default, the widget expects `start_time` and `end_time` columns. Use `data_start_time`, `data_end_time` to rename them, or `data_duration` (column name or fixed number) to compute end times:
 
-```{embed} nb.data.duration
-:remove-output: true
+```python
+# 3-second clips starting at `offset`
+BioacousticAnnotator(data=df, audio='audio_path', data_start_time='offset', data_duration=3)
 ```
 
 ### Secrets
@@ -76,8 +90,6 @@ The `audio` parameter specifies where audio files come from. Auto-detected from 
 | Starts with `http://`, `s3://`, `gs://` | URL / URI |
 | No `/` and no `.` | Column name (per-row audio) |
 | Everything else | Local file path |
-
-S3 uses partial byte-range downloads (only the FLAC header + estimated segment range). HTTPS files are downloaded and cached on first access.
 
 `audio_prefix` and `audio_suffix` are joined with `/`. `audio_fallback` provides a default when using column mode with empty values.
 
@@ -96,9 +108,7 @@ Use `audio_sql` or `audio_api` with `audio_property` to resolve the audio path d
 
 ### Partial byte-range downloads
 
-Remote audio (S3, HTTPS, GCS) uses partial byte-range downloads by default — only the FLAC header and the estimated segment range are fetched. Multi-hour recordings load in seconds.
-
-This requires **ffmpeg** (via `pydub`). Without ffmpeg, it falls back to downloading and caching the full file. Disable partial downloads with `partial_download=False`.
+Remote FLAC and WAV audio (S3, HTTPS, GCS) is read by byte range by default: only the header and the bytes of the clip being played are fetched, so multi-hour recordings load in seconds. Other formats, or a range read that fails, fall back to downloading and caching the full file. Disable partial downloads with `partial_download=False`. No ffmpeg is needed.
 
 
 ## Forms
@@ -171,6 +181,7 @@ dynamic_forms:
 | `start_end_time_select` | Two constrained lines | `start_time`, `end_time` |
 | `bounding_box` | Draggable rectangle | `start_time`, `end_time`, `min_frequency`, `max_frequency` |
 | `multibox` | Multiple labeled boxes | Same + per-box form via `annotation.form` |
+| `fixed_duration` | Click to place a fixed-length region | `start_time`, `end_time`; length: a number, `{window}`, or user-editable `{initial_window, min, max, step}` |
 
 ### Select item features
 
@@ -200,11 +211,13 @@ dynamic_forms:
 | `capture_height` | `None` | Capture image height in pixels. Defaults to `player_height` if not set |
 | `spectrogram_resolution` | `[1000, 2000, 4000]` | Image width(s) in px. `selected::` prefix for default |
 | `visualizations` | `['linear', 'mel']` | Built-in strings or callables |
-| `partial_download` | `True` | Byte-range downloads for remote audio (requires ffmpeg) |
+| `partial_download` | `True` | Byte-range reads for remote FLAC/WAV audio (`False` = always download the full file) |
 | `width` | `'100%'` | Inline widget width |
 | `clip_table_height` | `175` | Clip table height (px) |
 | `player_height` | `260` | Player/spectrogram height (px). **Sets spectrogram resolution height.** |
 | `info_card_height` | `34` | Info card height (px) |
-| `form_panel_height` | `140` | Form panel height (px) |
-| `output` | `''` | Output file path. Auto-generated if form is configured |
+| `form_panel_height` | `175` | Form panel height (px) |
+| `output` | `''` | Output file path, or `{path, uri, sync_button, recursive, secrets, index_column}`. Auto-generated (`outputs/annotation_output-<timestamp>.csv`) if a form is configured |
+| `description` | `None` | Collapsible description panel: markdown text, a `.md` path, or `{title, text, path, open, height}` |
+| `session_args` | `None` | Which extra `**kwargs` are allowed: a list of names, `True` (all) or `False` (none) |
 | `config` | `None` | Path to YAML/JSON config file |
