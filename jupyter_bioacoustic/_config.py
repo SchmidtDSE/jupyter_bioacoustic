@@ -214,7 +214,9 @@ def section_with_index(
             :func:`detect_data_type`; output strings are paths).
 
     Returns:
-        The section dict, or ``{}`` when there is no section.
+        The section dict, or ``{}`` when there is no section. A missing data
+        section (the source came from a flat ``data_path`` etc.) still carries
+        the index column; a missing output section is not invented.
     """
     if isinstance(value, dict):
         section = dict(value)
@@ -225,6 +227,8 @@ def section_with_index(
             else 'path'
         )
         section = {key: value}
+    elif is_data:
+        section = {}
     else:
         return {}
     if index_col is not None:
