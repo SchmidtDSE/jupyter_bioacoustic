@@ -1434,3 +1434,20 @@ class TestTypoWarning:
         BioacousticAnnotator(data=_make_df(), audio='audio_path',
                              annotator_name='a', reviewer_name='b', review_date=20260101)
         assert not [w for w in recwarn if 'Did you mean' in str(w.message)]
+
+
+#
+# validate() with a flat data_* source (no `data` section)
+#
+class TestValidateFlatDataSource:
+
+    def test_data_path_with_form_is_valid(self, tmp_path):
+        csv = tmp_path / 'clips.csv'
+        _make_df().to_csv(csv, index=False)
+        ba = BioacousticAnnotator(
+            data_path=str(csv), audio='audio_path', data_index_column='id',
+            output=str(tmp_path / 'out.csv'),
+            form_config={'form': [{'textbox': {'label': 'notes', 'column': 'notes'}}]},
+        )
+        assert ba.configuration['data']['index_column'] == 'id'
+        assert ba.validate()['valid'], ba.validate()['errors']
