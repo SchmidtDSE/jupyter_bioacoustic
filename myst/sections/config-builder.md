@@ -150,6 +150,7 @@ The builder interface contains collapsable/resizable a right-hand panel with two
 
 ---
 
+(configuration-summary)=
 ## Configuration Summary
 
 Below the collapsible sections, a **Configuration Summary** panel provides a compact, read-only overview of the current configuration. It is always visible and updates live as you edit fields.
