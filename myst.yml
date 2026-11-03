@@ -51,8 +51,8 @@ project:
     - file: myst/sections/projects.md
     - file: myst/sections/config-builder.md
     - file: myst/sections/audio-io.md
-    # - file: myst/sections/params.md
-    # - file: myst/sections/install.md
+    - file: myst/sections/params.md
+    - file: myst/sections/install.md
     - title: Notebooks
       children:
         - file: demo/simple-examples.ipynb
@@ -63,8 +63,6 @@ project:
           title: "Data Collection"
         - file: demo/sync-example.ipynb
           title: "Sync"
-        - file: demo/audio-io.ipynb
-          title: "Sync & Audio IO"
     - title: Github
       url: https://github.com/SchmidtDSE/jupyter_bioacoustic
     - title: Docs
