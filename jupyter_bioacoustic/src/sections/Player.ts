@@ -48,7 +48,7 @@ const RESIZE_DEBOUNCE_MS = 150;
 /** Length loaded when the row has no end_time (s). */
 const DEFAULT_ROW_DURATION_SEC = 12;
 const REMOTE_LOAD_MSG: Record<string, string> = {
-  url: '⬇ Downloading audio (first load may take a moment)…',
+  url: '⬇ Loading audio…',
   s3: '⬇ Loading audio from S3…',
   gcs: '⬇ Loading audio from GCS…',
 };
