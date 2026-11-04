@@ -76,7 +76,8 @@ def read_segment_remote(
     Shared by the S3, GCS and HTTPS backends:
 
     1. If the whole file is already in the local cache, read from it.
-    2. If ``partial``, range-read just the window (``_partial.read_remote_partial``).
+    2. If ``partial``, range-read just the window (``_partial.read_remote_partial``; its parsed
+       header is cached by ``path``, so later windows of the same file skip the header requests).
     3. Otherwise, or if the partial read fails and ``fallback`` is True, download the whole
        file into the cache (atomically: a failed download never leaves a truncated cache file)
        and read the window locally.
@@ -104,7 +105,7 @@ def read_segment_remote(
         return io_local.read_segment(cache, start_sec, dur_sec)
     if partial:
         try:
-            return read_remote_partial(start_sec, dur_sec, get_size, get_range)
+            return read_remote_partial(start_sec, dur_sec, get_size, get_range, cache_key=path)
         except Exception as e:
             if not fallback:
                 raise
