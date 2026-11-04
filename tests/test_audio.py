@@ -203,6 +203,26 @@ def _assert_partial_matches_local(path, windows):
         assert np.array_equal(got, expected), (start, dur)
 
 
+def _append_metadata_blocks(path, blocks):
+    """Append ``(block_type, body)`` metadata blocks after the file's last metadata block."""
+    data = bytearray(open(path, 'rb').read())
+    pos = 4
+    while True:
+        is_last = data[pos] & 0x80
+        length = int.from_bytes(data[pos + 1:pos + 4], 'big')
+        if is_last:
+            data[pos] &= 0x7F
+            end = pos + 4 + length
+            break
+        pos += 4 + length
+    new = b''
+    for k, (block_type, body) in enumerate(blocks):
+        last = 0x80 if k == len(blocks) - 1 else 0
+        new += bytes([last | block_type]) + len(body).to_bytes(3, 'big') + body
+    data[end:end] = new
+    open(path, 'wb').write(bytes(data))
+
+
 class TestReadRemotePartial:
 
     def test_matches_full_read_on_vbr_audio(self, tmp_path):
@@ -237,6 +257,73 @@ class TestReadRemotePartial:
         get_size, get_range, _ = _range_callables(path)
         assert len(_partial._read_flac_info(get_range, get_size()).seekpoints) == len(frames[::10])
         _assert_partial_matches_local(path, _windows(20, 16000, n_random=15))
+
+    def test_big_seektable_then_small_blocks_costs_one_extra_request(self, tmp_path):
+        """Like the demo recordings: a ~58 KB SEEKTABLE, then small blocks past the first 4 KB.
+        Reading ahead fetches them together instead of one 4-byte request per block header."""
+        path = _write_vbr_flac(tmp_path / 'meta.flac', seconds=20)
+        placeholder = b'\xff' * 8 + bytes(10)                  # 18-byte unused seek point
+        _append_metadata_blocks(path, [(3, placeholder * 3240)] + [(1, bytes(16))] * 6)
+        get_size, get_range, stats = _range_callables(path)
+        info = _partial._read_flac_info(get_range, get_size())
+        assert info.audio_offset > 58000
+        assert stats['requests'] <= 2                           # first 4 KB + one read-ahead
+        _assert_partial_matches_local(path, _windows(20, 16000, n_random=10))
+
+    def test_header_is_cached_per_file(self, tmp_path):
+        import numpy as np
+        path = _write_vbr_flac(tmp_path / 'vbr.flac', seconds=20)
+        get_size, get_range, stats = _range_callables(path)
+        key = f'test://{path}'
+        _partial._read_flac_info(get_range, get_size())
+        header_requests = stats['requests']
+        stats['requests'] = 0
+        _partial.clear_header_cache()
+        try:
+            first, _ = _partial.read_remote_partial(5, 1, get_size, get_range, cache_key=key)
+            n_first = stats['requests']
+            again, _ = _partial.read_remote_partial(5, 1, get_size, get_range, cache_key=key)
+            assert stats['requests'] - n_first == n_first - header_requests   # audio bytes only
+            assert np.array_equal(first, again)
+            other, _ = _partial.read_remote_partial(12, 2, get_size, get_range, cache_key=key)
+            expected, _ = io_local.read_segment(str(path), 12, 2)
+            assert np.array_equal(other, expected)
+            # a different size means a different file: parse the header again
+            n_before = stats['requests']
+            _partial.read_remote_partial(5, 1, lambda: get_size() + 1, get_range, cache_key=key)
+            assert stats['requests'] - n_before > 1
+        finally:
+            _partial.clear_header_cache()
+
+    def test_header_cache_needs_a_key(self, tmp_path):
+        path = _write_vbr_flac(tmp_path / 'vbr.flac', seconds=10)
+        get_size, get_range, stats = _range_callables(path)
+        _partial.clear_header_cache()
+        _partial.read_remote_partial(5, 1, get_size, get_range)
+        n_first = stats['requests']
+        _partial.read_remote_partial(5, 1, get_size, get_range)
+        assert stats['requests'] == 2 * n_first
+
+    def test_remote_reads_cache_the_header_by_path(self, tmp_path):
+        path = _write_vbr_flac(tmp_path / 'vbr.flac', seconds=10)
+        get_size, get_range, stats = _range_callables(path)
+        uri = f'https://example.com/{os.getpid()}-vbr.flac'
+        _partial.clear_header_cache()
+        def read():
+            _shared.read_segment_remote(
+                uri, 3, 1, partial=True, fallback=False, get_size=get_size,
+                get_range=get_range, download_to=lambda dest: None)
+
+        _partial._read_flac_info(get_range, get_size())
+        header_requests = stats['requests']
+        stats['requests'] = 0
+        try:
+            read()
+            n_first = stats['requests']
+            read()
+            assert stats['requests'] - n_first == n_first - header_requests
+        finally:
+            _partial.clear_header_cache()
 
     def test_fetches_only_part_of_the_file(self, tmp_path):
         path = _write_vbr_flac(tmp_path / 'vbr.flac')
