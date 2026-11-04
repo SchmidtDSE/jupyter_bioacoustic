@@ -17,6 +17,7 @@ import functools
 import io
 import logging
 import struct
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -30,6 +31,10 @@ import soundfile as sf
 _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 HEADER_BYTES = 4096                     # first bytes fetched to sniff the format / parse headers
+HEADER_READAHEAD = 64 * 1024            # header bytes fetched at once past the first HEADER_BYTES
+HEADER_CACHE_SIZE = 64                  # parsed headers kept (one per remote file)
+# Module state: parsed headers by (cache_key, file size), least recently used first.
+_HEADER_CACHE: OrderedDict[tuple[str, int], _FlacInfo | _WavInfo] = OrderedDict()
 DEFAULT_DTYPE = 'float32'
 MAX_RANGE_ATTEMPTS = 10
 STREAMINFO_LEN = 34
@@ -116,6 +121,7 @@ def read_remote_partial(
     dur_sec: float,
     get_size: Callable[[], int],
     get_range: Callable[[int, int], bytes],
+    cache_key: Optional[str] = None,
 ) -> tuple[np.ndarray, int]:
     """Read a time window of a remote audio file by byte ranges, without downloading it all.
 
@@ -127,11 +133,15 @@ def read_remote_partial(
 
     The result is identical to ``io_local.read_segment`` on the full file.
 
+    With a ``cache_key`` (the remote path), the parsed header is remembered per
+    ``(cache_key, file size)``, so later windows of the same file skip the header requests.
+
     Args:
         start_sec: Window start in seconds.
         dur_sec: Window duration in seconds.
         get_size: Callable returning the total file size in bytes.
         get_range: Callable ``(start_byte, end_byte_inclusive) -> bytes``.
+        cache_key: Identifies the file for the header cache. ``None`` disables the cache.
 
     Returns:
         (raw, sample_rate) where raw is float32 of shape (n_samples, channels). ``n_samples`` is
@@ -144,12 +154,25 @@ def read_remote_partial(
     """
     _log.debug('read_remote_partial: start=%.3fs dur=%.3fs', start_sec, dur_sec)
     file_size = get_size()
-    head = get_range(0, min(HEADER_BYTES, file_size) - 1)
-    if head[:4] == b'fLaC':
-        return _read_flac_partial(start_sec, dur_sec, file_size, get_range, head)
-    if head[:4] in (b'RIFF', b'RF64') and head[8:12] == b'WAVE':
-        return _read_wav_partial(start_sec, dur_sec, file_size, get_range, head)
-    raise UnsupportedPartialFormat('partial reads support FLAC and WAV files only')
+    key = (cache_key, file_size)
+    info = _HEADER_CACHE.get(key) if cache_key is not None else None
+    if info is None:
+        info = _read_audio_info(get_range, file_size)
+        if cache_key is not None:
+            _HEADER_CACHE[key] = info
+            while len(_HEADER_CACHE) > HEADER_CACHE_SIZE:
+                _HEADER_CACHE.popitem(last=False)
+    else:
+        _HEADER_CACHE.move_to_end(key)
+        _log.debug('using cached header for %s', cache_key)
+    if isinstance(info, _FlacInfo):
+        return _read_flac_partial(start_sec, dur_sec, file_size, get_range, info)
+    return _read_wav_partial(start_sec, dur_sec, file_size, get_range, info)
+
+
+def clear_header_cache() -> None:
+    """Forget every header remembered by :func:`read_remote_partial`."""
+    _HEADER_CACHE.clear()
 
 
 def segment_frames(start_sec: float, dur_sec: float, sample_rate: int) -> tuple[int, int]:
@@ -172,12 +195,34 @@ def segment_frames(start_sec: float, dur_sec: float, sample_rate: int) -> tuple[
 #
 # INTERNAL
 #
+def _read_audio_info(get_range: Callable[[int, int], bytes],
+                     file_size: int) -> _FlacInfo | _WavInfo:
+    """Fetch the first bytes of a file, detect FLAC or WAV, and parse its header.
+
+    Args:
+        get_range: Callable ``(start_byte, end_byte_inclusive) -> bytes``.
+        file_size: Total file size in bytes.
+
+    Returns:
+        The parsed FLAC or WAV header.
+
+    Raises:
+        UnsupportedPartialFormat: If the file is neither FLAC nor WAV/RF64.
+    """
+    head = get_range(0, min(HEADER_BYTES, file_size) - 1)
+    if head[:4] == b'fLaC':
+        return _read_flac_info(get_range, file_size, head)
+    if head[:4] in (b'RIFF', b'RF64') and head[8:12] == b'WAVE':
+        return _read_wav_info(get_range, file_size, head)
+    raise UnsupportedPartialFormat('partial reads support FLAC and WAV files only')
+
+
 def _read_flac_partial(
     start_sec: float,
     dur_sec: float,
     file_size: int,
     get_range: Callable[[int, int], bytes],
-    head: bytes,
+    info: _FlacInfo,
 ) -> tuple[np.ndarray, int]:
     """Read a time window of a remote FLAC by byte ranges, sample-accurately.
 
@@ -198,16 +243,14 @@ def _read_flac_partial(
         dur_sec: Window duration in seconds.
         file_size: Total file size in bytes.
         get_range: Callable ``(start_byte, end_byte_inclusive) -> bytes``.
-        head: The first bytes of the file (already fetched).
+        info: The parsed FLAC metadata (``_read_flac_info``).
 
     Returns:
         (raw, sample_rate) where raw is float32 of shape (n_samples, channels).
 
     Raises:
-        ValueError: If the FLAC metadata is invalid.
         RuntimeError: If the window can't be covered (e.g. a corrupt stream).
     """
-    info = _read_flac_info(get_range, file_size, head)
     first, count = segment_frames(start_sec, dur_sec, info.sample_rate)
     start = min(max(first, 0), info.total_samples)
     end = min(start + count, info.total_samples)
@@ -264,6 +307,9 @@ def _header_reader(get_range: Callable[[int, int], bytes], file_size: int,
                    head: Optional[bytes]) -> Callable[[int, int], bytes]:
     """Return ``read(offset, n)`` that serves header bytes from ``head`` or fetches them.
 
+    Bytes past ``head`` are fetched ``HEADER_READAHEAD`` at a time and kept, so walking many
+    small metadata blocks (e.g. after a large SEEKTABLE) costs one request, not one per block.
+
     Args:
         get_range: Callable ``(start_byte, end_byte_inclusive) -> bytes``.
         file_size: Total file size in bytes.
@@ -274,6 +320,7 @@ def _header_reader(get_range: Callable[[int, int], bytes], file_size: int,
     """
     if head is None:
         head = get_range(0, min(HEADER_BYTES, file_size) - 1)
+    window = [0, b'']                   # [start offset, bytes]: the last read-ahead chunk
 
     def read(offset: int, n: int) -> bytes:
         """Return up to ``n`` bytes starting at ``offset`` (b'' past the end of the file).
@@ -289,7 +336,12 @@ def _header_reader(get_range: Callable[[int, int], bytes], file_size: int,
             return head[offset:offset + n]
         if offset >= file_size:
             return b''
-        return get_range(offset, min(offset + n, file_size) - 1)
+        start, buf = window
+        if not (start <= offset and offset + n <= start + len(buf)):
+            end = min(offset + max(n, HEADER_READAHEAD), file_size)
+            window[:] = [offset, get_range(offset, end - 1)]
+            start, buf = window
+        return buf[offset - start:offset - start + n]
 
     return read
 
@@ -373,7 +425,7 @@ def _read_wav_partial(
     dur_sec: float,
     file_size: int,
     get_range: Callable[[int, int], bytes],
-    head: bytes,
+    info: _WavInfo,
 ) -> tuple[np.ndarray, int]:
     """Read a time window of a remote WAV/RF64: exact byte math, one range request.
 
@@ -382,7 +434,7 @@ def _read_wav_partial(
         dur_sec: Window duration in seconds.
         file_size: Total file size in bytes.
         get_range: Callable ``(start_byte, end_byte_inclusive) -> bytes``.
-        head: The first bytes of the file (already fetched).
+        info: The parsed WAV header (``_read_wav_info``).
 
     Returns:
         (raw, sample_rate) where raw is float32 of shape (n_samples, channels).
@@ -390,7 +442,6 @@ def _read_wav_partial(
     Raises:
         RuntimeError: If the server returns fewer bytes than requested.
     """
-    info = _read_wav_info(get_range, file_size, head)
     first, count = segment_frames(start_sec, dur_sec, info.sample_rate)
     start = min(max(first, 0), info.total_frames)
     end = min(start + count, info.total_frames)
