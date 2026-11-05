@@ -219,7 +219,7 @@ def read_output_rows(path: str, ext: str) -> str:
                 r = list(csv.DictReader(f))
         elif ext == 'parquet':
             import pandas as pd
-            r = pd.read_parquet(path).astype(str).to_dict('records')
+            r = _parquet_records(pd.read_parquet(path))
         else:
             with open(path) as f:
                 r = [json.loads(line) for line in f if line.strip()]
@@ -285,6 +285,7 @@ def write_output_rows(
             os.makedirs(d, exist_ok=True)
         with _file_lock(path):
             if ext == 'csv':
+                rows = [_csv_cells(row) for row in rows]
                 _append_csv(path, rows, list(dict.fromkeys(list(columns) + row_keys)))
             elif ext == 'parquet':
                 import pandas as pd
@@ -504,6 +505,53 @@ def _append_csv(path: str, rows: list[dict[str, Any]], new_file_columns: list[st
     else:
         with open(path, 'a', newline='') as f:
             csv.DictWriter(f, fieldnames=header).writerows(rows)
+
+
+def _csv_cells(row: dict[str, Any]) -> dict[str, Any]:
+    """Return ``row`` with list / dict values as JSON text (a CSV cell holds one string).
+
+    Args:
+        row: An output row (e.g. a multiselect's list of labels).
+
+    Returns:
+        The row, ready for ``csv.DictWriter``.
+    """
+    return {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in row.items()}
+
+
+def _parquet_records(df: Any) -> list[dict[str, Any]]:
+    """Rows of a parquet DataFrame as JSON-safe dicts, read the way CSV rows are.
+
+    Scalars become strings and missing cells ``''`` (as ``csv.DictReader`` gives them);
+    list cells (a multiselect's labels) stay lists. ``json.dumps`` would otherwise write
+    NaN, which isn't valid JSON for the browser.
+
+    Args:
+        df: The DataFrame read from the output file.
+
+    Returns:
+        One dict per row.
+    """
+    import pandas as pd
+
+    def cell(v: Any) -> Any:
+        """Convert one cell.
+
+        Args:
+            v: The cell value.
+
+        Returns:
+            A list (of strings) for array cells, else a string.
+        """
+        if hasattr(v, 'tolist') and not isinstance(v, str) and getattr(v, 'ndim', 0) > 0:
+            return [str(x) for x in v.tolist()]
+        if isinstance(v, (list, tuple)):
+            return [str(x) for x in v]
+        if pd.isna(v):
+            return ''
+        return str(v)
+
+    return [{k: cell(v) for k, v in rec.items()} for rec in df.to_dict('records')]
 
 
 def _write_csv(path: str, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:
