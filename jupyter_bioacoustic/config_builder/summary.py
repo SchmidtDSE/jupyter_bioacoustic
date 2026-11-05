@@ -23,7 +23,7 @@ from typing import Any
 # CONSTANTS
 #
 # top-level form keys that hold a single input element
-TOP_LEVEL_INPUTS = ('select', 'textbox', 'checkbox', 'number')
+TOP_LEVEL_INPUTS = ('select', 'multiselect', 'textbox', 'checkbox', 'number')
 DATA_SOURCE_KEYS = ('path', 'url', 'sql', 'api')
 AUDIO_SOURCE_KEYS = ('path', 'url', 'uri', 'column')
 DESC_PREVIEW_CHARS = 60
@@ -566,7 +566,7 @@ def _summarize_form_element(etype: str, cfg: Any) -> str:
     if not isinstance(cfg, dict):
         return str(cfg) if cfg is not True else ''
 
-    if etype == 'select':
+    if etype in ('select', 'multiselect'):
         label = _label(cfg)
         items = cfg.get('items')
         if isinstance(items, list):
@@ -576,6 +576,9 @@ def _summarize_form_element(etype: str, cfg: Any) -> str:
         else:
             count = '?'
         req = ' *' if cfg.get('required') else ''
+        if etype == 'multiselect':
+            output = cfg.get('output') if isinstance(cfg.get('output'), dict) else {}
+            return f"{label} ({count} items{req}, tags as {output.get('format', 'list')})"
         refs = _get_referenced_forms('select', cfg)
         form_ref = f" -> {', '.join(refs)}" if refs else ''
         return f'{label} ({count} items{req}){form_ref}'
