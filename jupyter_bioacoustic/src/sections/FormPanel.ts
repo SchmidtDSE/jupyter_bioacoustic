@@ -7,7 +7,8 @@
  *
  * Communicates with the rest of the widget via Lumino signals. Related modules under
  * ``form/``: ``annotationConfig`` (parsing the annotation element), ``selectItems`` /
- * ``inputs`` (select parsing and DOM), ``multiboxCards`` (box cards and per-box forms),
+ * ``inputs`` (select parsing and DOM), ``multiselect`` (tags: selection rules and output
+ * encoding), ``multiboxCards`` (box cards and per-box forms),
  * ``reviewed`` (reviewed view), ``progress`` (progress text / accuracy), ``formConfig``.
  *
  * License: BSD 3-Clause
@@ -45,8 +46,12 @@ import {
 } from '../util';
 import { parseAnnotationConfig } from './form/annotationConfig';
 import { asElementList, requiredColumns } from './form/formConfig';
-import { buildSelect } from './form/inputs';
+import { buildMultiselect, buildSelect } from './form/inputs';
 import { buildBoxCard, buildBoxForm } from './form/multiboxCards';
+import {
+  MultiselectSpec, decodeMultiselect, encodeRow, multiselectItemsConfig, prepareMultiselect,
+  selectionValid,
+} from './form/multiselect';
 import { accuracyPercent, formatProgress } from './form/progress';
 import { buildReviewedView, reviewedAnnotation } from './form/reviewed';
 import {
@@ -67,7 +72,7 @@ const TOPLEVEL_KEYS = new Set([
 ]);
 
 /** Input types allowed directly at the top level of a form config. */
-const TOPLEVEL_INPUTS = new Set(['select', 'textbox', 'checkbox', 'number']);
+const TOPLEVEL_INPUTS = new Set(['select', 'multiselect', 'textbox', 'checkbox', 'number']);
 
 /** Annotation bounds in output-column order. */
 const ANNOT_FIELDS: AnnotField[] = ['startTime', 'endTime', 'minFreq', 'maxFreq'];
@@ -129,6 +134,10 @@ export class FormPanel {
   /** Each input's state right after build (value, or checked for checkboxes): restored per row. */
   private readonly _inputInitial: Map<string, string | boolean> = new Map();
   private _sourceValueFields: Array<{ col: string; sourceCol: string }> = [];
+  /** Multiselects of the main form, by output column. */
+  private readonly _multiselects: Map<string, MultiselectSpec> = new Map();
+  /** Multiselects of the per-box (multibox) form, by output column. */
+  private readonly _boxMultiselects: Map<string, MultiselectSpec> = new Map();
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
   private _templateElements: Array<{ el: HTMLElement | Text; template: string }> = [];
 
@@ -501,6 +510,8 @@ export class FormPanel {
     this._inputRefs.clear();
     this._inputInitial.clear();
     this._sourceValueFields = [];
+    this._multiselects.clear();
+    this._boxMultiselects.clear();
     this._passValueDefs = [];
     this._templateElements = [];
     this._annotConfig = null;
@@ -574,7 +585,8 @@ export class FormPanel {
   }
 
   /**
-   * Build one input (textbox / select / checkbox / number) with its label, register it, and
+   * Build one input (textbox / select / multiselect / checkbox / number) with its label,
+   * register it, and
    * append it plus any named sections it can reveal.
    */
   private async _buildInputElement(type: string, rawConfig: any, container: HTMLElement): Promise<void> {
@@ -585,6 +597,7 @@ export class FormPanel {
     let built: { input: InputEl; element: HTMLElement; sections: string[] } | null;
     if (type === 'textbox') built = this._buildTextbox(cfg, col);
     else if (type === 'select') built = await this._buildSelectInput(cfg, col);
+    else if (type === 'multiselect') built = await this._buildMultiselectInput(cfg, col);
     else if (type === 'checkbox') built = this._buildCheckbox(cfg, col);
     else if (type === 'number') built = this._buildNumber(cfg, col);
     else built = null;
@@ -652,6 +665,21 @@ export class FormPanel {
     if (cfg.default != null) built.select.value = String(cfg.default);
     this._formValues[col] = cfg.default ?? selectedDefault;
     return { input: built.select, element: built.element, sections: [...allFormSections] };
+  }
+
+  /** A multiselect: picks become removable tags; its value is the list of labels. */
+  private async _buildMultiselectInput(cfg: any, col: string) {
+    const flags = selectItemOptions(cfg.items);
+    const { items, spec, initial } = prepareMultiselect(
+      cfg, col, await this._loadSelectItems(multiselectItemsConfig(cfg.items)));
+    this._multiselects.set(col, spec);
+    const built = buildMultiselect({
+      items, spec, initial, filterBox: flags.filterBox, customValue: flags.customValue,
+      variant: 'main',
+      onChange: selected => { this._formValues[col] = selected; this._validateForm(); },
+    });
+    this._formValues[col] = initial;
+    return { input: built.input, element: built.element, sections: [] };
   }
 
   /** A checkbox with checked/unchecked values; ``checked_form`` / ``unchecked_form`` sections. */
@@ -988,7 +1016,8 @@ export class FormPanel {
         const formDiv = document.createElement('div');
         formDiv.style.cssText = `display:flex;align-items:center;gap:6px;flex-wrap:wrap;`;
         await buildBoxForm(
-          formCfg, formDiv, entry, items => this._loadSelectItems(items), () => this._validateForm());
+          formCfg, formDiv, entry, items => this._loadSelectItems(items), () => this._validateForm(),
+          spec => this._boxMultiselects.set(spec.col, spec));
         card.appendChild(formDiv);
       }
       host.appendChild(card);
@@ -1056,7 +1085,11 @@ export class FormPanel {
     for (const { col, sourceCol } of this._sourceValueFields) {
       const val = row[sourceCol];
       const el = this._inputRefs.get(col);
-      if (val !== undefined && el) {
+      const spec = this._multiselects.get(col);
+      if (val !== undefined && el && spec) {
+        el.value = JSON.stringify(decodeMultiselect(val, spec.delimiter));
+        el.dispatchEvent(new Event('input'));
+      } else if (val !== undefined && el) {
         el.value = String(val);
         this._formValues[col] = val;
       }
@@ -1144,13 +1177,21 @@ export class FormPanel {
    * there is at least one box and every box's required fields are filled.
    */
   private _validateForm(): void {
-    const filled = (val: any) => val !== null && val !== undefined && val !== '';
-    let allSatisfied = this._requiredInputs.every(({ col, el }) => {
-      if (!el.isConnected) return true; // skip stale refs from rebuilt multibox forms
+    const filled = (val: any) =>
+      Array.isArray(val) ? val.length > 0 : val !== null && val !== undefined && val !== '';
+    const visible = (el: HTMLElement) => {
+      if (!el.isConnected) return false; // stale refs from rebuilt multibox forms
       const section = el.closest('[data-form-section]') as HTMLElement | null;
-      if (section && section.style.display === 'none') return true;
-      return filled(this._formValues[col]);
-    });
+      return !(section && section.style.display === 'none');
+    };
+    let allSatisfied = this._requiredInputs.every(
+      ({ col, el }) => !visible(el) || filled(this._formValues[col]));
+    for (const [col, spec] of this._multiselects) {
+      const el = this._inputRefs.get(col);
+      if (el && visible(el) && !selectionValid(spec, this._formValues[col] ?? [])) {
+        allSatisfied = false;
+      }
+    }
     if (this.isMultiboxMode()) {
       if (this._multiboxEntries.length === 0) {
         allSatisfied = false;
@@ -1158,6 +1199,11 @@ export class FormPanel {
         const formCfg = asElementList(this._formConfig?.dynamic_forms?.[this._multiboxFormName]);
         const cols = formCfg ? requiredColumns(formCfg) : [];
         if (!this._multiboxEntries.every(e => cols.every(c => filled(e.formValues[c])))) {
+          allSatisfied = false;
+        }
+        const boxSpecs = [...this._boxMultiselects.values()];
+        if (!this._multiboxEntries.every(
+          e => boxSpecs.every(spec => selectionValid(spec, e.formValues[spec.col] ?? [])))) {
           allSatisfied = false;
         }
       }
@@ -1305,9 +1351,10 @@ export class FormPanel {
   /** Write the current form (one row, or one row per multibox box) in a single kernel call. */
   private async _writeSubmission(activeRow: Detection): Promise<void> {
     const multibox = this.isMultiboxMode() && this._multiboxEntries.length > 0;
-    const rows = multibox
+    const specs = new Map([...this._multiselects, ...this._boxMultiselects]);
+    const rows = (multibox
       ? this._multiboxEntries.map(entry => this._multiboxRow(entry))
-      : [{ ...this._formValues }];
+      : [{ ...this._formValues }]).map(row => encodeRow(row, specs));
     try {
       await this._kernel.exec(writeOutputRows(this._outputPath, rows));
     } catch (e: unknown) {
