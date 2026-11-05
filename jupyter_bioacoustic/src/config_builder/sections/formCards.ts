@@ -277,8 +277,9 @@ function _addMultiselectOutput(ctx: FormCardContext, card: HTMLDivElement, cfg: 
   ];
   const showFormat = () => {
     const columns = format.value === 'columns';
-    for (const row of listRows) row.style.display = columns ? 'none' : '';
-    for (const row of columnRows) row.style.display = columns ? '' : 'none';
+    // 'flex', not '': clearing display would drop the row's flex layout (and its gaps)
+    for (const row of listRows) row.style.display = columns ? 'none' : 'flex';
+    for (const row of columnRows) row.style.display = columns ? 'flex' : 'none';
   };
   showFormat();
   card.appendChild(area);
