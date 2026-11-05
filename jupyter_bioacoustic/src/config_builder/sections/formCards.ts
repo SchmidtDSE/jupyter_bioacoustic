@@ -11,7 +11,7 @@
 //
 import { COLORS } from '../../styles';
 import { slugify } from '../../util';
-import { makeInput, makeRow } from '../dom';
+import { makeInput, makeRow, makeSelect } from '../dom';
 import type { CardConfig, ElementType } from '../formSerialization';
 import { buildAnnotationToolList } from './formAnnotationTools';
 import { addSelectItemsBuilder } from './formSelectItems';
@@ -43,6 +43,7 @@ export function defaultElementConfig(type: ElementType): CardConfig {
   switch (type) {
     case 'title': return { value: 'REVIEW' };
     case 'select': return { label: '', column: '', required: false, items: [] };
+    case 'multiselect': return { label: '', column: '', required: false, items: [] };
     case 'textbox': return { label: '', column: '', multiline: false };
     case 'checkbox': return { label: '', column: '' };
     case 'number': return { label: '', column: '', min: 0, max: 1, step: 0.1 };
@@ -78,6 +79,14 @@ export function buildElementFields(
       _addLabelColumnFields(ctx, card, cfg);
       _addCheckboxField(ctx, card, cfg, 'required', 'required');
       addSelectItemsBuilder(ctx, card, cfg);
+      break;
+    case 'multiselect':
+      _addLabelColumnFields(ctx, card, cfg);
+      _addCheckboxField(ctx, card, cfg, 'required', 'required');
+      _addNumField(ctx, card, cfg, 'min', 'min tags', '60px');
+      _addNumField(ctx, card, cfg, 'max', 'max tags', '60px');
+      addSelectItemsBuilder(ctx, card, cfg, { idColumn: true });
+      _addMultiselectOutput(ctx, card, cfg);
       break;
     case 'textbox':
       _addLabelColumnFields(ctx, card, cfg);
@@ -210,6 +219,74 @@ function _addCheckboxField(
     ctx.changed();
   });
   card.appendChild(row);
+}
+
+
+/**
+ * A multiselect's ``output``: ``list`` (optional delimiter) or ``columns`` (column prefix and
+ * the true / false values); only the chosen format's fields are shown.
+ */
+function _addMultiselectOutput(ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig): void {
+  const area = document.createElement('div');
+  area.style.cssText =
+    `display:flex;flex-direction:column;gap:4px;padding:4px 0;` +
+    `border-top:1px solid ${COLORS.bgSurface1};margin-top:4px;`;
+  const title = document.createElement('span');
+  title.textContent = 'Output:';
+  title.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
+  area.appendChild(title);
+
+  const output = (): Record<string, any> => {
+    if (!cfg.output || typeof cfg.output !== 'object') cfg.output = {};
+    return cfg.output;
+  };
+  const initialFormat = cfg.output?.format === 'columns' ? 'columns' : 'list';
+  const format = makeSelect(['list', 'columns'], initialFormat);
+  format.addEventListener('change', () => {
+    output().format = format.value;
+    showFormat();
+    ctx.changed();
+  });
+  area.appendChild(ctx.fieldRow('format', format));
+
+  /** A text field for ``output[key]``; ``parse`` turns the text into the stored value. */
+  const field = (key: string, label: string, placeholder: string, parse: (t: string) => any) => {
+    const inp = makeInput(placeholder, '120px');
+    if (cfg.output?.[key] != null) inp.value = String(cfg.output[key]);
+    inp.addEventListener('input', () => {
+      const value = parse(inp.value);
+      if (value === undefined) delete output()[key];
+      else output()[key] = value;
+      ctx.changed();
+    });
+    const row = ctx.fieldRow(label, inp);
+    area.appendChild(row);
+    return row;
+  };
+  const text = (t: string) => t || undefined;
+  const listRows = [field('delimiter', 'delimiter', 'JSON list', text)];
+  const columnRows = [
+    field('column_prefix', 'column_prefix', '<column>_', text),
+    field('true_value', 'true_value', 'true', _parseScalar),
+    field('false_value', 'false_value', 'false', _parseScalar),
+  ];
+  const showFormat = () => {
+    const columns = format.value === 'columns';
+    for (const row of listRows) row.style.display = columns ? 'none' : '';
+    for (const row of columnRows) row.style.display = columns ? '' : 'none';
+  };
+  showFormat();
+  card.appendChild(area);
+}
+
+
+/** A typed value from text: '' -> unset, true / false -> booleans, numbers -> numbers. */
+function _parseScalar(text: string): unknown {
+  const t = text.trim();
+  if (!t) return undefined;
+  if (t === 'true' || t === 'false') return t === 'true';
+  const n = Number(t);
+  return Number.isFinite(n) ? n : t;
 }
 
 
