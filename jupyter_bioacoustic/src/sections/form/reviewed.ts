@@ -10,6 +10,7 @@
 //
 import { COLORS, DISPLAY_CHIP_COLORS, btnStyle, dividerStyle } from '../../styles';
 import { AnnotConfig, MultiboxEntry } from '../../types';
+import { decodeMultiselect } from './multiselect';
 
 
 //
@@ -130,7 +131,7 @@ function _reviewedCard(data: Record<string, any>, index: number, multi: boolean)
     keyEl.textContent = key;
     const valEl = document.createElement('span');
     valEl.style.cssText = `color:${COLORS.textPrimary};`;
-    valEl.textContent = val != null && val !== '' ? String(val) : '—';
+    valEl.textContent = _savedValueText(val);
     line.append(keyEl, valEl);
     card.appendChild(line);
   }
@@ -166,4 +167,15 @@ function _buttonRow(opts: ReviewedViewOptions): HTMLDivElement {
 
   row.append(prevBtn, nextBtn, spacer, deleteBtn);
   return row;
+}
+
+
+/** A saved value as text: lists (a multiselect's tags, also as JSON text) joined by ", ". */
+function _savedValueText(val: unknown): string {
+  if (val == null || val === '') return '—';
+  if (Array.isArray(val) || (typeof val === 'string' && val.trim().startsWith('['))) {
+    const tags = decodeMultiselect(val, null);
+    return tags.length ? tags.join(', ') : '—';
+  }
+  return String(val);
 }
