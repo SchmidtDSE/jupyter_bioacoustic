@@ -142,4 +142,57 @@ describe('FormPanel multiselect', () => {
     expect(p.isShowingReviewedView()).toBe(true);
     expect(p.element.textContent).toContain('owl, cat');
   });
+
+  it('keeps working as the annotation tool changes', async () => {
+    const k = fakeKernel();
+    const p = await panel(k.kernel, {
+      annotation: {
+        tools: ['time_select', 'bounding_box', 'multibox', { fixed_duration: 3 }],
+        form: 'tags',
+      },
+      dynamic_forms: { tags: [{ multiselect: { label: 'sources', required: true, items: ITEMS } }] },
+    });
+    const tool = (name: string) => pick(p.element, name, 0);   // select 0: the tool dropdown
+
+    // time_select: one set of tags for the clip
+    expect(submitBtn(p).disabled).toBe(true);
+    pick(p.element, 'owl', 1);
+    pick(p.element, 'cat', 1);
+    await (p as any)._onVerify();
+    expect(payloadRows(k.writes[0])[0]).toMatchObject({ sources: ['owl', 'cat'], start_time: 0 });
+
+    // bounding_box: the rebuilt tag form starts empty and is required again
+    tool('bounding_box');
+    await (p as any)._formWork;
+    expect(tags(p.element)).toEqual([]);
+    expect(submitBtn(p).disabled).toBe(true);
+    p.setAnnotValue('startTime', 1);
+    p.setAnnotValue('endTime', 2);
+    p.setAnnotValue('minFreq', 100);
+    p.setAnnotValue('maxFreq', 900);
+    pick(p.element, 'generator', 1);
+    await (p as any)._onVerify();
+    expect(payloadRows(k.writes[1])[0])
+      .toMatchObject({ sources: ['generator'], min_frequency: 100, max_frequency: 900 });
+
+    // multibox: tags per box, one row each
+    tool('multibox');
+    await (p as any)._formWork;
+    p.addMultiboxEntry(0, 1, 100, 200);
+    p.addMultiboxEntry(1, 2, 300, 400);
+    await (p as any)._formWork;
+    pick(p.element, 'owl', 1);
+    expect(submitBtn(p).disabled).toBe(true);            // the second box has no tags yet
+    pick(p.element, 'generator', 2);
+    expect(submitBtn(p).disabled).toBe(false);
+    await (p as any)._onVerify();
+    expect(payloadRows(k.writes[2]).map(r => r.sources)).toEqual([['owl'], ['generator']]);
+
+    // fixed_duration: back to one set of tags
+    tool('fixed_duration');
+    await (p as any)._formWork;
+    pick(p.element, 'cat', 1);
+    await (p as any)._onVerify();
+    expect(payloadRows(k.writes[3])[0].sources).toEqual(['cat']);
+  });
 });
