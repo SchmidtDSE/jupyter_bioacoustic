@@ -24,9 +24,12 @@ VALID_FORM_KEYS = frozenset({
     'title', 'progress_tracker', 'pass_value', 'fixed_value',
     'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
     'annotation',
-    'select', 'textbox', 'checkbox', 'number',
+    'select', 'multiselect', 'textbox', 'checkbox', 'number',
     'break', 'line', 'text',
 })
+
+# How a multiselect is written: one column holding a list, or a column per item.
+MULTISELECT_FORMATS = ('list', 'columns')
 
 VALID_CONFIG_KEYS = frozenset({
     'data', 'data_source_type', 'data_value',
@@ -297,6 +300,9 @@ def _validate_forms_and_annotations(
         if isinstance(annot, dict):
             _validate_annotation(annot, errors, warns)
 
+    for ms in _collect_multiselects(fc):
+        _validate_multiselect(ms, errors, warns)
+
     for f in sorted(missing_forms):
         errors.append(
             f'Referenced dynamic form "{f}" is not defined',
@@ -308,7 +314,7 @@ def _validate_forms_and_annotations(
 
     has_form = bool(fc.get('form'))
     has_legacy = any(
-        k in fc for k in ('select', 'textbox', 'checkbox', 'number')
+        k in fc for k in ('select', 'multiselect', 'textbox', 'checkbox', 'number')
     )
     has_annotation = 'annotation' in fc
     if not has_form and not has_legacy and not has_annotation:
@@ -445,6 +451,89 @@ def _scan_elements(elements: Any, referenced_forms: set[str]) -> None:
                 for fkey in ('checked_form', 'unchecked_form'):
                     if ecfg.get(fkey):
                         referenced_forms.add(ecfg[fkey])
+
+
+def _collect_multiselects(fc: dict) -> list[dict]:
+    """Return every multiselect config: top-level, in the ``form`` list and in dynamic forms.
+
+    Args:
+        fc: The form configuration dict.
+
+    Returns:
+        The multiselect config dicts, in order.
+    """
+    found: list[dict] = []
+
+    def scan(elements: Any) -> None:
+        """Add the multiselects among a form section's elements.
+
+        Args:
+            elements: A list of ``{type: config}`` dicts, or a ``{type: config}`` mapping.
+        """
+        if isinstance(elements, dict):
+            elements = [{k: v} for k, v in elements.items()]
+        if not isinstance(elements, list):
+            return
+        for el in elements:
+            if isinstance(el, dict) and isinstance(el.get('multiselect'), dict):
+                found.append(el['multiselect'])
+
+    if isinstance(fc.get('multiselect'), dict):
+        found.append(fc['multiselect'])
+    scan(fc.get('form'))
+    dyn = fc.get('dynamic_forms')
+    if isinstance(dyn, dict):
+        for section in dyn.values():
+            scan(section)
+    elif isinstance(dyn, list):              # legacy: a list of {name: elements}
+        for item in dyn:
+            if isinstance(item, dict):
+                for section in item.values():
+                    scan(section)
+    return found
+
+
+def _validate_multiselect(ms: dict, errors: list[str], warns: list[str]) -> None:
+    """Validate one multiselect: its output format, label bounds and items.
+
+    Args:
+        ms: The multiselect config dict.
+        errors: List that error messages are appended to.
+        warns: List that warning messages are appended to.
+    """
+    name = ms.get('column') or ms.get('label') or 'multiselect'
+    output = ms.get('output') or {}
+    fmt = output.get('format', 'list') if isinstance(output, dict) else None
+    if fmt not in MULTISELECT_FORMATS:
+        errors.append(
+            f'Multiselect "{name}": unknown output format "{fmt}" '
+            f'(use {" or ".join(MULTISELECT_FORMATS)})'
+        )
+    items = ms.get('items')
+    if fmt == 'columns' and isinstance(items, dict) and items.get('custom_value'):
+        errors.append(
+            f'Multiselect "{name}": format "columns" writes one column per item, so it can\'t '
+            f'allow custom_value tags (use format "list")'
+        )
+    if fmt == 'columns' and isinstance(output, dict) and output.get('delimiter'):
+        warns.append(f'Multiselect "{name}": "delimiter" is ignored with format "columns"')
+
+    low, high = ms.get('min'), ms.get('max')
+    if high is not None and (not isinstance(high, int) or high < 1):
+        errors.append(f'Multiselect "{name}": "max" must be a whole number of at least 1')
+    elif isinstance(low, int) and isinstance(high, int) and low > high:
+        errors.append(f'Multiselect "{name}": "min" ({low}) is larger than "max" ({high})')
+
+    if isinstance(items, dict) and items.get('id') and not items.get('path'):
+        errors.append(
+            f'Multiselect "{name}": items "id" names a column of an items file, '
+            f'so it needs items "path"'
+        )
+    if isinstance(items, list) and any(isinstance(i, dict) and 'form' in i for i in items):
+        warns.append(
+            f'Multiselect "{name}": items can\'t open dynamic forms in a multiselect '
+            f'(their "form" is ignored)'
+        )
 
 
 def _validate_annotation(
