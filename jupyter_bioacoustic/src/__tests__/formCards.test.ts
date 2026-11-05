@@ -86,7 +86,7 @@ describe('formCards', () => {
     expect('id' in cfg.items).toBe(false);
 
     // list: only the delimiter shows, with a hint instead of a placeholder
-    expect(field('delimiter').style.display).toBe('');
+    expect(field('delimiter').style.display).toBe('flex');   // keeps the row's gaps
     expect(input('delimiter').placeholder).toBe('');
     expect(field('delimiter').textContent).toContain('blank: save a list');
     expect(field('true_value').style.display).toBe('none');
@@ -94,7 +94,7 @@ describe('formCards', () => {
     format.value = 'columns';
     format.dispatchEvent(new Event('change'));
     expect(field('delimiter').style.display).toBe('none');
-    expect(field('true_value').style.display).toBe('');
+    expect(field('true_value').style.display).toBe('flex');
     type(input('true_value'), '1');
     type(input('false_value'), 'false');
     type(input('column_prefix'), 'has_');
