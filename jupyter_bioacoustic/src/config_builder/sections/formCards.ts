@@ -264,7 +264,12 @@ function _addMultiselectOutput(ctx: FormCardContext, card: HTMLDivElement, cfg: 
     return row;
   };
   const text = (t: string) => t || undefined;
-  const listRows = [field('delimiter', 'delimiter', 'JSON list', text)];
+  const delimiterRow = field('delimiter', 'delimiter', '', text);
+  const hint = document.createElement('span');
+  hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;white-space:nowrap;`;
+  hint.textContent = '| blank: save a list ["a", "b"] · a delimiter (e.g. ;) saves the text "a;b"';
+  delimiterRow.appendChild(hint);
+  const listRows = [delimiterRow];
   const columnRows = [
     field('column_prefix', 'column_prefix', '<column>_', text),
     field('true_value', 'true_value', 'true', _parseScalar),
