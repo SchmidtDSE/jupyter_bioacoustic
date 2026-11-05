@@ -557,3 +557,58 @@ class TestFormHelpers:
         errors: list[str] = []
         _validate_annotation({'tools': []}, errors, [])
         assert len(errors) == 1 and 'at least one tool' in errors[0]
+
+
+#
+# multiselect ("tags") elements
+#
+class TestMultiselect:
+
+    @staticmethod
+    def _check(ms, where='form'):
+        if where == 'form':
+            fc = {'form': [{'multiselect': ms}]}
+        elif where == 'dynamic':
+            fc = {'annotation': {'tools': ['multibox'], 'form': 'box'},
+                  'dynamic_forms': {'box': [{'multiselect': ms}]}}
+        else:
+            fc = {'multiselect': ms}
+        return validate_config(form_config=fc)
+
+    def test_list_and_columns_are_valid(self):
+        for output in ({}, {'format': 'list', 'delimiter': ';'},
+                       {'format': 'columns', 'column_prefix': 'has_'}):
+            r = self._check({'label': 'tags', 'items': ['owl', 'cat'], 'output': output})
+            assert r['valid'], (output, r['errors'])
+
+    def test_counts_as_a_form_input(self):
+        r = self._check({'label': 'tags', 'items': ['owl']}, where='top')
+        assert r['valid']
+        assert 'No form input elements configured' not in r['warnings']
+
+    def test_unknown_format(self):
+        r = self._check({'items': ['owl'], 'output': {'format': 'vector'}})
+        assert any('format' in e and 'vector' in e for e in r['errors'])
+
+    def test_columns_need_a_closed_list(self):
+        r = self._check({'items': {'path': 'l.csv', 'value': 'v', 'custom_value': True},
+                         'output': {'format': 'columns'}})
+        assert any('custom_value' in e for e in r['errors'])
+
+    def test_bounds(self):
+        assert any('min' in e for e in self._check({'items': ['a'], 'min': 3, 'max': 2})['errors'])
+        assert any('max' in e for e in self._check({'items': ['a'], 'max': 0})['errors'])
+
+    def test_id_needs_a_file(self):
+        r = self._check({'items': ['owl'], 'id': 'idx'})
+        assert r['valid']                     # id only means something inside items
+        r = self._check({'items': {'id': 'idx', 'value': 'name'}})
+        assert any('id' in e and 'path' in e for e in r['errors'])
+
+    def test_item_forms_are_not_supported(self):
+        r = self._check({'items': [{'label': 'owl', 'form': 'owl_form'}]})
+        assert any('multiselect' in w and 'form' in w for w in r['warnings'])
+
+    def test_checked_inside_dynamic_forms(self):
+        r = self._check({'items': ['a'], 'output': {'format': 'nope'}}, where='dynamic')
+        assert any('nope' in e for e in r['errors'])
