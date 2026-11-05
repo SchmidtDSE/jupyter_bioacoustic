@@ -23,13 +23,18 @@ import { FormCardContext, buildElementFields, defaultElementConfig } from './for
 // Constants
 //
 /** Element types that make a following title / annotation / ... go into the ``form:`` list. */
-const USER_INPUT_TYPES: ReadonlySet<string> = new Set(['select', 'textbox', 'checkbox', 'number']);
+const USER_INPUT_TYPES: ReadonlySet<string> = new Set([
+  'select', 'multiselect', 'textbox', 'checkbox', 'number',
+]);
 /** Element types written as top-level keys when they come before any user input. */
 const TOP_LEVEL_TYPES: ReadonlySet<string> = new Set(['title', 'annotation', 'pass_value', 'fixed_value']);
 /** The add bar's button groups. */
 const ADD_BAR_COLUMNS: ReadonlyArray<{ header: string; rows: ElementType[][] }> = [
   { header: 'Display', rows: [['title', 'text'], ['line', 'break']] },
-  { header: 'User Input', rows: [['annotation', 'select'], ['textbox', 'checkbox', 'number']] },
+  {
+    header: 'User Input',
+    rows: [['annotation', 'select', 'multiselect'], ['textbox', 'checkbox', 'number']],
+  },
   { header: 'Data', rows: [['pass_value'], ['fixed_value']] },
   { header: 'Navigation', rows: [['submission_buttons']] },
 ];
@@ -174,7 +179,7 @@ export class FormSection extends CollapsibleSection {
         this._addElement(type, deserializeElement(type, item[type]));
       }
     } else {
-      for (const key of ['select', 'textbox', 'checkbox', 'number'] as ElementType[]) {
+      for (const key of [...USER_INPUT_TYPES] as ElementType[]) {
         if (data[key]) this._addElement(key, deserializeElement(key, data[key]));
       }
     }
