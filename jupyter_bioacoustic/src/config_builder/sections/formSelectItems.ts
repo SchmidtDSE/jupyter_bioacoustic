@@ -1,7 +1,7 @@
 /**
- * The select card's "Items source" builder: add items one by one, paste values, read them from
- * a file (value / label columns, filter box, custom value, not-available option) or a numeric
- * range.
+ * The select / multiselect card's "Items source" builder: add items one by one, paste values,
+ * read them from a file (value / label columns, an optional id column for multiselects, filter
+ * box, custom value, not-available option) or a numeric range.
  *
  * License: BSD 3-Clause
  */
@@ -21,15 +21,16 @@ import type { FormCardContext } from './formCards';
 // Public
 //
 /**
- * Add the "Items source" picker to a select card; the chosen mode's editor writes
+ * Add the "Items source" picker to a select / multiselect card; the chosen mode's editor writes
  * ``cfg.items`` (a list, ``{path, value, label, ...}`` or ``{min, max, step}``).
  *
  * @param ctx - The owning section's hooks.
- * @param card - The select card.
- * @param cfg - The select's card config.
+ * @param card - The card.
+ * @param cfg - The element's card config.
+ * @param opts.idColumn - Offer an ``id`` column in file mode (multiselect: save ids, show names).
  */
 export function addSelectItemsBuilder(
-  ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig,
+  ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig, opts: { idColumn?: boolean } = {},
 ): void {
   const itemsArea = document.createElement('div');
   itemsArea.style.cssText =
@@ -64,7 +65,7 @@ export function addSelectItemsBuilder(
     if (m === 'add items') {
       _buildAddItems(ctx, itemsContent, cfg);
     } else if (m === 'from file') {
-      _buildFileItems(ctx, itemsContent, cfg);
+      _buildFileItems(ctx, itemsContent, cfg, !!opts.idColumn);
     } else if (m === 'paste values') {
       _buildPasteValues(ctx, itemsContent, cfg);
     } else {
@@ -230,7 +231,9 @@ function _buildPasteValues(ctx: FormCardContext, container: HTMLDivElement, cfg:
 
 
 /** ``items: {path, value, label}`` from a data file, with column pickers once loaded. */
-function _buildFileItems(ctx: FormCardContext, container: HTMLDivElement, cfg: CardConfig): void {
+function _buildFileItems(
+  ctx: FormCardContext, container: HTMLDivElement, cfg: CardConfig, withId: boolean,
+): void {
   const pathRow = makeRow();
   pathRow.appendChild(makeLabel('file path'));
   const pathInp = makeInput('data/categories.csv', '160px');
@@ -238,69 +241,17 @@ function _buildFileItems(ctx: FormCardContext, container: HTMLDivElement, cfg: C
     pathInp.value = cfg.items.path;
   }
 
-  const valSel = makeSelect([], '');
-  valSel.style.width = '150px';
-  valSel.style.display = 'none';
-  valSel.addEventListener('change', () => {
-    if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-    cfg.items.value = valSel.value;
-    ctx.changed();
-  });
-
-  const valInput = makeInput('value column', '150px');
-  if (cfg.items?.value) valInput.value = cfg.items.value;
-  valInput.addEventListener('input', () => {
-    if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-    cfg.items.value = valInput.value.trim();
-    ctx.changed();
-  });
-
-  const lblSel = makeSelect(['(none)'], '');
-  lblSel.style.width = '150px';
-  lblSel.style.display = 'none';
-  lblSel.addEventListener('change', () => {
-    if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-    cfg.items.label = lblSel.value || undefined;
-    ctx.changed();
-  });
-
-  const lblInput = makeInput('label column (optional)', '150px');
-  if (cfg.items?.label) lblInput.value = cfg.items.label;
-  lblInput.addEventListener('input', () => {
-    if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
-    cfg.items.label = lblInput.value.trim() || undefined;
-    ctx.changed();
-  });
-
-  const populateSelects = (cols: string[]) => {
-    fillSelect(valSel, cols);
-    fillSelect(lblSel, cols, '(none)');
-    const pendingVal = valInput.value.trim();
-    if (pendingVal && cols.includes(pendingVal)) valSel.value = pendingVal;
-    else if (cfg.items?.value && cols.includes(cfg.items.value)) valSel.value = cfg.items.value;
-    const pendingLbl = lblInput.value.trim();
-    if (pendingLbl && cols.includes(pendingLbl)) lblSel.value = pendingLbl;
-    else if (cfg.items?.label && cols.includes(cfg.items.label)) lblSel.value = cfg.items.label;
-    valInput.style.display = 'none';
-    valSel.style.display = '';
-    lblInput.style.display = 'none';
-    lblSel.style.display = '';
-  };
-
-  const revertToText = () => {
-    valSel.style.display = 'none';
-    valInput.style.display = '';
-    valInput.value = valSel.value || valInput.value;
-    lblSel.style.display = 'none';
-    lblInput.style.display = '';
-    lblInput.value = lblSel.value || lblInput.value;
-  };
+  const pickers = [
+    _columnPicker(ctx, cfg, 'value', 'value column', false),
+    _columnPicker(ctx, cfg, 'label', 'label column (optional)', true),
+    ...(withId ? [_columnPicker(ctx, cfg, 'id', 'id column (optional)', true)] : []),
+  ];
 
   const loadCols = (path: string) => {
     if (path && DATA_FILE_RE.test(path)) {
-      ctx.requestColumns(path, populateSelects);
+      ctx.requestColumns(path, cols => pickers.forEach(p => p.showColumns(cols)));
     } else {
-      revertToText();
+      pickers.forEach(p => p.showText());
     }
   };
 
@@ -326,25 +277,24 @@ function _buildFileItems(ctx: FormCardContext, container: HTMLDivElement, cfg: C
   pathRow.append(pathInp, browseBtn);
   container.appendChild(pathRow);
 
-  const hintStyle = `color:${COLORS.textSubtle};font-size:12px;white-space:nowrap;`;
-
-  const valRow = makeRow();
-  valRow.appendChild(makeLabel('value column'));
-  valRow.append(valInput, valSel);
-  const valHint = document.createElement('span');
-  valHint.style.cssText = hintStyle;
-  valHint.textContent = '| source column whose value is written to output dataset';
-  valRow.appendChild(valHint);
-  container.appendChild(valRow);
-
-  const lblRow = makeRow();
-  lblRow.appendChild(makeLabel('label column'));
-  lblRow.append(lblInput, lblSel);
-  const lblHint = document.createElement('span');
-  lblHint.style.cssText = hintStyle;
-  lblHint.textContent = '| source column whose value is shown in dropdown (defaults to value column)';
-  lblRow.appendChild(lblHint);
-  container.appendChild(lblRow);
+  const hints = [
+    withId
+      ? 'source column shown on the tags, and written to output unless an id column is set'
+      : 'source column whose value is written to output dataset',
+    'source column whose value is shown in dropdown (defaults to value column)',
+    'optional: written to output instead of the value column, e.g. a class index',
+  ];
+  const names = ['value column', 'label column', 'id column'];
+  pickers.forEach((picker, i) => {
+    const row = makeRow();
+    row.appendChild(makeLabel(names[i]));
+    row.append(picker.input, picker.select);
+    const hint = document.createElement('span');
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;white-space:nowrap;`;
+    hint.textContent = `| ${hints[i]}`;
+    row.appendChild(hint);
+    container.appendChild(row);
+  });
 
   if (pathInp.value) loadCols(pathInp.value);
 
@@ -446,4 +396,49 @@ function _buildRangeItems(ctx: FormCardContext, container: HTMLDivElement, cfg: 
     makeLabel('step'), stepInp,
   );
   container.appendChild(row);
+}
+
+
+/**
+ * A column field for an items file: a text input until the file's columns are known, then a
+ * dropdown of them. Writes ``cfg.items[key]`` (optional fields remove the key when empty).
+ */
+function _columnPicker(
+  ctx: FormCardContext, cfg: CardConfig, key: 'value' | 'label' | 'id', placeholder: string,
+  optional: boolean,
+) {
+  const select = makeSelect([], '');
+  select.style.width = '150px';
+  select.style.display = 'none';
+  const input = makeInput(placeholder, '150px');
+  if (cfg.items?.[key]) input.value = cfg.items[key];
+
+  const set = (value: string) => {
+    if (!cfg.items || typeof cfg.items !== 'object') cfg.items = {};
+    if (value || !optional) cfg.items[key] = value;
+    else delete cfg.items[key];
+    ctx.changed();
+  };
+  select.addEventListener('change', () => set(select.value));
+  input.addEventListener('input', () => set(input.value.trim()));
+
+  return {
+    select,
+    input,
+    /** Switch to a dropdown of ``cols`` (keeping the typed or saved column). */
+    showColumns(cols: string[]): void {
+      fillSelect(select, cols, optional ? '(none)' : undefined);
+      const pending = input.value.trim();
+      if (pending && cols.includes(pending)) select.value = pending;
+      else if (cfg.items?.[key] && cols.includes(cfg.items[key])) select.value = cfg.items[key];
+      input.style.display = 'none';
+      select.style.display = '';
+    },
+    /** Back to the text input (the columns couldn't be read). */
+    showText(): void {
+      select.style.display = 'none';
+      input.style.display = '';
+      input.value = select.value || input.value;
+    },
+  };
 }
