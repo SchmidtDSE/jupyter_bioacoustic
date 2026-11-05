@@ -1,7 +1,8 @@
 /**
  * DOM builders for form inputs shared by the main form and the per-box (multibox) forms:
- * the select (with optional filter box and "+ Add" custom value) and the small labelled
- * textbox / number / checkbox used inside box cards.
+ * the select (with optional filter box and "+ Add" custom value), the multiselect (a select
+ * that adds removable tags) and the small labelled textbox / number / checkbox used inside
+ * box cards.
  *
  * Builders only create elements and report changes through callbacks; the FormPanel owns
  * the values.
@@ -11,7 +12,13 @@
 //
 // Imports
 //
-import { btnStyle, inputStyle, labelStyle, selectStyle } from '../../styles';
+import {
+  btnStyle, filterChipDismissStyle, filterChipStyle, inputStyle, labelStyle, mutedTextStyle,
+  selectStyle,
+} from '../../styles';
+import {
+  MultiselectSpec, addLabel, decodeMultiselect, removeLabel, selectionFull,
+} from './multiselect';
 import { SelectItem, hasExactItem } from './selectItems';
 
 
@@ -64,6 +71,30 @@ export interface SelectOptions {
 export interface BuiltSelect {
   select: HTMLSelectElement;
   /** What to put in the label: the select, or a wrapper with the filter box / Add button. */
+  element: HTMLElement;
+}
+
+/** Options for ``buildMultiselect``. */
+export interface MultiselectOptions {
+  items: SelectItem[];
+  filterBox: boolean;
+  customValue: boolean;
+  variant: keyof typeof SELECT_VARIANTS;
+  spec: MultiselectSpec;
+  /** Labels shown at first. */
+  initial: string[];
+  /** Called with the labels after every add / remove (and after ``input`` events). */
+  onChange: (selected: string[]) => void;
+}
+
+/** A built multiselect. */
+export interface BuiltMultiselect {
+  /**
+   * Hidden input holding the labels as a JSON array. Setting its value and dispatching
+   * ``input`` replaces the labels (how the form resets inputs for each row).
+   */
+  input: HTMLInputElement;
+  /** The picker with the tags under it. */
   element: HTMLElement;
 }
 
@@ -160,6 +191,82 @@ export function buildSelect(opts: SelectOptions): BuiltSelect {
   wrapper.append(sel, filterInput);
   if (addBtn) wrapper.appendChild(addBtn);
   return { select: sel, element: wrapper };
+}
+
+
+/**
+ * A multiselect: a select (with the same filter box / "+ Add" options) whose picks become
+ * tags under it, each removed with its ×.
+ */
+export function buildMultiselect(opts: MultiselectOptions): BuiltMultiselect {
+  const { spec, items } = opts;
+  let selected = [...opts.initial];
+
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.value = JSON.stringify(selected);
+
+  const tags = document.createElement('div');
+  tags.style.cssText = `display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-height:22px;`;
+
+  const picker = buildSelect({
+    items, filterBox: opts.filterBox, customValue: opts.customValue, variant: opts.variant,
+    onChange: () => {
+      const value = picker.select.value;
+      picker.select.value = '';
+      set(addLabel(spec, selected, value));
+    },
+  });
+  picker.select.value = '';           // ``selected::`` items start as tags, not as the pick
+
+  const labelOf = (value: string) => items.find(i => i.val === value)?.label ?? value;
+
+  const render = () => {
+    tags.replaceChildren();
+    for (const value of selected) {
+      const tag = document.createElement('span');
+      tag.style.cssText = filterChipStyle();
+      tag.dataset.tag = value;
+      tag.append(labelOf(value));
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'jp-BA-chip-dismiss';
+      x.textContent = '×';
+      x.title = `Remove ${labelOf(value)}`;
+      x.style.cssText = filterChipDismissStyle();
+      x.addEventListener('click', () => set(removeLabel(selected, value)));
+      tag.append(x);
+      tags.appendChild(tag);
+    }
+    if (selected.length === 0) {
+      const none = document.createElement('span');
+      none.style.cssText = mutedTextStyle({ fontSize: 11 });
+      none.textContent = 'no tags';
+      tags.appendChild(none);
+    }
+    const full = selectionFull(spec, selected);
+    picker.select.disabled = full;
+    picker.element.style.opacity = full ? '0.5' : '1';
+  };
+
+  const set = (next: string[]) => {
+    selected = next;
+    input.value = JSON.stringify(selected);
+    render();
+    opts.onChange(selected);
+  };
+
+  input.addEventListener('input', () => {
+    selected = decodeMultiselect(input.value, null);
+    render();
+    opts.onChange(selected);
+  });
+
+  render();
+  const element = document.createElement('div');
+  element.style.cssText = `display:inline-flex;flex-direction:column;align-items:flex-start;gap:4px;`;
+  element.append(picker.element, tags, input);
+  return { input, element };
 }
 
 
