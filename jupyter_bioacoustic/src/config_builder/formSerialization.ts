@@ -14,7 +14,7 @@
 //
 // Types
 //
-export type ElementType = 'title' | 'select' | 'textbox' | 'checkbox' | 'number' |
+export type ElementType = 'title' | 'select' | 'multiselect' | 'textbox' | 'checkbox' | 'number' |
   'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' |
   'break' | 'line' | 'text';
 
@@ -45,6 +45,8 @@ export function serializeElement(type: ElementType, cfg: CardConfig): any {
       return _serializeAnnotation(cfg);
     case 'submission_buttons':
       return _serializeSubmissionButtons(cfg);
+    case 'multiselect':
+      return _serializeMultiselect(cfg);
     case 'break':
     case 'line':
       return true;
@@ -72,6 +74,11 @@ export function deserializeElement(type: ElementType, raw: any): CardConfig {
       return _deserializeAnnotation(raw ?? {});
     case 'submission_buttons':
       return _deserializeSubmissionButtons(raw ?? {});
+    case 'multiselect':
+      // own copy of the nested output dict: the card edits it in place
+      return raw && typeof raw === 'object'
+        ? { ...raw, ...(raw.output ? { output: { ...raw.output } } : {}) }
+        : {};
     case 'break':
     case 'line':
       return {};
@@ -148,6 +155,16 @@ function _deserializeSubmissionButtons(sb: Record<string, any>): CardConfig {
     if (typeof sb[name] === 'object' && sb[name].label) cfg[`${name}_label`] = sb[name].label;
   }
   return cfg;
+}
+
+
+/** A multiselect without empty fields; an ``output`` left with no settings is dropped. */
+function _serializeMultiselect(cfg: CardConfig): Record<string, any> {
+  const ms = _withoutEmpty(cfg);
+  const output = cfg.output && typeof cfg.output === 'object' ? _withoutEmpty(cfg.output) : {};
+  if (Object.keys(output).length) ms.output = output;
+  else delete ms.output;
+  return ms;
 }
 
 
