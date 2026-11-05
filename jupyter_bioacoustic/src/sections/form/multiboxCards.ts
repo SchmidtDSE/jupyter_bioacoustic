@@ -11,7 +11,8 @@ import { COLORS, btnStyle, fullWidthDividerStyle, inputStyle, mutedTextStyle } f
 import { TOOLTIP } from '../../text';
 import { MultiboxEntry } from '../../types';
 import { elementColumn } from './formConfig';
-import { boxLabel, buildSelect } from './inputs';
+import { boxLabel, buildMultiselect, buildSelect } from './inputs';
+import { MultiselectSpec, multiselectItemsConfig, prepareMultiselect } from './multiselect';
 import { RawSelectItem, parseSelectItems, selectItemOptions } from './selectItems';
 
 
@@ -77,11 +78,12 @@ export function buildBoxCard(
 
 
 /**
- * Build a box's form into ``container``: text / break / line, and select / textbox /
- * number / checkbox inputs bound to ``entry.formValues`` (existing values are kept).
+ * Build a box's form into ``container``: text / break / line, and select / multiselect /
+ * textbox / number / checkbox inputs bound to ``entry.formValues`` (existing values are kept).
  *
  * @param loadItems - Resolves a select's ``items`` to raw items (files load in the kernel).
  * @param onChange - Called after any value changes (re-validate).
+ * @param onMultiselect - Called with each multiselect's output spec (to encode its rows).
  */
 export async function buildBoxForm(
   elements: any[],
@@ -89,6 +91,7 @@ export async function buildBoxForm(
   entry: MultiboxEntry,
   loadItems: (items: any) => Promise<RawSelectItem[]>,
   onChange: () => void,
+  onMultiselect: (spec: MultiselectSpec) => void = () => {},
 ): Promise<void> {
   const values = entry.formValues;
   for (const item of elements) {
@@ -124,6 +127,20 @@ export async function buildBoxForm(
         });
         values[col] = values[col] ?? selectedDefault;
         if (values[col]) built.select.value = values[col];
+        container.appendChild(boxLabel(cfg.label ?? col, built.element));
+        break;
+      }
+      case 'multiselect': {
+        const flags = selectItemOptions(cfg.items);
+        const { items, spec, initial } = prepareMultiselect(
+          cfg, col, await loadItems(multiselectItemsConfig(cfg.items)));
+        onMultiselect(spec);
+        values[col] = Array.isArray(values[col]) ? values[col] : initial;
+        const built = buildMultiselect({
+          items, spec, initial: values[col], filterBox: flags.filterBox,
+          customValue: flags.customValue, variant: 'box',
+          onChange: selected => { values[col] = selected; onChange(); },
+        });
         container.appendChild(boxLabel(cfg.label ?? col, built.element));
         break;
       }
