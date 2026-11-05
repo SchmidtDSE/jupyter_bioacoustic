@@ -38,4 +38,41 @@ describe('FormSection round-trip (H12/H13)', () => {
     section.setData(JSON.parse(JSON.stringify(FORM)));
     expect(section.getData()).toEqual(FORM);
   });
+
+  it('round-trips multiselects in the form list and in a dynamic form', () => {
+    (globalThis as any).requestAnimationFrame ??= (cb: () => void) => setTimeout(cb, 0);
+    const forms = [
+      {
+        form: [
+          { multiselect: { label: 'sources', column: 'sources', required: true, max: 3,
+                           items: { path: 'data/species.csv', value: 'common_name', id: 'index',
+                                    filter_box: true, not_available: 'none' } } },
+          { annotation: { tools: ['multibox'], form: 'box_tags' } },
+        ],
+        dynamic_forms: {
+          box_tags: [
+            { multiselect: {
+              label: 'in box', column: 'box_tags', items: ['owl', 'cat'],
+              output: { format: 'columns', column_prefix: 'has_', true_value: 1, false_value: 0 },
+            } },
+          ],
+        },
+      },
+    ];
+    for (const form of forms) {
+      const section = new FormSection();
+      section.setData(JSON.parse(JSON.stringify(form)));
+      expect(section.getData()).toEqual(form);
+    }
+  });
+
+  it('moves a legacy top-level multiselect into the form list, as it does a select', () => {
+    (globalThis as any).requestAnimationFrame ??= (cb: () => void) => setTimeout(cb, 0);
+    const ms = {
+      label: 'sources', column: 'sources', items: ['a', 'b'], output: { delimiter: ';' },
+    };
+    const section = new FormSection();
+    section.setData({ multiselect: JSON.parse(JSON.stringify(ms)) });
+    expect(section.getData()).toEqual({ form: [{ multiselect: ms }] });
+  });
 });
