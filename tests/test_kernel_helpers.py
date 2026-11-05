@@ -356,6 +356,33 @@ class TestWriteOutputRows:
         import pandas as pd
         assert len(pd.read_parquet(pq)) == 4
 
+    def test_csv_list_cells_are_json(self, tmp_path):
+        """A multiselect's list is one JSON cell in CSV (not Python's repr)."""
+        p = str(tmp_path / 'o.csv')
+        write_output_rows(p, [{'id': 1, 'tags': ['owl', "barn owl's"], 'none': []}], ['id'], 'csv')
+        with open(p) as f:
+            row = next(csv.DictReader(f))
+        assert json.loads(row['tags']) == ['owl', "barn owl's"]
+        assert json.loads(row['none']) == []
+
+    def test_parquet_lists_and_missing_read_back_as_json(self, tmp_path):
+        """Parquet rows read back as strict JSON: lists stay lists, missing cells are ''."""
+        pytest.importorskip('pyarrow')
+        pq = str(tmp_path / 'o.parquet')
+        write_output_rows(pq, [{'id': 1, 'note': 'x'}], ['id', 'note'], 'parquet')
+        tagged = [{'id': 2, 'tags': ['owl', 'cat']}, {'id': 3, 'tags': []}]
+        write_output_rows(pq, tagged, ['id'], 'parquet')
+
+        def no_nan(name):
+            raise AssertionError(f'invalid JSON constant {name}')
+
+        rows = json.loads(read_output_rows(pq, 'parquet'), parse_constant=no_nan)
+        assert rows == [
+            {'id': '1', 'note': 'x', 'tags': ''},
+            {'id': '2', 'note': '', 'tags': ['owl', 'cat']},
+            {'id': '3', 'note': '', 'tags': []},
+        ]
+
     def test_empty_rows_is_noop(self, tmp_path):
         p = tmp_path / 'none.csv'
         assert write_output_rows(str(p), [], ['id'], 'csv') == 'ok'
