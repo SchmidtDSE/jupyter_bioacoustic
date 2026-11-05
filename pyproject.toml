@@ -25,6 +25,7 @@ dependencies = [
     "numpy",
     "matplotlib",
     "pandas",
+    "pyarrow",            # parquet data, select items and output files
     "soundfile",
     "boto3",
     "pyyaml",
@@ -165,6 +166,7 @@ numpy = "<2"
 
 [tool.pixi.feature.oss.pypi-dependencies]
 opensoundscape = ">=0.12,<1"
+pyarrow = "<26"         # pyarrow 26 needs numpy 2; this env pins numpy<2 for opensoundscape
 
 [tool.pixi.feature.mystmd.pypi-dependencies]
 ipyleaflet = "*"
