@@ -85,8 +85,10 @@ describe('formCards', () => {
     type(input('id column'), '');
     expect('id' in cfg.items).toBe(false);
 
-    // list: only the delimiter shows
+    // list: only the delimiter shows, with a hint instead of a placeholder
     expect(field('delimiter').style.display).toBe('');
+    expect(input('delimiter').placeholder).toBe('');
+    expect(field('delimiter').textContent).toContain('blank: save a list');
     expect(field('true_value').style.display).toBe('none');
     const format = field('format').querySelector('select') as HTMLSelectElement;
     format.value = 'columns';
