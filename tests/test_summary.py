@@ -384,6 +384,13 @@ class TestFormatText:
 #
 class TestSummarizeFormElement:
 
+    def test_multiselect(self):
+        cfg = {'label': 'sources', 'required': True, 'items': ['owl', 'cat'],
+               'output': {'format': 'columns'}}
+        assert _summarize_form_element('multiselect', cfg) == 'sources (2 items *, tags as columns)'
+        cfg = {'label': 'sources', 'items': {'path': 'labels.csv', 'id': 'idx'}}
+        assert _summarize_form_element('multiselect', cfg) == 'sources (file items, tags as list)'
+
     def test_select_with_items_list(self):
         cfg = {'label': 'Species', 'items': [{'value': 'a'}, {'value': 'b'}], 'required': True}
         result = _summarize_form_element('select', cfg)
