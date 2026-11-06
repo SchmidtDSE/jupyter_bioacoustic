@@ -90,7 +90,7 @@ describe('FormPanel multiselect', () => {
     pick(p.element, 'cat');
     await (p as any)._onVerify();
     const row = payloadRows(k.writes[0])[0];
-    expect(row).toMatchObject({ sources_owl: false, sources_cat: true, sources_generator: false });
+    expect(row).toMatchObject({ owl: 0, cat: 1, generator: 0 });
     expect('sources' in row).toBe(false);
   });
 
