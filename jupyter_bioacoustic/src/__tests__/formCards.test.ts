@@ -133,6 +133,14 @@ describe('formCards', () => {
     format.dispatchEvent(new Event('change'));
     expect(cfg.column).toBe('sources');
     expect(input('column').value).toBe('sources');
+
+    // vector: the column and delimiter, plus the true / false values; no prefix
+    format.value = 'vector';
+    format.dispatchEvent(new Event('change'));
+    const visible = (label: string) => field(label).style.display === 'flex';
+    expect(['column', 'delimiter', 'true_value', 'false_value'].every(visible)).toBe(true);
+    expect(visible('column_prefix')).toBe(false);
+    expect(cfg.column).toBe('sources');
   });
 
   it('select card has no id column', () => {
