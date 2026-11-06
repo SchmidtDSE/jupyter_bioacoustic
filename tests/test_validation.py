@@ -587,8 +587,8 @@ class TestMultiselect:
         assert 'No form input elements configured' not in r['warnings']
 
     def test_unknown_format(self):
-        r = self._check({'items': ['owl'], 'output': {'format': 'vector'}})
-        assert any('format' in e and 'vector' in e for e in r['errors'])
+        r = self._check({'items': ['owl'], 'output': {'format': 'matrix'}})
+        assert any('format' in e and 'matrix' in e for e in r['errors'])
 
     def test_columns_need_a_closed_list(self):
         r = self._check({'items': {'path': 'l.csv', 'value': 'v', 'custom_value': True},
@@ -605,9 +605,25 @@ class TestMultiselect:
         r = self._check({'items': {'id': 'idx', 'value': 'name'}})
         assert any('id' in e and 'path' in e for e in r['errors'])
 
-    def test_item_forms_are_not_supported(self):
+    def test_item_forms_count_as_referenced(self):
+        fc = {
+            'form': [{'multiselect': {'label': 'tags', 'items': [
+                'owl', {'label': 'Generator', 'value': 'generator', 'form': 'noise_form'}]}}],
+            'dynamic_forms': {'noise_form': [{'textbox': {'label': 'how loud'}}]},
+        }
+        r = validate_config(form_config=fc)
+        assert r['valid'], r['errors']
+        assert not any('noise_form' in w for w in r['warnings'])
+
+    def test_item_form_must_exist(self):
         r = self._check({'items': [{'label': 'owl', 'form': 'owl_form'}]})
-        assert any('multiselect' in w and 'form' in w for w in r['warnings'])
+        assert any('owl_form' in e for e in r['errors'])
+
+    def test_vector_format(self):
+        assert self._check({'items': ['a', 'b'], 'output': {'format': 'vector'}})['valid']
+        r = self._check({'items': {'path': 'l.csv', 'value': 'v', 'custom_value': True},
+                         'output': {'format': 'vector'}})
+        assert any('vector' in e and 'custom_value' in e for e in r['errors'])
 
     def test_checked_inside_dynamic_forms(self):
         r = self._check({'items': ['a'], 'output': {'format': 'nope'}}, where='dynamic')
