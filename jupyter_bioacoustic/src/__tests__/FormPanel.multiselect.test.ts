@@ -195,4 +195,51 @@ describe('FormPanel multiselect', () => {
     await (p as any)._onVerify();
     expect(payloadRows(k.writes[3])[0].sources).toEqual(['cat']);
   });
+
+  it('writes a one-hot vector for format: vector', async () => {
+    const k = fakeKernel();
+    const p = await panel(k.kernel, {
+      form: [{ multiselect: { label: 'sources', items: ITEMS, output: { format: 'vector' } } }],
+    });
+    pick(p.element, 'generator');
+    pick(p.element, 'owl');
+    await (p as any)._onVerify();
+    expect(payloadRows(k.writes[0])[0].sources).toEqual([1, 0, 1]);
+  });
+
+  it("shows each tagged item's dynamic form", async () => {
+    const k = fakeKernel();
+    const p = await panel(k.kernel, {
+      form: [{ multiselect: { label: 'sources', items: [
+        'owl',
+        { label: 'cat', value: 'cat', form: 'cat_form' },
+        { label: 'generator', value: 'generator', form: 'noise_form' },
+      ] } }],
+      dynamic_forms: {
+        cat_form: [{ textbox: { label: 'breed', column: 'breed' } }],
+        noise_form: [{ textbox: { label: 'how loud', column: 'loudness', required: true } }],
+      },
+    }, [ROW, ROW2]);
+    const shown = (name: string) =>
+      (p.element.querySelector(`[data-form-section="${name}"]`) as HTMLElement).style.display;
+
+    expect([shown('cat_form'), shown('noise_form')]).toEqual(['none', 'none']);
+    pick(p.element, 'cat');
+    pick(p.element, 'generator');
+    expect([shown('cat_form'), shown('noise_form')]).toEqual(['flex', 'flex']);
+    expect(submitBtn(p).disabled).toBe(true);            // the shown form has a required field
+    const loud =
+      p.element.querySelector('[data-form-section="noise_form"] input') as HTMLInputElement;
+    loud.value = 'very';
+    loud.dispatchEvent(new Event('input'));
+    expect(submitBtn(p).disabled).toBe(false);
+    await (p as any)._onVerify();
+    expect(payloadRows(k.writes[0])[0])
+      .toMatchObject({ sources: ['cat', 'generator'], loudness: 'very' });
+
+    (p.element.querySelector('[data-tag="generator"] button') as HTMLButtonElement).click();
+    expect([shown('cat_form'), shown('noise_form')]).toEqual(['flex', 'none']);
+    p.updateFromRow(ROW2);                                 // next row: no tags, no forms
+    expect([shown('cat_form'), shown('noise_form')]).toEqual(['none', 'none']);
+  });
 });
