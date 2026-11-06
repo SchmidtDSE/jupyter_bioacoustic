@@ -104,6 +104,37 @@ describe('formCards', () => {
     expect('column_prefix' in cfg.output).toBe(false);
   });
 
+  it('multiselect card: label, then the output; list needs a column, columns has none', () => {
+    const cfg: any = defaultElementConfig('multiselect');
+    const card = document.createElement('div');
+    buildElementFields(fakeCtx(), card, 'multiselect', cfg);
+    const rows = [...card.querySelectorAll('div')]
+      .filter(r => r.firstElementChild?.tagName === 'LABEL');
+    const names = rows.map(r => r.firstElementChild!.textContent);
+    expect(names.slice(0, 4)).toEqual(['label', 'format', 'column', 'delimiter']);
+    const field = (label: string) => rows.find(r => r.firstElementChild!.textContent === label)!;
+    const input = (label: string) => field(label).querySelector('input') as HTMLInputElement;
+
+    type(input('label'), 'Sound sources');
+    expect(cfg.column).toBe('sound_sources');               // list: column follows the label
+    expect(field('column').textContent).toContain('required');
+
+    const format = field('format').querySelector('select') as HTMLSelectElement;
+    format.value = 'columns';
+    format.dispatchEvent(new Event('change'));
+    expect(field('column').style.display).toBe('none');
+    expect('column' in cfg).toBe(false);
+    const placeholders = ['column_prefix', 'true_value', 'false_value'].map(k => input(k).placeholder);
+    expect(placeholders).toEqual(['none', '1', '0']);
+    type(input('label'), 'Sources');
+    expect('column' in cfg).toBe(false);                   // columns: the label sets no column
+
+    format.value = 'list';
+    format.dispatchEvent(new Event('change'));
+    expect(cfg.column).toBe('sources');
+    expect(input('column').value).toBe('sources');
+  });
+
   it('select card has no id column', () => {
     const cfg: any = { ...defaultElementConfig('select'), items: { path: 'labels.txt' } };
     const card = document.createElement('div');
