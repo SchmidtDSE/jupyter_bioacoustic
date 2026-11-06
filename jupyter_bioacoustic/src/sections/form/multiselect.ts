@@ -6,6 +6,9 @@
  *
  * - ``list`` (default): one column holding the list (a JSON array in CSV, a real list in
  *   parquet / JSON Lines), or a delimited string when ``output.delimiter`` is set.
+ * - ``vector``: one column holding a one-hot list over all the items, in item order, of
+ *   ``true_value`` / ``false_value`` (default 1 / 0), e.g. ``[1, 0, 1]``; also joined by
+ *   ``output.delimiter`` when set. Needs a closed item list (the item order gives the meaning).
  * - ``columns``: one column per item, ``<column_prefix><value>`` (no prefix by default),
  *   holding ``true_value`` / ``false_value`` (default 1 / 0): one-hot. Needs a closed item list.
  *
@@ -27,6 +30,7 @@ import {
 // Constants
 //
 const INTEGER = /^-?\d+$/;
+const FORMATS: readonly MultiselectFormat[] = ['list', 'vector', 'columns'];
 
 
 //
@@ -36,8 +40,8 @@ const INTEGER = /^-?\d+$/;
 export interface MultiselectSpec {
   /** The output column (``list``); the form's key for the tags in both formats. */
   col: string;
-  format: 'list' | 'columns';
-  /** ``list`` only: join the labels with this instead of writing a list. */
+  format: MultiselectFormat;
+  /** ``list`` / ``vector``: join the values with this instead of writing a list. */
   delimiter: string | null;
   /** ``columns`` only: prefix of each item's column ('' for none). */
   prefix: string;
@@ -54,6 +58,9 @@ export interface MultiselectSpec {
   /** Most labels allowed (null: no limit). */
   max: number | null;
 }
+
+/** How a multiselect is written: see the module docstring. */
+export type MultiselectFormat = 'list' | 'vector' | 'columns';
 
 /** A multiselect ready to build: its options, output spec and initial labels. */
 export interface PreparedMultiselect {
@@ -93,7 +100,7 @@ export function prepareMultiselect(
   const vocabulary = items.map(i => i.val);
   const spec: MultiselectSpec = {
     col,
-    format: output.format === 'columns' ? 'columns' : 'list',
+    format: FORMATS.includes(output.format) ? output.format : 'list',
     delimiter: typeof output.delimiter === 'string' && output.delimiter ? output.delimiter : null,
     prefix: output.column_prefix ?? '',
     trueValue: output.true_value ?? 1,
@@ -151,12 +158,15 @@ export function selectionFull(spec: MultiselectSpec, selected: string[]): boolea
 export function encodeMultiselect(
   spec: MultiselectSpec, selected: string[],
 ): Record<string, unknown> {
+  const hot = (v: string) => (selected.includes(v) ? spec.trueValue : spec.falseValue);
   if (spec.format === 'columns') {
     const cells: Record<string, unknown> = {};
-    for (const v of spec.vocabulary) {
-      cells[spec.prefix + v] = selected.includes(v) ? spec.trueValue : spec.falseValue;
-    }
+    for (const v of spec.vocabulary) cells[spec.prefix + v] = hot(v);
     return cells;
+  }
+  if (spec.format === 'vector') {
+    const vector = spec.vocabulary.map(hot);
+    return { [spec.col]: spec.delimiter ? vector.join(spec.delimiter) : vector };
   }
   const rank = (v: string) => {
     const i = spec.vocabulary.indexOf(v);
@@ -204,6 +214,18 @@ export function decodeMultiselect(value: unknown, delimiter: string | null): str
   }
   if (delimiter) return text.split(delimiter).map(s => s.trim()).filter(Boolean);
   return [text];
+}
+
+
+/**
+ * The labels in a stored value of this multiselect's format: for ``vector`` the items whose
+ * entry is ``trueValue``, otherwise ``decodeMultiselect``.
+ */
+export function decodeStored(spec: MultiselectSpec, value: unknown): string[] {
+  if (spec.format !== 'vector') return decodeMultiselect(value, spec.delimiter);
+  const entries = decodeMultiselect(value, spec.delimiter);
+  const yes = String(spec.trueValue).toLowerCase();
+  return spec.vocabulary.filter((_, i) => String(entries[i] ?? '').toLowerCase() === yes);
 }
 
 
