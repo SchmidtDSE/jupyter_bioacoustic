@@ -108,19 +108,22 @@ describe('encoding', () => {
     expect(encodeMultiselect(spec, ['17', '3'])).toEqual({ classes: [3, 17] });
   });
 
-  it('writes one column per item', () => {
+  it('writes one column per item: no prefix and 1 / 0 by default', () => {
     const { spec } = prepareMultiselect({ output: { format: 'columns' } }, 'sources', RAW);
-    expect(encodeMultiselect(spec, ['cat']))
-      .toEqual({ sources_owl: false, sources_cat: true, sources_generator: false });
+    expect(encodeMultiselect(spec, ['cat'])).toEqual({ owl: 0, cat: 1, generator: 0 });
+    const named = prepareMultiselect({
+      output: { format: 'columns', column_prefix: 'has_', true_value: true, false_value: false },
+    }, 'sources', RAW).spec;
+    expect(encodeMultiselect(named, ['cat']))
+      .toEqual({ has_owl: false, has_cat: true, has_generator: false });
   });
 
   it('replaces list columns in place in a row', () => {
     const { spec } = prepareMultiselect({ output: { format: 'columns' } }, 'sources', RAW);
     const row = encodeRow(
       { id: 1, sources: ['owl'], notes: 'x' }, new Map([['sources', spec]]));
-    expect(Object.keys(row))
-      .toEqual(['id', 'sources_owl', 'sources_cat', 'sources_generator', 'notes']);
-    expect(row.sources_owl).toBe(true);
+    expect(Object.keys(row)).toEqual(['id', 'owl', 'cat', 'generator', 'notes']);
+    expect(row.owl).toBe(1);
   });
 });
 
@@ -136,7 +139,6 @@ describe('decoding stored values', () => {
 
   it('reads one-hot columns', () => {
     const { spec } = prepareMultiselect({ output: { format: 'columns' } }, 'sources', RAW);
-    expect(decodeColumns(spec, { sources_owl: 'True', sources_cat: 'False', sources_generator: true }))
-      .toEqual(['owl', 'generator']);
+    expect(decodeColumns(spec, { owl: '1', cat: '0', generator: 1 })).toEqual(['owl', 'generator']);
   });
 });
