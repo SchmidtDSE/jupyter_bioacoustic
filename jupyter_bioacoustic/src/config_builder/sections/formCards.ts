@@ -81,12 +81,11 @@ export function buildElementFields(
       addSelectItemsBuilder(ctx, card, cfg);
       break;
     case 'multiselect':
-      _addLabelColumnFields(ctx, card, cfg);
+      _addMultiselectLabelAndOutput(ctx, card, cfg);
       _addCheckboxField(ctx, card, cfg, 'required', 'required');
       _addNumField(ctx, card, cfg, 'min', 'min tags', '60px');
       _addNumField(ctx, card, cfg, 'max', 'max tags', '60px');
       addSelectItemsBuilder(ctx, card, cfg, { idColumn: true });
-      _addMultiselectOutput(ctx, card, cfg);
       break;
     case 'textbox':
       _addLabelColumnFields(ctx, card, cfg);
@@ -157,6 +156,17 @@ export function buildElementFields(
 //
 /** label + column inputs; the column follows the label (slugified) until edited. */
 function _addLabelColumnFields(ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig): void {
+  card.append(..._labelColumnRows(ctx, cfg));
+}
+
+
+/**
+ * The label row and the column row. The column follows the label (slugified) until it is
+ * edited, and only while ``linked()`` is true (a multiselect with one-hot columns has none).
+ */
+function _labelColumnRows(
+  ctx: FormCardContext, cfg: CardConfig, linked: () => boolean = () => true,
+): [HTMLDivElement, HTMLDivElement] {
   const labelInp = makeInput('label', '150px');
   if (cfg.label != null) labelInp.value = String(cfg.label);
   const colInp = makeInput('column', '150px');
@@ -164,7 +174,7 @@ function _addLabelColumnFields(ctx: FormCardContext, card: HTMLDivElement, cfg: 
   const userEditedCol = { value: !!cfg.column };
   labelInp.addEventListener('input', () => {
     cfg.label = labelInp.value;
-    if (!userEditedCol.value) {
+    if (!userEditedCol.value && linked()) {
       const snake = slugify(labelInp.value.trim());
       colInp.value = snake;
       cfg.column = snake;
@@ -176,8 +186,7 @@ function _addLabelColumnFields(ctx: FormCardContext, card: HTMLDivElement, cfg: 
     cfg.column = colInp.value;
     ctx.changed();
   });
-  card.appendChild(ctx.fieldRow('label', labelInp));
-  card.appendChild(ctx.fieldRow('column', colInp));
+  return [ctx.fieldRow('label', labelInp), ctx.fieldRow('column', colInp)];
 }
 
 
@@ -223,14 +232,21 @@ function _addCheckboxField(
 
 
 /**
- * A multiselect's ``output``: ``list`` (optional delimiter) or ``columns`` (column prefix and
- * the true / false values); only the chosen format's fields are shown.
+ * A multiselect's label, then its ``output``. ``list`` shows the (required) output column,
+ * which follows the label until edited, and the optional delimiter; ``columns`` shows the
+ * optional column prefix and true / false values instead (one column per item, so no column).
  */
-function _addMultiselectOutput(ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig): void {
+function _addMultiselectLabelAndOutput(
+  ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig,
+): void {
+  const isList = () => cfg.output?.format !== 'columns';
+  const [labelRow, columnRow] = _labelColumnRows(ctx, cfg, isList);
+  card.appendChild(labelRow);
+
   const area = document.createElement('div');
   area.style.cssText =
     `display:flex;flex-direction:column;gap:4px;padding:4px 0;` +
-    `border-top:1px solid ${COLORS.bgSurface1};margin-top:4px;`;
+    `border-top:1px solid ${COLORS.bgSurface1};border-bottom:1px solid ${COLORS.bgSurface1};`;
   const title = document.createElement('span');
   title.textContent = 'Output:';
   title.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
@@ -240,10 +256,16 @@ function _addMultiselectOutput(ctx: FormCardContext, card: HTMLDivElement, cfg: 
     if (!cfg.output || typeof cfg.output !== 'object') cfg.output = {};
     return cfg.output;
   };
-  const initialFormat = cfg.output?.format === 'columns' ? 'columns' : 'list';
-  const format = makeSelect(['list', 'columns'], initialFormat);
+  const format = makeSelect(['list', 'columns'], isList() ? 'list' : 'columns');
+  const columnInp = columnRow.querySelector('input') as HTMLInputElement;
   format.addEventListener('change', () => {
     output().format = format.value;
+    if (format.value === 'columns') {
+      delete cfg.column;                       // one column per item: no output column
+    } else if (!cfg.column) {
+      cfg.column = slugify(String(cfg.label ?? '').trim());
+    }
+    columnInp.value = cfg.column ?? '';
     showFormat();
     ctx.changed();
   });
@@ -263,17 +285,26 @@ function _addMultiselectOutput(ctx: FormCardContext, card: HTMLDivElement, cfg: 
     area.appendChild(row);
     return row;
   };
+  const withHint = (row: HTMLDivElement, text: string) => {
+    const hint = document.createElement('span');
+    hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;white-space:nowrap;`;
+    hint.textContent = `| ${text}`;
+    row.appendChild(hint);
+    return row;
+  };
   const text = (t: string) => t || undefined;
-  const delimiterRow = field('delimiter', 'delimiter', '', text);
-  const hint = document.createElement('span');
-  hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;white-space:nowrap;`;
-  hint.textContent = '| blank: save a list ["a", "b"] · a delimiter (e.g. ;) saves the text "a;b"';
-  delimiterRow.appendChild(hint);
-  const listRows = [delimiterRow];
+
+  area.appendChild(withHint(columnRow, 'required: the output column holding the tags'));
+  const listRows = [
+    columnRow,
+    withHint(field('delimiter', 'delimiter', '', text),
+      'blank: save a list ["a", "b"] · a delimiter (e.g. ;) saves the text "a;b"'),
+  ];
   const columnRows = [
-    field('column_prefix', 'column_prefix', '<column>_', text),
-    field('true_value', 'true_value', 'true', _parseScalar),
-    field('false_value', 'false_value', 'false', _parseScalar),
+    withHint(field('column_prefix', 'column_prefix', 'none', text),
+      'optional: put before each item\'s value to name its column, e.g. has_ → has_owl'),
+    field('true_value', 'true_value', '1', _parseScalar),
+    field('false_value', 'false_value', '0', _parseScalar),
   ];
   const showFormat = () => {
     const columns = format.value === 'columns';
