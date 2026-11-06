@@ -6,8 +6,8 @@
  *
  * - ``list`` (default): one column holding the list (a JSON array in CSV, a real list in
  *   parquet / JSON Lines), or a delimited string when ``output.delimiter`` is set.
- * - ``columns``: one column per item, ``<column_prefix><value>``, holding ``true_value`` /
- *   ``false_value`` (one-hot). Needs a closed item list.
+ * - ``columns``: one column per item, ``<column_prefix><value>`` (no prefix by default),
+ *   holding ``true_value`` / ``false_value`` (default 1 / 0): one-hot. Needs a closed item list.
  *
  * With ``items.id`` (a column of the items file) the stored value is that column, e.g. a
  * class index, and the tag shows ``items.label`` (else ``items.value``). Integer ids are
@@ -34,12 +34,12 @@ const INTEGER = /^-?\d+$/;
 //
 /** How a multiselect is written to the output. */
 export interface MultiselectSpec {
-  /** The output column (``list``), or the base name of the default column prefix. */
+  /** The output column (``list``); the form's key for the tags in both formats. */
   col: string;
   format: 'list' | 'columns';
   /** ``list`` only: join the labels with this instead of writing a list. */
   delimiter: string | null;
-  /** ``columns`` only: prefix of each item's column. */
+  /** ``columns`` only: prefix of each item's column ('' for none). */
   prefix: string;
   trueValue: unknown;
   falseValue: unknown;
@@ -95,9 +95,9 @@ export function prepareMultiselect(
     col,
     format: output.format === 'columns' ? 'columns' : 'list',
     delimiter: typeof output.delimiter === 'string' && output.delimiter ? output.delimiter : null,
-    prefix: output.column_prefix ?? `${col}_`,
-    trueValue: output.true_value ?? true,
-    falseValue: output.false_value ?? false,
+    prefix: output.column_prefix ?? '',
+    trueValue: output.true_value ?? 1,
+    falseValue: output.false_value ?? 0,
     vocabulary,
     notAvailable: na ? na[0] : null,
     numeric: !!cfg.items?.id && vocabulary.length > 0 && vocabulary.every(v => INTEGER.test(v)),
