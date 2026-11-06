@@ -232,15 +232,19 @@ function _addCheckboxField(
 
 
 /**
- * A multiselect's label, then its ``output``. ``list`` shows the (required) output column,
- * which follows the label until edited, and the optional delimiter; ``columns`` shows the
- * optional column prefix and true / false values instead (one column per item, so no column).
+ * A multiselect's label, then its ``output``:
+ * - ``list``: the (required) output column, which follows the label until edited, and the
+ *   optional delimiter;
+ * - ``vector``: the same plus the true / false values (a one-hot list in one column);
+ * - ``columns``: the optional column prefix and the true / false values (one column per item,
+ *   so no output column).
  */
 function _addMultiselectLabelAndOutput(
   ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig,
 ): void {
-  const isList = () => cfg.output?.format !== 'columns';
-  const [labelRow, columnRow] = _labelColumnRows(ctx, cfg, isList);
+  const formatOf = (): string => cfg.output?.format ?? 'list';
+  const hasColumn = () => formatOf() !== 'columns';
+  const [labelRow, columnRow] = _labelColumnRows(ctx, cfg, hasColumn);
   card.appendChild(labelRow);
 
   const area = document.createElement('div');
@@ -256,7 +260,7 @@ function _addMultiselectLabelAndOutput(
     if (!cfg.output || typeof cfg.output !== 'object') cfg.output = {};
     return cfg.output;
   };
-  const format = makeSelect(['list', 'columns'], isList() ? 'list' : 'columns');
+  const format = makeSelect(['list', 'vector', 'columns'], formatOf());
   const columnInp = columnRow.querySelector('input') as HTMLInputElement;
   format.addEventListener('change', () => {
     output().format = format.value;
@@ -295,22 +299,27 @@ function _addMultiselectLabelAndOutput(
   const text = (t: string) => t || undefined;
 
   area.appendChild(withHint(columnRow, 'required: the output column holding the tags'));
-  const listRows = [
-    columnRow,
-    withHint(field('delimiter', 'delimiter', '', text),
-      'blank: save a list ["a", "b"] · a delimiter (e.g. ;) saves the text "a;b"'),
-  ];
-  const columnRows = [
-    withHint(field('column_prefix', 'column_prefix', 'none', text),
-      'optional: put before each item\'s value to name its column, e.g. has_ → has_owl'),
-    field('true_value', 'true_value', '1', _parseScalar),
+  const delimiterRow = withHint(field('delimiter', 'delimiter', '', text),
+    'blank: save a list ["a", "b"] · a delimiter (e.g. ;) saves the text "a;b"');
+  const prefixRow = withHint(field('column_prefix', 'column_prefix', 'none', text),
+    'optional: put before each item\'s value to name its column, e.g. has_ → has_owl');
+  const valueRows = [
+    withHint(field('true_value', 'true_value', '1', _parseScalar),
+      'vector / columns: the value for a tagged item'),
     field('false_value', 'false_value', '0', _parseScalar),
   ];
+  // the formats each row belongs to
+  const rowFormats: Array<[HTMLDivElement, string[]]> = [
+    [columnRow, ['list', 'vector']],
+    [delimiterRow, ['list', 'vector']],
+    [prefixRow, ['columns']],
+    ...valueRows.map((row): [HTMLDivElement, string[]] => [row, ['vector', 'columns']]),
+  ];
   const showFormat = () => {
-    const columns = format.value === 'columns';
     // 'flex', not '': clearing display would drop the row's flex layout (and its gaps)
-    for (const row of listRows) row.style.display = columns ? 'none' : 'flex';
-    for (const row of columnRows) row.style.display = columns ? 'flex' : 'none';
+    for (const [row, formats] of rowFormats) {
+      row.style.display = formats.includes(format.value) ? 'flex' : 'none';
+    }
   };
   showFormat();
   card.appendChild(area);
