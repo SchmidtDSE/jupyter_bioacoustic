@@ -49,7 +49,7 @@ import { asElementList, requiredColumns } from './form/formConfig';
 import { buildMultiselect, buildSelect } from './form/inputs';
 import { buildBoxCard, buildBoxForm } from './form/multiboxCards';
 import {
-  MultiselectSpec, decodeMultiselect, encodeRow, multiselectItemsConfig, prepareMultiselect,
+  MultiselectSpec, decodeStored, encodeRow, multiselectItemsConfig, prepareMultiselect,
   selectionValid,
 } from './form/multiselect';
 import { accuracyPercent, formatProgress } from './form/progress';
@@ -667,19 +667,31 @@ export class FormPanel {
     return { input: built.select, element: built.element, sections: [...allFormSections] };
   }
 
-  /** A multiselect: picks become removable tags; its value is the list of labels. */
+  /**
+   * A multiselect: picks become removable tags; its value is the list of labels. Items with a
+   * ``form`` show that named section while they are tagged (several at once).
+   */
   private async _buildMultiselectInput(cfg: any, col: string) {
     const flags = selectItemOptions(cfg.items);
     const { items, spec, initial } = prepareMultiselect(
       cfg, col, await this._loadSelectItems(multiselectItemsConfig(cfg.items)));
     this._multiselects.set(col, spec);
+    const formRefs = new Map<string, string>();
+    for (const item of items) if (item.formRef) formRefs.set(item.val, item.formRef);
+    const allFormSections = new Set(formRefs.values());
     const built = buildMultiselect({
       items, spec, initial, filterBox: flags.filterBox, customValue: flags.customValue,
       variant: 'main',
-      onChange: selected => { this._formValues[col] = selected; this._validateForm(); },
+      onChange: selected => {
+        this._formValues[col] = selected;
+        if (allFormSections.size > 0) {
+          this._showOnly(allFormSections, new Set(selected.map(v => formRefs.get(v))));
+        }
+        this._validateForm();
+      },
     });
     this._formValues[col] = initial;
-    return { input: built.input, element: built.element, sections: [] };
+    return { input: built.input, element: built.element, sections: [...allFormSections] };
   }
 
   /** A checkbox with checked/unchecked values; ``checked_form`` / ``unchecked_form`` sections. */
@@ -723,11 +735,14 @@ export class FormPanel {
     return { input: inp, element: inp, sections: [] };
   }
 
-  /** Show named section ``active`` and hide the other ``sections``. */
-  private _showOnly(sections: Set<string>, active: string | undefined): void {
+  /** Show the named section(s) ``active`` and hide the other ``sections``. */
+  private _showOnly(
+    sections: Set<string>, active: string | undefined | Set<string | undefined>,
+  ): void {
+    const shown = active instanceof Set ? active : new Set([active]);
     for (const name of sections) {
       const el = this._namedSections.get(name);
-      if (el) el.style.display = name === active ? 'flex' : 'none';
+      if (el) el.style.display = shown.has(name) ? 'flex' : 'none';
     }
   }
 
@@ -1087,7 +1102,7 @@ export class FormPanel {
       const el = this._inputRefs.get(col);
       const spec = this._multiselects.get(col);
       if (val !== undefined && el && spec) {
-        el.value = JSON.stringify(decodeMultiselect(val, spec.delimiter));
+        el.value = JSON.stringify(decodeStored(spec, val));
         el.dispatchEvent(new Event('input'));
       } else if (val !== undefined && el) {
         el.value = String(val);
