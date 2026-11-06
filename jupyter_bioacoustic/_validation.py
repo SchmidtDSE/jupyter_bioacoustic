@@ -28,8 +28,11 @@ VALID_FORM_KEYS = frozenset({
     'break', 'line', 'text',
 })
 
-# How a multiselect is written: one column holding a list, or a column per item.
-MULTISELECT_FORMATS = ('list', 'columns')
+# How a multiselect is written: one column holding a list of the tags or a one-hot vector,
+# or a column per item.
+MULTISELECT_FORMATS = ('list', 'vector', 'columns')
+# Formats with one entry per item: they need a closed item list.
+_ONE_HOT_FORMATS = ('vector', 'columns')
 
 VALID_CONFIG_KEYS = frozenset({
     'data', 'data_source_type', 'data_value',
@@ -364,10 +367,10 @@ def _collect_annotation_configs(fc: dict) -> list[Any]:
 def _collect_referenced_forms(fc: dict, annot_configs: list[Any]) -> set[str]:
     """Return the names of every dynamic form referenced anywhere in the form.
 
-    References come from select ``items[].form``, checkbox
+    References come from select / multiselect ``items[].form``, checkbox
     ``checked_form``/``unchecked_form`` (in the ``form`` list, the legacy
-    top-level ``select``/``checkbox`` keys and inside dynamic forms), and
-    annotation ``form`` keys.
+    top-level ``select``/``multiselect``/``checkbox`` keys and inside dynamic
+    forms), and annotation ``form`` keys.
 
     Args:
         fc: The form configuration dict.
@@ -382,10 +385,10 @@ def _collect_referenced_forms(fc: dict, annot_configs: list[Any]) -> set[str]:
     if isinstance(form_list, list):
         _scan_elements(form_list, referenced_forms)
 
-    for top_key in ('select', 'checkbox'):
+    for top_key in ('select', 'multiselect', 'checkbox'):
         if top_key in fc and isinstance(fc[top_key], dict):
             cfg = fc[top_key]
-            if top_key == 'select' and 'items' in cfg:
+            if top_key in ('select', 'multiselect') and 'items' in cfg:
                 _scan_items(cfg['items'], referenced_forms)
             for fkey in ('checked_form', 'unchecked_form'):
                 if cfg.get(fkey):
@@ -417,7 +420,7 @@ def _collect_referenced_forms(fc: dict, annot_configs: list[Any]) -> set[str]:
 
 
 def _scan_items(items: Any, referenced_forms: set[str]) -> None:
-    """Add the ``form`` of each select item to *referenced_forms*.
+    """Add the ``form`` of each select / multiselect item to *referenced_forms*.
 
     Args:
         items: A select ``items`` value (ignored unless it is a list).
@@ -445,7 +448,7 @@ def _scan_elements(elements: Any, referenced_forms: set[str]) -> None:
         for etype, ecfg in el.items():
             if not isinstance(ecfg, dict):
                 continue
-            if etype == 'select' and 'items' in ecfg:
+            if etype in ('select', 'multiselect') and 'items' in ecfg:
                 _scan_items(ecfg['items'], referenced_forms)
             if etype == 'checkbox':
                 for fkey in ('checked_form', 'unchecked_form'):
@@ -510,9 +513,9 @@ def _validate_multiselect(ms: dict, errors: list[str], warns: list[str]) -> None
             f'(use {" or ".join(MULTISELECT_FORMATS)})'
         )
     items = ms.get('items')
-    if fmt == 'columns' and isinstance(items, dict) and items.get('custom_value'):
+    if fmt in _ONE_HOT_FORMATS and isinstance(items, dict) and items.get('custom_value'):
         errors.append(
-            f'Multiselect "{name}": format "columns" writes one column per item, so it can\'t '
+            f'Multiselect "{name}": format "{fmt}" has one entry per item, so it can\'t '
             f'allow custom_value tags (use format "list")'
         )
     if fmt == 'columns' and isinstance(output, dict) and output.get('delimiter'):
@@ -528,11 +531,6 @@ def _validate_multiselect(ms: dict, errors: list[str], warns: list[str]) -> None
         errors.append(
             f'Multiselect "{name}": items "id" names a column of an items file, '
             f'so it needs items "path"'
-        )
-    if isinstance(items, list) and any(isinstance(i, dict) and 'form' in i for i in items):
-        warns.append(
-            f'Multiselect "{name}": items can\'t open dynamic forms in a multiselect '
-            f'(their "form" is ignored)'
         )
 
 
