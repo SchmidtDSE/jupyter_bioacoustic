@@ -4,8 +4,8 @@
  * License: BSD 3-Clause
  */
 import {
-  addLabel, decodeColumns, decodeMultiselect, encodeMultiselect, encodeRow, multiselectItemsConfig,
-  prepareMultiselect, removeLabel, selectionFull, selectionValid,
+  addLabel, decodeColumns, decodeMultiselect, decodeStored, encodeMultiselect, encodeRow,
+  multiselectItemsConfig, prepareMultiselect, removeLabel, selectionFull, selectionValid,
 } from '../sections/form/multiselect';
 
 const RAW: [string, string][] = [['owl', 'Owl'], ['cat', 'Cat'], ['generator', 'Generator']];
@@ -140,5 +140,24 @@ describe('decoding stored values', () => {
   it('reads one-hot columns', () => {
     const { spec } = prepareMultiselect({ output: { format: 'columns' } }, 'sources', RAW);
     expect(decodeColumns(spec, { owl: '1', cat: '0', generator: 1 })).toEqual(['owl', 'generator']);
+  });
+});
+
+describe('vector format', () => {
+  it('writes a one-hot list over the items, in item order', () => {
+    const { spec } = prepareMultiselect({ output: { format: 'vector' } }, 'sources', RAW);
+    expect(encodeMultiselect(spec, ['generator', 'owl'])).toEqual({ sources: [1, 0, 1] });
+    const words = prepareMultiselect(
+      { output: { format: 'vector', true_value: true, false_value: false, delimiter: ';' } },
+      'sources', RAW).spec;
+    expect(encodeMultiselect(words, ['cat'])).toEqual({ sources: 'false;true;false' });
+  });
+
+  it('reads a stored vector back into tags', () => {
+    const { spec } = prepareMultiselect({ output: { format: 'vector' } }, 'sources', RAW);
+    expect(decodeStored(spec, '[1, 0, 1]')).toEqual(['owl', 'generator']);
+    expect(decodeStored(spec, [0, 1, 0])).toEqual(['cat']);
+    const list = prepareMultiselect({}, 'sources', RAW).spec;
+    expect(decodeStored(list, '["cat"]')).toEqual(['cat']);
   });
 });
