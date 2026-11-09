@@ -36,6 +36,8 @@ from .config_builder.summary import build_summary_from_builder, format_text
 DEFAULT_CONFIG_DIR = 'annotator_config'
 DEFAULT_RATE_LIMIT = '1e10'
 DEBUG_FLAG_VALUE = '__FLAG__'
+DEBUG_ON_VALUES = ('true', 'yes', 'on', '1')
+DEBUG_OFF_VALUES = ('false', 'no', 'off', '0')
 YAML_EXTENSIONS = ('.yaml', '.yml')
 CONFIG_SUBDIRS = ('projects', 'config', 'forms')
 FLAG_SCOPE_MAP = {'search_project': 'project', 'search_config': 'config', 'search_form': 'form'}
@@ -89,7 +91,10 @@ def main() -> None:
     is_flag=False,
     flag_value=DEBUG_FLAG_VALUE,
     default=None,
-    help='Enable debug logging. Optionally pass a log file path.',
+    help=(
+        'Enable debug logging. Optionally pass a log file path; true/false turn it on '
+        '(default log file) or off.'
+    ),
 )
 @click.option(
     '-c', '--clean',
@@ -103,13 +108,15 @@ def lab(rate_limit: str, debug: str | None, clean: bool) -> None:
     \f
     Args:
         rate_limit: Value for ``--ServerApp.iopub_data_rate_limit``.
-        debug: ``None`` (debug off), the flag sentinel (debug on, default log
-            path) or a log file path.
+        debug: ``None`` or a false value such as ``false`` (debug off), the flag
+            sentinel or a true value such as ``true`` (debug on, default log path), or
+            a log file path.
         clean: Clear the pixi PyPI cache and reinstall before launching.
     """  # noqa: D301
     if clean:
         _clean_pixi_cache()
     env = os.environ.copy()
+    debug = _normalize_debug(debug)
     if debug is not None:
         env['JBA_DEBUG_MODE'] = '1'
         if debug != DEBUG_FLAG_VALUE:
@@ -247,6 +254,26 @@ def validate(
 #
 # INTERNAL
 #
+def _normalize_debug(debug: str | None) -> str | None:
+    """Map boolean-like ``--debug`` values onto "off" or the flag sentinel.
+
+    Args:
+        debug: The raw ``--debug`` value.
+
+    Returns:
+        ``None`` for a false value, ``DEBUG_FLAG_VALUE`` for a true value, otherwise
+        ``debug`` unchanged (a log file path).
+    """
+    if debug is None:
+        return None
+    lowered = debug.strip().lower()
+    if lowered in DEBUG_OFF_VALUES:
+        return None
+    if lowered in DEBUG_ON_VALUES:
+        return DEBUG_FLAG_VALUE
+    return debug
+
+
 def _clean_pixi_cache() -> None:
     """Clear the pixi PyPI cache and reinstall to pick up local changes.
 
