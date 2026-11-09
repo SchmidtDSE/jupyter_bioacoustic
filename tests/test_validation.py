@@ -353,6 +353,15 @@ class TestRequiredFields:
         assert not result['valid']
         assert any('data_index_column' in e for e in result['errors'])
 
+    def test_form_with_only_builder_state_skips_data_checks(self):
+        """A form loaded alone in the builder: its project dict holds only bookkeeping keys."""
+        result = validate_config(
+            form_config={'form': [{'select': {'label': 'a', 'column': 'a'}}]},
+            project={'form_path': 'forms/f.yaml', 'form_enabled': True,
+                     'project_enabled': False, 'config_enabled': False},
+        )
+        assert result['valid'], result['errors']
+
     def test_top_level_form_key_is_unknown(self):
         """A top-level 'form' key is not a form: it is an unknown key."""
         result = validate_config(
