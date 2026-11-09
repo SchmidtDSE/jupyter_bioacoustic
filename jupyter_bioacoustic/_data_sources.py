@@ -44,7 +44,7 @@ REMOTE_PREFIXES = ('http://', 'https://', 's3://', 'gs://')
 RECORD_LIST_KEYS = ('data', 'results', 'items', 'records', 'rows')
 REQUEST_TIMEOUT_S = 120
 
-_CLOUD_PREFIXES = ('s3://', 'gs://', 'gcs://')
+_CLOUD_PREFIXES = ('s3://', 'gs://')
 # S3 error codes that mean "these credentials can't sign" (so an unsigned retry is worth trying)
 _S3_CREDENTIAL_ERROR_CODES = frozenset({
     'InvalidAccessKeyId', 'SignatureDoesNotMatch', 'ExpiredToken', 'InvalidToken',
@@ -236,7 +236,7 @@ def cloud_get_bytes(
     public buckets work without credentials.
 
     Args:
-        url: Local path, or ``http(s)://``, ``s3://``, ``gs://``/``gcs://`` URL.
+        url: Local path, or ``http(s)://``, ``s3://`` or ``gs://`` URL.
         byte_range: Optional inclusive ``(start, end)`` byte range.
 
     Returns:
@@ -271,7 +271,7 @@ def cloud_get_bytes(
                 ).get_object(**kw)['Body'].read()
             except Exception:
                 raise err from None
-    if url.startswith(('gs://', 'gcs://')):
+    if url.startswith('gs://'):
         from google.cloud import storage
         bucket, blob = url.split('://', 1)[1].split('/', 1)
         try:
@@ -297,7 +297,7 @@ def read_data_from_cloud(url: str) -> Any:
     schemes) via :func:`cloud_get_bytes`.
 
     Args:
-        url: ``s3://``, ``gs://`` or ``gcs://`` URL of a data file.
+        url: ``s3://`` or ``gs://`` URL of a data file.
 
     Returns:
         pandas DataFrame.
