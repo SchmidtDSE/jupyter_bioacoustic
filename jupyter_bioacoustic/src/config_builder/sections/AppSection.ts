@@ -200,8 +200,8 @@ export class AppSection extends CollapsibleSection {
 
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
-    const pn = this._projectNameInput.value.trim();
-    if (pn) result.project_name = pn;
+    // always sent ('' = cleared): the kernel only changes the name when the key is present
+    result.project_name = this._projectNameInput.value.trim();
     if (this._dispColsSet) result.display_columns = this._dispCols.length > 0 ? [...this._dispCols] : [];
 
     result.info_card_title = this._titleInput.value.trim();
