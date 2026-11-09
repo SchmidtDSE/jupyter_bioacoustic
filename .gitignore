@@ -55,6 +55,7 @@ spectrograms/
 !myst.yml
 !jupyter_bioacoustic/templates/*.yaml
 !jupyter_bioacoustic/audio/*.py
+!demo/annotator_config/**/*.yaml
 
 #***************************************************************************
 # Build / Distribution
