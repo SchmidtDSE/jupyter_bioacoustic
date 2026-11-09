@@ -71,7 +71,7 @@ export const DOCS: Record<string, SectionDocs> = {
     index_column: `(defaults to data.index_column) Column name used as the unique row identifier in the output file.\nSet this when the output needs a different key than the input data.`,
     'output path': `Output file path for saved annotations.\nAuto-generated from project name if form is configured.\nExample: outputs/reviews.csv`,
     sync_uri: `Remote URI to sync the output file after writes.\nExample: s3://my-bucket/annotations/reviews.csv`,
-    sync_button: `Show a sync button in the widget.\nSet to true for default "Sync" label, or provide a custom string.`,
+    sync_button: `Show a sync button in the widget.\nSet to true for default "Sync" label, or provide a custom string.\nShown by default when a sync URI is set; false hides it.`,
     sync_label: `Text label shown next to the sync button.`,
     recursive: `Write output after every submission instead of waiting for session end. Default: false.`,
     secrets: `Key-value pairs for credentials needed for output sync.\nExample: S3 access keys for remote sync.`,
