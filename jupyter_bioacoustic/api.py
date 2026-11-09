@@ -112,6 +112,11 @@ DEFAULT_INFO_CARD_HEIGHT = 34
 DEFAULT_FORM_PANEL_HEIGHT = 175
 DEFAULT_DESCRIPTION_HEIGHT = 0
 _TOOLBAR_AND_PADDING_PX = 290
+_DESCRIPTION_SUMMARY_PX = 36             # the description's title row (always shown)
+_DESCRIPTION_BODY_PADDING_PX = 20        # its body's top + bottom padding
+_DESCRIPTION_LINE_PX = 21                # 13px text at line-height 1.6
+_DESCRIPTION_CHARS_PER_LINE = 100        # rough wrap width for the auto-height estimate
+_DESCRIPTION_AUTO_MAX_PX = 300           # cap on the estimate when no height is set
 _BUILTIN_VIZ = ('linear', 'plain', 'mel')
 
 
@@ -311,8 +316,8 @@ class BioacousticAnnotator:
                 (file/input order — no sort applied).
             sort_order: Sort direction when ``sort`` is set —
                 ``'asc'`` (default) or ``'desc'``.
-            session_args: List of allowed ``**kwargs`` keys, or True to
-                allow all.
+            session_args: Which ``**kwargs`` are allowed: a list of names, one
+                name as a string, False (none), or True / ``'*'`` / None (all).
             **kwargs: Fixed columns included in every output row.
 
         Raises:
@@ -447,6 +452,8 @@ class BioacousticAnnotator:
         """
         if self._stripped_args:
             policy = self._session_args
+            if isinstance(policy, str):
+                policy = [policy]
             if isinstance(policy, list):
                 permitted = sorted(policy)
             else:
@@ -1263,6 +1270,7 @@ class BioacousticAnnotator:
             + int(self._player_height)
             + int(self._info_card_height)
             + (int(self._form_panel_height) if has_form else 0)
+            + self._description_panel_px()
             + _TOOLBAR_AND_PADDING_PX
         )
         h = f'{total_h}px'
@@ -1281,6 +1289,29 @@ class BioacousticAnnotator:
             f"window._bioacousticOpenInline && "
             f"window._bioacousticOpenInline('{div_id}')"
         ))
+
+    def _description_panel_px(self) -> int:
+        """Return the height the description panel takes in the inline widget.
+
+        A collapsed panel is its title row. An open one adds its body: ``description_height``
+        when set (the body's max height), else an estimate from the text's line count.
+
+        Returns:
+            Pixels (0 when there is no description).
+        """
+        cfg = self._description_config
+        if not cfg:
+            return 0
+        if not cfg.get('open'):
+            return _DESCRIPTION_SUMMARY_PX
+        height = int(self._description_height or 0)
+        if height <= 0:
+            lines = sum(
+                max(1, -(-len(line) // _DESCRIPTION_CHARS_PER_LINE))
+                for line in cfg['text'].splitlines() if line.strip()
+            )
+            height = min(lines * _DESCRIPTION_LINE_PX, _DESCRIPTION_AUTO_MAX_PX)
+        return _DESCRIPTION_SUMMARY_PX + height + _DESCRIPTION_BODY_PADDING_PX
 
 
 #
