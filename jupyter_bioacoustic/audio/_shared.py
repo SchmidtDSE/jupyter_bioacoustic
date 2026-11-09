@@ -17,11 +17,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import tempfile
+import time
 from typing import Callable, Iterable, Iterator, Optional, Union
 
 import numpy as np
 
-from ._partial import read_remote_partial
+from ._partial import clear_header_cache, read_remote_partial
 
 
 #
@@ -29,7 +31,9 @@ from ._partial import read_remote_partial
 #
 _log = logging.getLogger('jupyter_bioacoustic.audio')
 
-CACHE_DIR = '/tmp/jba_audio_cache'
+CACHE_DIR = os.path.join(tempfile.gettempdir(), 'jba_audio_cache')
+CACHE_MAX_AGE_S = 24 * 60 * 60          # a full download is re-fetched after this
+CACHE_MAX_BYTES = 2 * 1024 ** 3         # oldest downloads are evicted past this total size
 PATH_SEPARATOR = '/'                    # object-store key separator (S3 and GCS)
 
 # Module state: the warning from the last ``read_segment`` (e.g. a partial-read fallback), shown
@@ -58,6 +62,20 @@ def cache_path(url_or_uri: str) -> str:
         url_or_uri.encode(),
     ).hexdigest() + ext
     return os.path.join(CACHE_DIR, name)
+
+
+def clear_cache() -> int:
+    """Delete every cached full download and forget the remembered remote headers.
+
+    Returns:
+        The number of cached files deleted.
+    """
+    clear_header_cache()
+    removed = 0
+    for path, _mtime, _size in _cache_entries():
+        removed += _remove_quietly(path)
+    _log.info('audio cache cleared: %d files', removed)
+    return removed
 
 
 def read_segment_remote(
@@ -101,8 +119,11 @@ def read_segment_remote(
     from . import io_local
     cache = cache_path(path)
     if os.path.exists(cache):
-        _log.debug('using cached full download: %s', cache)
-        return io_local.read_segment(cache, start_sec, dur_sec)
+        if time.time() - os.path.getmtime(cache) < CACHE_MAX_AGE_S:
+            _log.debug('using cached full download: %s', cache)
+            return io_local.read_segment(cache, start_sec, dur_sec)
+        _log.debug('cached download expired: %s', cache)
+        _remove_quietly(cache)
     if partial:
         try:
             return read_remote_partial(start_sec, dur_sec, get_size, get_range, cache_key=path)
@@ -121,6 +142,7 @@ def read_segment_remote(
     finally:
         if os.path.exists(part):
             os.remove(part)
+    _prune_cache(keep=cache)
     return io_local.read_segment(cache, start_sec, dur_sec)
 
 
@@ -237,8 +259,9 @@ def iter_upload_keys(src_dir: str, prefix: str) -> Iterator[tuple[str, str]]:
         for fname in files:
             local_path = os.path.join(root, fname)
             rel_path = os.path.relpath(local_path, src_dir)
-            key = (prefix.rstrip(PATH_SEPARATOR) + PATH_SEPARATOR
-                   + rel_path.replace(os.sep, PATH_SEPARATOR))
+            rel_key = rel_path.replace(os.sep, PATH_SEPARATOR)
+            base = prefix.rstrip(PATH_SEPARATOR)
+            key = f'{base}{PATH_SEPARATOR}{rel_key}' if base else rel_key
             yield local_path, key
 
 
@@ -254,3 +277,61 @@ def list_prefix(prefix: str) -> str:
     if prefix and not prefix.endswith(PATH_SEPARATOR):
         prefix += PATH_SEPARATOR
     return prefix
+
+
+def _cache_entries() -> list[tuple[str, float, int]]:
+    """List the cached full downloads (``.part`` files in progress are skipped).
+
+    Returns:
+        (path, mtime, size) per cached file, oldest first.
+    """
+    if not os.path.isdir(CACHE_DIR):
+        return []
+    entries = []
+    for name in os.listdir(CACHE_DIR):
+        if name.endswith('.part'):
+            continue
+        path = os.path.join(CACHE_DIR, name)
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        entries.append((path, st.st_mtime, st.st_size))
+    return sorted(entries, key=lambda e: e[1])
+
+
+def _prune_cache(keep: str) -> None:
+    """Delete expired downloads, then the oldest ones until the cache fits ``CACHE_MAX_BYTES``.
+
+    Args:
+        keep: A cache file never deleted here (the download just made).
+    """
+    now = time.time()
+    entries = []
+    for path, mtime, size in _cache_entries():
+        if path != keep and now - mtime >= CACHE_MAX_AGE_S:
+            _remove_quietly(path)
+        else:
+            entries.append((path, size))
+    total = sum(size for _path, size in entries)
+    for path, size in entries:
+        if total <= CACHE_MAX_BYTES:
+            break
+        if path != keep and _remove_quietly(path):
+            total -= size
+
+
+def _remove_quietly(path: str) -> bool:
+    """Delete ``path``, ignoring a file another process already removed.
+
+    Args:
+        path: File to delete.
+
+    Returns:
+        Whether the file was deleted.
+    """
+    try:
+        os.remove(path)
+        return True
+    except OSError:
+        return False
