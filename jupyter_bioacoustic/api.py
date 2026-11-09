@@ -866,13 +866,10 @@ class BioacousticAnnotator:
             self._resolve('data_index_column', None)
             or _dict_index_column(raw_data, self._merged_cfg.get('data'))
         )
-        # data_index_column is only required when a form is configured
-        # (form_config or a top-level 'form' key). Without a form the
-        # widget is a player-only view and needs no index column.
-        has_form = (
-            self._resolve('form_config', None) is not None
-            or bool(self._merged_cfg.get('form'))
-        )
+        # data_index_column is only required when a form is configured.
+        # Without a form the widget is a player-only view and needs no
+        # index column.
+        has_form = self._resolve('form_config', None) is not None
         if idx_col is None:
             if has_form:
                 raise ValueError(
