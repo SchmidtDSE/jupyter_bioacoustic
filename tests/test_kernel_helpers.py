@@ -97,6 +97,13 @@ class TestEncodeWav:
         raw = base64.b64decode(result)
         assert raw[:4] == b'RIFF'
 
+    def test_out_of_range_samples_clip_instead_of_wrapping(self):
+        import io
+        import soundfile as sf
+        mono = np.array([1.5, -1.5, 0.5], dtype=np.float32)
+        pcm, _sr = sf.read(io.BytesIO(base64.b64decode(_encode_wav(mono, 8000))), dtype='int16')
+        assert pcm.tolist() == [32767, -32767, 16383]
+
     def test_nonzero_audio(self):
         mono = np.sin(np.linspace(0, 2 * np.pi, 22050)).astype(np.float32)
         result = _encode_wav(mono, 22050)
