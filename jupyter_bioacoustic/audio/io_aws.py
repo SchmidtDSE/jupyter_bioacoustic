@@ -25,6 +25,7 @@ _log = logging.getLogger('jupyter_bioacoustic.audio')
 
 S3_SCHEME = 's3://'
 PATH_SEPARATOR = _shared.PATH_SEPARATOR
+NOT_FOUND_CODES = frozenset({'404', 'NoSuchKey', 'NotFound'})
 
 
 #
@@ -215,7 +216,8 @@ def _get_client(
 def _raise_if_exists(client: Any, bucket: str, key: str) -> None:
     """Raise if ``s3://bucket/key`` exists (used when ``overwrite=False``).
 
-    Any ``ClientError`` from the HEAD request is treated as "doesn't exist".
+    Only a "not found" error from the HEAD request means "doesn't exist"; any other error
+    (e.g. access denied) is re-raised so the overwrite check can't be silently skipped.
 
     Args:
         client: boto3 S3 client.
@@ -224,9 +226,12 @@ def _raise_if_exists(client: Any, bucket: str, key: str) -> None:
 
     Raises:
         FileExistsError: If the object exists.
+        botocore.exceptions.ClientError: If the HEAD request fails for another reason.
     """
     try:
         client.head_object(Bucket=bucket, Key=key)
-        raise FileExistsError(f"s3://{bucket}/{key} exists and overwrite=False")
-    except client.exceptions.ClientError:
-        pass
+    except client.exceptions.ClientError as err:
+        if str(err.response.get('Error', {}).get('Code')) in NOT_FOUND_CODES:
+            return
+        raise
+    raise FileExistsError(f"s3://{bucket}/{key} exists and overwrite=False")
