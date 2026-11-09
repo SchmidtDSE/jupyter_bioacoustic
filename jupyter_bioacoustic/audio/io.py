@@ -174,6 +174,15 @@ def list_files(
     )
 
 
+def clear_cache() -> int:
+    """Delete the local cache of full remote downloads (and remembered remote headers).
+
+    Returns:
+        The number of cached files deleted.
+    """
+    return _shared.clear_cache()
+
+
 #
 # INTERNAL
 #
