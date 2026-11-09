@@ -818,6 +818,25 @@ class TestAnnotatorDataValue:
 #
 # BioacousticAnnotator — height params
 #
+class TestAnnotatorExplicitAudioKeys:
+    """Explicit audio_path/url/uri/column force their type (no auto-detection)."""
+
+    @pytest.mark.parametrize('kwargs, expected', [
+        ({'audio_path': 'recordings'}, 'path'),
+        ({'audio_column': 'clip.flac'}, 'column'),
+        ({'audio_url': 'host/clip.flac'}, 'url'),
+        ({'audio_uri': 'host/clip.flac'}, 'url'),
+        ({'audio': 'audio_path', 'audio_path': 'recordings'}, 'path'),
+    ])
+    def test_explicit_key_forces_type(self, kwargs, expected):
+        ba = BioacousticAnnotator(data=_make_df(), data_index_column='id', **kwargs)
+        assert ba._audio_config['type'] == expected
+
+    def test_bare_audio_still_detects(self):
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path', data_index_column='id')
+        assert ba._audio_config['type'] == 'column'
+
+
 class TestAnnotatorHeightParams:
 
     def test_clip_table_height_default(self):
@@ -927,6 +946,23 @@ class TestAnnotatorSyncParams:
             data_index_column='id',
         )
         assert ba._sync_button == 'Sync'
+
+    def test_sync_button_false_hides_button(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path',
+            output={'path': 'out.csv', 'uri': 's3://bucket/out.csv', 'sync_button': False},
+            data_index_column='id',
+        )
+        assert ba.sync_uri == 's3://bucket/out.csv'
+        assert ba._sync_button == ''
+
+    def test_flat_sync_button_false_hides_button(self):
+        ba = BioacousticAnnotator(
+            data=_make_df(), audio='audio_path', output='out.csv',
+            output_uri='s3://bucket/out.csv', output_sync_button=False,
+            data_index_column='id',
+        )
+        assert ba._sync_button == ''
 
     def test_sync_recursive_from_output_dict(self):
         ba = BioacousticAnnotator(
