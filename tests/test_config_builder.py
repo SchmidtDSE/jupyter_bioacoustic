@@ -360,6 +360,14 @@ class TestUpdateSection:
             'uri': 's3://bucket/out.csv', 'index_column': 'id',
         }
 
+    def test_app_payload_without_project_name_keeps_it(self):
+        cb = ConfigBuilder()
+        cb.update_section('app', {'project_name': 'Keep Me'})
+        cb.update_section('app', {'info_card_title': 'T'})
+        assert cb._project['project_name'] == 'Keep Me'
+        cb.update_section('app', {'project_name': ''})
+        assert 'project_name' not in cb._project
+
     def test_app_project_name_routes_to_project(self):
         """project_name sent via app section always goes to _project."""
         cb = ConfigBuilder()
