@@ -79,6 +79,35 @@ class TestLab:
         assert '--debug' in result.output
         assert '--clean' in result.output
 
+    @pytest.mark.parametrize('args, expected', [
+        ([], None),
+        (['--debug'], ('1', None, None)),
+        (['--debug', 'true'], ('1', None, None)),
+        (['--debug', 'TRUE'], ('1', None, None)),
+        (['--debug', 'false'], None),
+        (['--debug', 'logs/jba.log'], ('1', 'logs', 'jba.log')),
+    ])
+    def test_debug_values(self, runner, monkeypatch, tmp_path, args, expected):
+        for key in ('JBA_DEBUG_MODE', 'JBA_LOG_DIR', 'JBA_LOG_FILE'):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.chdir(tmp_path)
+        calls = []
+        monkeypatch.setattr(
+            'jupyter_bioacoustic.cli.subprocess.run',
+            lambda cmd, env: calls.append(env),
+        )
+        result = runner.invoke(main, ['lab', *args])
+        assert result.exit_code == 0, result.output
+        env = calls[0]
+        if expected is None:
+            assert 'JBA_DEBUG_MODE' not in env
+        else:
+            mode, log_dir, log_file = expected
+            assert env['JBA_DEBUG_MODE'] == mode
+            assert env.get('JBA_LOG_DIR') == log_dir
+            assert env.get('JBA_LOG_FILE') == log_file
+        assert not (tmp_path / 'true').exists()
+
 
 #
 # jba list
