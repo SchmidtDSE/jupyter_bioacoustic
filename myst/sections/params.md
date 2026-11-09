@@ -219,5 +219,5 @@ dynamic_forms:
 | `form_panel_height` | `175` | Form panel height (px) |
 | `output` | `''` | Output file path, or `{path, uri, sync_button, recursive, secrets, index_column}`. Auto-generated (`outputs/annotation_output-<timestamp>.csv`) if a form is configured |
 | `description` | `None` | Collapsible description panel: markdown text, a `.md` path, or `{title, text, path, open, height}` |
-| `session_args` | `None` | Which extra `**kwargs` are allowed: a list of names, `True` (all) or `False` (none) |
+| `session_args` | `None` | Which extra `**kwargs` are allowed: a list of names, one name as a string, `True` (all) or `False` (none) |
 | `config` | `None` | Path to YAML/JSON config file |
