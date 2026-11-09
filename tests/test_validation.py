@@ -353,13 +353,27 @@ class TestRequiredFields:
         assert not result['valid']
         assert any('data_index_column' in e for e in result['errors'])
 
-    def test_missing_data_index_column_with_config_form_key_error(self):
-        """A top-level 'form' key in config makes the index required."""
+    def test_top_level_form_key_is_unknown(self):
+        """A top-level 'form' key is not a form: it is an unknown key."""
         result = validate_config(
             config={'data': 'x', 'form': [{'select': {'label': 'a'}}]},
         )
         assert not result['valid']
-        assert any('data_index_column' in e for e in result['errors'])
+        assert 'Unknown config key "form"' in result['errors']
+        assert not any('data_index_column' in e for e in result['errors'])
+
+    def test_named_form_outside_dynamic_forms_error(self):
+        """A list-valued unknown form key points to dynamic_forms."""
+        result = validate_config(
+            config={'data': 'x', 'data_index_column': 'id'},
+            form_config={
+                'form': [{'select': {'label': 'a', 'column': 'a', 'items': [
+                    {'value': 'x', 'form': 'extra'}]}}],
+                'extra': [{'textbox': {'label': 'b', 'column': 'b'}}],
+            },
+        )
+        assert not result['valid']
+        assert any('"extra"' in e and 'dynamic_forms' in e for e in result['errors'])
 
     def test_missing_data_index_column_with_config_form_config_key_error(self):
         """A 'form_config' reference in config makes the index required."""
