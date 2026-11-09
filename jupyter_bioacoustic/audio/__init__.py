@@ -9,10 +9,10 @@ License: BSD 3-Clause
 #
 # Imports
 #
-from .io import list_files, read, read_segment, write
+from .io import clear_cache, list_files, read, read_segment, write
 
 
 #
 # CONSTANTS
 #
-__all__ = ['list_files', 'read', 'read_segment', 'write']
+__all__ = ['clear_cache', 'list_files', 'read', 'read_segment', 'write']
