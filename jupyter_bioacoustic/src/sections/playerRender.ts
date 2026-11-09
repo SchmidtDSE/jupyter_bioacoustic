@@ -180,6 +180,8 @@ export function drawFreqAxis(
   ctx.font = `${AXIS_FONT_SIZE}px ui-monospace, monospace`;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
+  // enough decimals for the tick spacing (a 50 Hz step needs 0.05, 0.1, 0.15 kHz)
+  const decimals = Math.max(0, Math.ceil(-Math.log10(tickInterval / 1000) - 1e-9));
 
   for (let f = firstTick; f <= fMax; f += tickInterval) {
     const y = freqToY(f);
@@ -187,9 +189,9 @@ export function drawFreqAxis(
     ctx.moveTo(axisW - AXIS_TICK_LEN, y);
     ctx.lineTo(axisW, y);
     ctx.stroke();
-    // label in kHz (integer when possible)
-    const khz = f / 1000;
-    ctx.fillText(Number.isInteger(khz) ? String(khz) : khz.toFixed(1), axisW - AXIS_TICK_LEN - 2, y);
+    // label in kHz, trailing zeros dropped (2, 2.5, 0.05)
+    const label = String(Number((f / 1000).toFixed(decimals)));
+    ctx.fillText(label, axisW - AXIS_TICK_LEN - 2, y);
   }
 
   ctx.fillStyle = COLORS.textMuted;
