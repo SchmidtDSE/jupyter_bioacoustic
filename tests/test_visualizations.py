@@ -50,6 +50,19 @@ class TestStft:
         assert S.shape[0] == 128
         assert S.shape[1] >= 1
 
+    def test_empty_audio(self):
+        S = _stft(np.zeros(0, dtype=np.float32), fft=256, hop=128)
+        assert S.shape == (128, 1)
+        assert not S.any()
+
+    def test_hop_larger_than_fft_does_not_skip_samples(self):
+        # a 100-sample burst that falls between plain fft windows still shows up
+        x = np.zeros(48000, dtype=np.float32)
+        x[30500:30600] = 1.0
+        S = _stft(x, fft=512, hop=2000)
+        assert S.shape == (256, (48000 - 512) // 2000 + 1)
+        assert S[:, 30500 // 2000].max() > 0
+
 
 #
 # spectrogram
@@ -147,6 +160,11 @@ class TestSharedHelpers:
         assert len(freqs) == len(pos) == 8
         assert pos[0] == 0 and pos[-1] == 70
         assert _khz_labels(np.array([500.0, 2000.0])) == ['0.5', '2']
+
+    def test_khz_labels_keep_detail(self):
+        from jupyter_bioacoustic.utils.visualizations import _khz_labels
+        hz = np.array([0.0, 50.0, 250.0, 1400.0, 2300.0, 11025.0])
+        assert _khz_labels(hz) == ['0', '0.05', '0.25', '1.4', '2.3', '11']
 
 
 def test_rendering_keeps_the_users_matplotlib_backend():
