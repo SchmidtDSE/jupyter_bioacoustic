@@ -64,13 +64,6 @@ import {
 //
 const DEFAULT_FORM_MIN_HEIGHT = 140;
 
-/** Top-level form-config keys that are not named form sections. */
-const TOPLEVEL_KEYS = new Set([
-  'title', 'progress_tracker', 'pass_value', 'fixed_value',
-  'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
-  'annotation',
-]);
-
 /** Input types allowed directly at the top level of a form config. */
 const TOPLEVEL_INPUTS = new Set(['select', 'multiselect', 'textbox', 'checkbox', 'number']);
 
@@ -283,18 +276,10 @@ export class FormPanel {
         for (const item of cfg._fixed_kwargs) {
           if (item.fixed_value) this._registerFixedValue(item.fixed_value);
         }
-      } else if (!TOPLEVEL_KEYS.has(key)) {
-        const sectionData = cfg[key];
-        if (Array.isArray(sectionData)) {
-          const sectionDiv = this._createSectionDiv(key);
-          await this._buildFormSection(sectionData, sectionDiv);
-          this._dynFormEl.appendChild(sectionDiv);
-          this._namedSections.set(key, sectionDiv);
-        } else if (TOPLEVEL_INPUTS.has(key)) {
-          await this._buildInputElement(key, sectionData, this._dynFormEl);
-        }
+      } else if (TOPLEVEL_INPUTS.has(key)) {
+        await this._buildInputElement(key, cfg[key], this._dynFormEl);
       }
-      // 'dynamic_forms' was handled above
+      // 'dynamic_forms' was handled above; named forms must live there
     }
 
     for (const el of this._namedSections.values()) {
