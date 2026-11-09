@@ -584,6 +584,8 @@ class TestSharedHelpers:
                          (str(tmp_path / 'sub' / 'b.txt'), 'out/sub/b.txt')]
         assert sorted(k for _, k in _shared.iter_upload_keys(str(tmp_path), 'out')) == [
             'out/a.txt', 'out/sub/b.txt']
+        assert sorted(k for _, k in _shared.iter_upload_keys(str(tmp_path), '')) == [
+            'a.txt', 'sub/b.txt']
 
     @pytest.mark.parametrize('prefix,expected', [('', ''), ('a', 'a/'), ('a/', 'a/')])
     def test_list_prefix(self, prefix, expected):
@@ -598,14 +600,17 @@ class _FakeUploadS3:
 
     class exceptions:
         class ClientError(Exception):
-            pass
+            def __init__(self, code):
+                super().__init__(code)
+                self.response = {'Error': {'Code': code}}
 
-    def __init__(self, existing=(), body=b'0123456789'):
+    def __init__(self, existing=(), body=b'0123456789', head_error='404'):
         self.existing, self.body, self.uploads, self.gets = set(existing), body, [], []
+        self.head_error = head_error
 
     def head_object(self, Bucket, Key):
         if Key not in self.existing:
-            raise self.exceptions.ClientError('404')
+            raise self.exceptions.ClientError(self.head_error)
         return {'ContentLength': len(self.body)}
 
     def upload_file(self, local, bucket, key):
@@ -659,6 +664,22 @@ class TestBackendWrites:
         with pytest.raises(ValueError):
             io_aws.write(str(src), 's3://b/out', client=client)
 
+    def test_s3_write_to_bucket_root(self, tmp_path):
+        client = _FakeUploadS3()
+        io_aws.write(str(self._tree(tmp_path)), 's3://b', recursive=True, client=client)
+        assert sorted(k for _, _, k in client.uploads) == ['a.txt', 'sub/b.txt']
+
+    def test_s3_overwrite_check_only_treats_not_found_as_missing(self, tmp_path):
+        src = str(self._tree(tmp_path) / 'a.txt')
+        io_aws.write(src, 's3://b/new.txt', overwrite=False, client=_FakeUploadS3())
+        with pytest.raises(FileExistsError):
+            io_aws.write(src, 's3://b/x.txt', overwrite=False,
+                         client=_FakeUploadS3(existing={'x.txt'}))
+        denied = _FakeUploadS3(head_error='403')
+        with pytest.raises(_FakeUploadS3.exceptions.ClientError, match='403'):
+            io_aws.write(src, 's3://b/x.txt', overwrite=False, client=denied)
+        assert denied.uploads == []
+
     def test_s3_write_no_overwrite(self, tmp_path):
         src = self._tree(tmp_path)
         client = _FakeUploadS3(existing={'one.txt', 'out/sub/b.txt'})
@@ -704,3 +725,53 @@ class TestBackendWrites:
             io_gcs.write(str(src), 'gs://b/out', recursive=True, overwrite=False, client=client)
         with pytest.raises(ValueError):
             io_gcs.write(str(src), 'gs://b/out', client=client)
+
+
+#
+# full-download cache: expiry, size cap, clear
+#
+class TestDownloadCache:
+
+    @pytest.fixture
+    def cache_dir(self, tmp_path, monkeypatch):
+        d = tmp_path / 'cache'
+        monkeypatch.setattr(_shared, 'CACHE_DIR', str(d))
+        monkeypatch.setattr(io_local, 'read_segment', lambda path, start, dur: path)
+        return d
+
+    def _read(self, uri, downloads):
+        def download_to(dest):
+            downloads.append(uri)
+            with open(dest, 'wb') as f:
+                f.write(b'x' * 10)
+        return _shared.read_segment_remote(
+            uri, 0, 1, partial=False, fallback=True, get_size=lambda: 10,
+            get_range=lambda a, b: b'', download_to=download_to)
+
+    def test_reuses_then_expires(self, cache_dir):
+        downloads = []
+        path = self._read('s3://b/a.wav', downloads)
+        self._read('s3://b/a.wav', downloads)
+        assert downloads == ['s3://b/a.wav']
+        old = os.path.getmtime(path) - _shared.CACHE_MAX_AGE_S - 1
+        os.utime(path, (old, old))
+        self._read('s3://b/a.wav', downloads)
+        assert len(downloads) == 2
+
+    def test_evicts_oldest_past_size_cap(self, cache_dir, monkeypatch):
+        monkeypatch.setattr(_shared, 'CACHE_MAX_BYTES', 25)
+        downloads = []
+        paths = []
+        for i, name in enumerate(['a', 'b', 'c']):
+            paths.append(self._read(f's3://b/{name}.wav', downloads))
+            t = os.path.getmtime(paths[-1]) - 100 + i
+            os.utime(paths[-1], (t, t))
+        assert [os.path.exists(p) for p in paths] == [False, True, True]
+
+    def test_clear_cache(self, cache_dir):
+        self._read('s3://b/a.wav', [])
+        self._read('s3://b/b.wav', [])
+        assert io.clear_cache() == 2
+        assert list(cache_dir.iterdir()) == []
+        assert io.clear_cache() == 0
+
