@@ -66,6 +66,12 @@ class TestFilterSessionArgs:
         assert filtered == {}
         assert stripped == []
 
+    def test_single_name_string_is_a_one_name_list(self):
+        kwargs = {'reviewer': 'alice', 'site': 'north'}
+        filtered, stripped = _filter_session_args('reviewer', kwargs)
+        assert filtered == {'reviewer': 'alice'}
+        assert stripped == ['site']
+
     def test_invalid_policy_passes_through(self):
         kwargs = {'reviewer': 'alice'}
         filtered, stripped = _filter_session_args(42, kwargs)
