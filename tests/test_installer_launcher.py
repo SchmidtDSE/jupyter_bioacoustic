@@ -481,11 +481,82 @@ def test_port_checks(jl: ModuleType) -> None:
         server.listen()
         port = server.getsockname()[1]
         assert jl._port_in_use(port) is True
-        assert jl._wait_ready(port, timeout=1) is True
+        # something else listening on the port is not our server
+        assert jl._wait_ready({"port": port, "token": "t"}, timeout=0.5) is False
         assert jl._alive({"pid": os.getpid(), "port": port}) is True
         assert jl._free_port(port, port + 1) == port      # all busy → falls back to start
     assert jl._alive({}) is False
     assert jl._alive({"pid": os.getpid()}) is False
+
+
+def test_wait_ready_needs_our_token(jl: ModuleType) -> None:
+    """Ready means /api/status answers with our token; a dead process stops the wait."""
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200 if self.path.endswith("token=good") else 403)
+            self.end_headers()
+
+        def log_message(self, *args: Any) -> None:
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_address[1]
+        assert jl._wait_ready({"port": port, "token": "good"}, timeout=2) is True
+        assert jl._wait_ready({"port": port, "token": "bad"}, timeout=0.5) is False
+        done = subprocess.Popen([sys.executable, "-c", "pass"])
+        done.wait()
+        assert jl._wait_ready({"port": port, "token": "good"}, done, timeout=2) is False
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_open_when_ready_retries_when_jupyter_exits(jl: ModuleType,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """If jupyter exits before serving (port taken), it restarts on a new port."""
+    exited = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited.wait()
+    started: List[int] = []
+
+    def fake_start(_cfg: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+        started.append(1)
+        return "running", {"port": 9001, "token": "t", "pid": 1}
+
+    opened: List[str] = []
+    monkeypatch.setattr(jl, "_start_server", fake_start)
+    monkeypatch.setattr(jl, "_wait_ready", lambda info, proc: proc == "running")
+    monkeypatch.setattr(jl.webbrowser, "open", opened.append)
+    monkeypatch.setattr(jl, "_dismiss_setup_splash", lambda: None)
+    launcher = jl.Launcher({})
+    launcher._proc = exited
+    launcher._open_when_ready({"port": 9000, "token": "t", "pid": exited.pid})
+    assert started == [1]
+    assert opened == [jl._url({"port": 9001, "token": "t"})]
+
+
+@pytest.mark.parametrize("platform, env, expected", [
+    ("mac", {}, "{home}/Library/Application Support/JupyterBioacoustic"),
+    ("windows", {"LOCALAPPDATA": "{tmp}/local"}, "{tmp}/local/JupyterBioacoustic"),
+    ("linux", {}, "{home}/.local/share/JupyterBioacoustic"),
+    ("linux", {"XDG_DATA_HOME": "{tmp}/xdg"}, "{tmp}/xdg/JupyterBioacoustic"),
+])
+def test_default_app_support_per_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                          platform: str, env: Dict[str, str],
+                                          expected: str) -> None:
+    """Without JBA_APP_SUPPORT the data dir follows the platform's convention."""
+    monkeypatch.delenv("JBA_APP_SUPPORT", raising=False)
+    for key in ("LOCALAPPDATA", "XDG_DATA_HOME"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value.format(tmp=tmp_path))
+    monkeypatch.setattr(sys, "platform", _PLATFORMS[platform])
+    mod = _load_launcher()
+    assert mod.APP_SUPPORT == Path(expected.format(home=Path.home(), tmp=tmp_path))
 
 
 def test_stop_proc(jl: ModuleType) -> None:
@@ -654,6 +725,21 @@ def test_alert_linux_falls_back_to_notify_send(jl: ModuleType, run_calls: "_Call
     run_calls.reply = (returncode, "")
     jl._alert("hi")
     assert run_calls == expected
+
+
+def test_alert_linux_without_zenity_uses_notify_send(jl: ModuleType,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """zenity not installed (``_run`` returns None) still falls back to notify-send."""
+    calls: List[List[str]] = []
+
+    def fake_run(args: List[str]) -> Optional[subprocess.CompletedProcess]:
+        calls.append(list(args))
+        return None if args[0] == "zenity" else subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(jl.sys, "platform", "linux")
+    monkeypatch.setattr(jl, "_run", fake_run)
+    jl._alert("hi")
+    assert [c[0] for c in calls] == ["zenity", "notify-send"]
 
 
 def test_cleanup_targets(jl: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
