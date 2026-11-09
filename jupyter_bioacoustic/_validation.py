@@ -144,14 +144,21 @@ def validate_config(
 def _validate_form_keys(fc: dict, errors: list[str]) -> None:
     """Check for unknown top-level form config keys.
 
-    List-valued keys are allowed (they are form-element lists).
+    A list-valued unknown key looks like a named form written at the top
+    level, so its error points to ``dynamic_forms``.
 
     Args:
         fc: The form configuration dict.
         errors: List that error messages are appended to.
     """
     for key in fc:
-        if key not in VALID_FORM_KEYS and not isinstance(fc[key], list):
+        if key in VALID_FORM_KEYS:
+            continue
+        if isinstance(fc[key], list):
+            errors.append(
+                f'Unknown form config key "{key}" — define named forms under "dynamic_forms"',
+            )
+        else:
             errors.append(f'Unknown form config key "{key}"')
 
 
@@ -180,7 +187,7 @@ def _has_form_configured(fc: dict, config: dict, project: dict) -> bool:
     """Return True if a form is configured.
 
     A form is considered set when a form_config is provided, or when the
-    project/config carries a top-level "form" or "form_config" key. Without
+    project/config carries a "form_config" key. Without
     a form the widget is a player-only view that needs no index column.
 
     Args:
@@ -194,7 +201,7 @@ def _has_form_configured(fc: dict, config: dict, project: dict) -> bool:
     if fc:
         return True
     for cfg in (config, project):
-        if isinstance(cfg, dict) and (cfg.get('form') or cfg.get('form_config')):
+        if isinstance(cfg, dict) and cfg.get('form_config'):
             return True
     return False
 
