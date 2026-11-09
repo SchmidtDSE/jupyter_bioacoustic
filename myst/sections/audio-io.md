@@ -28,7 +28,7 @@ ba.open()
 |-----|------|-------------|
 | `path` | `str` | **(required)** Local output file path |
 | `uri` / `url` | `str` | Remote destination for sync |
-| `sync_button` | `bool` or `str` | Show sync button. `true` → "Sync", string → custom label |
+| `sync_button` | `bool` or `str` | Show sync button. `true` → "Sync", string → custom label, `false` → hidden. Defaults to "Sync" when `uri`/`url` is set |
 | `recursive` | `bool` | For directory uploads |
 | `secrets` | `list` | Auth kwargs — same `{key, value}` format as `data_secrets` |
 
