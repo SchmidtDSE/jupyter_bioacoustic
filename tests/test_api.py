@@ -818,6 +818,31 @@ class TestAnnotatorDataValue:
 #
 # BioacousticAnnotator — height params
 #
+class TestInlineDescriptionHeight:
+    """The inline widget's height includes the description panel."""
+
+    def _ba(self, **kwargs):
+        return BioacousticAnnotator(data=_make_df(), audio='audio_path',
+                                    data_index_column='id', **kwargs)
+
+    def test_no_description(self):
+        assert self._ba()._description_panel_px() == 0
+
+    def test_collapsed_is_title_row_only(self):
+        ba = self._ba(description={'text': 'hi', 'open': False}, description_height=200)
+        assert ba._description_panel_px() == 36
+
+    def test_open_uses_description_height(self):
+        ba = self._ba(description='some text', description_height=200)
+        assert ba._description_panel_px() == 36 + 200 + 20
+
+    def test_open_without_height_estimates_from_lines(self):
+        ba = self._ba(description='line one\n\nline two\nline three')
+        assert ba._description_panel_px() == 36 + 3 * 21 + 20
+        long = self._ba(description='\n'.join(['x'] * 100))
+        assert long._description_panel_px() == 36 + 300 + 20
+
+
 class TestAnnotatorExplicitAudioKeys:
     """Explicit audio_path/url/uri/column force their type (no auto-detection)."""
 
