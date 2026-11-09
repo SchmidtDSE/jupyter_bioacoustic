@@ -45,6 +45,11 @@ RECORD_LIST_KEYS = ('data', 'results', 'items', 'records', 'rows')
 REQUEST_TIMEOUT_S = 120
 
 _CLOUD_PREFIXES = ('s3://', 'gs://', 'gcs://')
+# S3 error codes that mean "these credentials can't sign" (so an unsigned retry is worth trying)
+_S3_CREDENTIAL_ERROR_CODES = frozenset({
+    'InvalidAccessKeyId', 'SignatureDoesNotMatch', 'ExpiredToken', 'InvalidToken',
+    'TokenRefreshRequired',
+})
 _ENV_DEFAULT = '__IS_ENV'
 _DUCKDB_SET_KEYS = frozenset({
     's3_access_key_id', 's3_secret_access_key',
@@ -255,12 +260,17 @@ def cloud_get_bytes(
         try:
             return boto3.client('s3').get_object(**kw)['Body'].read()
         except Exception as err:
+            if not _is_s3_credentials_error(err):
+                raise
             from botocore import UNSIGNED
             from botocore.config import Config
             _log.info('s3 default creds failed (%s); retrying unsigned', err)
-            return boto3.client(
-                's3', config=Config(signature_version=UNSIGNED),
-            ).get_object(**kw)['Body'].read()
+            try:
+                return boto3.client(
+                    's3', config=Config(signature_version=UNSIGNED),
+                ).get_object(**kw)['Body'].read()
+            except Exception:
+                raise err from None
     if url.startswith(('gs://', 'gcs://')):
         from google.cloud import storage
         bucket, blob = url.split('://', 1)[1].split('/', 1)
@@ -560,6 +570,26 @@ def load_data(
 #
 # INTERNAL
 #
+def _is_s3_credentials_error(err: Exception) -> bool:
+    """Return whether an S3 error means missing or unusable credentials.
+
+    Other errors (access denied, missing key, network) are real and must not be retried
+    unsigned, or the retry's error would hide them.
+
+    Args:
+        err: The exception from the signed request.
+
+    Returns:
+        True for missing/partial credentials or a credential error code.
+    """
+    from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
+    if isinstance(err, (NoCredentialsError, PartialCredentialsError)):
+        return True
+    if isinstance(err, ClientError):
+        return err.response.get('Error', {}).get('Code') in _S3_CREDENTIAL_ERROR_CODES
+    return False
+
+
 def _read_bytes_as_df(body: bytes, url: str) -> Any:
     """Write downloaded file bytes to a temp file and read it as a DataFrame.
 
