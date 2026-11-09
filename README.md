@@ -245,7 +245,7 @@ form_config:
 | `output_path` | str | `None` | Explicit local output file path (overrides `output` string or `output.path` dict key). |
 | `output_url` | str | `None` | Remote sync destination (overrides `output.uri`/`output.url` dict key). |
 | `output_uri` | str | `None` | Alias for `output_url`. |
-| `output_sync_button` | bool / str | `None` | Show a sync button (`true` = "Sync", string = custom label). |
+| `output_sync_button` | bool / str | `None` | Show a sync button (`true` = "Sync", string = custom label, `false` = hidden). Defaults to "Sync" when a sync URI is set. |
 | `output_recursive` | bool | `None` | Passed to `io.write()` for uploading directories. |
 | `output_secrets` | dict, list, or `false` | `None` | Auth for sync uploads (same format as `data_secrets`). Set to `false` to opt out of global `secrets` fallback. |
 | `output_index_column` | str | `data_index_column` | Name of the row-identifier column in the output file. |
