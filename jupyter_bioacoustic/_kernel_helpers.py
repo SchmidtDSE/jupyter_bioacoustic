@@ -610,14 +610,14 @@ def _encode_wav(mono: np.ndarray, sr: int) -> str:
     """Encode mono audio as a base-64 WAV string.
 
     Args:
-        mono: 1-D float samples in ``[-1, 1]``.
+        mono: 1-D float samples; values outside ``[-1, 1]`` are clipped (not wrapped).
         sr: Sample rate in Hz.
 
     Returns:
         Base-64 encoded 16-bit PCM WAV.
     """
     wb = io.BytesIO()
-    pcm = (mono * _PCM16_SCALE).astype(np.int16)[:, None]
+    pcm = (np.clip(mono, -1.0, 1.0) * _PCM16_SCALE).astype(np.int16)[:, None]
     sf.write(wb, pcm, sr, format='WAV', subtype='PCM_16')
     return base64.b64encode(wb.getvalue()).decode()
 
