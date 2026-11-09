@@ -39,6 +39,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from pathlib import Path
 from types import ModuleType
@@ -54,10 +55,19 @@ if TYPE_CHECKING:
 #
 # CONSTANTS
 #
-APP_SUPPORT: Path = Path(
-    os.environ.get("JBA_APP_SUPPORT")
-    or Path.home() / "Library/Application Support/JupyterBioacoustic"
-)
+APP_DIR_NAME: str = "JupyterBioacoustic"
+# Per-user data dir when JBA_APP_SUPPORT isn't set; matches the macOS app / launch.cmd defaults
+if sys.platform == "darwin":
+    _DEFAULT_APP_SUPPORT: Path = Path.home() / "Library/Application Support" / APP_DIR_NAME
+elif sys.platform.startswith("win"):
+    _DEFAULT_APP_SUPPORT = (
+        Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local") / APP_DIR_NAME
+    )
+else:
+    _DEFAULT_APP_SUPPORT = (
+        Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / APP_DIR_NAME
+    )
+APP_SUPPORT: Path = Path(os.environ.get("JBA_APP_SUPPORT") or _DEFAULT_APP_SUPPORT)
 ENV_BIN: Path = Path(os.environ.get("JBA_ENV_BIN") or Path(sys.executable).parent)
 ICON_PNG: str = os.environ.get("JBA_ICON", "")
 CONFIG: Path = APP_SUPPORT / "config.json"
@@ -74,6 +84,7 @@ PACKAGE: str = "jupyter-bioacoustic"              # the conda/PyPI package pixi 
 APP_TITLE: str = "Jupyter Bioacoustic"            # title of the native dialogs
 WINFORMS: str = "Add-Type -AssemblyName System.Windows.Forms;"   # PowerShell dialog prelude
 LOCALHOST: str = "127.0.0.1"
+SERVER_START_ATTEMPTS: int = 3     # a new port is tried if jupyter exits (e.g. port taken)
 
 # config.json holds JSON values: root_dir (str), single_instance (bool) and
 # shutdown_on_idle_minutes (False = never, or whole minutes).
@@ -212,16 +223,26 @@ class Launcher:
     def _start(self) -> None:
         """Start JupyterLab and open the browser (in the background) once it is ready."""
         self._proc, info = _start_server(self._cfg)
-        threading.Thread(target=self._open_when_ready, args=(info["port"],), daemon=True).start()
+        threading.Thread(target=self._open_when_ready, args=(info,), daemon=True).start()
 
-    def _open_when_ready(self, port: int) -> None:
-        """Wait for the server to accept connections, open the browser, close the splash.
+    def _open_when_ready(self, info: Dict[str, Any]) -> None:
+        """Wait for the server, open the browser, close the splash.
+
+        If JupyterLab exits before it is ready (e.g. another program took the port after
+        it was checked free), it is restarted on a new port, up to ``SERVER_START_ATTEMPTS``.
 
         Args:
-            port: The port the server was started on.
+            info: The started server's info (``port``, ``token``, ``pid``).
         """
-        if port and _wait_ready(int(port)):
-            webbrowser.open(_url(_server_info()))
+        for attempt in range(1, SERVER_START_ATTEMPTS + 1):
+            if _wait_ready(info, self._proc):
+                webbrowser.open(_url(info))
+                break
+            if self._proc is None or self._proc.poll() is None or attempt == SERVER_START_ATTEMPTS:
+                _log(f"jupyter did not become ready on port {info['port']}")
+                break
+            _log(f"jupyter exited before serving on port {info['port']}; retrying on a new port")
+            self._proc, info = _start_server(self._cfg)
         _dismiss_setup_splash()   # first-run splash stays up until the app actually opens
 
     def _open(self, *_args: Any) -> None:
@@ -623,7 +644,10 @@ def _port_in_use(port: int) -> bool:
 
 
 def _free_port(start: int = 8888, end: int = 9000) -> int:
-    """Return the first port in ``[start, end)`` with nothing listening on it.
+    """Return the first port in ``[start, end)`` that can be bound on localhost.
+
+    Another process can still take the port before JupyterLab binds it; ``_wait_ready``
+    detects that (the server exits) and the launcher retries on a new port.
 
     Args:
         start: The first port to try.
@@ -633,6 +657,11 @@ def _free_port(start: int = 8888, end: int = 9000) -> int:
         A free port, or ``start`` if every port in the range is taken.
     """
     for port in range(start, end):
+        with socket.socket() as s:
+            try:
+                s.bind((LOCALHOST, port))
+            except OSError:
+                continue
         if not _port_in_use(port):
             return port
     return start
@@ -687,22 +716,44 @@ def _url(info: Dict[str, Any]) -> str:
     return f"http://localhost:{info['port']}/lab?token={info['token']}"
 
 
-def _wait_ready(port: int, timeout: float = 90.0) -> bool:
-    """Poll until ``port`` accepts connections.
+def _wait_ready(
+    info: Dict[str, Any], proc: Optional[subprocess.Popen] = None, timeout: float = 90.0
+) -> bool:
+    """Poll until our server answers (not just anything listening on its port).
 
     Args:
-        port: The server port.
+        info: Server info with ``port`` and ``token``.
+        proc: The server process; waiting stops early if it exits.
         timeout: Seconds to wait before giving up.
 
     Returns:
-        True once the port answers, False on timeout.
+        True once the server accepts our token, False if it exits or on timeout.
     """
     end = time.time() + timeout
     while time.time() < end:
-        if _port_in_use(port):
+        if proc is not None and proc.poll() is not None:
+            return False
+        if _server_answers(info):
             return True
         time.sleep(0.3)
     return False
+
+
+def _server_answers(info: Dict[str, Any]) -> bool:
+    """Return whether the JupyterLab server for ``info`` accepts its token.
+
+    Args:
+        info: Server info with ``port`` and ``token``.
+
+    Returns:
+        True if ``/api/status`` answers 200 with that token.
+    """
+    url = f"http://{LOCALHOST}:{info['port']}/api/status?token={info['token']}"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            return resp.status == 200
+    except Exception:          # not up yet, another program on the port, or a wrong token
+        return False
 
 
 def _jupyter_env(token: str) -> Dict[str, str]:
@@ -964,7 +1015,7 @@ def _alert(msg: str) -> None:
     """Show a blocking, always-visible message with an OK button.
 
     Used for outcomes the user must see (notifications can be silently suppressed). On
-    Linux, falls back to notify-send if zenity fails.
+    Linux, falls back to notify-send if zenity is missing or fails.
 
     Args:
         msg: The message.
@@ -976,8 +1027,8 @@ def _alert(msg: str) -> None:
                  f"[System.Windows.Forms.MessageBox]::Show({_ps_str(msg)},{_ps_str(APP_TITLE)})"),
         linux=["zenity", "--info", "--title", APP_TITLE, "--text", msg],
     )
-    if _platform() == "linux" and result is not None and result.returncode != 0:
-        _run(["notify-send", APP_TITLE, msg])
+    if _platform() == "linux" and (result is None or result.returncode != 0):
+        _run(["notify-send", APP_TITLE, msg])      # zenity missing (None) or failed
 
 
 def _confirm_update() -> bool:
