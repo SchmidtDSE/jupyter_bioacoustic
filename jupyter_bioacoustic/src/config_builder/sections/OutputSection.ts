@@ -104,6 +104,9 @@ export class OutputSection extends CollapsibleSection {
     if (this._uriInput.value) result.uri = this._uriInput.value;
     if (this._syncBtnCb.checked) {
       result.sync_button = this._syncLabelInput.value || true;
+    } else if (result.uri) {
+      // the annotator shows the button by default whenever a uri is set
+      result.sync_button = false;
     }
     if (this._recursiveCb.checked) result.recursive = true;
     const secrets = this._secrets.getData();
@@ -127,7 +130,8 @@ export class OutputSection extends CollapsibleSection {
     if (data.path) this._pathInput.value = data.path;
     if (data.index_column) this._indexColInput.value = data.index_column;
     if (data.uri || data.url) this._uriInput.value = data.uri || data.url;
-    if (data.sync_button) {
+    const uri = data.uri || data.url;
+    if (data.sync_button || (data.sync_button === undefined && uri)) {
       this._syncBtnCb.checked = true;
       if (typeof data.sync_button === 'string') this._syncLabelInput.value = data.sync_button;
     }
