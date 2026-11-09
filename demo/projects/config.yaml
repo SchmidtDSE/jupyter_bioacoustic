@@ -1,3 +1,0 @@
-config: annotator_config/config/simple-examples-3b.yaml
-data:
-  path: data/detections.N-dse.csv
