@@ -146,11 +146,8 @@ twine = "*"
 [tool.pixi.feature.dev.pypi-dependencies]
 build = "*"
 
-[tool.pixi.feature.demo.dependencies]
-ffmpeg = "*"
-librosa = "*"
-
 [tool.pixi.feature.demo.pypi-dependencies]
+librosa = "*"           # from PyPI: the conda build pulls in ffmpeg (via audioread)
 ipyleaflet = "*"
 shapely = "*"
 seaborn = "*"
