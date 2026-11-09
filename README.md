@@ -270,7 +270,7 @@ form_config:
 | `player_height` | int | `260` | Player/spectrogram height in pixels. |
 | `info_card_height` | int | `34` | Info card height in pixels. |
 | `form_panel_height` | int | `175` | Form panel height in pixels. |
-| `session_args` | list / bool | `None` | Which `**kwargs` are allowed: a list of names, `True` (all) or `False` (none). |
+| `session_args` | list / str / bool | `None` | Which `**kwargs` are allowed: a list of names, one name as a string, `True` (all) or `False` (none). |
 | `**kwargs` | | | Fixed columns in every output row. A name close to a real parameter (e.g. `sort_ordr`) gives a "Did you mean" warning. |
 
 > \* `data` is not required if `data_value`, `data_path`, `data_url`, `data_sql`, or `data_api` is provided. `audio` is not required if `audio_value`, `audio_path`, `audio_url`, `audio_uri`, `audio_column`, `audio_sql`, or `audio_api` is provided.
