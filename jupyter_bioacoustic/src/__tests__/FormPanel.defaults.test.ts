@@ -18,7 +18,7 @@ const FORM = {
     { checkbox: { label: 'flag', default: true, checked_form: 'why' } },
     { number: { label: 'count', value: 3 } },
   ],
-  why: [{ textbox: { label: 'reason' } }],
+  dynamic_forms: { why: [{ textbox: { label: 'reason' } }] },
 };
 const ROWS = [{ id: 1, start_time: 0, end_time: 1 }, { id: 2, start_time: 1, end_time: 2 }];
 
