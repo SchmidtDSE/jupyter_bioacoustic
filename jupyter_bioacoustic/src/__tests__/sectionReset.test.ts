@@ -63,6 +63,15 @@ describe('section reset (H7)', () => {
     section.setData({ path: 'b.csv' });
     expect(section.getData()).toEqual({ path: 'b.csv' });
   });
+
+  it('keeps sync_button false (hidden) when a uri is set', () => {
+    const section = new OutputSection();
+    section.setData({ path: 'a.csv', uri: 's3://b/a/', sync_button: false });
+    expect(section.getData()).toEqual({ path: 'a.csv', uri: 's3://b/a/', sync_button: false });
+    section.reset();
+    section.setData({ path: 'a.csv', uri: 's3://b/a/' });
+    expect(section.getData()).toEqual({ path: 'a.csv', uri: 's3://b/a/', sync_button: true });
+  });
 });
 
 describe('DataSection time columns', () => {
