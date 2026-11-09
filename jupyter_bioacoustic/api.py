@@ -244,10 +244,11 @@ class BioacousticAnnotator:
                 auto-detect (path / URL / column).
             audio_value: Audio source string interpreted per
                 ``audio_source_type``; auto-detected when it is falsey.
-            audio_path: Explicit local file path for audio.
-            audio_url: Explicit URL for audio.
+            audio_path: Explicit local file path for audio (skips detection).
+            audio_url: Explicit URL for audio (skips detection).
             audio_uri: Alias for ``audio_url``.
-            audio_column: Explicit column name for per-row audio.
+            audio_column: Explicit column name for per-row audio (skips
+                detection).
             audio_prefix: Prefix joined with ``/`` to audio paths.
             audio_suffix: Suffix joined with ``/`` to audio paths.
             audio_fallback: Fallback when ``audio`` is a column and the
@@ -264,7 +265,8 @@ class BioacousticAnnotator:
             output_url: Remote sync destination.
             output_uri: Alias for ``output_url``.
             output_sync_button: Show a sync button (True = "Sync",
-                string = custom label).
+                string = custom label, False = hidden). Defaults to "Sync"
+                when a sync destination is set.
             output_recursive: Passed to ``io.write()`` for uploading
                 directories.
             output_secrets: Auth for sync uploads.
@@ -956,13 +958,12 @@ class BioacousticAnnotator:
                     raw_audio.update(value_dict)
                 else:
                     raw_audio = value_dict
-            elif raw_audio is _UNSET:
-                raw_audio = {key: val} if key in ('sql', 'api') else val
             elif isinstance(raw_audio, dict):
                 _drop_keys(raw_audio, _AUDIO_SOURCE_KEYS)
                 raw_audio[key] = val
             else:
-                raw_audio = val
+                # an explicit key forces its type (no auto-detection)
+                raw_audio = {key: val}
         elif raw_audio is _UNSET:
             raise ValueError(
                 "'audio' is required — pass a path, "
@@ -1003,16 +1004,12 @@ class BioacousticAnnotator:
             self._output = raw_output.get('path', '')
             self.sync_uri = raw_output.get('uri') or raw_output.get('url') or ''
             dict_button = raw_output.get('sync_button', None)
-            if dict_button is None:
-                self._sync_button = DEFAULT_SYNC_LABEL if self.sync_uri else ''
-            else:
-                self._sync_button = _sync_button_label(dict_button)
             self._sync_recursive = raw_output.get('recursive', False)
             self._sync_secrets_raw = raw_output.get('secrets')
         else:
             self._output = raw_output
             self.sync_uri = ''
-            self._sync_button = ''
+            dict_button = None
             self._sync_recursive = False
             self._sync_secrets_raw = None
 
@@ -1020,15 +1017,17 @@ class BioacousticAnnotator:
             self._output = output_path
         if output_url is not None or output_uri is not None:
             self.sync_uri = output_url or output_uri or ''
-        if sync_button is not None:
-            self._sync_button = _sync_button_label(sync_button)
         if recursive is not None:
             self._sync_recursive = recursive
         if output_secrets is not None:
             self._sync_secrets_raw = output_secrets
 
-        if self.sync_uri and not self._sync_button:
-            self._sync_button = DEFAULT_SYNC_LABEL
+        if sync_button is None:
+            sync_button = dict_button
+        if sync_button is None:
+            self._sync_button = DEFAULT_SYNC_LABEL if self.sync_uri else ''
+        else:
+            self._sync_button = _sync_button_label(sync_button)
 
         if not self._output and self._resolve('form_config', None) is not None:
             ts = datetime.now().strftime(DEFAULT_OUTPUT_TS_FMT)
