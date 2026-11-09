@@ -76,6 +76,8 @@ DEFAULT_BANDPASS_F_HI = 8000.0
 DEFAULT_MEL_F_MIN = 80.0
 DEFAULT_LINE_WIDTH = 0.3
 DEFAULT_N_TICKS = 8
+_TICK_SIG_FIGS = 2                       # kHz tick labels: 0.25, 2.2, 11 (never 0.2 / 2 / 11.0)
+_STFT_CHUNK_FRAMES = 4096                # frames per rfft batch (bounds memory on long clips)
 WAVEFORM_COLOR = '#89b4fa'
 BACKGROUND_COLOR = '#1e1e2e'
 _DB_FLOOR = 1e-10
@@ -490,6 +492,10 @@ REGISTRY = {
 def _stft(mono: np.ndarray, fft: int = DEFAULT_FFT, hop: int = DEFAULT_HOP) -> np.ndarray:
     """Compute a magnitude STFT with a Hann window.
 
+    A hop larger than ``fft`` would skip the samples between windows (a short call could
+    vanish), so each frame is then the max over evenly spaced windows covering its hop.
+    Input shorter than ``fft`` is zero-padded; empty input gives one silent frame.
+
     Args:
         mono: 1D audio array.
         fft: FFT window size.
@@ -498,12 +504,23 @@ def _stft(mono: np.ndarray, fft: int = DEFAULT_FFT, hop: int = DEFAULT_HOP) -> n
     Returns:
         Magnitude array of shape ``(fft // 2, n_frames)`` (freq × time).
     """
+    n_bins = fft // 2
+    if len(mono) == 0:
+        return np.zeros((n_bins, 1))
+    if len(mono) < fft:
+        mono = np.pad(mono, (0, fft - len(mono)))
     win = 0.5 * (1 - np.cos(2 * np.pi * np.arange(fft) / (fft - 1)))
-    n_frames = max(1, (len(mono) - fft) // hop + 1)
-    idx = np.arange(fft)[None, :] + hop * np.arange(n_frames)[:, None]
-    idx = np.clip(idx, 0, len(mono) - 1)
-    mag = np.abs(np.fft.rfft(mono[idx] * win, axis=1)[:, :fft // 2]).T
-    return mag
+    n_frames = (len(mono) - fft) // hop + 1
+    n_sub = -(-hop // fft)                     # windows per frame (1 unless hop > fft)
+    offsets = np.round(np.linspace(0, hop - fft, n_sub)).astype(int) if n_sub > 1 else [0]
+    starts = (hop * np.arange(n_frames)[:, None] + np.asarray(offsets)[None, :]).ravel()
+    starts = np.minimum(starts, len(mono) - fft)
+    mag = np.empty((len(starts), n_bins))
+    for i in range(0, len(starts), _STFT_CHUNK_FRAMES):
+        chunk = starts[i:i + _STFT_CHUNK_FRAMES]
+        idx = chunk[:, None] + np.arange(fft)[None, :]
+        mag[i:i + len(chunk)] = np.abs(np.fft.rfft(mono[idx] * win, axis=1)[:, :n_bins])
+    return mag.reshape(n_frames, n_sub, n_bins).max(axis=1).T
 
 
 def _default_hop(n_samples: int, width: int, fallback: int) -> int:
@@ -561,6 +578,17 @@ def _khz_labels(tick_freqs: np.ndarray) -> list[str]:
         tick_freqs: Tick frequencies in Hz.
 
     Returns:
-        One label per tick (one decimal below 1 kHz, none above).
+        One label per tick, with ``_TICK_SIG_FIGS`` significant figures (so non-round
+        log/mel ticks such as 1.4 and 2.3 kHz don't both round to whole numbers), trailing
+        zeros dropped.
     """
-    return [f'{f/1000:.1f}' if f < 1000 else f'{f/1000:.0f}' for f in tick_freqs]
+    labels = []
+    for f in tick_freqs:
+        khz = float(f) / 1000
+        if khz <= 0:
+            labels.append('0')
+            continue
+        decimals = max(0, _TICK_SIG_FIGS - 1 - int(np.floor(np.log10(khz))))
+        text = f'{khz:.{decimals}f}'
+        labels.append(text.rstrip('0').rstrip('.') if '.' in text else text)
+    return labels
