@@ -693,14 +693,15 @@ class ConfigBuilder:
     def _update_app_section(self, data: dict, target: str) -> None:
         """Apply an Application section payload.
 
-        ``project_name`` always goes to ``_project``; the ``APP_KEYS`` go to the target file
-        (an empty value removes the key).
+        ``project_name`` (when in the payload) always goes to ``_project``; the ``APP_KEYS``
+        go to the target file. An empty value removes the key; a missing key is left alone.
 
         Args:
             data: The section's values.
             target: The app section's target.
         """
-        _set_or_pop(self._project, 'project_name', data.get('project_name', ''))
+        if 'project_name' in data:
+            _set_or_pop(self._project, 'project_name', data['project_name'])
         dest = self._target_dict(target)
         for k in APP_KEYS:
             if k in data:
