@@ -81,3 +81,49 @@ def test_read_data_from_api_strips_prefix(monkeypatch):
     monkeypatch.setattr(ds, 'read_data_from_url', fake)
     assert ds.read_data_from_api('API::https://x/y', cookies={'t': '1'}) == 'DF'
     assert seen == {'url': 'https://x/y', 'cookies': {'t': '1'}}
+
+
+class TestCloudGetBytesS3Unsigned:
+    """The unsigned retry runs only for credential errors; other errors surface as-is."""
+
+    def _patch(self, monkeypatch, signed_error, unsigned_result=b'public'):
+        import boto3
+        calls = []
+
+        class Client:
+            def __init__(self, unsigned):
+                self.unsigned = unsigned
+
+            def get_object(self, **kw):
+                calls.append('unsigned' if self.unsigned else 'signed')
+                if not self.unsigned:
+                    raise signed_error
+                if isinstance(unsigned_result, Exception):
+                    raise unsigned_result
+                return {'Body': type('B', (), {'read': lambda _s: unsigned_result})()}
+
+        monkeypatch.setattr(boto3, 'client', lambda _svc, config=None: Client(config is not None))
+        return calls
+
+    def _client_error(self, code):
+        from botocore.exceptions import ClientError
+        return ClientError({'Error': {'Code': code, 'Message': code}}, 'GetObject')
+
+    def test_no_credentials_retries_unsigned(self, monkeypatch):
+        from botocore.exceptions import NoCredentialsError
+        calls = self._patch(monkeypatch, NoCredentialsError())
+        assert ds.cloud_get_bytes('s3://b/k') == b'public'
+        assert calls == ['signed', 'unsigned']
+
+    def test_access_denied_is_not_retried(self, monkeypatch):
+        calls = self._patch(monkeypatch, self._client_error('AccessDenied'))
+        with pytest.raises(Exception, match='AccessDenied'):
+            ds.cloud_get_bytes('s3://b/k')
+        assert calls == ['signed']
+
+    def test_failed_unsigned_retry_raises_the_original_error(self, monkeypatch):
+        calls = self._patch(monkeypatch, self._client_error('ExpiredToken'),
+                            unsigned_result=self._client_error('AccessDenied'))
+        with pytest.raises(Exception, match='ExpiredToken'):
+            ds.cloud_get_bytes('s3://b/k')
+        assert calls == ['signed', 'unsigned']
