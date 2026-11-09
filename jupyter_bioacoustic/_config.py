@@ -178,7 +178,8 @@ def filter_session_args(
 
     Args:
         policy: ``None``/``True``/``'*'`` (allow all), ``False`` (allow
-            none) or a list of allowed names. Anything else allows all.
+            none), a list of allowed names, or one name as a string (the
+            same as a one-name list). Anything else allows all.
         kwargs: The extra constructor keyword arguments.
 
     Returns:
@@ -190,6 +191,8 @@ def filter_session_args(
         return kwargs, []
     if policy is False:
         return {}, sorted(kwargs)
+    if isinstance(policy, str):
+        policy = [policy]
     if isinstance(policy, list):
         allowed = set(policy)
         stripped = sorted(set(kwargs) - allowed)
