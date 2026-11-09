@@ -82,12 +82,14 @@ ALL_ANNOTATION_FIELDS = frozenset({
     'start_time', 'end_time', 'min_frequency', 'max_frequency'
 })
 
-SKIP_KEYS = frozenset({
+# Config-builder bookkeeping kept in its project dict (file paths and flags), not settings
+BUILDER_STATE_KEYS = frozenset({
     'project_name', 'project_path', 'config_path',
     'form_path', 'project_enabled', 'config_enabled', 'form_enabled',
     'project_locked', 'config_locked', 'form_locked',
-    'output_path',
 })
+
+SKIP_KEYS = BUILDER_STATE_KEYS | {'output_path'}
 
 
 #
@@ -119,7 +121,9 @@ def validate_config(
     if config:
         _validate_config_keys(config, 'config', errors)
 
-    if config or project:
+    # a form file on its own (e.g. `jba validate -f form.yaml`) has no data settings to check
+    has_settings = bool(config) or any(k not in BUILDER_STATE_KEYS for k in (project or {}))
+    if has_settings:
         _validate_required_fields(
             config or {}, project or {}, errors, warns,
             _has_form_configured(fc, config or {}, project or {}),
@@ -128,7 +132,7 @@ def validate_config(
     _validate_forms_and_annotations(fc, errors, warns)
 
     if errors:
-        _log.warning('validation failed: %s', errors)
+        _log.info('validation failed: %s', errors)
     if warns:
         _log.info('validation warnings: %s', warns)
     return {
