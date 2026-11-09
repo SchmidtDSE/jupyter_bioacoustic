@@ -206,11 +206,23 @@ class TestDescribe:
 #
 class TestValidate:
 
-    def test_validate_reports_errors_and_exits_1(self, runner, config_dir):
-        # a form with no data_index_column anywhere is invalid
+    def test_validate_form_file_alone_is_valid(self, runner, config_dir):
+        # a form file has no data settings, so data_index_column isn't required
         result = runner.invoke(main, ['validate', 'simple', '-d', str(config_dir), '-f'])
         assert 'Form:' in result.output
+        assert 'data_index_column' not in result.output
+        assert 'Valid' in result.output and 'Invalid' not in result.output
+        assert result.exit_code == 0
+
+    def test_validate_reports_errors_and_exits_1(self, runner, config_dir):
+        (config_dir / 'forms' / 'broken.yaml').write_text(
+            'form:\n  - select:\n      label: a\n      column: a\n'
+            '      items:\n        - {value: x, form: missing}\n'
+        )
+        result = runner.invoke(main, ['validate', 'broken', '-d', str(config_dir), '-f'])
         assert 'Errors (' in result.output
+        assert 'Referenced dynamic form "missing" is not defined' in result.output
+        assert 'validation failed' not in result.output
         assert 'Invalid' in result.output
         assert result.exit_code == 1
 
