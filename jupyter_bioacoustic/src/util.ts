@@ -66,6 +66,22 @@ export function suppressNotebookShortcuts(node: HTMLElement): void {
 
 
 /**
+ * Show or hide ``el`` without losing its inline ``display`` (``flex``, ``contents``...): the
+ * value is kept in ``data-shown-display`` while hidden and put back when shown.
+ */
+export function setShown(el: HTMLElement, shown: boolean): void {
+  if (shown) {
+    if (el.dataset.shownDisplay === undefined) return;
+    el.style.display = el.dataset.shownDisplay;
+    delete el.dataset.shownDisplay;
+  } else if (el.dataset.shownDisplay === undefined) {
+    el.dataset.shownDisplay = el.style.display;
+    el.style.display = 'none';
+  }
+}
+
+
+/**
  * ``text`` as a number, or ``fallback`` when it's blank or not a number. Unlike
  * ``parseInt(text) || fallback`` it keeps 0 and decimals (``min: 0`` used to become 1).
  */
