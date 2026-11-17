@@ -53,6 +53,15 @@ _MEL_F_MIN = 80.0
 _PCM16_SCALE = 32767
 _COLORMAP = 'magma'
 _N_LUT = 256
+# form button images (image_data_url)
+_IMAGE_MIME_TYPES = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+}
 
 
 #
@@ -399,6 +408,33 @@ def save_png(path: str, b64_data: str) -> str:
     with open(path, 'wb') as f:
         f.write(base64.b64decode(b64_data))
     return 'ok'
+
+
+def image_data_url(path: str) -> str:
+    """Read an image file as a ``data:`` URL (form ``button`` images).
+
+    Args:
+        path: Image path (relative to the kernel's working directory; ``~`` is
+            expanded).
+
+    Returns:
+        ``data:<mime>;base64,<bytes>``.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the extension is not a supported image type.
+    """
+    full = os.path.expanduser(path)
+    ext = os.path.splitext(full)[1].lower()
+    mime = _IMAGE_MIME_TYPES.get(ext)
+    if mime is None:
+        raise ValueError(
+            f'unsupported image type {ext or "(none)"!r} for {path}; '
+            f'use one of {", ".join(sorted(_IMAGE_MIME_TYPES))}',
+        )
+    with open(full, 'rb') as f:
+        data = base64.b64encode(f.read()).decode('ascii')
+    return f'data:{mime};base64,{data}'
 
 
 #
