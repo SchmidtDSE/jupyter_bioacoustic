@@ -121,6 +121,20 @@ export const mutedTextStyle = (opts: { width?: string; fontSize?: number } = {})
   return `color:${COLORS.textSubtle};font-size:${size}px;${width}`;
 };
 
+// ── Section headers ───────────────────────────────────────────
+/** The clickable title bar of a collapsible annotator section (Description, Playlist, ...). */
+export const sectionHeaderStyle = () =>
+  `padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;` +
+  `background:${COLORS.bgMantle};color:${COLORS.textPrimary};` +
+  `list-style:none;user-select:none;letter-spacing:0.5px;` +
+  `border-bottom:1px solid ${COLORS.bgSurface0};` +
+  `display:flex;align-items:center;gap:6px;flex-shrink:0;`;
+
+/** The ▾ / ▸ chevron in a section header. */
+export const sectionChevronStyle = () =>
+  `font-size:20px;line-height:0;margin-top:-3px;color:${COLORS.textMuted};flex-shrink:0;` +
+  `width:16px;text-align:center;`;
+
 // ── Containers / dividers ─────────────────────────────────────
 /** A wrapping row of form fields (``display:none`` when ``hidden``). */
 export const formRowStyle = (hidden: boolean = false) =>
@@ -179,6 +193,8 @@ export function injectGlobalStyles(): void {
   styleEl.id = GLOBAL_STYLE_ID;
   styleEl.textContent = `
     .jp-BA-chip-dismiss:hover { color: ${COLORS.red}; }
+    /* A collapsed form shows only the row holding its toggle ([data-collapse-keep]). */
+    .jp-BA-collapsed > :not([data-collapse-keep]) { display: none !important; }
     .jp-BA-filter-input::placeholder {
       color: ${COLORS.overlay} !important;
       opacity: 0.7 !important;
