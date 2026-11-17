@@ -111,7 +111,11 @@ DEFAULT_PLAYER_HEIGHT = 260
 DEFAULT_INFO_CARD_HEIGHT = 34
 DEFAULT_FORM_PANEL_HEIGHT = 175
 DEFAULT_DESCRIPTION_HEIGHT = 0
+# collapse toggle titles for ``playlist_title`` / ``spectrogram_title: true`` (default: none)
+STANDARD_PLAYLIST_TITLE = 'Playlist'
+STANDARD_SPECTROGRAM_TITLE = 'Spectrogram'
 _TOOLBAR_AND_PADDING_PX = 290
+_PLAYLIST_BAR_PX = 34                    # the playlist toggle's row when the info card is hidden
 _DESCRIPTION_SUMMARY_PX = 36             # the description's title row (always shown)
 _DESCRIPTION_BODY_PADDING_PX = 20        # its body's top + bottom padding
 _DESCRIPTION_LINE_PX = 21                # 13px text at line-height 1.6
@@ -187,9 +191,17 @@ class BioacousticAnnotator:
         info_card_title: Any = _UNSET,
         info_card_text: Any = _UNSET,
         info_card_height: Any = _UNSET,
+        hide_info_card: Any = _UNSET,
+        playlist_title: Any = _UNSET,
+        playlist_open: Any = _UNSET,
+        spectrogram_title: Any = _UNSET,
+        spectrogram_open: Any = _UNSET,
+        form_open: Any = _UNSET,
         visualizations: Any = _UNSET,
         spectrogram_resolution: Any = _UNSET,
         default_buffer: Any = _UNSET,
+        freq_min: Any = _UNSET,
+        freq_max: Any = _UNSET,
         capture: Any = _UNSET,
         capture_dir: Any = _UNSET,
         capture_height: Any = _UNSET,
@@ -296,6 +308,20 @@ class BioacousticAnnotator:
             info_card_text: Info card text template — supports
                 ``[[column_name]]`` placeholders.
             info_card_height: Info card height in pixels.
+            hide_info_card: True hides the info card (the row at the top of
+                the playlist). The playlist's collapse toggle then gets a row
+                of its own.
+            playlist_title: Text after the playlist's collapse chevron (in the
+                info card). Default False (no text); True shows ``'Playlist'``.
+            playlist_open: Whether the playlist (filter bar and clip table)
+                starts expanded. Default True.
+            spectrogram_title: Text after the spectrogram's collapse chevron
+                (in the play row). Default False (no text); True shows
+                ``'Spectrogram'``.
+            spectrogram_open: Whether the spectrogram (controls and canvas)
+                starts expanded. Default True.
+            form_open: Whether the form starts expanded. Collapsed, it shows
+                only its button row. Default True.
             visualizations: Visualization types for the dropdown.
                 Built-in strings (``'linear'``, ``'mel'``,
                 ``'log_frequency'``, ``'bandpass'``, ``'waveform'``)
@@ -303,6 +329,13 @@ class BioacousticAnnotator:
             spectrogram_resolution: Spectrogram width in pixels. List for
                 a dropdown selector, single value for fixed.
             default_buffer: Buffer time in seconds around each clip.
+            freq_min: Lowest frequency (kHz) shown when the spectrogram
+                opens and after Reset. Defaults to the bottom of the
+                spectrogram.
+            freq_max: Highest frequency (kHz) shown when the spectrogram
+                opens and after Reset. Defaults to the top of the
+                spectrogram. Frequency zooms the user makes are kept when
+                moving to another clip.
             capture: Capture button (False to hide, string for label).
             capture_dir: Directory prefix for captures.
             capture_height: Capture image height in pixels.
@@ -407,6 +440,10 @@ class BioacousticAnnotator:
         ns['_BA_CLIP_TABLE_HEIGHT'] = str(self._clip_table_height)
         ns['_BA_PLAYER_HEIGHT'] = str(self._player_height)
         ns['_BA_INFO_CARD_HEIGHT'] = str(self._info_card_height)
+        ns['_BA_HIDE_INFO_CARD'] = 'true' if self._hide_info_card else ''
+        ns['_BA_SECTIONS'] = json.dumps(self._sections_config)
+        ns['_BA_FREQ_MIN'] = '' if self._freq_min is None else str(self._freq_min)
+        ns['_BA_FREQ_MAX'] = '' if self._freq_max is None else str(self._freq_max)
         ns['_BA_FORM_PANEL_HEIGHT'] = str(self._form_panel_height)
         ns['_BA_DESCRIPTION'] = (
             json.dumps(self._description_config)
@@ -1049,6 +1086,29 @@ class BioacousticAnnotator:
         self._sort = self._resolve('sort', None)
         self._sort_order = self._resolve('sort_order', 'asc')
         self._default_buffer = self._resolve('default_buffer', DEFAULT_BUFFER)
+        self._hide_info_card = bool(self._resolve('hide_info_card', False))
+        self._sections_config = {
+            'playlist': {
+                'title': _toggle_title(
+                    self._resolve('playlist_title', False), STANDARD_PLAYLIST_TITLE),
+                'open': bool(self._resolve('playlist_open', True)),
+            },
+            'spectrogram': {
+                'title': _toggle_title(
+                    self._resolve('spectrogram_title', False), STANDARD_SPECTROGRAM_TITLE),
+                'open': bool(self._resolve('spectrogram_open', True)),
+            },
+            'form': {'open': bool(self._resolve('form_open', True))},
+        }
+        self._freq_min = _freq_khz(self._resolve('freq_min', None), 'freq_min')
+        self._freq_max = _freq_khz(self._resolve('freq_max', None), 'freq_max')
+        if (
+            self._freq_min is not None and self._freq_max is not None
+            and self._freq_min >= self._freq_max
+        ):
+            raise ValueError(
+                f'freq_min ({self._freq_min}) must be less than freq_max ({self._freq_max})',
+            )
         self._capture = self._resolve('capture', True)
         self._capture_dir = self._resolve('capture_dir', '')
         self._capture_height = self._resolve('capture_height', None)
@@ -1264,16 +1324,7 @@ class BioacousticAnnotator:
         """Inject the widget into the cell output area."""
         div_id = f'bioacoustic-{uuid.uuid4().hex[:8]}'
         w = self._width if isinstance(self._width, str) else f'{self._width}px'
-        has_form = self._form_config is not None
-        total_h = (
-            int(self._clip_table_height)
-            + int(self._player_height)
-            + int(self._info_card_height)
-            + (int(self._form_panel_height) if has_form else 0)
-            + self._description_panel_px()
-            + _TOOLBAR_AND_PADDING_PX
-        )
-        h = f'{total_h}px'
+        h = f'{self._inline_height_px()}px'
 
         display(HTML(
             f'<div id="{div_id}" style="'
@@ -1289,6 +1340,22 @@ class BioacousticAnnotator:
             f"window._bioacousticOpenInline && "
             f"window._bioacousticOpenInline('{div_id}')"
         ))
+
+    def _inline_height_px(self) -> int:
+        """Return the inline widget's starting height: every panel plus its title rows.
+
+        Returns:
+            The height in pixels.
+        """
+        has_form = self._form_config is not None
+        return (
+            int(self._clip_table_height)
+            + int(self._player_height)
+            + (_PLAYLIST_BAR_PX if self._hide_info_card else int(self._info_card_height))
+            + (int(self._form_panel_height) if has_form else 0)
+            + self._description_panel_px()
+            + _TOOLBAR_AND_PADDING_PX
+        )
 
     def _description_panel_px(self) -> int:
         """Return the height the description panel takes in the inline widget.
@@ -1350,6 +1417,47 @@ def _default_project_name(project: Any) -> str:
         return DEFAULT_PROJECT_NAME
     stem = os.path.splitext(os.path.basename(project))[0]
     return stem.replace('_', ' ').replace('-', ' ').title()
+
+
+def _toggle_title(value: Any, standard: str) -> str:
+    """Return a collapse toggle's title: '' when unset / False, ``standard`` when True.
+
+    Args:
+        value: The resolved ``playlist_title`` / ``spectrogram_title``.
+        standard: The title ``True`` stands for.
+
+    Returns:
+        The text shown after the chevron ('' for none).
+    """
+    if value is True:
+        return standard
+    if value is None or value is False:
+        return ''
+    return str(value)
+
+
+def _freq_khz(value: Any, name: str) -> Optional[float]:
+    """Return a ``freq_min`` / ``freq_max`` setting as a float (kHz).
+
+    Args:
+        value: The resolved setting (None or '' for unset).
+        name: The setting name, for the error message.
+
+    Returns:
+        The frequency in kHz, or None when unset.
+
+    Raises:
+        ValueError: If the value is not a non-negative number.
+    """
+    if value is None or value == '':
+        return None
+    try:
+        khz = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f'{name} must be a number (kHz), got {value!r}') from None
+    if isinstance(value, bool) or khz < 0:
+        raise ValueError(f'{name} must be a non-negative number (kHz), got {value!r}')
+    return khz
 
 
 def _cascade_secrets(section_secrets: Any, global_secrets: Any) -> Any:
