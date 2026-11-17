@@ -7,7 +7,7 @@
 //
 // Imports
 //
-import { COLORS } from '../styles';
+import { COLORS, sectionChevronStyle, sectionHeaderStyle } from '../styles';
 import { escapeHtml } from '../util';
 
 
@@ -136,16 +136,10 @@ export class DescriptionPanel {
       `border-bottom:1px solid ${COLORS.bgSurface0};flex-shrink:0;`;
 
     const summary = document.createElement('summary');
-    summary.style.cssText =
-      `padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;` +
-      `background:${COLORS.bgMantle};color:${COLORS.textPrimary};` +
-      `list-style:none;user-select:none;letter-spacing:0.5px;` +
-      `border-bottom:1px solid ${COLORS.bgSurface0};` +
-      `display:flex;align-items:center;gap:6px;`;
+    summary.style.cssText = sectionHeaderStyle();
 
     this._chevron = document.createElement('span');
-    this._chevron.style.cssText =
-      `font-size:20px;line-height:0;margin-top:-3px;color:${COLORS.textMuted};flex-shrink:0;width:16px;text-align:center;`;
+    this._chevron.style.cssText = sectionChevronStyle();
     this._chevron.textContent = '▾';
 
     this._body = document.createElement('div');
