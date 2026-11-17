@@ -32,6 +32,7 @@ from jupyter_bioacoustic._kernel_helpers import (
     delete_output_row,
     load_select_items,
     save_png,
+    image_data_url,
 )
 
 
@@ -610,3 +611,32 @@ def test_normalize_db_wrapper_uses_80db_range():
     from jupyter_bioacoustic.utils.visualizations import normalize_db
     mag = np.abs(np.random.default_rng(4).normal(size=(20, 12))) + 1e-12
     assert np.array_equal(_normalize_db(mag), normalize_db(mag, 80))
+
+
+#
+# form button images
+#
+class TestImageDataUrl:
+
+    def test_png_round_trips(self, tmp_path):
+        path = tmp_path / 'owl.PNG'
+        path.write_bytes(b'\x89PNG fake')
+        url = image_data_url(str(path))
+        prefix = 'data:image/png;base64,'
+        assert url.startswith(prefix)
+        assert base64.b64decode(url[len(prefix):]) == b'\x89PNG fake'
+
+    def test_svg_mime(self, tmp_path):
+        path = tmp_path / 'i.svg'
+        path.write_text('<svg/>')
+        assert image_data_url(str(path)).startswith('data:image/svg+xml;base64,')
+
+    def test_unsupported_extension(self, tmp_path):
+        path = tmp_path / 'notes.txt'
+        path.write_text('x')
+        with pytest.raises(ValueError, match='unsupported image type'):
+            image_data_url(str(path))
+
+    def test_missing_file(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            image_data_url(str(tmp_path / 'nope.png'))
