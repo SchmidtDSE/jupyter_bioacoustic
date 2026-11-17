@@ -24,7 +24,7 @@ import { FormCardContext, buildElementFields, defaultElementConfig } from './for
 //
 /** Element types that make a following title / annotation / ... go into the ``form:`` list. */
 const USER_INPUT_TYPES: ReadonlySet<string> = new Set([
-  'select', 'multiselect', 'textbox', 'checkbox', 'number',
+  'select', 'multiselect', 'textbox', 'checkbox', 'number', 'button',
 ]);
 /** Element types written as top-level keys when they come before any user input. */
 const TOP_LEVEL_TYPES: ReadonlySet<string> = new Set(['title', 'annotation', 'pass_value', 'fixed_value']);
@@ -33,7 +33,7 @@ const ADD_BAR_COLUMNS: ReadonlyArray<{ header: string; rows: ElementType[][] }> 
   { header: 'Display', rows: [['title', 'text'], ['line', 'break']] },
   {
     header: 'User Input',
-    rows: [['annotation', 'select', 'multiselect'], ['textbox', 'checkbox', 'number']],
+    rows: [['annotation', 'select', 'multiselect'], ['textbox', 'checkbox', 'number', 'button']],
   },
   { header: 'Data', rows: [['pass_value'], ['fixed_value']] },
   { header: 'Navigation', rows: [['submission_buttons']] },
