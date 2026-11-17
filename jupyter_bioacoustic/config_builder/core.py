@@ -74,7 +74,10 @@ APP_KEYS = frozenset({
     'duplicate_entries', 'default_buffer', 'capture', 'capture_dir',
     'spectrogram_resolution', 'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
-    'info_card_height', 'form_panel_height',
+    'info_card_height', 'hide_info_card', 'form_panel_height',
+    'freq_min', 'freq_max',
+    'playlist_title', 'playlist_open', 'spectrogram_title', 'spectrogram_open',
+    'form_open',
     'secrets',
 })
 DESCRIPTION_KEY = 'description'
