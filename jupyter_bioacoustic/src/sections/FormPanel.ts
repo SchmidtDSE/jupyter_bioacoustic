@@ -9,7 +9,8 @@
  * ``form/``: ``annotationConfig`` (parsing the annotation element), ``selectItems`` /
  * ``inputs`` (select parsing and DOM), ``multiselect`` (tags: selection rules and output
  * encoding), ``multiboxCards`` (box cards and per-box forms),
- * ``reviewed`` (reviewed view), ``progress`` (progress text / accuracy), ``formConfig``.
+ * ``reviewed`` (reviewed view), ``progress`` (progress text / accuracy), ``buttons`` (the
+ * ``button`` element), ``formConfig``.
  *
  * License: BSD 3-Clause
  */
@@ -20,8 +21,8 @@ import { Signal } from '@lumino/signaling';
 
 import { KernelBridge, KernelError } from '../kernel';
 import {
-  INVALIDATE_OUTPUT_CACHE, countOutputRows, deleteOutputRow, loadSelectItems, readOutputRows,
-  writeOutputRows,
+  INVALIDATE_OUTPUT_CACHE, countOutputRows, deleteOutputRow, loadSelectItems, readImageDataUrl,
+  readOutputRows, writeOutputRows,
 } from '../python';
 import {
   COLORS,
@@ -45,6 +46,10 @@ import {
   resolveTemplate, showDialog,
 } from '../util';
 import { parseAnnotationConfig } from './form/annotationConfig';
+import {
+  ButtonFace, ToggleStart, formButtonStyle, isDirectImageSrc, nextToggleIndex, parseFormButton,
+  toggleStart,
+} from './form/buttons';
 import { asElementList, requiredColumns } from './form/formConfig';
 import { buildMultiselect, buildSelect } from './form/inputs';
 import { buildBoxCard, buildBoxForm } from './form/multiboxCards';
@@ -76,6 +81,14 @@ const ANNOT_FIELDS: AnnotField[] = ['startTime', 'endTime', 'minFreq', 'maxFreq'
 //
 /** A registered form input element. */
 type InputEl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+/** A built ``button`` element. */
+interface FormButton {
+  el: HTMLButtonElement;
+  spec: ReturnType<typeof parseFormButton>;
+  /** A toggle's current state (-1: not clicked yet, with an initial value / face). */
+  toggleIdx: number;
+}
 
 
 //
@@ -133,6 +146,21 @@ export class FormPanel {
   private readonly _boxMultiselects: Map<string, MultiselectSpec> = new Map();
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
   private _templateElements: Array<{ el: HTMLElement | Text; template: string }> = [];
+  /** ``button`` elements that set a column, by output column (one selected per column). */
+  private readonly _buttonGroups: Map<string, FormButton[]> = new Map();
+  /** A button column's ``initial_value`` (its value before any of its buttons is clicked). */
+  private readonly _buttonInitial: Map<string, any> = new Map();
+  /** ``button`` elements with a ``toggle`` (each owns its column). */
+  private _toggleBtns: FormButton[] = [];
+  /** ``button`` elements with ``submit: true``. */
+  private _submitFormBtns: FormButton[] = [];
+  /** Image ``data:`` URLs read in the kernel, by path (kept across rebuilds). */
+  private readonly _imageUrls: Map<string, Promise<string>> = new Map();
+  /** The same, once read (so re-rendering a button doesn't flicker). */
+  private readonly _imageSrcs: Map<string, string> = new Map();
+  private _minHeight = `${DEFAULT_FORM_MIN_HEIGHT}px`;
+  /** The collapse toggle, kept at the start of the button row across rebuilds. */
+  private _leading: HTMLElement | null = null;
 
   // ── Progress tracking ────────────────────────────────────────
   private _sessionCount = 0;
@@ -191,12 +219,20 @@ export class FormPanel {
     this._dynFormEl.style.cssText = `display:flex;flex-direction:column;gap:10px;`;
     this.element.append(this._dynFormEl);
 
-    // Enter submits (when allowed) — except in textareas and text inputs
+    // Enter on a focused button or checkbox clicks it (like the mouse); elsewhere it submits
+    // (when allowed) — except in textareas and text inputs
     this.element.addEventListener('keydown', e => {
       if (e.key !== 'Enter' || e.shiftKey) return;
-      const tag = (e.target as HTMLElement)?.tagName;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isCheckbox = tag === 'INPUT' && (target as HTMLInputElement).type === 'checkbox';
+      if (tag === 'BUTTON' || isCheckbox) {
+        e.preventDefault();
+        if (!(target as HTMLButtonElement | HTMLInputElement).disabled) target!.click();
+        return;
+      }
       if (tag === 'TEXTAREA') return;
-      if (tag === 'INPUT' && (e.target as HTMLInputElement).type === 'text') return;
+      if (tag === 'INPUT' && (target as HTMLInputElement).type === 'text') return;
       const btn = this._submitBtns.find(b => !b.disabled);
       if (btn) {
         e.preventDefault();
@@ -219,7 +255,8 @@ export class FormPanel {
     height?: number;
   }): void {
     if (opts.height) {
-      this.element.style.minHeight = `${opts.height}px`;
+      this._minHeight = `${opts.height}px`;
+      if (this.element.style.minHeight !== '0px') this.element.style.minHeight = this._minHeight;
     }
     this._formConfig = opts.formConfig;
     this._rows = opts.rows;
@@ -235,6 +272,18 @@ export class FormPanel {
   setSelectionInfo(selectedIdx: number, filteredLength: number): void {
     this._selectedIdx = selectedIdx;
     this._filteredLength = filteredLength;
+  }
+
+  /** Keep ``el`` (the collapse toggle) at the start of the title row (see ``_placeLeading``). */
+  setLeading(el: HTMLElement): void {
+    this._leading = el;
+    this._placeLeading();
+  }
+
+  /** Collapse to the row holding the toggle (title / progress, else buttons), or expand. */
+  setCollapsed(collapsed: boolean): void {
+    this._dynFormEl.classList.toggle('jp-BA-collapsed', collapsed);
+    this.element.style.minHeight = collapsed ? '0px' : this._minHeight;
   }
 
   /** Build the form from the current form config (top-level keys in config order). */
@@ -286,6 +335,7 @@ export class FormPanel {
       if (!el.parentElement) this._dynFormEl.appendChild(el);
     }
     if (!cfg.submission_buttons) this._buildSubmissionButtons({ submit: true });
+    this._placeLeading();
     this._validateForm();
   }
 
@@ -485,6 +535,27 @@ export class FormPanel {
 
   // ── Private: form building ───────────────────────────────────
 
+  /**
+   * Put the collapse toggle at the start of the form's first title / progress row (the
+   * reviewed view's REVIEWED title), or of the button row when there is none. That row is
+   * the one a collapsed form keeps.
+   */
+  private _placeLeading(): void {
+    if (!this._leading) return;
+    const row = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-heading]')
+      ?? this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-buttons]');
+    if (!row) return;
+    for (const el of this._dynFormEl.querySelectorAll<HTMLElement>(':scope > [data-collapse-keep]')) {
+      delete el.dataset.collapseKeep;
+    }
+    row.dataset.collapseKeep = '';
+    if (row.dataset.formHeading !== undefined) {
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+    }
+    row.prepend(this._leading);
+  }
+
   /** Clear everything ``build()`` creates. */
   private _resetFormState(): void {
     this._dynFormEl.innerHTML = '';
@@ -499,6 +570,10 @@ export class FormPanel {
     this._boxMultiselects.clear();
     this._passValueDefs = [];
     this._templateElements = [];
+    this._buttonGroups.clear();
+    this._buttonInitial.clear();
+    this._toggleBtns = [];
+    this._submitFormBtns = [];
     this._annotConfig = null;
     this._activeTool = '';
     this._annotInputs.clear();
@@ -552,6 +627,8 @@ export class FormPanel {
         container.appendChild(d);
       } else if (type === 'text') {
         container.appendChild(this._textElement(config));
+      } else if (type === 'button') {
+        container.appendChild(this._buildButton(config));
       } else {
         await this._buildInputElement(type, config, container);
       }
@@ -720,6 +797,120 @@ export class FormPanel {
     return { input: inp, element: inp, sections: [] };
   }
 
+  /**
+   * A ``button`` element (see ``form/buttons``). A plain button with a column sets it (its
+   * column's other buttons are deselected; clicking the selected one goes back to the
+   * column's ``initial_value``); a toggle moves to its next state; ``submit`` submits.
+   */
+  private _buildButton(rawConfig: any): HTMLButtonElement {
+    const spec = parseFormButton(rawConfig);
+    const el = document.createElement('button');
+    el.type = 'button';
+    const btn: FormButton = { el, spec, toggleIdx: -1 };
+    const col = spec.column;
+
+    if (spec.toggle && col) {
+      this._toggleBtns.push(btn);
+      this._setToggle(btn, toggleStart(spec));
+    } else if (col) {
+      const group = this._buttonGroups.get(col);
+      if (group) group.push(btn);
+      else this._buttonGroups.set(col, [btn]);
+      if (spec.hasInitialValue && !this._buttonInitial.has(col)) {
+        this._buttonInitial.set(col, spec.initialValue);
+      }
+      if (spec.required) this._requiredInputs.push({ col, el });
+      this._selectButtonValue(col, this._buttonInitial.get(col) ?? null);
+    } else {
+      this._renderButton(btn);
+    }
+    if (spec.submit) this._submitFormBtns.push(btn);
+
+    el.addEventListener('click', () => {
+      if (spec.toggle && col) {
+        const next = nextToggleIndex(spec, btn.toggleIdx);
+        this._setToggle(btn, { index: next, value: spec.toggle[next].value });
+      } else if (col) {
+        const initial = this._buttonInitial.get(col) ?? null;
+        const deselect = !spec.submit && this._formValues[col] === spec.value;
+        this._selectButtonValue(col, deselect ? initial : spec.value);
+      }
+      this._validateForm();
+      if (spec.submit && !el.disabled) void this._onVerify();
+    });
+    return el;
+  }
+
+  /** Set a button column's value and re-render its buttons (the one holding it selected). */
+  private _selectButtonValue(col: string, value: any): void {
+    this._formValues[col] = value;
+    for (const btn of this._buttonGroups.get(col) ?? []) this._renderButton(btn);
+  }
+
+  /** Put a toggle in a state (or unset) and write its value. */
+  private _setToggle(btn: FormButton, state: ToggleStart): void {
+    btn.toggleIdx = state.index;
+    if (btn.spec.column) this._formValues[btn.spec.column] = state.value;
+    this._renderButton(btn);
+  }
+
+  /** Draw a button for its current state: face, colours, selection border. */
+  private _renderButton(btn: FormButton): void {
+    const { el, spec } = btn;
+    let face: ButtonFace;
+    let selected = false;
+    let dimmed = false;
+    if (spec.toggle) {
+      face = btn.toggleIdx >= 0
+        ? spec.toggle[btn.toggleIdx].face
+        : spec.initialFace ?? spec.toggle[0].face;
+      dimmed = btn.toggleIdx < 0 && !spec.initialFace;
+    } else {
+      selected = !!spec.column && spec.value !== null
+        && this._formValues[spec.column] === spec.value;
+      face = selected || !spec.column ? spec.face : spec.initialFace ?? spec.face;
+    }
+    const disabled = el.disabled;
+    el.style.cssText = formButtonStyle(spec, face, { selected, dimmed });
+    if (disabled) el.style.opacity = '0.4';
+    el.title = face.label;
+    if (face.label) el.setAttribute('aria-label', face.label);
+    else el.removeAttribute('aria-label');
+    el.textContent = '';
+    if (face.image) this._setButtonImage(el, face);
+    else el.textContent = face.icon;
+  }
+
+  /** Put ``face``'s image in the button: URLs as is, file paths read in the kernel (cached). */
+  private _setButtonImage(el: HTMLButtonElement, face: ButtonFace): void {
+    const img = document.createElement('img');
+    img.alt = face.label;
+    img.style.cssText = `max-width:100%;max-height:100%;object-fit:contain;pointer-events:none;`;
+    el.appendChild(img);
+    const path = face.image;
+    const known = isDirectImageSrc(path) ? path : this._imageSrcs.get(path);
+    if (known) {
+      img.src = known;
+      return;
+    }
+    let url = this._imageUrls.get(path);
+    if (!url) {
+      url = this._kernel.exec(readImageDataUrl(path)).then(out => {
+        const src = out.trim();
+        this._imageSrcs.set(path, src);
+        return src;
+      });
+      this._imageUrls.set(path, url);
+    }
+    url.then(src => { img.src = src; }).catch((e: unknown) => {
+      this._imageUrls.delete(path);    // retry on the next build
+      img.replaceWith(face.label || '?');
+      this.statusChanged.emit({
+        message: `❌ Button image ${path}: ${errorMessage(e)}`, error: true,
+      });
+    });
+  }
+
   /** Show the named section(s) ``active`` and hide the other ``sections``. */
   private _showOnly(
     sections: Set<string>, active: string | undefined | Set<string | undefined>,
@@ -747,6 +938,7 @@ export class FormPanel {
   private _buildSubmissionButtons(cfg: any): void {
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px;`;
+    btnContainer.dataset.formButtons = '';
 
     for (const [key, val] of Object.entries(cfg)) {
       if (key === 'pass_value') {
@@ -1082,6 +1274,11 @@ export class FormPanel {
       }
     }
 
+    for (const col of this._buttonGroups.keys()) {
+      this._selectButtonValue(col, this._buttonInitial.get(col) ?? null);
+    }
+    for (const btn of this._toggleBtns) this._setToggle(btn, toggleStart(btn.spec));
+
     for (const { col, sourceCol } of this._sourceValueFields) {
       const val = row[sourceCol];
       const el = this._inputRefs.get(col);
@@ -1173,10 +1370,26 @@ export class FormPanel {
   }
 
   /**
-   * Enable Submit when every visible required input has a value and, in multibox mode,
-   * there is at least one box and every box's required fields are filled.
+   * Enable Submit when the form is valid (``_formValid``). A submit ``button`` that sets a
+   * column is checked without that column, since clicking it fills it.
    */
   private _validateForm(): void {
+    const valid = this._formValid();
+    const enable = (btn: HTMLButtonElement, ok: boolean) => {
+      btn.disabled = !ok;
+      btn.style.opacity = ok ? '1' : '0.4';
+    };
+    this._submitBtns.forEach(btn => enable(btn, valid));
+    for (const { el, spec } of this._submitFormBtns) {
+      enable(el, spec.column ? this._formValid(spec.column) : valid);
+    }
+  }
+
+  /**
+   * True when every visible required input (other than ``ignoreCol``) has a value and, in
+   * multibox mode, there is at least one box and every box's required fields are filled.
+   */
+  private _formValid(ignoreCol?: string): boolean {
     const filled = (val: any) =>
       Array.isArray(val) ? val.length > 0 : val !== null && val !== undefined && val !== '';
     const visible = (el: HTMLElement) => {
@@ -1185,7 +1398,7 @@ export class FormPanel {
       return !(section && section.style.display === 'none');
     };
     let allSatisfied = this._requiredInputs.every(
-      ({ col, el }) => !visible(el) || filled(this._formValues[col]));
+      ({ col, el }) => col === ignoreCol || !visible(el) || filled(this._formValues[col]));
     for (const [col, spec] of this._multiselects) {
       const el = this._inputRefs.get(col);
       if (el && visible(el) && !selectionValid(spec, this._formValues[col] ?? [])) {
@@ -1208,10 +1421,7 @@ export class FormPanel {
         }
       }
     }
-    this._submitBtns.forEach(btn => {
-      btn.disabled = !allSatisfied;
-      btn.style.opacity = allSatisfied ? '1' : '0.4';
-    });
+    return allSatisfied;
   }
 
   /** ``pass_value``: copy a data column into the output (``name`` or ``{source_column, column}``). */
@@ -1251,6 +1461,7 @@ export class FormPanel {
 
     const d = document.createElement('div');
     d.style.cssText = sectionTitleStyle() + `display:flex;align-items:baseline;`;
+    d.dataset.formHeading = '';
     const span = document.createElement('span');
     span.textContent = text;
     d.appendChild(span);
@@ -1268,6 +1479,7 @@ export class FormPanel {
   private _appendProgressTracker(container: HTMLElement): void {
     const d = document.createElement('div');
     d.style.cssText = `width:100%;`;
+    d.dataset.formHeading = '';
     d.appendChild(this._createProgressEl());
     container.appendChild(d);
   }
@@ -1314,6 +1526,7 @@ export class FormPanel {
   private _showReviewedResult(row: Detection): void {
     this._dynFormEl.innerHTML = '';
     this._submitBtns = [];
+    this._submitFormBtns = [];
     this._showingReviewedView = true;
     const rows = this._reviewedMap.get(row[this._dataIndexCol]);
     if (!rows || rows.length === 0) return;
@@ -1325,6 +1538,7 @@ export class FormPanel {
       onNext: () => this.nextRequested.emit(void 0),
       onDelete: () => void this._onDeleteReview(row),
     }));
+    this._placeLeading();
 
     const ann = reviewedAnnotation(rows, this._annotConfig);
     this._reviewedTool = ann.tool;
@@ -1396,6 +1610,7 @@ export class FormPanel {
   private _setSubmitBusy(busy: boolean): void {
     if (busy) {
       for (const btn of this._submitBtns) btn.disabled = true;
+      for (const { el } of this._submitFormBtns) el.disabled = true;
     } else {
       this._validateForm();
     }
