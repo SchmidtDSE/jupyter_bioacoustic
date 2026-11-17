@@ -127,6 +127,21 @@ export function fracToFreq(frac: number, scale: FreqScale): number {
 }
 
 
+/**
+ * The vertical view (0..1 fractions) that shows the frequency window ``win`` (Hz) on
+ * ``scale``. The window is clipped to the scale's range; ``null``, an empty scale or a window
+ * that misses the range entirely gives the full range ``[0, 1]``.
+ */
+export function freqWindowToView(
+  win: [number, number] | null, scale: FreqScale,
+): [number, number] {
+  if (!win || scale.max <= scale.min) return [0, 1];
+  const lo = Math.max(0, freqToFrac(Math.max(win[0], scale.min), scale));
+  const hi = Math.min(1, freqToFrac(Math.min(win[1], scale.max), scale));
+  return hi > lo ? [lo, hi] : [0, 1];
+}
+
+
 // ── Canvas <-> data ───────────────────────────────────────────
 /** Absolute time (s) -> canvas x, for a canvas ``canvasW`` px wide. */
 export function timeToX(
