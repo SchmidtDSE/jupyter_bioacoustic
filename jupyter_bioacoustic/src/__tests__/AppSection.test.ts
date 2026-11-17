@@ -138,6 +138,29 @@ describe('AppSection', () => {
       expect(data.form_panel_height).toBe(150);
     });
 
+    test('hide_info_card and freq_min / freq_max round-trip', () => {
+      expect(appSection.getData().hide_info_card).toBeUndefined();
+      expect(appSection.getData().freq_min).toBeUndefined();
+      appSection.setData({ hide_info_card: true, freq_min: 0.5, freq_max: 12 });
+      const data = appSection.getData();
+      expect(data.hide_info_card).toBe(true);
+      expect(data.freq_min).toBe(0.5);
+      expect(data.freq_max).toBe(12);
+      appSection.reset();
+      expect(appSection.getData().hide_info_card).toBeUndefined();
+      expect(appSection.getData().freq_max).toBeUndefined();
+    });
+
+    test('collapse toggle titles and starting states round-trip', () => {
+      const keys = ['playlist_title', 'playlist_open', 'spectrogram_title',
+        'spectrogram_open', 'form_open'];
+      for (const k of keys) expect(appSection.getData()[k]).toBeUndefined();
+      const data = { playlist_title: 'Clips', playlist_open: false, form_open: false };
+      appSection.setData(data);
+      const out = appSection.getData();
+      expect(keys.reduce((o, k) => (k in out ? { ...o, [k]: out[k] } : o), {})).toEqual(data);
+    });
+
     test('omits default values from output', () => {
       appSection.setData({
         default_buffer: 3, // default value
