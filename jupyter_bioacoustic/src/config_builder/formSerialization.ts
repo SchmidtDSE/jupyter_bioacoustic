@@ -15,7 +15,7 @@
 // Types
 //
 export type ElementType = 'title' | 'select' | 'multiselect' | 'textbox' | 'checkbox' | 'number' |
-  'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' |
+  'button' | 'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' |
   'break' | 'line' | 'text';
 
 /** Builder card config for one element (flat; shape depends on the element type). */
@@ -47,6 +47,8 @@ export function serializeElement(type: ElementType, cfg: CardConfig): any {
       return _serializeSubmissionButtons(cfg);
     case 'multiselect':
       return _serializeMultiselect(cfg);
+    case 'button':
+      return _serializeButton(cfg);
     case 'break':
     case 'line':
       return true;
@@ -74,6 +76,11 @@ export function deserializeElement(type: ElementType, raw: any): CardConfig {
       return _deserializeAnnotation(raw ?? {});
     case 'submission_buttons':
       return _deserializeSubmissionButtons(raw ?? {});
+    case 'button':
+      // own copies of the toggle states: the card edits them in place
+      return raw && typeof raw === 'object'
+        ? { ...raw, ...(Array.isArray(raw.toggle) ? { toggle: raw.toggle.map((st: any) => ({ ...st })) } : {}) }
+        : {};
     case 'multiselect':
       // own copy of the nested output dict: the card edits it in place
       return raw && typeof raw === 'object'
@@ -169,6 +176,19 @@ function _serializeMultiselect(cfg: CardConfig): Record<string, any> {
 
 
 /** Copy of ``cfg`` without unset / empty / false values. */
+/** A button without empty keys; ``initial_value: null`` and toggle states are kept. */
+function _serializeButton(cfg: CardConfig): CardConfig {
+  const out = _withoutEmpty(cfg);
+  if ('initial_value' in cfg && cfg.initial_value === null) out.initial_value = null;
+  if (Array.isArray(cfg.toggle)) {
+    const states = cfg.toggle.map((st: CardConfig) => _withoutEmpty(st));
+    if (states.length > 0) out.toggle = states;
+    else delete out.toggle;
+  }
+  return out;
+}
+
+
 function _withoutEmpty(cfg: CardConfig): CardConfig {
   const cleaned: CardConfig = {};
   for (const [k, v] of Object.entries(cfg)) {
