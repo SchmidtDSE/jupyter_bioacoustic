@@ -1,7 +1,7 @@
 /**
- * DOM construction for the spectrogram Player: the controls bar (type, resolution, buffer,
- * Update, Capture), the view-bounds bar (time/frequency window, zoom-box, pan, Reset), the
- * canvas container and the playback bar.
+ * DOM construction for the spectrogram Player, top to bottom: the playback bar, the controls
+ * bar (type, resolution, buffer, Update, Capture), the view-bounds bar (time/frequency window,
+ * zoom-box, pan, Reset) and the canvas container.
  *
  * Only builds elements and forwards clicks/keys to handlers; the Player owns all state.
  *
@@ -14,7 +14,6 @@ import { TOOLTIP } from '../text';
 import {
   COLORS,
   barBottomStyle,
-  barTopBottomStyle,
   btnStyle,
   inputStyle,
   labelStyle,
@@ -64,6 +63,8 @@ export interface PlayerDom {
   panToolBtn: HTMLButtonElement;
   canvasContainer: HTMLDivElement;
   canvas: HTMLCanvasElement;
+  /** The playback row (the part still shown when the Player is collapsed). */
+  playBar: HTMLDivElement;
   playBtn: HTMLButtonElement;
   timeDisplay: HTMLSpanElement;
   signalTimeDisplay: HTMLSpanElement;
@@ -142,7 +143,7 @@ export function buildPlayerDom(h: PlayerControlHandlers, canvasHeight: number): 
 
   // ── Playback bar ──────────────────────────────────────────────
   const playBar = document.createElement('div');
-  playBar.style.cssText = barTopBottomStyle();
+  playBar.style.cssText = barBottomStyle();
 
   const playBtn = _button('▶', btnStyle() + `font-size:15px;width:34px;height:28px;`, h.onTogglePlay);
 
@@ -161,10 +162,11 @@ export function buildPlayerDom(h: PlayerControlHandlers, canvasHeight: number): 
   audio.style.display = 'none';
 
   return {
-    bars: [playerCtrls, viewBar, canvasContainer, playBar, audio],
+    // the play row comes first: it is the row a collapsed Player keeps
+    bars: [playBar, playerCtrls, viewBar, canvasContainer, audio],
     spectTypeSelect, resolutionSelect, bufferInput, loadBtn, captureBtn,
     viewTimeMin, viewTimeMax, viewFreqMin, viewFreqMax, zoomBoxBtn, panToolBtn,
-    canvasContainer, canvas, playBtn, timeDisplay, signalTimeDisplay, audio,
+    canvasContainer, canvas, playBar, playBtn, timeDisplay, signalTimeDisplay, audio,
   };
 }
 
