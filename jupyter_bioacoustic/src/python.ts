@@ -94,6 +94,10 @@ export function readKernelVars(): string {
     `  'clip_table_height': _BA_CLIP_TABLE_HEIGHT,`,
     `  'player_height': _BA_PLAYER_HEIGHT,`,
     `  'info_card_height': _BA_INFO_CARD_HEIGHT,`,
+    `  'hide_info_card': _BA_HIDE_INFO_CARD,`,
+    `  'sections': _BA_SECTIONS,`,
+    `  'freq_min': _BA_FREQ_MIN,`,
+    `  'freq_max': _BA_FREQ_MAX,`,
     `  'form_panel_height': _BA_FORM_PANEL_HEIGHT,`,
     `  'description': _BA_DESCRIPTION,`,
     `  'description_height': _BA_DESCRIPTION_HEIGHT,`,
@@ -173,6 +177,15 @@ export function spectrogramPipeline(
   return readCode + '\n' + buildSpectrogram(
     spectType, resolutionW, resolutionH,
   );
+}
+
+// ── Form button images (FormPanel) ────────────────────────────
+/** Read an image file in the kernel; prints it as a ``data:`` URL. */
+export function readImageDataUrl(path: string): string {
+  return [
+    `${HELPERS} image_data_url as _img`,
+    `print(_img('${escPy(path)}'))`,
+  ].join('\n');
 }
 
 // ── Select items loading (FormPanel) ──────────────────────────
