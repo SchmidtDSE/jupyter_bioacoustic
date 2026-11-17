@@ -27,7 +27,8 @@ describe('readKernelVars', () => {
   test('contains expected variables', () => {
     for (const v of ['_BA_DATA', '_BA_AUDIO', '_BA_OUTPUT', '_BA_FORM_CONFIG',
                       '_BA_CAPTURE', '_BA_CAPTURE_HEIGHT', '_BA_SPEC_RESOLUTIONS',
-                      '_BA_MERGED_CONFIG']) {
+                      '_BA_MERGED_CONFIG', '_BA_HIDE_INFO_CARD', '_BA_FREQ_MIN',
+                      '_BA_FREQ_MAX', '_BA_SECTIONS']) {
       expect(code).toContain(v);
     }
   });
