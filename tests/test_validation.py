@@ -657,3 +657,94 @@ class TestMultiselect:
     def test_checked_inside_dynamic_forms(self):
         r = self._check({'items': ['a'], 'output': {'format': 'nope'}}, where='dynamic')
         assert any('nope' in e for e in r['errors'])
+
+
+#
+# button elements
+#
+class TestButton:
+
+    @staticmethod
+    def _errors(btn, where='form'):
+        if where == 'form':
+            fc = {'form': [{'button': btn}]}
+        else:
+            fc = {'form': [{'select': {'label': 's', 'items': [{'label': 'a', 'form': 'f'}]}}],
+                  'dynamic_forms': {'f': [{'button': btn}]}}
+        return [e for e in validate_config(form_config=fc)['errors'] if 'Button' in e]
+
+    def test_valid_buttons(self):
+        for btn in ({'icon': '✓', 'column': 'call', 'value': 'yes'},
+                    {'icon': '✓', 'submit': True},
+                    {'image': 'owl.png', 'column': 'c', 'value': 1, 'submit': True, 'size': 40},
+                    {'icon': 'x', 'submit': True, 'width': '4em', 'height': 30}):
+            assert self._errors(btn) == [], btn
+
+    def test_needs_icon_or_image(self):
+        assert any('"icon"' in e for e in self._errors({'column': 'c', 'value': 1}))
+
+    def test_column_and_value_go_together(self):
+        assert any('needs a "value"' in e for e in self._errors({'icon': 'x', 'column': 'c'}))
+        assert any('needs a "column"' in e
+                   for e in self._errors({'icon': 'x', 'value': 1, 'submit': True}))
+
+    def test_must_do_something(self):
+        assert any('submit: true' in e for e in self._errors({'icon': 'x'}))
+
+    def test_size_type(self):
+        assert any('"size"' in e
+                   for e in self._errors({'icon': 'x', 'submit': True, 'size': [1]}))
+
+    def test_checked_in_dynamic_forms(self):
+        assert self._errors({'icon': 'x'}, where='dynamic')
+
+    def test_builtin_icons(self):
+        assert self._errors({'icon': 'jba:check', 'submit': True}) == []
+        assert self._errors({'icon': 'jba:x', 'initial_icon': 'jba:na', 'column': 'c',
+                             'value': 0, 'color': '#fff', 'background': 'red'}) == []
+        assert any('unknown built-in icon "jba:nope"' in e
+                   for e in self._errors({'icon': 'jba:nope', 'submit': True}))
+        assert any('initial_icon' in e for e in self._errors(
+            {'icon': 'x', 'initial_icon': 'jba:bad', 'submit': True}))
+
+    def test_color_must_be_a_string(self):
+        assert any('"color"' in e
+                   for e in self._errors({'icon': 'x', 'submit': True, 'color': 3}))
+
+    def test_valid_toggle(self):
+        assert self._errors({'column': 'p', 'initial_value': None, 'toggle': [
+            {'value': 1, 'icon': 'jba:checked'}, {'value': 0, 'image': 'off.png'},
+            {'value': 2, 'icon': 'jba:unsure'},
+        ]}) == []
+
+    def test_toggle_errors(self):
+        errs = self._errors({'toggle': [{'value': 1, 'icon': 'a'}], 'submit': True, 'value': 1})
+        for frag in ('needs a "column"', 'can\'t "submit"', 'not "value"', '2 or more'):
+            assert any(frag in e for e in errs), frag
+        errs = self._errors({'column': 'c', 'toggle': [{'icon': 'a'}, {'value': 0}, 'x']})
+        for frag in ('state 1: needs a "value"', 'state 2: set "icon"', 'state 3: must be'):
+            assert any(frag in e for e in errs), frag
+        assert any('jba:zz' in e for e in self._errors(
+            {'column': 'c', 'toggle': [{'value': 1, 'icon': 'jba:zz'}, {'value': 0, 'icon': 'b'}]}))
+
+
+class TestLayoutKeys:
+
+    def test_new_app_keys_are_valid(self):
+        r = validate_config(config={
+            'hide_info_card': True, 'freq_min': 1, 'freq_max': 8,
+            'playlist_title': False, 'playlist_open': False, 'spectrogram_title': 'Spec',
+            'spectrogram_open': True, 'form_open': False,
+        })
+        assert not [e for e in r['errors'] if 'Unknown' in e]
+
+
+def test_builtin_icon_names_match_the_frontend():
+    import os
+    import re
+    from jupyter_bioacoustic._validation import BUILTIN_ICONS
+    ts = os.path.join(os.path.dirname(__file__), '..', 'jupyter_bioacoustic', 'src',
+                      'sections', 'form', 'buttons.ts')
+    with open(ts) as f:
+        block = f.read().split('export const BUILTIN_ICONS', 1)[1].split('};', 1)[0]
+    assert set(re.findall(r'^\s+(\w+):\s+\{ symbol', block, re.M)) == BUILTIN_ICONS
