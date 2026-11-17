@@ -130,6 +130,19 @@ export interface StatusMessage {
   warning?: boolean;
 }
 
+/** One collapsible section: its toggle title ('' for none) and whether it starts open. */
+export interface SectionToggleConfig {
+  title?: string;
+  open?: boolean;
+}
+
+/** The ``_BA_SECTIONS`` kernel global: the playlist, spectrogram and form toggles. */
+export interface SectionsConfig {
+  playlist?: SectionToggleConfig;
+  spectrogram?: SectionToggleConfig;
+  form?: SectionToggleConfig;
+}
+
 /**
  * The ``_BA_*`` kernel globals as printed by ``python.readKernelVars()``. Every value is a
  * string; structured ones (``data``, ``form_config``, ``audio``...) are JSON to parse.
@@ -156,6 +169,13 @@ export interface KernelVars {
   clip_table_height: string;
   player_height: string;
   info_card_height: string;
+  /** ``'true'`` hides the info card, ``''`` shows it. */
+  hide_info_card: string;
+  /** JSON ``SectionsConfig``: collapse-toggle titles and starting states. */
+  sections: string;
+  /** Initial lowest / highest spectrogram frequency (kHz), ``''`` for the full range. */
+  freq_min: string;
+  freq_max: string;
   form_panel_height: string;
   description: string;
   description_height: string;
