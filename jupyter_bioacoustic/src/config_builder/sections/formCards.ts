@@ -11,7 +11,7 @@
 //
 import { COLORS } from '../../styles';
 import { slugify } from '../../util';
-import { makeInput, makeRow, makeSelect } from '../dom';
+import { makeButton, makeInput, makeRow, makeSelect } from '../dom';
 import type { CardConfig, ElementType } from '../formSerialization';
 import { buildAnnotationToolList } from './formAnnotationTools';
 import { addSelectItemsBuilder } from './formSelectItems';
@@ -47,6 +47,7 @@ export function defaultElementConfig(type: ElementType): CardConfig {
     case 'textbox': return { label: '', column: '', multiline: false };
     case 'checkbox': return { label: '', column: '' };
     case 'number': return { label: '', column: '', min: 0, max: 1, step: 0.1 };
+    case 'button': return { icon: '', column: '', value: '', submit: false };
     case 'annotation': return { tools: ['start_end_time_select'] };
     case 'pass_value': return { source_column: '', column: '' };
     case 'fixed_value': return { column: '', value: '' };
@@ -103,6 +104,22 @@ export function buildElementFields(
       _addNumField(ctx, card, cfg, 'min', 'min', '60px');
       _addNumField(ctx, card, cfg, 'max', 'max', '60px');
       _addNumField(ctx, card, cfg, 'step', 'step', '60px');
+      break;
+    case 'button':
+      _addField(ctx, card, cfg, 'icon', 'icon', '120px', 'text or jba:check');
+      _addImageField(ctx, card, cfg, 'image');
+      _addField(ctx, card, cfg, 'label', 'label (tooltip)', '150px');
+      _addField(ctx, card, cfg, 'column', 'column', '150px');
+      _addValueField(ctx, card, cfg, 'value', 'value');
+      _addCheckboxField(ctx, card, cfg, 'submit', 'submit');
+      _addCheckboxField(ctx, card, cfg, 'required', 'required');
+      _addValueField(ctx, card, cfg, 'initial_value', 'initial_value');
+      _addField(ctx, card, cfg, 'initial_icon', 'initial_icon', '120px', 'text or jba:unchecked');
+      _addImageField(ctx, card, cfg, 'initial_image');
+      _addField(ctx, card, cfg, 'color', 'color', '100px', 'icon color');
+      _addField(ctx, card, cfg, 'background', 'background', '100px', 'fill color');
+      _addNumField(ctx, card, cfg, 'size', 'size (px)', '60px');
+      _addToggleStates(ctx, card, cfg);
       break;
     case 'annotation': {
       buildAnnotationToolList(ctx, card, cfg);
@@ -192,14 +209,111 @@ function _labelColumnRows(
 
 function _addField(
   ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig, key: string, label: string, width: string,
+  placeholder: string = label,
 ): void {
-  const inp = makeInput(label, width);
+  const inp = makeInput(placeholder, width);
   if (cfg[key] !== undefined && cfg[key] !== null) inp.value = String(cfg[key]);
   inp.addEventListener('input', () => {
     cfg[key] = inp.value;
     ctx.changed();
   });
   card.appendChild(ctx.fieldRow(label, inp));
+}
+
+
+/** A button image path (``image`` / ``initial_image``), with a Browse button. */
+function _addImageField(
+  ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig, key: string,
+): void {
+  const row = ctx.fieldRow(key, _imageInput(ctx, cfg, key, '180px'));
+  card.appendChild(row);
+}
+
+
+/** An image path input + Browse button editing ``target[key]`` (returned in a span). */
+function _imageInput(
+  ctx: FormCardContext, target: CardConfig, key: string, width: string,
+): HTMLSpanElement {
+  const wrap = document.createElement('span');
+  wrap.style.cssText = `display:inline-flex;align-items:center;gap:6px;`;
+  const inp = makeInput('path/to/icon.png', width);
+  if (target[key]) inp.value = String(target[key]);
+  const set = (path: string) => {
+    inp.value = path;
+    target[key] = path;
+    ctx.changed();
+  };
+  inp.addEventListener('input', () => set(inp.value));
+  const browse = makeButton('Browse');
+  browse.addEventListener('click', () => ctx.browse(set));
+  wrap.append(inp, browse);
+  return wrap;
+}
+
+
+/** A value input: numbers are saved as numbers, blank removes the key. */
+function _addValueField(
+  ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig, key: string, label: string,
+): void {
+  card.appendChild(ctx.fieldRow(label, _valueInput(ctx, cfg, key, '120px')));
+}
+
+
+function _valueInput(
+  ctx: FormCardContext, target: CardConfig, key: string, width: string,
+): HTMLInputElement {
+  const inp = makeInput(key, width);
+  if (target[key] !== undefined && target[key] !== null) inp.value = String(target[key]);
+  inp.addEventListener('input', () => {
+    const v = inp.value.trim();
+    if (v === '') delete target[key];
+    else target[key] = /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v;
+    ctx.changed();
+  });
+  return inp;
+}
+
+
+/**
+ * The ``toggle`` states of a button: one row per state (value, icon, image, remove) and
+ * "+ state". With states the button is a toggle; each click moves to the next state.
+ */
+function _addToggleStates(ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig): void {
+  const list = document.createElement('div');
+  list.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
+  const render = () => {
+    list.innerHTML = '';
+    const states: CardConfig[] = cfg.toggle ?? [];
+    states.forEach((st, i) => {
+      const row = makeRow();
+      const icon = makeInput('icon', '110px');
+      if (st.icon) icon.value = String(st.icon);
+      icon.addEventListener('input', () => {
+        st.icon = icon.value;
+        ctx.changed();
+      });
+      const remove = makeButton('×');
+      remove.addEventListener('click', () => {
+        states.splice(i, 1);
+        if (states.length === 0) delete cfg.toggle;
+        ctx.changed();
+        render();
+      });
+      row.append(_valueInput(ctx, st, 'value', '80px'), icon, _imageInput(ctx, st, 'image', '140px'), remove);
+      list.appendChild(row);
+    });
+  };
+  const add = makeButton('+ state');
+  add.addEventListener('click', () => {
+    (cfg.toggle ??= []).push({});
+    ctx.changed();
+    render();
+  });
+  render();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
+  wrap.append(list, add);
+  card.appendChild(ctx.fieldRow('toggle states', wrap));
 }
 
 
