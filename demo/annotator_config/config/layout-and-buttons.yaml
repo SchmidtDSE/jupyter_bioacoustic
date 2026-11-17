@@ -1,0 +1,20 @@
+# Base config for layout-and-buttons.ipynb. Each notebook test passes only the settings
+# it is testing; everything else comes from here.
+data:
+  path: data/detections.N-dse.csv
+  index_column: id
+audio:
+  column: audio_url
+output:
+  path: outputs/layout-and-buttons.csv
+  index_column: detection_id
+display_columns:
+- common_name
+- scientific_name
+- confidence
+info_card_title: '[[common_name]]'
+info_card_text: 'confidence: [[confidence]]'
+default_buffer: 1
+duplicate_entries: true
+capture: false
+form_config: annotator_config/forms/layout-and-buttons.yaml
