@@ -21,15 +21,15 @@ import { resolveOutputTemplates, savePng, spectrogramPipeline } from '../python'
 import { COLORS } from '../styles';
 import { AudioConfig, Detection, StatusMessage, VizMeta } from '../types';
 import {
-  errorMessage, fmtTime, remoteScheme, resolveTemplate, slugify, splitSelected,
+  errorMessage, fmtTime, remoteScheme, resolveTemplate, setShown, slugify, splitSelected,
 } from '../util';
 import { AnnotationTools, GRAB_PX } from './annotationTools';
 import { resolveAudioPath } from './audioPath';
 import { FormPanel } from './FormPanel';
 import { PlayerDom, buildPlayerDom } from './playerControls';
 import {
-  FreqScale, PixelBox, Segment, ViewWindow, fracToFreq, freqToFrac, freqToY, isTimeZoomed,
-  isZoomed, panView, timeToX, xToTime, yToFreq, zoomToBox, zoomView,
+  FreqScale, PixelBox, Segment, ViewWindow, fracToFreq, freqToFrac, freqToY, freqWindowToView,
+  isTimeZoomed, isZoomed, panView, timeToX, xToTime, yToFreq, zoomToBox, zoomView,
 } from './playerGeometry';
 import {
   ZOOM_BOX_FILL, drawAnnotation, drawBufferShading, drawDashedRect, drawFreqAxis, drawPlayhead,
@@ -120,6 +120,10 @@ export class Player {
   private _zoomBoxMoveHandler: ((e: MouseEvent) => void) | null = null;
   private _zoomBoxUpHandler: ((e: MouseEvent) => void) | null = null;
   private _specResolutions: string[] = ['1000', '2000', '4000'];
+  /** The configured ``freq_min`` / ``freq_max`` window (Hz), or null for the full range. */
+  private _defaultFreqWindow: [number, number] | null = null;
+  /** The frequency window (Hz) being viewed; kept across clips and reloads. Null: full range. */
+  private _freqWindow: [number, number] | null = null;
   private _canvasHeight: number = DEFAULT_CANVAS_HEIGHT;
 
   // ── Visualization state ──────────────────────────────────────
@@ -193,7 +197,18 @@ export class Player {
     vizMeta: VizMeta[];
     dataIndexCol: string;
     height?: number;
+    /** Initial (and Reset) lowest frequency shown, kHz. */
+    freqMinKhz?: number;
+    /** Initial (and Reset) highest frequency shown, kHz. */
+    freqMaxKhz?: number;
   }): void {
+    if (opts.freqMinKhz !== undefined || opts.freqMaxKhz !== undefined) {
+      this._defaultFreqWindow = [
+        (opts.freqMinKhz ?? 0) * 1000,
+        opts.freqMaxKhz !== undefined ? opts.freqMaxKhz * 1000 : Infinity,
+      ];
+    }
+    this._freqWindow = this._defaultFreqWindow;
     if (opts.height) {
       this._canvasHeight = opts.height;
       this._dom.canvasContainer.style.flex = `0 0 ${opts.height}px`;
@@ -216,11 +231,25 @@ export class Player {
     this._updateCursorForZoom();
   }
 
-  /** Load audio for a row (called when a row is selected). */
+  /** Load audio for a row (called when a row is selected). The frequency window is kept. */
   async loadRow(row: Detection): Promise<void> {
     this._currentRow = row;
-    this._resetZoom();
+    this._viewXMin = 0;
+    this._viewXMax = 1;
     await this._loadAudio();
+  }
+
+  /** Put ``el`` (the collapse toggle) at the start of the playback row. */
+  setLeading(el: HTMLElement): void {
+    this._dom.playBar.prepend(el);
+  }
+
+  /** Collapse to the playback row (controls, view bar and canvas hidden), or expand. */
+  setCollapsed(collapsed: boolean): void {
+    const { bars, playBar } = this._dom;
+    for (const el of bars) {
+      if (el !== playBar) setShown(el, !collapsed);
+    }
   }
 
   /** Re-render the spectrogram frame (after annotation change, etc.). */
@@ -243,6 +272,7 @@ export class Player {
     this._resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
+        if (width === 0 || height === 0) continue;     // collapsed (hidden)
         if (this._resizeTimer !== null) clearTimeout(this._resizeTimer);
         this._resizeTimer = setTimeout(() => {
           this._canvas.width = Math.floor(width);
@@ -323,6 +353,8 @@ export class Player {
       return;
     }
 
+    if (this._specBitmap) this._freqWindow = this._currentFreqWindow();
+
     const { loadBtn, canvasContainer } = this._dom;
     loadBtn.disabled = true;
     loadBtn.textContent = 'Updating…';
@@ -374,6 +406,8 @@ export class Player {
     this._freqMax = result.freq_max;
     this._currentFreqScale = result.freq_scale ?? 'linear';
     this._freqScaleLUT = result.freq_scale_lut ?? null;
+    [this._viewYMin, this._viewYMax] = freqWindowToView(this._freqWindow, this._scale);
+    this._updateCursorForZoom();
 
     this.statusChanged.emit({ message: 'Decoding spectrogram…', error: false });
     try {
@@ -689,6 +723,11 @@ export class Player {
     return fracToFreq(frac, this._scale);
   }
 
+  /** The frequency window (Hz) in view, or null when the full range is shown. */
+  private _currentFreqWindow(): [number, number] | null {
+    return this._viewYMin <= 0 && this._viewYMax >= 1 ? null : this._visibleFreqRange();
+  }
+
   /** The frequencies (Hz) at the bottom and top of the current vertical view, on its scale. */
   private _visibleFreqRange(): [number, number] {
     return [this._fracToFreq(this._viewYMin), this._fracToFreq(this._viewYMax)];
@@ -944,7 +983,9 @@ export class Player {
 
   /** Show the whole spectrogram. */
   private _resetZoom(): void {
-    this._view = { xMin: 0, xMax: 1, yMin: 0, yMax: 1 };
+    this._freqWindow = this._defaultFreqWindow;
+    const [yMin, yMax] = freqWindowToView(this._freqWindow, this._scale);
+    this._view = { xMin: 0, xMax: 1, yMin, yMax };
     this._updateCursorForZoom();
     this._renderFrame();
   }
