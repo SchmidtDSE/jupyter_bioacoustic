@@ -5,7 +5,8 @@
  * License: BSD 3-Clause
  */
 import {
-  FULL_VIEW, FreqScale, clampWindow, fracToFreq, freqToFrac, freqToY, hitTestBox, hzToMel,
+  FULL_VIEW, FreqScale, clampWindow, fracToFreq, freqToFrac, freqToY, freqWindowToView,
+  hitTestBox, hzToMel,
   isTimeZoomed, isZoomed, melToHz, niceTickInterval, panView, pointInBox, timeToX, xToTime,
   yToFreq, zoomToBox, zoomView,
 } from '../sections/playerGeometry';
@@ -113,4 +114,34 @@ describe('hit testing', () => {
 describe('niceTickInterval', () => {
   it.each([[24000, 6, 5000], [10000, 5, 2000], [1000, 10, 100], [24000, 3, 10000]])(
     'range %d / %d ticks -> %d', (range, n, step) => expect(niceTickInterval(range, n)).toBe(step));
+});
+
+describe('freqWindowToView', () => {
+  it('null or an empty scale is the full range', () => {
+    expect(freqWindowToView(null, scale('linear'))).toEqual([0, 1]);
+    expect(freqWindowToView([1000, 2000], { min: 0, max: 0, kind: 'linear', lut: null }))
+      .toEqual([0, 1]);
+  });
+
+  it('maps a window on the scale', () => {
+    const [lo, hi] = freqWindowToView([6000, 12000], scale('linear'));
+    expect(lo).toBeCloseTo(0.25);
+    expect(hi).toBeCloseTo(0.5);
+  });
+
+  it('clips to the scale range (e.g. freq_max above Nyquist)', () => {
+    const [lo, hi] = freqWindowToView([12000, Infinity], scale('linear'));
+    expect(lo).toBeCloseTo(0.5);
+    expect(hi).toBe(1);
+  });
+
+  it('keeps the same Hz across scales', () => {
+    const [lo, hi] = freqWindowToView([1000, 4000], scale('mel'));
+    expect(fracToFreq(lo, scale('mel'))).toBeCloseTo(1000);
+    expect(fracToFreq(hi, scale('mel'))).toBeCloseTo(4000);
+  });
+
+  it('a window outside the range is the full range', () => {
+    expect(freqWindowToView([30000, 40000], scale('linear'))).toEqual([0, 1]);
+  });
 });
