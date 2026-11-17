@@ -33,6 +33,13 @@ const CASES: Array<[ElementType, any]> = [
   ['textbox', { label: 'notes', column: 'notes', multiline: true }],
   ['checkbox', { label: 'confident', column: 'conf', checked_value: 'yes', unchecked_value: 'no' }],
   ['number', { label: 'count', column: 'count', min: 0, max: 10, step: 1 }],
+  ['button', { icon: '✓', column: 'call', value: 'yes', submit: true, size: 40 }],
+  ['button', { image: 'icons/owl.png', label: 'Owl', column: 'sp', value: 'owl', width: 80, height: 40 }],
+  ['button', { icon: 'jba:check', column: 'ok', value: 1, initial_icon: 'jba:unchecked',
+               initial_value: 0, color: '#fff', background: 'teal' }],
+  ['button', { column: 'present', initial_value: null, toggle: [
+    { value: 1, icon: 'jba:checked' }, { value: 0, image: 'off.png' }, { value: 'maybe', icon: '?' },
+  ] }],
 ];
 
 describe('form element serialization', () => {
