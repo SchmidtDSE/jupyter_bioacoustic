@@ -1,6 +1,7 @@
 /**
  * Application section: annotator-wide settings (project name, clip-table display columns,
- * info card templates, sort, duplicate entries, buffer, capture, sizes, secrets). Display
+ * info card templates and visibility, collapse toggles (titles, starting state), sort,
+ * duplicate entries, buffer, initial frequency range, capture, sizes, secrets). Display
  * columns become draggable chips once the data columns are known.
  *
  * License: BSD 3-Clause
@@ -13,6 +14,18 @@ import { COLORS } from '../../styles';
 import { fillSelect, makeButton, makeInput, makeSelect } from '../dom';
 import { CollapsibleSection } from './CollapsibleSection';
 import { SecretsEditor } from './SecretsEditor';
+
+
+//
+// Types
+//
+/** The fields for one section's collapse toggle (``<key>_title`` / ``<key>_open``). */
+interface ToggleFields {
+  /** Title text ('' = none). */
+  title: HTMLInputElement | null;
+  /** Unchecked = ``<key>_open: false`` (starts collapsed). */
+  open: HTMLInputElement;
+}
 
 
 //
@@ -32,6 +45,11 @@ export class AppSection extends CollapsibleSection {
   private _dispColsSet = false; // Track if display_columns was explicitly set
   private _duplicateCb: HTMLInputElement;
   private _bufferInput: HTMLInputElement;
+  private _hideInfoCardCb: HTMLInputElement;
+  /** Collapse-toggle fields by section key (playlist / spectrogram / form). */
+  private _toggles: Record<string, ToggleFields> = {};
+  private _freqMinInput: HTMLInputElement;
+  private _freqMaxInput: HTMLInputElement;
   private _captureCb: HTMLInputElement;
   private _captureDirInput: HTMLInputElement;
   private _widthInput: HTMLInputElement;
@@ -79,6 +97,15 @@ export class AppSection extends CollapsibleSection {
     this._textInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('info_card_text', this._textInput));
 
+    const { row: hideRow, input: hideCb } = this._makeCheckbox('hide_info_card');
+    this._hideInfoCardCb = hideCb;
+    this._hideInfoCardCb.addEventListener('change', () => this._emitChanged());
+    this._body.appendChild(hideRow);
+
+    this._toggles.playlist = this._makeToggleFields('playlist', true);
+    this._toggles.spectrogram = this._makeToggleFields('spectrogram', true);
+    this._toggles.form = this._makeToggleFields('form', false);
+
     this._sortInput = makeInput('column (default: file order)', '180px');
     this._sortInput.addEventListener('input', () => this._emitChanged());
     // dropdown shown once data columns are known; writes back into _sortInput
@@ -106,6 +133,17 @@ export class AppSection extends CollapsibleSection {
     this._bufferInput.type = 'number';
     this._bufferInput.addEventListener('input', () => this._emitChanged());
     this._body.appendChild(this._makeFieldRow('default_buffer', this._bufferInput));
+
+    const freqRow = this._makeFocusRow('freq_min', 'freq range (kHz)');
+    this._freqMinInput = makeInput('min', '60px');
+    this._freqMaxInput = makeInput('max', '60px');
+    for (const inp of [this._freqMinInput, this._freqMaxInput]) {
+      inp.type = 'number';
+      inp.step = 'any';
+      inp.addEventListener('input', () => this._emitChanged());
+    }
+    freqRow.append(this._freqMinInput, this._freqMaxInput);
+    this._body.appendChild(freqRow);
 
     const { row: capRow, input: capCb } = this._makeCheckbox('capture');
     this._captureCb = capCb;
@@ -213,6 +251,11 @@ export class AppSection extends CollapsibleSection {
       if (this._sortOrderSelect.value === 'desc') result.sort_order = 'desc';
     }
 
+    if (this._hideInfoCardCb.checked) result.hide_info_card = true;
+    for (const [key, f] of Object.entries(this._toggles)) {
+      if (f.title?.value.trim()) result[`${key}_title`] = f.title.value.trim();
+      if (!f.open.checked) result[`${key}_open`] = false;
+    }
     if (this._duplicateCb.checked) result.duplicate_entries = true;
 
     const bufStr = this._bufferInput.value.trim();
@@ -220,6 +263,11 @@ export class AppSection extends CollapsibleSection {
       const buf = parseFloat(bufStr);
       if (!isNaN(buf) && buf !== 3) result.default_buffer = buf;
     }
+
+    const fMin = parseFloat(this._freqMinInput.value);
+    if (!isNaN(fMin)) result.freq_min = fMin;
+    const fMax = parseFloat(this._freqMaxInput.value);
+    if (!isNaN(fMax)) result.freq_max = fMax;
 
     if (this._captureCb.checked) result.capture = true;
     else result.capture = false;
@@ -254,7 +302,8 @@ export class AppSection extends CollapsibleSection {
   override reset(): void {
     for (const el of [
       this._projectNameInput, this._dispTextInput, this._titleInput, this._textInput,
-      this._sortInput, this._bufferInput, this._captureDirInput, this._widthInput,
+      this._sortInput, this._bufferInput, this._freqMinInput, this._freqMaxInput,
+      this._captureDirInput, this._widthInput,
       this._clipTableHeightInput, this._playerHeightInput, this._infoCardHeightInput,
       this._formPanelHeightInput, this._captureHeightInput,
     ]) {
@@ -263,6 +312,11 @@ export class AppSection extends CollapsibleSection {
     this._sortSelect.value = '';
     this._sortOrderSelect.value = 'asc';
     this._duplicateCb.checked = false;
+    this._hideInfoCardCb.checked = false;
+    for (const f of Object.values(this._toggles)) {
+      if (f.title) f.title.value = '';
+      f.open.checked = true;
+    }
     this._captureCb.checked = true;
     this._dispCols = [];
     this._dispColsSet = false;
@@ -293,6 +347,14 @@ export class AppSection extends CollapsibleSection {
     }
     if (data.sort_order !== undefined) this._sortOrderSelect.value = String(data.sort_order) === 'desc' ? 'desc' : 'asc';
     if (data.duplicate_entries) this._duplicateCb.checked = true;
+    if (data.hide_info_card) this._hideInfoCardCb.checked = true;
+    for (const [key, f] of Object.entries(this._toggles)) {
+      const title = data[`${key}_title`];
+      if (f.title) f.title.value = typeof title === 'string' ? title : '';
+      if (data[`${key}_open`] === false) f.open.checked = false;
+    }
+    if (data.freq_min !== undefined) this._freqMinInput.value = String(data.freq_min);
+    if (data.freq_max !== undefined) this._freqMaxInput.value = String(data.freq_max);
     if (data.default_buffer !== undefined) this._bufferInput.value = String(data.default_buffer);
     if (data.capture === false) this._captureCb.checked = false;
     if (data.capture_dir) this._captureDirInput.value = data.capture_dir;
@@ -303,6 +365,42 @@ export class AppSection extends CollapsibleSection {
     if (data.form_panel_height) this._formPanelHeightInput.value = String(data.form_panel_height);
     if (data.capture_height) this._captureHeightInput.value = String(data.capture_height);
     if (data.secrets !== undefined) this._secrets.setData(data.secrets);
+  }
+
+  /**
+   * One row for a section's collapse toggle: its title (blank = none) when ``hasTitle``,
+   * and whether it starts open.
+   */
+  private _makeToggleFields(key: string, hasTitle: boolean): ToggleFields {
+    const row = this._makeFocusRow(
+      hasTitle ? `${key}_title` : `${key}_open`, hasTitle ? key : `${key} toggle`);
+    let title: HTMLInputElement | null = null;
+    if (hasTitle) {
+      title = makeInput('title (none)', '120px');
+      title.addEventListener('input', () => this._emitChanged());
+      row.appendChild(title);
+    }
+    const open = this._miniCheckbox(row, 'starts open');
+    this._body.appendChild(row);
+    return { title, open };
+  }
+
+  /** A checked ``<label><input type=checkbox> text</label>`` appended to ``row``. */
+  private _miniCheckbox(row: HTMLElement, text: string): HTMLInputElement {
+    const lbl = document.createElement('label');
+    lbl.style.cssText =
+      `display:flex;align-items:center;gap:4px;color:${COLORS.textSubtle};font-size:11px;` +
+      `cursor:pointer;`;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.style.cssText = `accent-color:${COLORS.blue};`;
+    cb.addEventListener('change', () => this._emitChanged());
+    const span = document.createElement('span');
+    span.textContent = text;
+    lbl.append(cb, span);
+    row.appendChild(lbl);
+    return cb;
   }
 
   private _makeChipsArea(): HTMLDivElement {
