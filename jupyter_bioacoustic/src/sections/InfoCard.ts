@@ -1,7 +1,8 @@
 /**
  * InfoCard — displays metadata for the currently selected row.
  *
- * Shows time range, resolved title/text templates, and Prev/Next navigation.
+ * Shows time range, resolved title/text templates, and Prev/Next navigation. A ``leading``
+ * element (the playlist's collapse toggle) stays at its start across renders.
  *
  * License: BSD 3-Clause
  */
@@ -24,9 +25,10 @@ const DEFAULT_INFO_CARD_MIN_HEIGHT = 34;
 //
 // Public
 //
-/** The info card between the clip table and the player. */
+/** The info card at the top of the playlist (above the filter bar and clip table). */
 export class InfoCard {
   readonly element: HTMLDivElement;
+  private _leading: HTMLElement | null = null;
 
   readonly prevRequested = new Signal<this, void>(this);
   readonly nextRequested = new Signal<this, void>(this);
@@ -38,6 +40,12 @@ export class InfoCard {
       `background:${COLORS.bgMantle};border-bottom:1px solid ${COLORS.bgSurface0};flex-shrink:0;min-height:${DEFAULT_INFO_CARD_MIN_HEIGHT}px;`;
     this.element.innerHTML =
       `<span style="font-size:12px;color:${COLORS.textMuted};font-style:italic;">No selection</span>`;
+  }
+
+  /** Keep ``el`` as the card's first item (now and after every ``render``). */
+  setLeading(el: HTMLElement): void {
+    this._leading = el;
+    this.element.prepend(el);
   }
 
   setHeight(h?: number): void {
@@ -111,6 +119,7 @@ export class InfoCard {
       if (i < items.length - 1) cardChildren.push(sep());
     });
     cardChildren.push(spacer, prevBtn, nextBtn);
+    if (this._leading) cardChildren.unshift(this._leading);
     this.element.append(...cardChildren);
   }
 }
