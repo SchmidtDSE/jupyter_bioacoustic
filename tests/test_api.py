@@ -843,6 +843,82 @@ class TestInlineDescriptionHeight:
         assert long._description_panel_px() == 36 + 300 + 20
 
 
+class TestAnnotatorLayoutOptions:
+    """hide_info_card, freq_min / freq_max and the inline height."""
+
+    def _ba(self, **kwargs):
+        return BioacousticAnnotator(data=_make_df(), audio='audio_path',
+                                    data_index_column='id', **kwargs)
+
+    def test_info_card_shown_by_default(self):
+        assert self._ba()._hide_info_card is False
+
+    def test_hidden_info_card_leaves_the_playlist_toggle_row(self):
+        shown = self._ba(info_card_height=50)
+        hidden = self._ba(info_card_height=50, hide_info_card=True)
+        assert shown._inline_height_px() - hidden._inline_height_px() == 50 - 34
+
+    def test_form_adds_only_its_panel(self):
+        no_form = self._ba()
+        with_form = self._ba(form_config={'title': 'T'}, form_panel_height=100)
+        assert with_form._inline_height_px() - no_form._inline_height_px() == 100
+
+    def test_section_toggles_default(self):
+        assert self._ba()._sections_config == {
+            'playlist': {'title': '', 'open': True},
+            'spectrogram': {'title': '', 'open': True},
+            'form': {'open': True},
+        }
+
+    def test_section_toggles_custom(self):
+        ba = self._ba(playlist_title='Clips', spectrogram_title=False,
+                      playlist_open=False, spectrogram_open=True, form_open=False)
+        assert ba._sections_config == {
+            'playlist': {'title': 'Clips', 'open': False},
+            'spectrogram': {'title': '', 'open': True},
+            'form': {'open': False},
+        }
+
+    def test_section_toggle_title_true_is_the_standard_name(self):
+        ba = self._ba(playlist_title=True, spectrogram_title=True)
+        assert ba._sections_config['playlist']['title'] == 'Playlist'
+        assert ba._sections_config['spectrogram']['title'] == 'Spectrogram'
+
+    def test_freq_unset_by_default(self):
+        ba = self._ba()
+        assert ba._freq_min is None and ba._freq_max is None
+
+    def test_freq_values_are_khz_floats(self):
+        ba = self._ba(freq_min=1, freq_max='8.5')
+        assert ba._freq_min == 1.0 and ba._freq_max == 8.5
+
+    def test_freq_from_config_file(self, tmp_path):
+        cfg = tmp_path / 'c.yaml'
+        cfg.write_text('freq_min: 2\nfreq_max: 10\n')
+        ba = BioacousticAnnotator(data=_make_df(), audio='audio_path',
+                                  data_index_column='id', config=str(cfg))
+        assert (ba._freq_min, ba._freq_max) == (2.0, 10.0)
+
+    @pytest.mark.parametrize('kwargs', [
+        {'freq_min': 'low'}, {'freq_max': -1}, {'freq_min': True},
+        {'freq_min': 8, 'freq_max': 8}, {'freq_min': 9, 'freq_max': 2},
+    ])
+    def test_bad_freq_raises(self, kwargs):
+        with pytest.raises(ValueError, match='freq_m'):
+            self._ba(**kwargs)
+
+    def test_setup_vars(self, monkeypatch):
+        import types
+        import jupyter_bioacoustic.api as api
+        ns = {}
+        monkeypatch.setattr(api, 'get_ipython', lambda: types.SimpleNamespace(user_ns=ns))
+        self._ba(hide_info_card=True, freq_max=12, form_open=False).setup()
+        assert ns['_BA_HIDE_INFO_CARD'] == 'true'
+        assert json.loads(ns['_BA_SECTIONS'])['form'] == {'open': False}
+        assert ns['_BA_FREQ_MIN'] == ''
+        assert ns['_BA_FREQ_MAX'] == '12.0'
+
+
 class TestAnnotatorExplicitAudioKeys:
     """Explicit audio_path/url/uri/column force their type (no auto-detection)."""
 
@@ -1455,7 +1531,8 @@ class TestSetupContract:
         '_BA_INFO_CARD_HEIGHT', '_BA_INFO_CARD_TEXT', '_BA_INFO_CARD_TITLE', '_BA_INSTANCE',
         '_BA_MERGED_CONFIG', '_BA_OUTPUT', '_BA_OUTPUT_INDEX_COL', '_BA_PLAYER_HEIGHT',
         '_BA_PROJECT_PATH', '_BA_SORT', '_BA_SORT_ORDER', '_BA_SPEC_RESOLUTIONS',
-        '_BA_SYNC_CONFIG', '_BA_VIZ_META',
+        '_BA_SYNC_CONFIG', '_BA_VIZ_META', '_BA_HIDE_INFO_CARD', '_BA_FREQ_MIN', '_BA_FREQ_MAX',
+        '_BA_SECTIONS',
     }
 
     def test_setup_writes_frontend_vars(self, monkeypatch):
