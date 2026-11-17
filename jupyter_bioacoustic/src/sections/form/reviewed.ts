@@ -97,6 +97,7 @@ export function buildReviewedView(
   title.style.cssText =
     `width:100%;font-size:13px;font-weight:700;letter-spacing:1.2px;color:${COLORS.green};`;
   title.textContent = 'REVIEWED';
+  title.dataset.formHeading = '';        // the form's collapse toggle goes here
 
   const container = document.createElement('div');
   container.style.cssText = `display:flex;flex-direction:column;gap:6px;padding:4px 0;overflow-y:auto;`;
@@ -143,6 +144,7 @@ function _reviewedCard(data: Record<string, any>, index: number, multi: boolean)
 function _buttonRow(opts: ReviewedViewOptions): HTMLDivElement {
   const row = document.createElement('div');
   row.style.cssText = `display:flex;align-items:center;gap:8px;margin-top:2px;`;
+  row.dataset.formButtons = '';
   const navBtnStyle = btnStyle() + `font-size:12px;width:75px;height:28px`;
 
   const prevBtn = document.createElement('button');
