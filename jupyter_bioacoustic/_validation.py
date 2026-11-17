@@ -56,7 +56,10 @@ VALID_CONFIG_KEYS = frozenset({
     'visualizations', 'partial_download',
     'width', 'clip_table_height', 'player_height',
     'capture_height',
-    'info_card_height', 'form_panel_height',
+    'info_card_height', 'hide_info_card', 'form_panel_height',
+    'freq_min', 'freq_max',
+    'playlist_title', 'playlist_open', 'spectrogram_title', 'spectrogram_open',
+    'form_open',
     'description', 'description_title', 'description_text',
     'description_path', 'description_open', 'description_height',
     'project_name',
@@ -80,6 +83,12 @@ ANNOTATION_TOOL_REQUIRED_FIELDS = {
 # All possible annotation tool fields
 ALL_ANNOTATION_FIELDS = frozenset({
     'start_time', 'end_time', 'min_frequency', 'max_frequency'
+})
+
+# Built-in button icons (``icon: jba:check``); keep in sync with src/sections/form/buttons.ts
+BUILTIN_ICON_PREFIX = 'jba:'
+BUILTIN_ICONS = frozenset({
+    'check', 'x', 'unsure', 'na', 'flag', 'star', 'checked', 'unchecked', 'plus', 'minus',
 })
 
 # Config-builder bookkeeping kept in its project dict (file paths and flags), not settings
@@ -314,8 +323,10 @@ def _validate_forms_and_annotations(
         if isinstance(annot, dict):
             _validate_annotation(annot, errors, warns)
 
-    for ms in _collect_multiselects(fc):
+    for ms in _collect_elements(fc, 'multiselect'):
         _validate_multiselect(ms, errors, warns)
+    for btn in _collect_elements(fc, 'button'):
+        _validate_button(btn, errors)
 
     for f in sorted(missing_forms):
         errors.append(
@@ -467,19 +478,20 @@ def _scan_elements(elements: Any, referenced_forms: set[str]) -> None:
                         referenced_forms.add(ecfg[fkey])
 
 
-def _collect_multiselects(fc: dict) -> list[dict]:
-    """Return every multiselect config: top-level, in the ``form`` list and in dynamic forms.
+def _collect_elements(fc: dict, etype: str) -> list[dict]:
+    """Return every ``etype`` element config: top-level, in ``form`` and in dynamic forms.
 
     Args:
         fc: The form configuration dict.
+        etype: The element type (``'multiselect'``, ``'button'``, ...).
 
     Returns:
-        The multiselect config dicts, in order.
+        The element config dicts, in order.
     """
     found: list[dict] = []
 
     def scan(elements: Any) -> None:
-        """Add the multiselects among a form section's elements.
+        """Add the ``etype`` elements among a form section's elements.
 
         Args:
             elements: A list of ``{type: config}`` dicts, or a ``{type: config}`` mapping.
@@ -489,11 +501,11 @@ def _collect_multiselects(fc: dict) -> list[dict]:
         if not isinstance(elements, list):
             return
         for el in elements:
-            if isinstance(el, dict) and isinstance(el.get('multiselect'), dict):
-                found.append(el['multiselect'])
+            if isinstance(el, dict) and isinstance(el.get(etype), dict):
+                found.append(el[etype])
 
-    if isinstance(fc.get('multiselect'), dict):
-        found.append(fc['multiselect'])
+    if isinstance(fc.get(etype), dict):
+        found.append(fc[etype])
     scan(fc.get('form'))
     dyn = fc.get('dynamic_forms')
     if isinstance(dyn, dict):
@@ -542,6 +554,91 @@ def _validate_multiselect(ms: dict, errors: list[str], warns: list[str]) -> None
         errors.append(
             f'Multiselect "{name}": items "id" names a column of an items file, '
             f'so it needs items "path"'
+        )
+
+
+def _validate_button(btn: dict, errors: list[str]) -> None:
+    """Validate one ``button``: it shows something and does something.
+
+    A plain button needs an ``icon`` / ``image`` and ``column`` + ``value`` and/or
+    ``submit: true``. A ``toggle`` button needs a ``column`` and 2+ states, each with a
+    ``value`` and an ``icon`` / ``image``. ``jba:`` icons must be built-ins.
+
+    Args:
+        btn: The button config dict.
+        errors: List that error messages are appended to.
+    """
+    name = btn.get('label') or btn.get('column') or btn.get('icon') or 'button'
+    prefix = f'Button "{name}"'
+    has_column = btn.get('column') not in (None, '')
+    for key in ('icon', 'initial_icon'):
+        _check_builtin_icon(btn.get(key), f'{prefix} {key}', errors)
+    for key in ('size', 'width', 'height'):
+        val = btn.get(key)
+        if val is not None and (isinstance(val, bool) or not isinstance(val, (int, float, str))):
+            errors.append(f'{prefix}: "{key}" must be a number (px) or a CSS size')
+    for key in ('color', 'background'):
+        if key in btn and not isinstance(btn[key], str):
+            errors.append(f'{prefix}: "{key}" must be a CSS color string')
+
+    if 'toggle' in btn:
+        _validate_toggle(btn, prefix, has_column, errors)
+        return
+    if not btn.get('icon') and not btn.get('image'):
+        errors.append(f'{prefix}: set "icon" (text, a symbol or a jba: icon) or "image" (a path)')
+    if has_column and 'value' not in btn:
+        errors.append(f'{prefix}: "column" needs a "value" to write')
+    elif 'value' in btn and not has_column:
+        errors.append(f'{prefix}: "value" needs a "column" to write it to')
+    if not has_column and btn.get('submit') is not True:
+        errors.append(f'{prefix}: set "column" + "value", "submit: true", or both')
+
+
+def _validate_toggle(btn: dict, prefix: str, has_column: bool, errors: list[str]) -> None:
+    """Validate a ``toggle`` button's states.
+
+    Args:
+        btn: The button config dict (has ``toggle``).
+        prefix: ``'Button "<name>"'`` for messages.
+        has_column: Whether the button sets a ``column``.
+        errors: List that error messages are appended to.
+    """
+    states = btn['toggle']
+    if not has_column:
+        errors.append(f'{prefix}: a toggle needs a "column" to write its value to')
+    if btn.get('submit'):
+        errors.append(f'{prefix}: a toggle can\'t "submit" (add a separate submit button)')
+    if 'value' in btn:
+        errors.append(f'{prefix}: a toggle\'s values go in its states, not "value"')
+    if not isinstance(states, list) or len(states) < 2:
+        errors.append(f'{prefix}: "toggle" must be a list of 2 or more states')
+        return
+    for i, st in enumerate(states, 1):
+        where = f'{prefix} toggle state {i}'
+        if not isinstance(st, dict):
+            errors.append(f'{where}: must be a mapping with "value" and "icon" / "image"')
+            continue
+        if 'value' not in st:
+            errors.append(f'{where}: needs a "value"')
+        if not st.get('icon') and not st.get('image'):
+            errors.append(f'{where}: set "icon" or "image"')
+        _check_builtin_icon(st.get('icon'), where, errors)
+
+
+def _check_builtin_icon(icon: Any, where: str, errors: list[str]) -> None:
+    """Report an unknown ``jba:`` icon.
+
+    Args:
+        icon: The icon value (only strings starting with ``jba:`` are checked).
+        where: Message prefix naming the button / state.
+        errors: List that error messages are appended to.
+    """
+    if not isinstance(icon, str) or not icon.startswith(BUILTIN_ICON_PREFIX):
+        return
+    if icon[len(BUILTIN_ICON_PREFIX):] not in BUILTIN_ICONS:
+        errors.append(
+            f'{where}: unknown built-in icon "{icon}" '
+            f'(use {", ".join(BUILTIN_ICON_PREFIX + n for n in sorted(BUILTIN_ICONS))})'
         )
 
 
