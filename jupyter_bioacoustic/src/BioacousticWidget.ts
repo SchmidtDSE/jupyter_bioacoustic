@@ -2,7 +2,10 @@
  * BioacousticWidget — the annotator tab (or inline notebook output).
  *
  * Orchestrates the sections, top to bottom: header (title, status, ⓘ info panel),
- * DescriptionPanel, ClipTable, InfoCard, Player and FormPanel. On attach it reads the
+ * DescriptionPanel, InfoCard + ClipTable (the playlist), Player and FormPanel. The playlist,
+ * spectrogram (Player) and form collapse with a CollapseToggle at the start of the row they
+ * keep: the info card (or, when it is hidden, a bar of its own), the play row and the button
+ * row. On attach it reads the
  * ``_BA_*`` config globals from its kernel, validates the form config, hands each section
  * its slice of the config and selects the first row. Sections talk to each other only
  * through this class (Lumino signals in, method calls out).
@@ -24,10 +27,13 @@ import { DescriptionConfig, DescriptionPanel } from './sections/DescriptionPanel
 import { FormPanel } from './sections/FormPanel';
 import { InfoCard } from './sections/InfoCard';
 import { Player } from './sections/Player';
+import { CollapseToggle } from './sections/CollapseToggle';
 import { COLORS, barBottomStyle, injectGlobalStyles } from './styles';
 import { DIALOG, TOOLTIP } from './text';
-import { AudioConfig, Detection, KernelVars, SyncConfig, VizMeta } from './types';
-import { errorMessage, showDialog } from './util';
+import {
+  AudioConfig, Detection, KernelVars, SectionsConfig, SyncConfig, VizMeta,
+} from './types';
+import { errorMessage, setShown, showDialog } from './util';
 
 
 //
@@ -66,6 +72,11 @@ export class BioacousticWidget extends Widget {
   private _player!: Player;
   private _form!: FormPanel;
   private _description!: DescriptionPanel;
+  private _playlistToggle!: CollapseToggle;
+  private _playerToggle!: CollapseToggle;
+  private _formToggle!: CollapseToggle;
+  /** Holds the playlist toggle when the info card is hidden. */
+  private _playlistBar!: HTMLDivElement;
 
   /**
    * @param source - The kernel or notebook session this widget talks to (fixed for its lifetime).
@@ -130,12 +141,25 @@ export class BioacousticWidget extends Widget {
     this._infoCard = new InfoCard();
     this._connectSignals();
 
+    this._playlistToggle = new CollapseToggle(
+      '', open => setShown(this._table.element, open));
+    this._playerToggle = new CollapseToggle(
+      '', open => this._player.setCollapsed(!open));
+    this._player.setLeading(this._playerToggle.element);
+    this._formToggle = new CollapseToggle('', open => this._form.setCollapsed(!open));
+    this._form.setLeading(this._formToggle.element);
+
+    this._playlistBar = document.createElement('div');
+    this._playlistBar.style.cssText = barBottomStyle();
+    setShown(this._playlistBar, false);
+
     this.node.append(
       header,
       this._infoPanel,
       this._description.element,
-      this._table.element,
+      this._playlistBar,
       this._infoCard.element,
+      this._table.element,
       this._player.element,
       this._form.element,
     );
@@ -341,6 +365,8 @@ export class BioacousticWidget extends Widget {
       vizMeta: JSON.parse(cfg.viz_meta || '[]') as VizMeta[],
       dataIndexCol,
       height: _parseHeight(cfg.player_height),
+      freqMinKhz: _parseNumber(cfg.freq_min),
+      freqMaxKhz: _parseNumber(cfg.freq_max),
     });
 
     this._table.setData({
@@ -354,7 +380,28 @@ export class BioacousticWidget extends Widget {
     });
 
     this._infoCard.setHeight(_parseHeight(cfg.info_card_height));
+    this._initCollapse(cfg);
     return audioConfig;
+  }
+
+  /**
+   * Place the playlist toggle (info card, or its own bar when the card is hidden), set the
+   * toggle titles and each section's starting open / collapsed state.
+   */
+  private _initCollapse(cfg: KernelVars): void {
+    if (cfg.hide_info_card) {
+      setShown(this._infoCard.element, false);
+      this._playlistBar.appendChild(this._playlistToggle.element);
+      setShown(this._playlistBar, true);
+    } else {
+      this._infoCard.setLeading(this._playlistToggle.element);
+    }
+    const sections = JSON.parse(cfg.sections || '{}') as SectionsConfig;
+    this._playlistToggle.setTitle(sections.playlist?.title ?? '');
+    this._playerToggle.setTitle(sections.spectrogram?.title ?? '');
+    this._playlistToggle.setOpen(sections.playlist?.open ?? true);
+    this._playerToggle.setOpen(sections.spectrogram?.open ?? true);
+    this._formToggle.setOpen(sections.form?.open ?? true);
   }
 
   // ── Row navigation ───────────────────────────────────────────
@@ -433,4 +480,11 @@ export class BioacousticWidget extends Widget {
 /** A section height from the config (px), or undefined for "use the default". */
 function _parseHeight(raw: string): number | undefined {
   return parseInt(raw) || undefined;
+}
+
+
+/** A number from the config, or undefined when it is blank / not a number (0 is kept). */
+function _parseNumber(raw: string | undefined): number | undefined {
+  const n = parseFloat(raw ?? '');
+  return isNaN(n) ? undefined : n;
 }
