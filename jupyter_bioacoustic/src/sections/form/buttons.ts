@@ -21,9 +21,9 @@
  *   with an ``initial_value`` that matches no state, or the toggle's own ``icon`` / ``image``
  *   (its "nothing chosen yet" look), it starts unset (that value, default null) until the
  *   first click; otherwise on the first state.
- * - ``size`` sets width and height (default 25px); ``width`` / ``height`` override it.
+ * - ``size`` sets width and height (default 30px); ``width`` / ``height`` override it.
  * - ``hot_key``: a single character that clicks the button while it (or its row / column /
- *   grid) has keyboard focus; shown as a corner badge unless ``show_hot_key: false``.
+ *   grid) has keyboard focus; shown as a small corner letter with ``show_hot_key: true``.
  *
  * License: BSD 3-Clause
  */
@@ -38,7 +38,7 @@ import { normalizeHotKey } from './hotkeys';
 // Constants
 //
 /** Button width and height (px) when neither ``size`` nor ``width`` / ``height`` is set. */
-export const DEFAULT_BUTTON_SIZE = 25;
+export const DEFAULT_BUTTON_SIZE = 30;
 
 /** Prefix of the built-in icons (``icon: jba:check``). */
 export const BUILTIN_PREFIX = 'jba:';
@@ -110,7 +110,7 @@ export interface FormButtonSpec {
   highlight: boolean;
   /** ``hot_key`` (a single character), or null. */
   hotKey: string | null;
-  /** Show the hot key as a corner badge (``show_hot_key``, default true). */
+  /** Show the hot key as a corner letter (``show_hot_key``, default false). */
   showHotKey: boolean;
   /** True when ``initial_value`` is set (it may be null). */
   hasInitialValue: boolean;
@@ -167,7 +167,7 @@ export function parseFormButton(cfg: any): FormButtonSpec {
     pressedFace: resolveFace(pressed, String(c.label ?? c.value ?? '')),
     highlight: c.highlight !== false,
     hotKey: normalizeHotKey(c.hot_key),
-    showHotKey: c.show_hot_key !== false,
+    showHotKey: c.show_hot_key === true,
     hasInitialValue: 'initial_value' in c,
     initialValue: c.initial_value ?? null,
     toggle,
@@ -222,13 +222,16 @@ export function nextToggleIndex(spec: FormButtonSpec, index: number): number {
 }
 
 
-/** Inline CSS for a button's hot key badge (top-right corner). */
+/** Inline CSS for a button's hot key badge (a small letter in the top-right corner). */
 export function hotKeyBadgeStyle(): string {
   return (
     `position:absolute;top:1px;right:2px;font-size:8px;font-weight:700;line-height:1;` +
     `opacity:0.75;pointer-events:none;font-family:ui-monospace,monospace;`
   );
 }
+
+/** Extra padding that moves the icon away from the badge (down and to the left). */
+export const BADGE_ICON_OFFSET = 'padding:4px 6px 0 0;';
 
 
 /** True when ``src`` can be used as an ``<img src>`` as is (http(s) or data URL). */
