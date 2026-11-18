@@ -85,7 +85,7 @@ describe('FormSection round-trip: layout containers, buttons, hot keys', () => {
       { row: [
         { text: 'Is this a [[common_name]]?' },
         { button: { column: 'is_valid', value: 'yes', icon: 'jba:check', hot_key: 'y' } },
-        { button: { column: 'is_valid', value: 'no', icon: 'jba:x', show_hot_key: false, hot_key: 'n' } },
+        { button: { column: 'is_valid', value: 'no', icon: 'jba:x', show_hot_key: true, hot_key: 'n' } },
       ] },
       { column: { column: 'size', unique: true, gap: 4, items: [
         { row: [{ button: { value: 'S', icon: 'S' } }, { button: { value: 'M', icon: 'M' } }] },
