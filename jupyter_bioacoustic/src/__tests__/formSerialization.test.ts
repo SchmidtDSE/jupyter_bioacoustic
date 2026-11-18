@@ -5,7 +5,9 @@
  * License: BSD 3-Clause
  */
 
-import { ElementType, deserializeElement, serializeElement } from '../config_builder/formSerialization';
+import {
+  ElementType, deserializeElement, deserializeLayout, serializeElement, serializeLayout,
+} from '../config_builder/formSerialization';
 
 const CASES: Array<[ElementType, any]> = [
   ['title', 'REVIEW CLIP'],
@@ -54,5 +56,21 @@ describe('form element serialization', () => {
 
   it('text is a plain string, not {value} (H12)', () => {
     expect(serializeElement('text', deserializeElement('text', 'hello'))).toBe('hello');
+  });
+});
+
+
+describe('layout serialization', () => {
+  it('a container without options is a plain list; with options a mapping', () => {
+    expect(serializeLayout('row', {}, [{ text: 'a' }])).toEqual([{ text: 'a' }]);
+    expect(serializeLayout('row', { gap: 4, unique: false, columns: 3 }, [])).toEqual(
+      { gap: 4, unique: false, items: [] });          // columns is grid-only
+    expect(serializeLayout('grid', { columns: 2 }, [])).toEqual({ columns: 2, items: [] });
+  });
+
+  it('deserializeLayout is the inverse', () => {
+    expect(deserializeLayout([{ text: 'a' }])).toEqual({ config: {}, items: [{ text: 'a' }] });
+    expect(deserializeLayout({ columns: 2, items: { text: 'a' } }))
+      .toEqual({ config: { columns: 2 }, items: [{ text: 'a' }] });
   });
 });
