@@ -5,7 +5,8 @@
  * DescriptionPanel, InfoCard + ClipTable (the playlist), Player and FormPanel. The playlist,
  * spectrogram (Player) and form collapse with a CollapseToggle at the start of the row they
  * keep: the info card (or, when it is hidden, a bar of its own), the play row and the button
- * row. Keys anywhere in the widget: j / k = previous / next clip (not while typing, or when the
+ * row. With ``side_form: true`` in the form config the form sits beside the spectrogram, in
+ * a row with a draggable divider (see ``sideForm``). Keys anywhere in the widget: j / k = previous / next clip (not while typing, or when the
  * focused form item gives j / k a hot key), Shift+Tab = next section (description, playlist,
  * spectrogram, form), Tab = into the form. On attach it reads the
  * ``_BA_*`` config globals from its kernel, validates the form config, hands each section
@@ -30,6 +31,9 @@ import { FormPanel } from './sections/FormPanel';
 import { InfoCard } from './sections/InfoCard';
 import { Player } from './sections/Player';
 import { CollapseToggle } from './sections/CollapseToggle';
+import {
+  SIDE_FORM_DIVIDER_PX, SIDE_FORM_STACK_WIDTH, clampSplit, parseSideForm, sideFormSizes,
+} from './sideForm';
 import { COLORS, barBottomStyle, injectGlobalStyles } from './styles';
 import { DIALOG, TOOLTIP } from './text';
 import {
@@ -80,6 +84,11 @@ export class BioacousticWidget extends Widget {
   private _formToggle!: CollapseToggle;
   /** Holds the playlist toggle when the info card is hidden. */
   private _playlistBar!: HTMLDivElement;
+  /** Side form (``side_form``): the row, the spectrogram column and the divider. */
+  private _side: {
+    row: HTMLDivElement; playerCol: HTMLDivElement; divider: HTMLDivElement;
+    split: number; stacked: boolean; observer: ResizeObserver | null;
+  } | null = null;
 
   /**
    * @param source - The kernel or notebook session this widget talks to (fixed for its lifetime).
@@ -115,6 +124,7 @@ export class BioacousticWidget extends Widget {
 
   protected override onBeforeDetach(msg: Message): void {
     this._player.detach();
+    this._side?.observer?.disconnect();
     super.onBeforeDetach(msg);
   }
 
@@ -146,10 +156,15 @@ export class BioacousticWidget extends Widget {
 
     this._playlistToggle = new CollapseToggle(
       '', open => setShown(this._table.element, open));
-    this._playerToggle = new CollapseToggle(
-      '', open => this._player.setCollapsed(!open));
+    this._playerToggle = new CollapseToggle('', open => {
+      this._player.setCollapsed(!open);
+      this._layoutSideForm();
+    });
     this._player.setLeading(this._playerToggle.element);
-    this._formToggle = new CollapseToggle('', open => this._form.setCollapsed(!open));
+    this._formToggle = new CollapseToggle('', open => {
+      this._form.setCollapsed(!open);
+      this._layoutSideForm();
+    });
     this._form.setLeading(this._formToggle.element);
 
     this.node.addEventListener('keydown', e => this._onKeyDown(e));
@@ -354,6 +369,8 @@ export class BioacousticWidget extends Widget {
       height: _parseHeight(cfg.form_panel_height),
     });
     await this._form.build();
+    const split = parseSideForm(formConfig);
+    if (split !== null) this._enableSideForm(split);
     await this._form.loadOutputFileProgress();
     await this._form.loadReviewedState();
 
@@ -407,6 +424,74 @@ export class BioacousticWidget extends Widget {
     this._playlistToggle.setOpen(sections.playlist?.open ?? true);
     this._playerToggle.setOpen(sections.spectrogram?.open ?? true);
     this._formToggle.setOpen(sections.form?.open ?? true);
+  }
+
+  // ── Side form ────────────────────────────────────────────────
+
+  /** Put the spectrogram and the form side by side, with a draggable divider. */
+  private _enableSideForm(split: number): void {
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;align-items:stretch;flex-shrink:0;min-width:0;`;
+    const playerCol = document.createElement('div');
+    playerCol.style.cssText = `display:flex;flex-direction:column;min-width:0;`;
+    const divider = document.createElement('div');
+    divider.className = 'jp-BA-side-divider';
+    divider.title = 'Drag to resize';
+    divider.style.cssText = `flex:0 0 ${SIDE_FORM_DIVIDER_PX}px;`;
+    this.node.insertBefore(row, this._player.element);
+    playerCol.appendChild(this._player.element);
+    row.append(playerCol, divider, this._form.element);
+
+    const side = { row, playerCol, divider, split, stacked: false, observer: null as ResizeObserver | null };
+    this._side = side;
+    divider.addEventListener('pointerdown', e => this._dragSideDivider(e));
+    if (typeof ResizeObserver !== 'undefined') {
+      side.observer = new ResizeObserver(entries => {
+        const stacked = entries[0].contentRect.width < SIDE_FORM_STACK_WIDTH;
+        if (stacked !== side.stacked) {
+          side.stacked = stacked;
+          this._layoutSideForm();
+        }
+      });
+      side.observer.observe(row);
+    }
+    this._layoutSideForm();
+  }
+
+  /** Size the side-form columns for the split, the collapse states and the row width. */
+  private _layoutSideForm(): void {
+    const side = this._side;
+    if (!side) return;
+    const sizes = sideFormSizes(side.split, this._playerToggle.open, this._formToggle.open, side.stacked);
+    side.row.style.flexDirection = sizes.direction;
+    side.playerCol.style.flex = sizes.player;
+    this._form.element.style.flex = sizes.form;
+    side.divider.style.display = sizes.divider ? '' : 'none';
+    this._form.setSideMode(true, side.stacked);
+  }
+
+  /** Drag the divider: the split follows the pointer (kept within its limits). */
+  private _dragSideDivider(e: PointerEvent): void {
+    const side = this._side;
+    if (!side) return;
+    e.preventDefault();
+    side.divider.setPointerCapture?.(e.pointerId);
+    side.divider.classList.add('jp-BA-dragging');
+    const move = (ev: PointerEvent) => {
+      const rect = side.row.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      side.split = clampSplit((ev.clientX - rect.left) / rect.width);
+      this._layoutSideForm();
+    };
+    const up = () => {
+      side.divider.classList.remove('jp-BA-dragging');
+      side.divider.removeEventListener('pointermove', move);
+      side.divider.removeEventListener('pointerup', up);
+      side.divider.removeEventListener('pointercancel', up);
+    };
+    side.divider.addEventListener('pointermove', move);
+    side.divider.addEventListener('pointerup', up);
+    side.divider.addEventListener('pointercancel', up);
   }
 
   // ── Row navigation ───────────────────────────────────────────
