@@ -76,3 +76,53 @@ describe('FormSection round-trip (H12/H13)', () => {
     expect(section.getData()).toEqual({ form: [{ multiselect: ms }] });
   });
 });
+
+
+describe('FormSection round-trip: layout containers, buttons, hot keys', () => {
+  const LAYOUT_FORM = {
+    title: { value: 'R', progress_tracker: true },
+    form: [
+      { row: [
+        { text: 'Is this a [[common_name]]?' },
+        { button: { column: 'is_valid', value: 'yes', icon: 'jba:check', hot_key: 'y' } },
+        { button: { column: 'is_valid', value: 'no', icon: 'jba:x', show_hot_key: false, hot_key: 'n' } },
+      ] },
+      { column: { column: 'size', unique: true, gap: 4, items: [
+        { row: [{ button: { value: 'S', icon: 'S' } }, { button: { value: 'M', icon: 'M' } }] },
+        { row: [{ button: { value: 'L', icon: 'L', highlight: false } }] },
+      ] } },
+      { grid: { columns: 3, column: 'tags', unique: false, delimiter: ';', align: 'center', items: [
+        { button: { value: 'a', icon: 'a' } },
+        { select: { label: 'sp', column: 'sp', items: [{ label: 'owl', value: 'owl' }],
+                    hot_keys: { 1: 'owl' }, pin_hot_keys: true } },
+      ] } },
+    ],
+    dynamic_forms: {
+      fix: [{ row: [{ textbox: { label: 'why', column: 'why' } }] }],
+    },
+  };
+
+  it('getData returns exactly what setData loaded', () => {
+    (globalThis as any).requestAnimationFrame ??= (cb: () => void) => setTimeout(cb, 0);
+    const section = new FormSection();
+    section.setData(JSON.parse(JSON.stringify(LAYOUT_FORM)));
+    expect(section.getData()).toEqual(LAYOUT_FORM);
+  });
+
+  it('a container card holds its items as cards (with its own add bar)', () => {
+    const section = new FormSection();
+    section.setData(JSON.parse(JSON.stringify(LAYOUT_FORM)));
+    const elements = (section as any)._elements;
+    expect(elements.map((e: any) => e.type)).toEqual(['title', 'row', 'column', 'grid']);
+    expect(elements[2].children.elements.map((e: any) => e.type)).toEqual(['row', 'row']);
+    expect(elements[2].el.querySelectorAll('button').length).toBeGreaterThan(0);
+  });
+
+  it('adding an element to a container puts it in the container', () => {
+    const section = new FormSection();
+    section.setData({ form: [{ row: [] }] });
+    const row = (section as any)._elements[0];
+    (section as any)._addElement('button', undefined, row.children);
+    expect(section.getData().form).toEqual([{ row: [{ button: {} }] }]);
+  });
+});
