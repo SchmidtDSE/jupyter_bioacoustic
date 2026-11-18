@@ -230,7 +230,6 @@ function _serializeButton(cfg: CardConfig): CardConfig {
   const out = _withoutEmpty(cfg);
   if ('initial_value' in cfg && cfg.initial_value === null) out.initial_value = null;
   if (cfg.highlight === false) out.highlight = false;
-  if (cfg.show_hot_key === false) out.show_hot_key = false;
   if (Array.isArray(cfg.toggle)) {
     const states = cfg.toggle.map((st: CardConfig) => _withoutEmpty(st));
     if (states.length > 0) out.toggle = states;
