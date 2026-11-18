@@ -204,6 +204,8 @@ export class FormPanel {
   private _minHeight = `${DEFAULT_FORM_MIN_HEIGHT}px`;
   /** The collapse toggle, kept at the start of the button row across rebuilds. */
   private _leading: HTMLElement | null = null;
+  /** Beside the spectrogram (``side_form``) rather than below it. */
+  private _sideMode = false;
   /** Hot keys of the current form (looked up within the focused item). */
   private _hotKeys: HotKeyTarget[] = [];
   /** The highlighted (focused) item. */
@@ -351,7 +353,22 @@ export class FormPanel {
   /** Collapse to the row holding the toggle (title / progress, else buttons), or expand. */
   setCollapsed(collapsed: boolean): void {
     this._dynFormEl.classList.toggle('jp-BA-collapsed', collapsed);
-    this.element.style.minHeight = collapsed ? '0px' : this._minHeight;
+    this.element.classList.toggle('jp-BA-form-collapsed', collapsed);
+    this.element.style.minHeight = collapsed || this._sideMode ? '0px' : this._minHeight;
+  }
+
+  /**
+   * Show the form beside the spectrogram (``side_form``): a left border instead of a top one,
+   * no minimum height, and its own scrolling. Collapsed, it becomes a narrow strip with the
+   * toggle and (if any) the title running vertically (the global stylesheet).
+   */
+  setSideMode(side: boolean, stacked = false): void {
+    this._sideMode = side && !stacked;
+    this.element.classList.toggle('jp-BA-side-form', this._sideMode);
+    this.element.style.borderTop = this._sideMode ? 'none' : `1px solid ${COLORS.bgSurface0}`;
+    this.element.style.overflowY = this._sideMode ? 'auto' : '';
+    this.element.style.minWidth = this._sideMode ? '0' : '';
+    this.setCollapsed(this._dynFormEl.classList.contains('jp-BA-collapsed'));
   }
 
   /** Build the form from the current form config (top-level keys in config order). */
@@ -1854,6 +1871,7 @@ export class FormPanel {
     d.dataset.formHeading = '';
     const span = document.createElement('span');
     span.textContent = text;
+    span.dataset.formTitleText = '';         // shown vertically in a collapsed side form
     d.appendChild(span);
 
     if (withProgress) {
