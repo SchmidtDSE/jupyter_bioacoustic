@@ -467,6 +467,9 @@ export class BioacousticWidget extends Widget {
     side.playerCol.style.flex = sizes.player;
     this._form.element.style.flex = sizes.form;
     side.divider.style.display = sizes.divider ? '' : 'none';
+    // a collapsed spectrogram beside the form is a vertical strip (▸, ▶, time running down)
+    side.playerCol.classList.toggle(
+      'jp-BA-side-player-collapsed', !side.stacked && !this._playerToggle.open);
     this._form.setSideMode(true, side.stacked);
   }
 
