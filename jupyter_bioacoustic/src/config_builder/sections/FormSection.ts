@@ -83,6 +83,8 @@ export class FormSection extends CollapsibleSection {
   private _addBar: HTMLDivElement;
   private _dynFormsContainer: HTMLDivElement;
   private _dragSrcCard: HTMLDivElement | null = null;
+  private _sideFormCb: HTMLInputElement;
+  private _sideSplitInput: HTMLInputElement;
   private _ctx: FormCardContext;
 
   constructor() {
@@ -99,6 +101,29 @@ export class FormSection extends CollapsibleSection {
     hint.textContent = FORM_ADD_HINT;
     hint.style.cssText = `color:${COLORS.textSubtle};font-size:12px;font-style:italic;margin-bottom:4px;`;
     this._body.appendChild(hint);
+
+    // side_form: the form beside the spectrogram (its share of the width: side_form_split)
+    const sideRow = this._makeFocusRow('side_form', 'side form');
+    const { row: cbRow, input: cb } = this._makeCheckbox('beside the spectrogram');
+    this._sideFormCb = cb;
+    this._sideSplitInput = makeInput('0.66', '60px');
+    this._sideSplitInput.type = 'number';
+    this._sideSplitInput.step = '0.01';
+    this._sideSplitInput.min = '0.2';
+    this._sideSplitInput.max = '0.85';
+    this._sideSplitInput.title = "The spectrogram's share of the width";
+    const syncSide = () => {
+      this._sideSplitInput.disabled = !cb.checked;
+      this._emitChanged();
+    };
+    cb.addEventListener('change', syncSide);
+    this._sideSplitInput.addEventListener('input', () => this._emitChanged());
+    const splitLbl = document.createElement('span');
+    splitLbl.textContent = 'split';
+    splitLbl.style.cssText = `color:${COLORS.textMuted};font-size:11px;`;
+    sideRow.append(...[...cbRow.childNodes], splitLbl, this._sideSplitInput);
+    this._sideSplitInput.disabled = true;
+    this._body.appendChild(sideRow);
 
     this._addBar = this._makeAddBar();
     this._body.appendChild(this._addBar);
@@ -132,6 +157,11 @@ export class FormSection extends CollapsibleSection {
    */
   getData(): Record<string, any> {
     const result: Record<string, any> = {};
+    if (this._sideFormCb.checked) {
+      result.side_form = true;
+      const split = parseFloat(this._sideSplitInput.value);
+      if (!isNaN(split)) result.side_form_split = split;
+    }
     const formList: any[] = [];
     let submissionButtons: any = null;
     let seenUserInput = false;
@@ -164,6 +194,9 @@ export class FormSection extends CollapsibleSection {
 
   /** Rebuild the cards from form YAML (every element goes through ``deserializeElement``). */
   setData(data: Record<string, any>): void {
+    this._sideFormCb.checked = data.side_form === true;
+    this._sideSplitInput.value = data.side_form_split != null ? String(data.side_form_split) : '';
+    this._sideSplitInput.disabled = !this._sideFormCb.checked;
     this._elements = [];
     this._listEl.innerHTML = '';
     this._dynForms = [];
