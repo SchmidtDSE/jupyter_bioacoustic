@@ -12,6 +12,7 @@ import { TOOLTIP } from '../../text';
 import { MultiboxEntry } from '../../types';
 import { elementColumn } from './formConfig';
 import { boxLabel, buildMultiselect, buildSelect } from './inputs';
+import { flattenLayout } from './layout';
 import { MultiselectSpec, multiselectItemsConfig, prepareMultiselect } from './multiselect';
 import { RawSelectItem, parseSelectItems, selectItemOptions } from './selectItems';
 
@@ -94,7 +95,8 @@ export async function buildBoxForm(
   onMultiselect: (spec: MultiselectSpec) => void = () => {},
 ): Promise<void> {
   const values = entry.formValues;
-  for (const item of elements) {
+  // the compact per-box form has no layout: row / column / grid items are shown in order
+  for (const item of flattenLayout(elements)) {
     if (!item || typeof item !== 'object') continue;
     const [type] = Object.keys(item);
     const config = item[type];
