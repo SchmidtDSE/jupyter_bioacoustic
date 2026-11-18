@@ -267,7 +267,8 @@ export class FormSection extends CollapsibleSection {
       ? ADD_BAR_COLUMNS.filter(c => c.header !== 'Navigation') : ADD_BAR_COLUMNS;
     const bar = document.createElement('div');
     bar.style.cssText =
-      `display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:2px 8px;padding:6px 0;` +
+      `display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:2px 8px;` +
+      `padding:6px 0;` +
       `border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
     const mkBtn = (t: ElementType) => {
       const btn = makeButton(`+ ${t}`);
