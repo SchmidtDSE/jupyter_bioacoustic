@@ -224,6 +224,12 @@ export function injectGlobalStyles(): void {
       display: none !important;
     }
     .jp-BA-side-form.jp-BA-form-collapsed [data-form-title-text] { writing-mode: vertical-rl; }
+    .jp-BA-side-player-collapsed .jp-BA-play-bar {
+      flex: 1 1 auto; flex-direction: column; flex-wrap: nowrap; align-items: center;
+      padding: 8px 4px; gap: 8px;
+    }
+    .jp-BA-side-player-collapsed .jp-BA-play-time { writing-mode: vertical-rl; }
+    .jp-BA-side-player-collapsed .jp-BA-play-signal { display: none; }
     /* A collapsed form shows only the row holding its toggle ([data-collapse-keep]). */
     .jp-BA-collapsed > :not([data-collapse-keep]) { display: none !important; }
     .jp-BA-filter-input::placeholder {
