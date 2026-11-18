@@ -58,7 +58,7 @@ function formButtons(p: FormPanel): HTMLButtonElement[] {
 const flush = () => new Promise(r => setTimeout(r, 0));
 
 describe('parseFormButton', () => {
-  it('defaults to a 25px square, no column, no submit', () => {
+  it('defaults to a 30px square, no column, no submit', () => {
     const b = parseFormButton({ icon: 'go', submit: true });
     expect(b).toMatchObject({
       column: null, submit: true, toggle: null, hasOwnFace: true, highlight: true, hasInitialValue: false,
@@ -144,7 +144,7 @@ describe('parseFormButton', () => {
   it('styles: size, colours, selection border, dimming', () => {
     const spec = parseFormButton({ icon: 'jba:check' });
     const css = formButtonStyle(spec, spec.face);
-    expect(css).toContain('width:25px;height:25px;');
+    expect(css).toContain('width:30px;height:30px;');
     expect(css).toContain(`background:${BUILTIN_ICONS.check.background}`);
     expect(formButtonStyle(spec, spec.face, { pressed: true })).toContain('box-shadow:0 0 0 2px #ffffff');
     expect(formButtonStyle(spec, spec.face, { faded: true })).toContain('opacity:0.5');
