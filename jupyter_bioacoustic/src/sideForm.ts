@@ -13,7 +13,7 @@
 export const DEFAULT_SIDE_FORM_SPLIT = 2 / 3;
 /** Limits for ``side_form_split`` and for dragging the divider. */
 export const MIN_SIDE_FORM_SPLIT = 0.2;
-export const MAX_SIDE_FORM_SPLIT = 0.85;
+export const MAX_SIDE_FORM_SPLIT = 0.95;
 /** Below this row width (px) the form goes back below the spectrogram. */
 export const SIDE_FORM_STACK_WIDTH = 640;
 /** Width of the draggable divider (px). */
