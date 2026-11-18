@@ -190,6 +190,8 @@ export class ClipTable {
   get filtered(): Detection[] { return this._filtered; }
   get rows(): Detection[] { return this._rows; }
   get viewMode(): 'all' | 'pending' | 'reviewed' { return this._viewMode; }
+  /** What keyboard section-cycling focuses (the table; ↑ / ↓ / Enter / ← / → work there). */
+  get focusTarget(): HTMLElement { return this._tableWrap; }
 
   ensurePageShowsSelected(): void {
     if (this._selectedIdx < 0) return;
@@ -562,6 +564,7 @@ export class ClipTable {
     // Table
     this._tableWrap = document.createElement('div');
     this._tableWrap.tabIndex = 0;
+    this._tableWrap.classList.add('jp-BA-section-focus');
     this._tableWrap.style.cssText =
       `flex:0 0 auto;overflow-y:auto;max-height:${DEFAULT_TABLE_MAX_HEIGHT}px;` +
       `border-bottom:1px solid ${COLORS.bgSurface0};outline:none;`;
