@@ -80,6 +80,8 @@ const DEFAULT_FORM_MIN_HEIGHT = 140;
 const FOCUSABLE = 'button, select, textarea, input:not([type=hidden])';
 /** Class on the focused form item (greyed by the global stylesheet). */
 const ITEM_FOCUS_CLASS = 'jp-BA-item-focus';
+/** The form panel's padding (a side form uses less). */
+const FORM_PADDING = '10px 14px 12px';
 /** Height of the collapse toggle's own row (forms without a title / progress row). */
 const TOGGLE_ROW_PX = 12;
 
@@ -263,7 +265,7 @@ export class FormPanel {
   constructor(private readonly _kernel: KernelBridge) {
     this.element = document.createElement('div');
     this.element.style.cssText =
-      `flex:0 0 auto;min-height:${DEFAULT_FORM_MIN_HEIGHT}px;padding:10px 14px 12px;background:${COLORS.bgMantle};` +
+      `flex:0 0 auto;min-height:${DEFAULT_FORM_MIN_HEIGHT}px;padding:${FORM_PADDING};background:${COLORS.bgMantle};` +
       `border-top:1px solid ${COLORS.bgSurface0};display:none;flex-direction:column;gap:10px;`;
 
     this._dynFormEl = document.createElement('div');
@@ -343,7 +345,7 @@ export class FormPanel {
       btn.style.cssText = btnStyle() + `font-size:12px;`;
       btn.addEventListener('click', action.onClick);
       notice.appendChild(btn);
-      notice.dataset.formItem = '';
+      this._makeItem(notice);
     }
     const heading = this._dynFormEl.querySelector(':scope > [data-form-heading]');
     if (heading) heading.after(notice);
@@ -368,6 +370,8 @@ export class FormPanel {
     this.element.style.borderTop = this._sideMode ? 'none' : `1px solid ${COLORS.bgSurface0}`;
     this.element.style.overflowY = this._sideMode ? 'auto' : '';
     this.element.style.minWidth = this._sideMode ? '0' : '';
+    // a side form can be very narrow (e.g. a column of buttons): tighter padding
+    this.element.style.padding = this._sideMode ? '8px 8px 10px' : FORM_PADDING;
     this.setCollapsed(this._dynFormEl.classList.contains('jp-BA-collapsed'));
   }
 
@@ -406,7 +410,9 @@ export class FormPanel {
       } else if (key === 'form') {
         if (Array.isArray(cfg.form)) await this._buildFormSection(cfg.form, this._dynFormEl);
       } else if (key === 'submission_buttons') {
-        this._buildSubmissionButtons(cfg.submission_buttons);
+        // false: no Prev / Skip / Submit row (submit with a button's ``submit: true``)
+        if (cfg.submission_buttons !== false) this._buildSubmissionButtons(cfg.submission_buttons);
+        else if (this._syncConfig.button) this._buildSubmissionButtons({});
       } else if (key === '_fixed_kwargs') {
         for (const item of cfg._fixed_kwargs) {
           if (item.fixed_value) this._registerFixedValue(item.fixed_value);
@@ -420,7 +426,9 @@ export class FormPanel {
     for (const el of this._namedSections.values()) {
       if (!el.parentElement) this._dynFormEl.appendChild(el);
     }
-    if (!cfg.submission_buttons) this._buildSubmissionButtons({ submit: true });
+    if (cfg.submission_buttons === undefined || cfg.submission_buttons === null) {
+      this._buildSubmissionButtons({ submit: true });
+    }
     this._placeLeading();
     this._validateForm();
   }
@@ -705,8 +713,17 @@ export class FormPanel {
       if (d.formSection !== undefined || d.formLine !== undefined || d.formHeading !== undefined
         || d.formText !== undefined || d.formToggleRow !== undefined) continue;
       if (!el.querySelector(FOCUSABLE) && !el.matches(FOCUSABLE)) continue;
-      d.formItem = '';
+      this._makeItem(el as HTMLElement);
     }
+  }
+
+  /**
+   * Make ``el`` a form item: a click anywhere on it (e.g. beside a row's buttons) focuses it
+   * (``tabIndex = -1``), so it is highlighted and its hot keys work.
+   */
+  private _makeItem(el: HTMLElement): void {
+    el.dataset.formItem = '';
+    if (!el.matches(FOCUSABLE) && !el.hasAttribute('tabindex')) el.tabIndex = -1;
   }
 
   /** The shown items, in order (an item that holds items, e.g. the annotation host, is skipped). */
@@ -1341,7 +1358,7 @@ export class FormPanel {
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px;`;
     btnContainer.dataset.formButtons = '';
-    btnContainer.dataset.formItem = '';
+    this._makeItem(btnContainer);
 
     for (const [key, val] of Object.entries(cfg)) {
       if (key === 'pass_value') {
@@ -1872,6 +1889,7 @@ export class FormPanel {
     const span = document.createElement('span');
     span.textContent = text;
     span.dataset.formTitleText = '';         // shown vertically in a collapsed side form
+    if (hasTemplatePlaceholders(text)) this._templateElements.push({ el: span, template: text });
     d.appendChild(span);
 
     if (withProgress) {
@@ -1947,8 +1965,8 @@ export class FormPanel {
       onNext: () => this.nextRequested.emit(void 0),
       onDelete: () => void this._onDeleteReview(row),
     }));
-    this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-buttons]')
-      ?.setAttribute('data-form-item', '');
+    const reviewedButtons = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-buttons]');
+    if (reviewedButtons) this._makeItem(reviewedButtons);
     this._placeLeading();
     this._restoreFocus();
 
