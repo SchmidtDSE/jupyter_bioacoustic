@@ -114,11 +114,14 @@ export function buildElementFields(
       _addCheckboxField(ctx, card, cfg, 'submit', 'submit');
       _addCheckboxField(ctx, card, cfg, 'required', 'required');
       _addValueField(ctx, card, cfg, 'initial_value', 'initial_value');
-      _addField(ctx, card, cfg, 'initial_icon', 'initial_icon', '120px', 'text or jba:unchecked');
-      _addImageField(ctx, card, cfg, 'initial_image');
       _addField(ctx, card, cfg, 'color', 'color', '100px', 'icon color');
       _addField(ctx, card, cfg, 'background', 'background', '100px', 'fill color');
+      _addField(ctx, card, cfg, 'pressed_icon', 'pressed_icon', '120px', 'text or jba:checked');
+      _addImageField(ctx, card, cfg, 'pressed_image');
+      _addField(ctx, card, cfg, 'pressed_color', 'pressed_color', '100px', 'icon color');
+      _addField(ctx, card, cfg, 'pressed_background', 'pressed_background', '100px', 'fill color');
       _addNumField(ctx, card, cfg, 'size', 'size (px)', '60px');
+      _addField(ctx, card, cfg, 'hot_key', 'hot_key', '40px', 'key');
       _addToggleStates(ctx, card, cfg);
       break;
     case 'annotation': {
@@ -221,7 +224,7 @@ function _addField(
 }
 
 
-/** A button image path (``image`` / ``initial_image``), with a Browse button. */
+/** A button image path (``image`` / ``pressed_image``), with a Browse button. */
 function _addImageField(
   ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig, key: string,
 ): void {
