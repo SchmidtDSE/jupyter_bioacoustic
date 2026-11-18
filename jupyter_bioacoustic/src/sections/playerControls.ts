@@ -138,6 +138,7 @@ export function buildPlayerDom(h: PlayerControlHandlers, canvasHeight: number): 
   const canvas = document.createElement('canvas');
   canvas.style.cssText = `display:block;width:100%;height:100%;`;
   canvas.tabIndex = 0; // focusable, for keyboard shortcuts
+  canvas.classList.add('jp-BA-section-focus');
   canvas.style.outline = 'none';
   canvasContainer.appendChild(canvas);
 
