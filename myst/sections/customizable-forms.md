@@ -121,7 +121,7 @@ See [Layout: row, column, grid](https://github.com/SchmidtDSE/jupyter_bioacousti
 
 ### Side Form
 
-`side_form: true` at the top of the form config puts a small form beside the spectrogram (the spectrogram takes `side_form_split` of the width, default 2/3; drag the divider to change it). Collapsed, the form becomes a narrow strip with its title running vertically; narrow widgets put it back below.
+`side_form: true` at the top of the form config puts a small form beside the spectrogram (the spectrogram takes `side_form_split` of the width, default 2/3; drag the divider to change it). Collapsed, the form (or the spectrogram) becomes a narrow strip with its title (or the playback time) running vertically; narrow widgets put the form back below. `submission_buttons: false` drops the Submit row when buttons submit.
 
 ```yaml
 side_form: true
