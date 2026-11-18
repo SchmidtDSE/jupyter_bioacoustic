@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .._validation import LAYOUT_TYPES
+
 
 #
 # CONSTANTS
@@ -421,19 +423,7 @@ def _form_section(fc: dict[str, Any]) -> dict[str, Any]:
 
     form_list = fc.get('form', [])
     if isinstance(form_list, list) and form_list:
-        form_children: list[dict[str, Any]] = []
-        for el in form_list:
-            if not isinstance(el, dict):
-                continue
-            for etype, ecfg in el.items():
-                if etype in ('break', 'line'):
-                    continue
-                line = _summarize_form_element(etype, ecfg)
-                dyn_children = _referenced_dyn_form_rows(etype, ecfg, dyn_forms)
-                form_children.append(_row(
-                    value=line, tag=etype, children=dyn_children or None,
-                ))
-        rows.append(_row(key='FORM', children=form_children))
+        rows.append(_row(key='FORM', children=_element_rows(form_list, dyn_forms)))
 
     if fc.get('submission_buttons'):
         sb = fc['submission_buttons']
@@ -605,6 +595,18 @@ def _summarize_form_element(etype: str, cfg: Any) -> str:
     if etype == 'text':
         return cfg.get('value', '')
 
+    if etype == 'button':
+        face = str(cfg.get('icon') or cfg.get('image') or '')
+        col = cfg.get('column', '')
+        if isinstance(cfg.get('toggle'), list):
+            states = ' / '.join(
+                str(st.get('value')) for st in cfg['toggle'] if isinstance(st, dict))
+            return f'{col} toggle: {states}'
+        parts = [face] + ([f"{col}={cfg.get('value')}"] if col else [])
+        if cfg.get('submit'):
+            parts.append('(submit)')
+        return ' '.join(p for p in parts if p)
+
     if etype in ('break', 'line'):
         return ''
 
@@ -639,13 +641,45 @@ def _dyn_form_row(name: str, elems: list[Any]) -> dict[str, Any]:
     Returns:
         The row.
     """
-    children: list[dict[str, Any]] = []
+    return _row(value=f'dynamic form: {name}', tag='dynamic', children=_element_rows(elems))
+
+
+def _element_rows(
+    elems: list[Any], dyn_forms: dict[str, list[Any] | None] | None = None,
+) -> list[dict[str, Any]]:
+    """Rows for a list of form elements; row / column / grid containers nest their items.
+
+    Args:
+        elems: The elements (non-dict entries are skipped).
+        dyn_forms: From ``_parse_dynamic_forms`` (updated) to nest the dynamic forms an
+            element references, or None to skip them (inside a dynamic form). Line and break
+            elements are skipped when it is given (the main form).
+
+    Returns:
+        One row per element.
+    """
+    rows: list[dict[str, Any]] = []
     for el in elems:
         if not isinstance(el, dict):
             continue
         for etype, ecfg in el.items():
-            children.append(_row(value=_summarize_form_element(etype, ecfg), tag=etype))
-    return _row(value=f'dynamic form: {name}', tag='dynamic', children=children)
+            if dyn_forms is not None and etype in ('break', 'line'):
+                continue
+            if etype in LAYOUT_TYPES:
+                items = ecfg.get('items') if isinstance(ecfg, dict) else ecfg
+                items = items if isinstance(items, list) else []
+                cols = ecfg.get('columns') if isinstance(ecfg, dict) else None
+                detail = f'{cols} columns, ' if etype == 'grid' and cols else ''
+                rows.append(_row(
+                    value=f'{detail}{len(items)} items', tag=etype,
+                    children=_element_rows(items, dyn_forms) or None,
+                ))
+                continue
+            children = _referenced_dyn_form_rows(etype, ecfg, dyn_forms) if dyn_forms else []
+            rows.append(_row(
+                value=_summarize_form_element(etype, ecfg), tag=etype, children=children or None,
+            ))
+    return rows
 
 
 def _label(cfg: dict[str, Any]) -> str:
