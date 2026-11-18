@@ -267,6 +267,11 @@ export class Player {
     this._dom.signalTimeDisplay.textContent = '';
   }
 
+  /** What keyboard section-cycling focuses (the canvas and its shortcuts). */
+  get focusTarget(): HTMLElement {
+    return this._canvas;
+  }
+
   /** Set up the resize observer (call from Widget.onAfterAttach). */
   attach(): void {
     this._resizeObserver = new ResizeObserver(entries => {
