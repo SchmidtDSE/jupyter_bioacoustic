@@ -700,12 +700,16 @@ class TestButton:
 
     def test_builtin_icons(self):
         assert self._errors({'icon': 'jba:check', 'submit': True}) == []
-        assert self._errors({'icon': 'jba:x', 'initial_icon': 'jba:na', 'column': 'c',
-                             'value': 0, 'color': '#fff', 'background': 'red'}) == []
+        assert self._errors({'icon': 'x', 'pressed_icon': 'jba:na', 'column': 'c', 'value': 0,
+                             'color': '#fff', 'background': 'red', 'pressed_color': '#000',
+                             'pressed_background': 'green', 'highlight': False}) == []
         assert any('unknown built-in icon "jba:nope"' in e
                    for e in self._errors({'icon': 'jba:nope', 'submit': True}))
-        assert any('initial_icon' in e for e in self._errors(
-            {'icon': 'x', 'initial_icon': 'jba:bad', 'submit': True}))
+        assert any('pressed_icon' in e for e in self._errors(
+            {'icon': 'x', 'pressed_icon': 'jba:bad', 'submit': True}))
+        errs = self._errors({'icon': 'x', 'submit': True, 'pressed_color': 1, 'highlight': 'no'})
+        assert any('"pressed_color"' in e for e in errs)
+        assert any('"highlight"' in e for e in errs)
 
     def test_color_must_be_a_string(self):
         assert any('"color"' in e
@@ -748,3 +752,129 @@ def test_builtin_icon_names_match_the_frontend():
     with open(ts) as f:
         block = f.read().split('export const BUILTIN_ICONS', 1)[1].split('};', 1)[0]
     assert set(re.findall(r'^\s+(\w+):\s+\{ symbol', block, re.M)) == BUILTIN_ICONS
+
+
+
+#
+# layout containers (row / column / grid)
+#
+class TestLayout:
+
+    @staticmethod
+    def _result(form):
+        return validate_config(form_config={'form': form})
+
+    def test_valid_nesting(self):
+        r = self._result([
+            {'column': [
+                {'row': [{'button': {'icon': 'a', 'column': 'c', 'value': 1}}]},
+                {'row': {'gap': 12, 'align': 'center', 'items': [{'textbox': {'label': 'n'}}]}},
+                {'grid': {'columns': 3, 'gap': '1em', 'items': [{'checkbox': {'label': 'x'}}]}},
+            ]},
+        ])
+        assert r['valid'], r['errors']
+
+    def test_container_errors(self):
+        errs = self._result([
+            {'row': 'nope'},
+            {'grid': [{'textbox': {'label': 'a'}}]},
+            {'grid': {'columns': 0, 'items': []}},
+            {'column': {'columns': 2, 'align': 'middle', 'gap': [1], 'items': []}},
+        ])['errors']
+        for frag in ('"row" needs a list', '"grid" needs "columns"', 'at least 1',
+                     '"columns" is only for "grid"', '"align" must be', '"gap" must be'):
+            assert any(frag in e for e in errs), frag
+
+    def test_elements_inside_containers_are_validated(self):
+        errs = self._result([{'row': [{'grid': {'columns': 2, 'items': [
+            {'button': {'icon': 'jba:nope', 'submit': True}}]}}]}])['errors']
+        assert any('jba:nope' in e for e in errs)
+
+    def test_form_referenced_inside_a_row_counts(self):
+        r = validate_config(form_config={
+            'form': [{'row': [{'select': {'label': 's', 'items': [{'value': 'a', 'form': 'f'}]}}]}],
+            'dynamic_forms': {
+                'f': [{'column': [{'checkbox': {'label': 'c', 'checked_form': 'g'}}]}],
+                'g': [{'textbox': {'label': 't'}}],
+            },
+        })
+        assert r['valid'], r['errors']
+        assert not [w for w in r['warnings'] if 'never referenced' in w]
+
+    def test_flatten_layout(self):
+        from jupyter_bioacoustic._validation import flatten_layout
+        grid = {'grid': {'columns': 2, 'items': [{'textbox': {}}]}}
+        els = [{'text': 'a'}, {'row': [{'button': {}}, grid]}]
+        assert [list(e)[0] for e in flatten_layout(els)] == ['text', 'button', 'textbox']
+
+
+class TestLayoutButtonKeys:
+
+    def test_container_column_counts_for_its_buttons(self):
+        r = validate_config(form_config={'form': [{'row': {
+            'column': 'sp', 'unique': False, 'delimiter': ';',
+            'items': [{'button': {'value': 'owl', 'icon': 'o'}},
+                      {'column': [{'button': {'value': 'cat', 'icon': 'c'}}]}],
+        }}]})
+        assert r['valid'], r['errors']
+
+    def test_value_without_any_column_still_errors(self):
+        errs = validate_config(form_config={'form': [{'row': [
+            {'button': {'value': 'owl', 'icon': 'o'}}]}]})['errors']
+        assert any('needs a "column"' in e for e in errs)
+
+    def test_container_key_types(self):
+        errs = validate_config(form_config={'form': [{'row': {
+            'unique': 'yes', 'column': 3, 'delimiter': 1, 'items': []}}]})['errors']
+        for frag in ('"unique" must be true or false', '"column" must be a string',
+                     '"delimiter" must be a string'):
+            assert any(frag in e for e in errs), frag
+
+
+#
+# hot keys
+#
+class TestHotKeys:
+
+    @staticmethod
+    def _errors(form):
+        return [e for e in validate_config(form_config={'form': form})['errors']
+                if 'hot' in e.lower()]
+
+    def test_valid(self):
+        assert self._errors([
+            {'row': {'column': 'c', 'items': [
+                {'button': {'value': 1, 'icon': 'a', 'hot_key': 1, 'show_hot_key': False}},
+                {'button': {'value': 2, 'icon': 'b', 'hot_key': 'j'}},
+            ]}},
+            {'select': {'label': 's', 'items': ['owl', {'label': 'Cat', 'value': 'cat'}],
+                        'hot_keys': {1: 'owl', 'c': 'Cat'}, 'pin_hot_keys': True}},
+            {'select': {'label': 'f', 'items': {'path': 'x.csv', 'value': 'v'},
+                        'hot_keys': {1: 'anything'}}},     # file items: values not checked
+        ]) == []
+
+    def test_bad_keys_and_types(self):
+        errs = self._errors([
+            {'button': {'column': 'c', 'value': 1, 'icon': 'a', 'hot_key': 'ab',
+                        'show_hot_key': 'no'}},
+            {'select': {'label': 's', 'items': ['owl'], 'hot_keys': {' ': 'owl', 2: 'cow'},
+                        'pin_hot_keys': 1}},
+            {'multiselect': {'label': 'm', 'items': ['a'], 'hot_keys': ['a']}},
+        ])
+        for frag in ('"hot_key" must be a single character', '"show_hot_key" must be',
+                     "hot key ' ' must be", 'names "cow"', '"pin_hot_keys" must be',
+                     '"hot_keys" must map'):
+            assert any(frag in e for e in errs), frag
+
+    def test_same_key_twice_in_one_item(self):
+        errs = self._errors([{'row': [
+            {'button': {'column': 'c', 'value': 1, 'icon': 'a', 'hot_key': '1'}},
+            {'select': {'label': 's', 'items': ['owl'], 'hot_keys': {1: 'owl'}}},
+        ]}])
+        assert any('Hot key "1" is used by both' in e for e in errs)
+
+    def test_same_key_in_different_items_is_fine(self):
+        assert self._errors([
+            {'row': [{'button': {'column': 'a', 'value': 1, 'icon': 'a', 'hot_key': '1'}}]},
+            {'row': [{'button': {'column': 'b', 'value': 1, 'icon': 'b', 'hot_key': '1'}}]},
+        ]) == []
