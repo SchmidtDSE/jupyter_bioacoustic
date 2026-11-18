@@ -1,6 +1,7 @@
 /**
  * Form section: builds the form YAML — element cards (add bar, drag / move / remove), dynamic
- * forms, and the round trip to YAML. The fields inside each card are built in formCards.ts
+ * forms, row / column / grid cards that hold cards of their own (nestable), and the round trip
+ * to YAML. The fields inside each card are built in formCards.ts
  * (with formAnnotationTools.ts and formSelectItems.ts); YAML conversion is formSerialization.ts.
  *
  * License: BSD 3-Clause
@@ -12,7 +13,8 @@ import { Signal } from '@lumino/signaling';
 import { COLORS } from '../../styles';
 import { makeButton, makeInput, makeRow } from '../dom';
 import {
-  CardConfig, ElementType, deserializeElement, serializeElement,
+  CardConfig, ElementType, LAYOUT_ELEMENT_TYPES, deserializeElement, deserializeLayout,
+  serializeElement, serializeLayout,
 } from '../formSerialization';
 import { FORM_ADD_HINT } from '../text';
 import { CollapsibleSection } from './CollapsibleSection';
@@ -24,7 +26,7 @@ import { FormCardContext, buildElementFields, defaultElementConfig } from './for
 //
 /** Element types that make a following title / annotation / ... go into the ``form:`` list. */
 const USER_INPUT_TYPES: ReadonlySet<string> = new Set([
-  'select', 'multiselect', 'textbox', 'checkbox', 'number', 'button',
+  'select', 'multiselect', 'textbox', 'checkbox', 'number', 'button', 'row', 'column', 'grid',
 ]);
 /** Element types written as top-level keys when they come before any user input. */
 const TOP_LEVEL_TYPES: ReadonlySet<string> = new Set(['title', 'annotation', 'pass_value', 'fixed_value']);
@@ -35,6 +37,7 @@ const ADD_BAR_COLUMNS: ReadonlyArray<{ header: string; rows: ElementType[][] }> 
     header: 'User Input',
     rows: [['annotation', 'select', 'multiselect'], ['textbox', 'checkbox', 'number', 'button']],
   },
+  { header: 'Layout', rows: [['row', 'column'], ['grid']] },
   { header: 'Data', rows: [['pass_value'], ['fixed_value']] },
   { header: 'Navigation', rows: [['submission_buttons']] },
 ];
@@ -48,6 +51,8 @@ interface FormElement {
   type: ElementType;
   config: CardConfig;
   el: HTMLDivElement;
+  /** The cards inside a row / column / grid. */
+  children?: CardList;
 }
 
 /** A list of cards (the main form, or one dynamic form). */
@@ -132,7 +137,7 @@ export class FormSection extends CollapsibleSection {
     let seenUserInput = false;
 
     for (const elem of this._elements) {
-      const val = serializeElement(elem.type, elem.config);
+      const val = this._serializeValue(elem);
       if (elem.type === 'submission_buttons') {
         submissionButtons = val;
         continue;
@@ -150,7 +155,7 @@ export class FormSection extends CollapsibleSection {
     if (this._dynForms.length > 0) {
       const dynDict: Record<string, any[]> = {};
       for (const df of this._dynForms) {
-        dynDict[df.name] = df.elements.map(fe => ({ [fe.type]: serializeElement(fe.type, fe.config) }));
+        dynDict[df.name] = df.elements.map(fe => ({ [fe.type]: this._serializeValue(fe) }));
       }
       result.dynamic_forms = dynDict;
     }
@@ -173,11 +178,7 @@ export class FormSection extends CollapsibleSection {
     }
 
     if (Array.isArray(data.form)) {
-      for (const item of data.form) {
-        if (!item || typeof item !== 'object') continue;
-        const [type] = Object.keys(item) as ElementType[];
-        this._addElement(type, deserializeElement(type, item[type]));
-      }
+      for (const item of data.form) this._addFromYaml(item);
     } else {
       for (const key of [...USER_INPUT_TYPES] as ElementType[]) {
         if (data[key]) this._addElement(key, deserializeElement(key, data[key]));
@@ -191,26 +192,40 @@ export class FormSection extends CollapsibleSection {
     const dynForms = data.dynamic_forms;
     if (dynForms && typeof dynForms === 'object' && !Array.isArray(dynForms)) {
       for (const [name, elems] of Object.entries(dynForms)) {
-        const feList: FormElement[] = [];
-        if (Array.isArray(elems)) {
-          for (const el of elems) {
-            if (el && typeof el === 'object') {
-              const [type] = Object.keys(el) as ElementType[];
-              feList.push({ type, config: deserializeElement(type, el[type]), el: document.createElement('div') });
-            }
-          }
-        }
-        this._createDynForm(name, feList);
+        const df = this._createDynForm(name);
+        if (Array.isArray(elems)) for (const el of elems) this._addFromYaml(el, df);
       }
     }
   }
 
-  private _makeAddBar(onAdd?: (type: ElementType) => void): HTMLDivElement {
+  /** The YAML value of a card: ``serializeElement``, or a container with its items. */
+  private _serializeValue(fe: FormElement): any {
+    if (!fe.children) return serializeElement(fe.type, fe.config);
+    const items = fe.children.elements.map(c => ({ [c.type]: this._serializeValue(c) }));
+    return serializeLayout(fe.type, fe.config, items);
+  }
+
+  /** Add the card(s) for one ``{type: value}`` YAML element (a container with its items). */
+  private _addFromYaml(item: any, target?: CardList): void {
+    if (!item || typeof item !== 'object') return;
+    const [type] = Object.keys(item) as ElementType[];
+    if (LAYOUT_ELEMENT_TYPES.has(type)) {
+      const { config, items } = deserializeLayout(item[type]);
+      const fe = this._addElement(type, config, target);
+      for (const child of items) this._addFromYaml(child, fe.children);
+    } else {
+      this._addElement(type, deserializeElement(type, item[type]), target);
+    }
+  }
+
+  /** An add bar; a container's (``inContainer``) leaves out Navigation (submission buttons). */
+  private _makeAddBar(onAdd?: (type: ElementType) => void, inContainer = false): HTMLDivElement {
+    const columns = inContainer
+      ? ADD_BAR_COLUMNS.filter(c => c.header !== 'Navigation') : ADD_BAR_COLUMNS;
     const bar = document.createElement('div');
     bar.style.cssText =
-      `display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:2px 8px;padding:6px 0;` +
+      `display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:2px 8px;padding:6px 0;` +
       `border-bottom:1px solid ${COLORS.bgSurface0};margin-bottom:4px;`;
-    const columns = ADD_BAR_COLUMNS;
     const mkBtn = (t: ElementType) => {
       const btn = makeButton(`+ ${t}`);
       btn.style.fontSize = '11px';
@@ -249,17 +264,22 @@ export class FormSection extends CollapsibleSection {
     return bar;
   }
 
-  private _addElement(type: ElementType, config?: CardConfig, target?: CardList): void {
+  private _addElement(type: ElementType, config?: CardConfig, target?: CardList): FormElement {
     const cfg = config || defaultElementConfig(type);
     const tgt = target || { elements: this._elements, listEl: this._listEl };
-    const card = this._buildElementCard(type, cfg, tgt);
-    const fe: FormElement = { type, config: cfg, el: card };
+    const children = LAYOUT_ELEMENT_TYPES.has(type)
+      ? { elements: [], listEl: document.createElement('div') } : undefined;
+    const card = this._buildElementCard(type, cfg, tgt, children);
+    const fe: FormElement = { type, config: cfg, el: card, children };
     tgt.elements.push(fe);
     tgt.listEl.appendChild(card);
     this._emitChanged();
+    return fe;
   }
 
-  private _buildElementCard(type: ElementType, cfg: CardConfig, target: CardList): HTMLDivElement {
+  private _buildElementCard(
+    type: ElementType, cfg: CardConfig, target: CardList, children?: CardList,
+  ): HTMLDivElement {
     const card = document.createElement('div');
     card.draggable = true;
     card.style.cssText =
@@ -270,11 +290,13 @@ export class FormSection extends CollapsibleSection {
     card.addEventListener('click', () => this.fieldFocused.emit(type));
 
     card.addEventListener('dragstart', (e) => {
+      e.stopPropagation();             // a card inside a container: not the container
       this._dragSrcCard = card;
       card.style.opacity = '0.4';
       e.dataTransfer!.effectAllowed = 'move';
     });
-    card.addEventListener('dragend', () => {
+    card.addEventListener('dragend', (e) => {
+      e.stopPropagation();
       card.style.opacity = '1';
       this._dragSrcCard = null;
     });
@@ -322,7 +344,26 @@ export class FormSection extends CollapsibleSection {
     card.appendChild(header);
 
     buildElementFields(this._ctx, card, type, cfg);
+    if (children) card.appendChild(this._buildChildList(children));
     return card;
+  }
+
+  /** A container card's nested card list and its own add bar (containers can nest). */
+  private _buildChildList(children: CardList): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.style.cssText =
+      `display:flex;flex-direction:column;gap:6px;margin-top:4px;padding:6px 0 2px 10px;` +
+      `border-left:2px solid ${COLORS.bgSurface1};`;
+    children.listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
+    const addBar = this._makeAddBar(t => this._addElement(t, undefined, children), true);
+    addBar.style.borderBottom = 'none';
+    addBar.style.paddingBottom = '0';
+    // a drag over the child list must not reach the container card itself
+    for (const ev of ['dragover', 'drop'] as const) {
+      wrap.addEventListener(ev, e => e.stopPropagation());
+    }
+    wrap.append(children.listEl, addBar);
+    return wrap;
   }
 
   private _promptAddDynForm(): void {
@@ -372,7 +413,8 @@ export class FormSection extends CollapsibleSection {
     inp.focus();
   }
 
-  private _createDynForm(name: string, elements?: FormElement[]): void {
+  /** Add an empty named dynamic form (its cards are added to the returned list). */
+  private _createDynForm(name: string): DynForm {
     const container = document.createElement('div');
     container.style.cssText =
       `background:${COLORS.bgMantle};border:1px solid ${COLORS.bgSurface1};border-radius:6px;` +
@@ -431,13 +473,7 @@ export class FormSection extends CollapsibleSection {
     listEl.style.cssText = `display:flex;flex-direction:column;gap:6px;`;
     container.appendChild(listEl);
 
-    const df: DynForm = { name, elements: elements || [], el: container, listEl };
-
-    for (const fe of df.elements) {
-      const card = this._buildElementCard(fe.type, fe.config, df);
-      fe.el = card;
-      listEl.appendChild(card);
-    }
+    const df: DynForm = { name, elements: [], el: container, listEl };
 
     const addBar = this._makeAddBar((type) => this._addElement(type, undefined, df));
     addBar.style.borderBottom = 'none';
@@ -447,6 +483,7 @@ export class FormSection extends CollapsibleSection {
     this._dynForms.push(df);
     this._dynFormsContainer.appendChild(container);
     requestAnimationFrame(() => container.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    return df;
   }
 
   private _moveElement(card: HTMLDivElement, direction: number, target: CardList): void {
