@@ -86,10 +86,8 @@ export function parseLayout(type: string, raw: any): Layout | null {
 
 /** Inline CSS for a layout container. */
 export function layoutStyle(layout: Layout): string {
-  // start-aligned containers hug their content (so the keyboard-focus outline does too);
-  // centered / right-aligned rows need the full width to align in
-  const hug = layout.align === 'start' || layout.kind !== 'row' ? 'align-self:flex-start;' : '';
-  const gap = `${hug}gap:${cssSize(layout.gap)};`;
+  // containers fill the form's width: a click beside their items still lands on them
+  const gap = `gap:${cssSize(layout.gap)};`;
   const align = FLEX_ALIGN[layout.align];
   if (layout.kind === 'grid') {
     return (
