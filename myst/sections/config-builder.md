@@ -126,6 +126,7 @@ Widget layout and behavior:
 
 Build the annotation interface interactively:
 
+- **Side form** — put the form beside the spectrogram (`side_form`) and set the split (`side_form_split`)
 - **Add elements** — click `+ select`, `+ textbox`, `+ checkbox`, `+ number`, `+ button`, `+ annotation`, or other element types
 - **Configure each element** — set label, output column, items, validation, and other options per-type
 - **Buttons** — icon (text, symbol or `jba:` built-in) or image, column / value / submit, colours and pressed look, size, hot key, and toggle states (`+ state`)
