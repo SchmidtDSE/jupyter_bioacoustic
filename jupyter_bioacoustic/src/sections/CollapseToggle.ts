@@ -40,7 +40,8 @@ export class CollapseToggle {
     this.element.style.cssText =
       // min-height: the chevron has line-height 0, so without it an untitled toggle has no
       // height (hard to hit, and invisible to focus rings)
-      `display:inline-flex;align-items:center;gap:4px;flex-shrink:0;padding:0 4px 0 0;min-height:16px;` +
+      `display:inline-flex;align-items:center;gap:4px;flex-shrink:0;padding:0 4px 0 0;` +
+      `min-height:16px;` +
       `background:none;border:none;cursor:pointer;color:${COLORS.textPrimary};` +
       `font-size:12px;font-weight:700;letter-spacing:0.5px;font-family:inherit;`;
 
