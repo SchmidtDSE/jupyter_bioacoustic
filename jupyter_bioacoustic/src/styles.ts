@@ -211,6 +211,19 @@ export function injectGlobalStyles(): void {
       outline-offset: 4px;
     }
     .jp-BA-section-focus:focus-visible { outline: 2px solid ${COLORS.blue} !important; outline-offset: -2px; }
+    /* Side form (side_form: true): the draggable divider, and the collapsed form's narrow
+       strip — only the toggle and the title, running vertically. */
+    .jp-BA-side-divider { cursor: col-resize; background: ${COLORS.bgSurface0}; }
+    .jp-BA-side-divider:hover, .jp-BA-side-divider.jp-BA-dragging { background: ${COLORS.blue}; }
+    .jp-BA-side-form.jp-BA-form-collapsed { padding: 8px 4px !important; }
+    .jp-BA-side-form.jp-BA-form-collapsed [data-collapse-keep] {
+      flex-direction: column !important; align-items: center !important; gap: 8px; width: auto;
+      background: none !important; box-shadow: none !important;
+    }
+    .jp-BA-side-form.jp-BA-form-collapsed [data-collapse-keep] > :not([data-collapse-toggle]):not([data-form-title-text]) {
+      display: none !important;
+    }
+    .jp-BA-side-form.jp-BA-form-collapsed [data-form-title-text] { writing-mode: vertical-rl; }
     /* A collapsed form shows only the row holding its toggle ([data-collapse-keep]). */
     .jp-BA-collapsed > :not([data-collapse-keep]) { display: none !important; }
     .jp-BA-filter-input::placeholder {
