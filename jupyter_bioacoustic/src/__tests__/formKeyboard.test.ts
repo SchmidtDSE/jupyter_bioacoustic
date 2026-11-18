@@ -208,3 +208,44 @@ describe('form keyboard navigation', () => {
     expect(document.activeElement!.tagName).toBe('INPUT');
   });
 });
+
+
+describe('form items: click focus and title templates', () => {
+  it('a row is focusable by mouse (tabindex -1): focusing it highlights it', async () => {
+    const p = await panel({ form: [{ row: { column: 'v', items: [btn('a'), btn('b')] } }] });
+    const row = p.element.querySelector('.jp-BA-layout') as HTMLElement;
+    expect(row.tabIndex).toBe(-1);
+    row.focus();                                  // what a click beside the buttons does
+    expect(row.classList.contains('jp-BA-item-focus')).toBe(true);
+  });
+
+  it('a title with [[column]] is filled in for each clip', async () => {
+    const p = await panel({ title: { value: 'REVIEW [[name]]', progress_tracker: true },
+                            form: [{ textbox: { label: 'n' } }] });
+    p.updateFromRow({ ...ROWS[0], name: 'Tree Swallow' } as any);
+    const title = p.element.querySelector('[data-form-title-text]')!;
+    expect(title.textContent).toBe('REVIEW Tree Swallow');
+    p.updateFromRow({ ...ROWS[1], name: 'Song Sparrow' } as any);
+    expect(title.textContent).toBe('REVIEW Song Sparrow');
+  });
+});
+
+
+describe('submission_buttons: false', () => {
+  it('no Prev / Skip / Submit row; a submit button still submits', async () => {
+    const k = fakeKernel();
+    const p = await panel({
+      submission_buttons: false,
+      form: [{ row: { column: 'v', items: [btn('yes', { submit: true })] } }],
+    }, k.kernel);
+    expect(p.element.querySelector('[data-form-buttons]')).toBeNull();
+    (p.element.querySelector('.jp-BA-layout button') as HTMLButtonElement).click();
+    await flush();
+    expect(k.writes).toHaveLength(1);
+  });
+
+  it('omitted: the default Submit row', async () => {
+    const p = await panel({ form: [{ textbox: { label: 'n' } }] });
+    expect(p.element.querySelector('[data-form-buttons]')!.textContent).toContain('Submit');
+  });
+});
