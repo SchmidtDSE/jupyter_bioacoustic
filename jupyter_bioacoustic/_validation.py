@@ -85,6 +85,13 @@ ALL_ANNOTATION_FIELDS = frozenset({
     'start_time', 'end_time', 'min_frequency', 'max_frequency'
 })
 
+# Marks a select item as the default (``selected::owl``)
+SELECTED_PREFIX = 'selected::'
+
+# Layout containers (form elements that hold other elements)
+LAYOUT_TYPES = frozenset({'row', 'column', 'grid'})
+_LAYOUT_ALIGNS = ('start', 'center', 'end')
+
 # Built-in button icons (``icon: jba:check``); keep in sync with src/sections/form/buttons.ts
 BUILTIN_ICON_PREFIX = 'jba:'
 BUILTIN_ICONS = frozenset({
@@ -149,6 +156,27 @@ def validate_config(
         'errors': errors,
         'warnings': warns,
     }
+
+
+def flatten_layout(elements: list[Any]) -> list[Any]:
+    """Return ``elements`` with every row / column / grid replaced by its items, recursively.
+
+    Args:
+        elements: A list of ``{type: config}`` form elements.
+
+    Returns:
+        The elements without layout containers, in order.
+    """
+    out: list[Any] = []
+    for el in elements:
+        if isinstance(el, dict) and len(el) == 1:
+            (etype, ecfg), = el.items()
+            items = _layout_items(ecfg) if etype in LAYOUT_TYPES else None
+            if isinstance(items, list):
+                out.extend(flatten_layout(items))
+                continue
+        out.append(el)
+    return out
 
 
 #
@@ -325,8 +353,11 @@ def _validate_forms_and_annotations(
 
     for ms in _collect_elements(fc, 'multiselect'):
         _validate_multiselect(ms, errors, warns)
-    for btn in _collect_elements(fc, 'button'):
+    for btn in _collect_buttons(fc):
         _validate_button(btn, errors)
+    for etype, cfg in _collect_layouts(fc):
+        _validate_layout(etype, cfg, errors)
+    _validate_hot_keys(fc, errors)
 
     for f in sorted(missing_forms):
         errors.append(
@@ -464,7 +495,7 @@ def _scan_elements(elements: Any, referenced_forms: set[str]) -> None:
     """
     if not isinstance(elements, list):
         return
-    for el in elements:
+    for el in flatten_layout(elements):
         if not isinstance(el, dict):
             continue
         for etype, ecfg in el.items():
@@ -476,6 +507,148 @@ def _scan_elements(elements: Any, referenced_forms: set[str]) -> None:
                 for fkey in ('checked_form', 'unchecked_form'):
                     if ecfg.get(fkey):
                         referenced_forms.add(ecfg[fkey])
+
+
+def _form_sections(fc: dict) -> list[Any]:
+    """Return the form's element lists: ``form`` and each dynamic form.
+
+    Args:
+        fc: The form configuration dict.
+
+    Returns:
+        The raw sections (lists, or ``{type: config}`` mappings), in order.
+    """
+    sections: list[Any] = [fc.get('form')]
+    dyn = fc.get('dynamic_forms')
+    if isinstance(dyn, dict):
+        sections.extend(dyn.values())
+    elif isinstance(dyn, list):              # legacy: a list of {name: elements}
+        for item in dyn:
+            if isinstance(item, dict):
+                sections.extend(item.values())
+    return sections
+
+
+def _collect_layouts(fc: dict) -> list[tuple[str, Any]]:
+    """Return every ``(type, config)`` row / column / grid in the form, nested ones too.
+
+    Args:
+        fc: The form configuration dict.
+
+    Returns:
+        The containers, outermost first.
+    """
+    found: list[tuple[str, Any]] = []
+
+    def walk(elements: Any) -> None:
+        """Add the containers among ``elements`` and inside them.
+
+        Args:
+            elements: A list of ``{type: config}`` dicts (ignored otherwise).
+        """
+        if not isinstance(elements, list):
+            return
+        for el in elements:
+            if not isinstance(el, dict):
+                continue
+            for etype, ecfg in el.items():
+                if etype in LAYOUT_TYPES:
+                    found.append((etype, ecfg))
+                    walk(_layout_items(ecfg))
+
+    for section in _form_sections(fc):
+        walk(section)
+    return found
+
+
+def _validate_layout(etype: str, cfg: Any, errors: list[str]) -> None:
+    """Validate one row / column / grid container.
+
+    Args:
+        etype: ``'row'``, ``'column'`` or ``'grid'``.
+        cfg: Its config: a list of elements, or ``{items, gap, align, columns}``.
+        errors: List that error messages are appended to.
+    """
+    if not isinstance(cfg, (list, dict)) or not isinstance(_layout_items(cfg), list):
+        errors.append(f'"{etype}" needs a list of elements (or "items: [...]")')
+        return
+    if not isinstance(cfg, dict):
+        if etype == 'grid':
+            errors.append('"grid" needs "columns" and "items" (e.g. {columns: 3, items: [...]})')
+        return
+    if etype == 'grid':
+        cols = cfg.get('columns')
+        if isinstance(cols, bool) or not isinstance(cols, int) or cols < 1:
+            errors.append('"grid": "columns" must be a whole number of at least 1')
+    elif 'columns' in cfg:
+        errors.append(f'"{etype}": "columns" is only for "grid"')
+    if 'align' in cfg and cfg['align'] not in _LAYOUT_ALIGNS:
+        errors.append(f'"{etype}": "align" must be one of {", ".join(_LAYOUT_ALIGNS)}')
+    gap = cfg.get('gap')
+    if gap is not None and (isinstance(gap, bool) or not isinstance(gap, (int, float, str))):
+        errors.append(f'"{etype}": "gap" must be a number (px) or a CSS size')
+    if 'unique' in cfg and not isinstance(cfg['unique'], bool):
+        errors.append(f'"{etype}": "unique" must be true or false')
+    for key in ('column', 'delimiter'):
+        if key in cfg and not isinstance(cfg[key], str):
+            errors.append(f'"{etype}": "{key}" must be a string')
+
+
+def _collect_buttons(fc: dict) -> list[dict]:
+    """Return every button config, with the ``column`` of its row / column / grid filled in.
+
+    A button without its own ``column`` takes the nearest enclosing container's.
+
+    Args:
+        fc: The form configuration dict.
+
+    Returns:
+        The button configs (copies when a column was filled in), in order.
+    """
+    found: list[dict] = []
+
+    def walk(elements: Any, column: Any) -> None:
+        """Add the buttons among ``elements`` (and inside containers).
+
+        Args:
+            elements: A list of ``{type: config}`` dicts, or a ``{type: config}`` mapping.
+            column: The enclosing container's ``column`` (None outside one).
+        """
+        if isinstance(elements, dict):
+            elements = [{k: v} for k, v in elements.items()]
+        if not isinstance(elements, list):
+            return
+        for el in elements:
+            if not isinstance(el, dict):
+                continue
+            for etype, ecfg in el.items():
+                if etype in LAYOUT_TYPES:
+                    inner = ecfg.get('column', column) if isinstance(ecfg, dict) else column
+                    walk(_layout_items(ecfg), inner)
+                elif etype == 'button' and isinstance(ecfg, dict):
+                    has_own = ecfg.get('column') not in (None, '')
+                    found.append(ecfg if has_own or column is None else {**ecfg, 'column': column})
+
+    if isinstance(fc.get('button'), dict):
+        found.append(fc['button'])
+    for section in _form_sections(fc):
+        walk(section, None)
+    return found
+
+
+def _layout_items(cfg: Any) -> Any:
+    """Return a container's elements: the list itself, or its ``items``.
+
+    Args:
+        cfg: A row / column / grid config.
+
+    Returns:
+        The elements (a list when well-formed; a mapping is converted to one).
+    """
+    items = cfg.get('items') if isinstance(cfg, dict) else cfg
+    if isinstance(items, dict):
+        items = [{k: v} for k, v in items.items()]
+    return items
 
 
 def _collect_elements(fc: dict, etype: str) -> list[dict]:
@@ -500,7 +673,7 @@ def _collect_elements(fc: dict, etype: str) -> list[dict]:
             elements = [{k: v} for k, v in elements.items()]
         if not isinstance(elements, list):
             return
-        for el in elements:
+        for el in flatten_layout(elements):
             if isinstance(el, dict) and isinstance(el.get(etype), dict):
                 found.append(el[etype])
 
@@ -517,6 +690,141 @@ def _collect_elements(fc: dict, etype: str) -> list[dict]:
                 for section in item.values():
                     scan(section)
     return found
+
+
+def _validate_hot_keys(fc: dict, errors: list[str]) -> None:
+    """Validate hot keys: button ``hot_key`` and (multi)select ``hot_keys`` / ``pin_hot_keys``.
+
+    Keys must be one character (not a space). A select's hot key must name one of its listed
+    items (by value or label; file-backed items aren't checked). A key may be used once per
+    top-level form item (an element, or a whole row / column / grid), since that is where
+    hot keys apply.
+
+    Args:
+        fc: The form configuration dict.
+        errors: List that error messages are appended to.
+    """
+    for section in _form_sections(fc):
+        if isinstance(section, dict):
+            section = [{k: v} for k, v in section.items()]
+        if not isinstance(section, list):
+            continue
+        for top in section:
+            if not isinstance(top, dict):
+                continue
+            seen: dict[str, str] = {}
+            for etype, cfg in _walk_elements([top]):
+                for key, where in _element_hot_keys(etype, cfg, errors):
+                    if key in seen:
+                        errors.append(
+                            f'Hot key "{key}" is used by both {seen[key]} and {where} in the '
+                            f'same form item (row / column / grid)'
+                        )
+                    else:
+                        seen[key] = where
+
+
+def _walk_elements(elements: list[Any]) -> list[tuple[str, Any]]:
+    """Return every ``(type, config)`` among ``elements``, inside containers too.
+
+    Args:
+        elements: A list of ``{type: config}`` form elements.
+
+    Returns:
+        The elements (containers themselves excluded), in order.
+    """
+    out: list[tuple[str, Any]] = []
+    for el in flatten_layout(elements):
+        if isinstance(el, dict):
+            out.extend(el.items())
+    return out
+
+
+def _element_hot_keys(etype: str, cfg: Any, errors: list[str]) -> list[tuple[str, str]]:
+    """Return an element's valid hot keys as ``(key, description)``; report bad ones.
+
+    Args:
+        etype: The element type.
+        cfg: Its config.
+        errors: List that error messages are appended to.
+
+    Returns:
+        The element's hot keys.
+    """
+    if not isinstance(cfg, dict):
+        return []
+    name = cfg.get('label') or cfg.get('column') or cfg.get('icon') or etype
+    where = f'{etype} "{name}"'
+    out: list[tuple[str, str]] = []
+    if etype == 'button':
+        if 'show_hot_key' in cfg and not isinstance(cfg['show_hot_key'], bool):
+            errors.append(f'{where}: "show_hot_key" must be true or false')
+        if 'hot_key' in cfg:
+            key = _hot_key(cfg['hot_key'])
+            if key is None:
+                errors.append(f'{where}: "hot_key" must be a single character (not a space)')
+            else:
+                out.append((key, where))
+    elif etype in ('select', 'multiselect') and ('hot_keys' in cfg or 'pin_hot_keys' in cfg):
+        if 'pin_hot_keys' in cfg and not isinstance(cfg['pin_hot_keys'], bool):
+            errors.append(f'{where}: "pin_hot_keys" must be true or false')
+        hot = cfg.get('hot_keys')
+        if not isinstance(hot, dict):
+            if hot is not None:
+                errors.append(
+                    f'{where}: "hot_keys" must map keys to item values (e.g. {{1: owl}})',
+                )
+            return out
+        known = _listed_item_names(cfg.get('items'))
+        for raw_key, value in hot.items():
+            key = _hot_key(raw_key)
+            if key is None:
+                errors.append(
+                    f'{where}: hot key {raw_key!r} must be a single character (not a space)',
+                )
+                continue
+            if known is not None and str(value) not in known:
+                errors.append(
+                    f'{where}: hot key "{key}" names "{value}", which is not one of its items',
+                )
+            out.append((key, where))
+    return out
+
+
+def _hot_key(raw: Any) -> Optional[str]:
+    """Return a hot key as a one-character string, or None when it isn't one.
+
+    Args:
+        raw: The configured key (YAML may give an int for ``1``).
+
+    Returns:
+        The key, or None.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    key = str(raw)
+    return key if len(key) == 1 and key != ' ' else None
+
+
+def _listed_item_names(items: Any) -> Optional[set[str]]:
+    """Return the values and labels of a select's literal ``items`` list.
+
+    Args:
+        items: The ``items`` config.
+
+    Returns:
+        The names, or None when the items come from elsewhere (a file, a range...).
+    """
+    listed = items.get('items') if isinstance(items, dict) and 'path' not in items else items
+    if not isinstance(listed, list):
+        return None
+    names: set[str] = set()
+    for it in listed:
+        if isinstance(it, dict):
+            names.update(str(it[k]) for k in ('value', 'label') if it.get(k) is not None)
+        elif it is not None:
+            names.add(str(it).removeprefix(SELECTED_PREFIX))
+    return names
 
 
 def _validate_multiselect(ms: dict, errors: list[str], warns: list[str]) -> None:
@@ -571,15 +879,17 @@ def _validate_button(btn: dict, errors: list[str]) -> None:
     name = btn.get('label') or btn.get('column') or btn.get('icon') or 'button'
     prefix = f'Button "{name}"'
     has_column = btn.get('column') not in (None, '')
-    for key in ('icon', 'initial_icon'):
+    for key in ('icon', 'pressed_icon'):
         _check_builtin_icon(btn.get(key), f'{prefix} {key}', errors)
     for key in ('size', 'width', 'height'):
         val = btn.get(key)
         if val is not None and (isinstance(val, bool) or not isinstance(val, (int, float, str))):
             errors.append(f'{prefix}: "{key}" must be a number (px) or a CSS size')
-    for key in ('color', 'background'):
+    for key in ('color', 'background', 'pressed_color', 'pressed_background'):
         if key in btn and not isinstance(btn[key], str):
             errors.append(f'{prefix}: "{key}" must be a CSS color string')
+    if 'highlight' in btn and not isinstance(btn['highlight'], bool):
+        errors.append(f'{prefix}: "highlight" must be true or false')
 
     if 'toggle' in btn:
         _validate_toggle(btn, prefix, has_column, errors)
