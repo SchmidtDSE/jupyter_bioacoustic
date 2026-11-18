@@ -52,6 +52,11 @@ export const DISPLAY_CHIP_COLORS = [
   COLORS.green, COLORS.mauve, COLORS.peach, COLORS.sky, COLORS.red,
 ];
 
+/** Background of the keyboard-focused form item (a slight grey). */
+const ITEM_FOCUS_BG = 'rgba(205, 214, 244, 0.14)';
+/** A faint 1px edge around that background. */
+const ITEM_FOCUS_EDGE = 'rgba(205, 214, 244, 0.28)';
+
 /** Id of the injected global ``<style>`` element. */
 const GLOBAL_STYLE_ID = 'jp-bioacoustic-global-styles';
 
@@ -193,6 +198,19 @@ export function injectGlobalStyles(): void {
   styleEl.id = GLOBAL_STYLE_ID;
   styleEl.textContent = `
     .jp-BA-chip-dismiss:hover { color: ${COLORS.red}; }
+    /* Form text / titles inside a row or grid size to their content (not the full width). */
+    .jp-BA-layout-row > div:not(.jp-BA-layout):not([data-form-line]),
+    .jp-BA-layout-grid > div:not(.jp-BA-layout):not([data-form-line]) { width: auto !important; }
+    /* Keyboard focus: the focused form item, and a focused clip table / spectrogram. */
+    .jp-BA-item-focus {
+      border-radius: 4px;
+      background: ${ITEM_FOCUS_BG};
+      /* the grey extends 4px past the item; a faint 1px edge sits just outside it */
+      box-shadow: 0 0 0 4px ${ITEM_FOCUS_BG};
+      outline: 1px solid ${ITEM_FOCUS_EDGE} !important;
+      outline-offset: 4px;
+    }
+    .jp-BA-section-focus:focus-visible { outline: 2px solid ${COLORS.blue} !important; outline-offset: -2px; }
     /* A collapsed form shows only the row holding its toggle ([data-collapse-keep]). */
     .jp-BA-collapsed > :not([data-collapse-keep]) { display: none !important; }
     .jp-BA-filter-input::placeholder {
