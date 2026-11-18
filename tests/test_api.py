@@ -858,6 +858,11 @@ class TestAnnotatorLayoutOptions:
         hidden = self._ba(info_card_height=50, hide_info_card=True)
         assert shown._inline_height_px() - hidden._inline_height_px() == 50 - 34
 
+    def test_side_form_adds_no_height(self):
+        no_form = self._ba()
+        side = self._ba(form_config={'side_form': True, 'title': 'T'}, form_panel_height=100)
+        assert side._inline_height_px() == no_form._inline_height_px()
+
     def test_form_adds_only_its_panel(self):
         no_form = self._ba()
         with_form = self._ba(form_config={'title': 'T'}, form_panel_height=100)
