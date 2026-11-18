@@ -1,25 +1,25 @@
 # Base form for layout-and-buttons.ipynb: a quick model review with buttons.
-#   - is_valid: radio-style buttons (built-in icons)
-#   - call_type: a 3-state toggle
-#   - flag: a one-click "flag and submit" button
+#   - row 1, is_valid: radio-style buttons (built-in icons)
+#   - row 2, call_type: a 3-state toggle; flag: a one-click "flag and submit" button
 title:
   value: QUICK REVIEW
   progress_tracker: true
 form:
-- text: Is this [[common_name]]?
-- button: {column: is_valid, value: 'yes', icon: 'jba:check', label: valid, required: true}
-- button: {column: is_valid, value: 'no', icon: 'jba:x', label: not valid}
-- button: {column: is_valid, value: unsure, icon: 'jba:unsure', label: can't tell}
-- line: true
-- text: 'call type (click to cycle):'
-- button:
-    column: call_type
-    toggle:
-    - {value: song, icon: S, label: song}
-    - {value: call, icon: C, label: call}
-    - {value: other, icon: '?', label: other}
-- line: true
-- button: {column: flagged, value: true, icon: 'jba:flag', label: flag + submit, submit: true}
+- row:
+  - text: Is this [[common_name]]?
+  - button: {column: is_valid, value: 'yes', icon: 'jba:check', label: valid, required: true}
+  - button: {column: is_valid, value: 'no', icon: 'jba:x', label: not valid}
+  - button: {column: is_valid, value: unsure, icon: 'jba:unsure', label: can't tell}
+- row:
+  - text: 'call type (click to cycle):'
+  - button:
+      column: call_type
+      toggle:
+      - {value: song, icon: S, label: song}
+      - {value: call, icon: C, label: call}
+      - {value: other, icon: '?', label: other}
+  - text: 'flag + submit:'
+  - button: {column: flagged, value: true, icon: 'jba:flag', label: flag + submit, submit: true}
 submission_buttons:
   next:
     label: Skip
