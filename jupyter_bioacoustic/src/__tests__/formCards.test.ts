@@ -150,3 +150,64 @@ describe('formCards', () => {
     expect(card.textContent).not.toContain('id column');
   });
 });
+
+
+describe('formCards: hot keys, button switches, layout options', () => {
+  const card = () => document.createElement('div');
+
+  it('select hot keys: rows become hot_keys; empty rows are left out; pin checkbox', () => {
+    const ctx = fakeCtx();
+    const cfg = defaultElementConfig('select');
+    const el = card();
+    buildElementFields(ctx, el, 'select', cfg);
+    const add = [...el.querySelectorAll('button')].find(b => b.textContent === '+ hot key')!;
+    add.click();
+    add.click();
+    const keys = el.querySelectorAll<HTMLInputElement>('input[placeholder="key"]');
+    const values = el.querySelectorAll<HTMLInputElement>('input[placeholder="item value"]');
+    type(keys[0], '1');
+    type(values[0], 'owl');
+    expect(cfg.hot_keys).toEqual({ 1: 'owl' });          // the second row is still empty
+    const pin = [...el.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]
+      .find(i => i.parentElement!.textContent!.includes('pin hot-keyed'))!;
+    pin.checked = true;
+    pin.dispatchEvent(new Event('change'));
+    expect(cfg.pin_hot_keys).toBe(true);
+    type(values[0], '');
+    expect(cfg.hot_keys).toBeUndefined();
+  });
+
+  it('button show_hot_key / highlight: on by default, unchecking writes false', () => {
+    const ctx = fakeCtx();
+    const cfg = defaultElementConfig('button');
+    const el = card();
+    buildElementFields(ctx, el, 'button', cfg);
+    const box = (text: string) => [...el.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]
+      .find(i => i.parentElement!.textContent!.includes(text))!;
+    expect(box('show hot key badge').checked).toBe(true);
+    box('pressed ring').checked = false;
+    box('pressed ring').dispatchEvent(new Event('change'));
+    expect(cfg.highlight).toBe(false);
+    box('pressed ring').checked = true;
+    box('pressed ring').dispatchEvent(new Event('change'));
+    expect('highlight' in cfg).toBe(false);
+  });
+
+  it('layout options: grid columns, align, unique, button column', () => {
+    const ctx = fakeCtx();
+    const cfg = defaultElementConfig('grid');
+    expect(cfg).toEqual({ columns: 2 });
+    const el = card();
+    buildElementFields(ctx, el, 'grid', cfg);
+    const [align, unique] = [...el.querySelectorAll('select')];
+    align.value = 'center';
+    align.dispatchEvent(new Event('change'));
+    unique.value = 'false';
+    unique.dispatchEvent(new Event('change'));
+    type(el.querySelector<HTMLInputElement>('input[placeholder="column (for buttons inside)"]')!, 'tags');
+    expect(cfg).toMatchObject({ columns: 2, align: 'center', unique: false, column: 'tags' });
+    unique.value = '(per column)';
+    unique.dispatchEvent(new Event('change'));
+    expect('unique' in cfg).toBe(false);
+  });
+});
