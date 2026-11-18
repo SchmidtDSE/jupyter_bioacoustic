@@ -61,7 +61,7 @@ describe('parseFormButton', () => {
   it('defaults to a 25px square, no column, no submit', () => {
     const b = parseFormButton({ icon: 'go', submit: true });
     expect(b).toMatchObject({
-      column: null, submit: true, toggle: null, initialFace: null, hasInitialValue: false,
+      column: null, submit: true, toggle: null, hasOwnFace: true, highlight: true, hasInitialValue: false,
       width: DEFAULT_BUTTON_SIZE, height: DEFAULT_BUTTON_SIZE,
     });
     expect(b.face.icon).toBe('go');
@@ -90,10 +90,23 @@ describe('parseFormButton', () => {
     expect(builtinIcon('check')).toBeNull();
   });
 
-  it('reads initial_value (even null) and initial_icon', () => {
-    const b = parseFormButton({ icon: 'jba:check', initial_icon: 'jba:unchecked', initial_value: null });
-    expect(b.hasInitialValue).toBe(true);
-    expect(b.initialFace?.icon).toBe(BUILTIN_ICONS.unchecked.symbol);
+  it('reads initial_value (even null)', () => {
+    expect(parseFormButton({ icon: 'x', initial_value: null }).hasInitialValue).toBe(true);
+  });
+
+  it('pressed_* keys make the pressed look; the rest falls back to the normal look', () => {
+    const plain = parseFormButton({ icon: 'A', color: '#111' });
+    expect(plain.pressedFace).toEqual(plain.face);
+    const bg = parseFormButton({ icon: 'A', color: '#111', pressed_background: '#0f0' }).pressedFace;
+    expect(bg).toMatchObject({ icon: 'A', color: '#111', background: '#0f0' });
+    const swap = parseFormButton({ icon: 'jba:unchecked', pressed_icon: 'jba:checked' }).pressedFace;
+    expect(swap).toMatchObject({
+      icon: BUILTIN_ICONS.checked.symbol, background: BUILTIN_ICONS.checked.background,
+    });
+    const text = parseFormButton({ icon: 'off', background: '#222', pressed_icon: 'on' }).pressedFace;
+    expect(text).toMatchObject({ icon: 'on', background: '#222' });
+    expect(parseFormButton({ image: 'a.png', pressed_image: 'b.png' }).pressedFace.image).toBe('b.png');
+    expect(parseFormButton({ icon: 'x', highlight: false }).highlight).toBe(false);
   });
 
   it('a toggle reads its states; states inherit the button colours; no submit', () => {
@@ -113,7 +126,7 @@ describe('parseFormButton', () => {
       .toEqual({ index: 1, value: 0 });
     expect(toggleStart(parseFormButton({ toggle: states, initial_value: null })))
       .toEqual({ index: -1, value: null });
-    expect(toggleStart(parseFormButton({ toggle: states, initial_icon: '?' })))
+    expect(toggleStart(parseFormButton({ toggle: states, icon: '?' })))
       .toEqual({ index: -1, value: null });
   });
 
@@ -133,7 +146,8 @@ describe('parseFormButton', () => {
     const css = formButtonStyle(spec, spec.face);
     expect(css).toContain('width:25px;height:25px;');
     expect(css).toContain(`background:${BUILTIN_ICONS.check.background}`);
-    expect(formButtonStyle(spec, spec.face, { selected: true })).not.toEqual(css);
+    expect(formButtonStyle(spec, spec.face, { pressed: true })).toContain('box-shadow:0 0 0 2px #ffffff');
+    expect(formButtonStyle(spec, spec.face, { faded: true })).toContain('opacity:0.5');
     expect(formButtonStyle(spec, spec.face, { dimmed: true })).toContain('opacity:0.45');
   });
 });
@@ -153,8 +167,10 @@ describe('FormPanel button element', () => {
     expect(p.getFormValue('call')).toBe('yes');
     no.click();
     expect(p.getFormValue('call')).toBe('no');
-    expect(no.style.borderColor).not.toBe('transparent');
-    expect(yes.style.borderColor).toBe('transparent');
+    expect(no.getAttribute('aria-pressed')).toBe('true');
+    expect(no.style.boxShadow).not.toBe('');
+    expect(yes.getAttribute('aria-pressed')).toBe('false');
+    expect(yes.style.opacity).toBe('0.5');               // faded: another in its group is pressed
     no.click();                                        // clicking the selected one clears it
     expect(p.getFormValue('call')).toBeNull();
   });
@@ -223,9 +239,9 @@ describe('FormPanel button element', () => {
       expect(p.getFormValue('call')).toBe('unknown');
     });
 
-  it('initial_icon shows until the button is selected', async () => {
+  it('pressed_icon shows while the button is pressed', async () => {
     const p = await panel(fakeKernel().kernel, {
-      form: [{ button: { column: 'ok', value: 1, icon: 'jba:checked', initial_icon: 'jba:unchecked' } }],
+      form: [{ button: { column: 'ok', value: 1, icon: 'jba:unchecked', pressed_icon: 'jba:checked' } }],
     });
     const [btn] = formButtons(p);
     expect(btn.textContent).toBe('☐');
@@ -252,6 +268,16 @@ describe('FormPanel button element', () => {
     btn.click();
     p.updateFromRow(ROWS[1]);
     expect(p.getFormValue('call')).toBe('yes');
+  });
+
+  it('a toggle with its own icon starts unset showing it', async () => {
+    const p = await panel(fakeKernel().kernel, {
+      form: [{ button: { column: 't', icon: 'jba:na', toggle: [{ value: 1, icon: 'a' }, { value: 0, icon: 'b' }] } }],
+    });
+    const [btn] = formButtons(p);
+    expect([btn.textContent, p.getFormValue('t'), btn.style.opacity]).toEqual(['∅', null, '1']);
+    btn.click();
+    expect([btn.textContent, p.getFormValue('t')]).toEqual(['a', 1]);
   });
 
   it('a toggle with initial_value null starts unset (dimmed), then goes to its first state',
@@ -336,13 +362,18 @@ describe('FormPanel collapse', () => {
     expect(toggle.parentElement!.dataset.formHeading).toBe('');
   });
 
-  it('without a title the toggle goes in the button row', async () => {
+  it('without a title the toggle gets a slim row of its own at the top', async () => {
     const p = await panel(fakeKernel().kernel, { form: [{ textbox: { label: 'notes' } }] });
-    const toggle = toggleEl();
+    const toggle = document.createElement('button');
+    toggle.dataset.collapseToggle = '';
     p.setLeading(toggle);
     await p.build();
-    expect(toggle.parentElement!.dataset.formButtons).toBe('');
-    expect(toggle.parentElement!.firstElementChild).toBe(toggle);
+    const row = toggle.parentElement!;
+    expect(row.dataset.formToggleRow).toBe('');
+    expect(row.dataset.collapseKeep).toBe('');
+    expect(row.parentElement!.firstElementChild).toBe(row);
+    expect(row.style.height).toBe('12px');
+    expect(p.element.querySelectorAll('[data-form-toggle-row]')).toHaveLength(1);
   });
 
   it('Enter on a focused form button clicks it (does not submit)', async () => {
@@ -399,5 +430,93 @@ describe('FormPanel collapse', () => {
     toggle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await flush();
     expect(k.writes).toHaveLength(0);
+  });
+});
+
+
+describe('button groups from row / column / grid', () => {
+  const b = (value: any, extra: any = {}) => ({ button: { value, icon: String(value), ...extra } });
+
+  it('a container column passes on to its buttons (unique by default)', async () => {
+    const p = await panel(fakeKernel().kernel, { form: [{ row: { column: 'sp', items: [b('owl'), b('cat')] } }] });
+    const [owl, cat] = formButtons(p);
+    owl.click();
+    cat.click();
+    expect(p.getFormValue('sp')).toBe('cat');
+    expect(owl.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('unique: false on a shared column joins the pressed values (button order, delimiter)', async () => {
+    const p = await panel(fakeKernel().kernel, { form: [{ grid: {
+      columns: 3, column: 'tags', unique: false, delimiter: ';', items: [b('a'), b('b'), b('c')],
+    } }] });
+    const [a, , c] = formButtons(p);
+    c.click();
+    a.click();
+    expect(p.getFormValue('tags')).toBe('a;c');
+    expect(a.style.opacity).toBe('1');                   // no fading in a non-unique group
+    c.click();
+    expect(p.getFormValue('tags')).toBe('a');
+    a.click();
+    expect(p.getFormValue('tags')).toBeNull();
+  });
+
+  it('unique: true across columns: one-hot', async () => {
+    const hot = (col: string) => ({ button: { column: col, value: 1, initial_value: 0, icon: col } });
+    const p = await panel(fakeKernel().kernel, { form: [{ row: { unique: true, items: [hot('owl'), hot('cat'), hot('frog')] } }] });
+    const [owl, cat] = formButtons(p);
+    expect(['owl', 'cat', 'frog'].map(c => p.getFormValue(c))).toEqual([0, 0, 0]);
+    owl.click();
+    cat.click();
+    expect(['owl', 'cat', 'frog'].map(c => p.getFormValue(c))).toEqual([0, 1, 0]);
+  });
+
+  it('unique: false with a column each: independent switches', async () => {
+    const sw = (col: string) => ({ button: { column: col, value: 'y', icon: col } });
+    const p = await panel(fakeKernel().kernel, { form: [{ row: { unique: false, items: [sw('a'), sw('b')] } }] });
+    const [a, bb] = formButtons(p);
+    a.click();
+    bb.click();
+    expect([p.getFormValue('a'), p.getFormValue('b')]).toEqual(['y', 'y']);
+  });
+
+  it("a button's own column wins over the container's", async () => {
+    const p = await panel(fakeKernel().kernel, { form: [{ row: { column: 'x', items: [b(1), b(2, { column: 'y' })] } }] });
+    formButtons(p)[1].click();
+    expect([p.getFormValue('x'), p.getFormValue('y')]).toEqual([null, 2]);
+  });
+
+  it('a nested container without unique stays in the outer group', async () => {
+    const p = await panel(fakeKernel().kernel, { form: [{ column: { column: 'n', unique: true, items: [
+      { row: [b(1), b(2)] }, { row: [b(3)] },
+    ] } }] });
+    const [one, , three] = formButtons(p);
+    one.click();
+    three.click();
+    expect(p.getFormValue('n')).toBe(3);
+    expect(one.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('initial_value presses the matching buttons; reset per row', async () => {
+    const p = await panel(fakeKernel().kernel, { form: [{ row: {
+      column: 't', unique: false, items: [b('a', { initial_value: 'a,c' }), b('b'), b('c')],
+    } }] });
+    const [a, bb, c] = formButtons(p);
+    expect([a, bb, c].map(x => x.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'true']);
+    expect(p.getFormValue('t')).toBe('a,c');
+    bb.click();
+    expect(p.getFormValue('t')).toBe('a,b,c');
+    p.updateFromRow(ROWS[1]);
+    expect(p.getFormValue('t')).toBe('a,c');
+  });
+
+  it('highlight: false: no ring, no fading', async () => {
+    const p = await panel(fakeKernel().kernel, { form: [{ row: { column: 'h', items: [
+      b(1, { highlight: false }), b(2, { highlight: false }),
+    ] } }] });
+    const [one, two] = formButtons(p);
+    one.click();
+    expect(one.style.boxShadow).toBe('');
+    expect(two.style.opacity).toBe('1');
   });
 });
