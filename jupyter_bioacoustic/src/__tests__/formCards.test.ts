@@ -177,14 +177,14 @@ describe('formCards: hot keys, button switches, layout options', () => {
     expect(cfg.hot_keys).toBeUndefined();
   });
 
-  it('button show_hot_key / highlight: on by default, unchecking writes false', () => {
+  it('button show_hot_key off by default; highlight on by default, unchecking writes false', () => {
     const ctx = fakeCtx();
     const cfg = defaultElementConfig('button');
     const el = card();
     buildElementFields(ctx, el, 'button', cfg);
     const box = (text: string) => [...el.querySelectorAll<HTMLInputElement>('input[type=checkbox]')]
       .find(i => i.parentElement!.textContent!.includes(text))!;
-    expect(box('show hot key badge').checked).toBe(true);
+    expect(box('show hot key badge').checked).toBe(false);
     box('pressed ring').checked = false;
     box('pressed ring').dispatchEvent(new Event('change'));
     expect(cfg.highlight).toBe(false);
