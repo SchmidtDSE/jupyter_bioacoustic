@@ -402,7 +402,8 @@ function _addToggleStates(ctx: FormCardContext, card: HTMLDivElement, cfg: CardC
         ctx.changed();
         render();
       });
-      row.append(_valueInput(ctx, st, 'value', '80px'), icon, _imageInput(ctx, st, 'image', '140px'), remove);
+      const value = _valueInput(ctx, st, 'value', '80px');
+      row.append(value, icon, _imageInput(ctx, st, 'image', '140px'), remove);
       list.appendChild(row);
     });
   };
