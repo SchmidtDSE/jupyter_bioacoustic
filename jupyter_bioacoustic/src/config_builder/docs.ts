@@ -159,6 +159,7 @@ export const DOCS: Record<string, SectionDocs> = {
     pass_value: `Copies a value from the data row into the output.\nSet "source_column" (input) and "column" (output).`,
     fixed_value: `Writes a constant value to the output for every submission.\nSet "column" and "value".`,
     '_sub:Navigation': `Form submission and navigation controls.`,
+    'no submission buttons (submit with a button\'s "submit")': `submission_buttons: false — no Prev / Skip / Submit row at all, for forms that submit with a button's "submit" (e.g. one-click ✓ / ✗). A configured sync button still shows. Overrides a submission_buttons card.`,
     submission_buttons: `Submit/skip navigation buttons. Options:\n• line: show a divider above buttons\n• previous: show a back button\n• next: {label: "Skip"} for the skip button\n• submit: {label: "Verify"} for the submit button`,
     dynamic_forms: `Conditional form sections triggered by select item values.\nWhen a select item has "form: section_name", selecting it reveals the named dynamic form section below.`,
   },
