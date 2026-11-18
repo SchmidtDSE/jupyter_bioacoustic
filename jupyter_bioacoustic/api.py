@@ -1348,8 +1348,10 @@ class BioacousticAnnotator:
             The height in pixels.
         """
         has_form = self._form_config is not None
-        side_form = has_form and isinstance(self._form_config, dict) \
+        side_form = (
+            has_form and isinstance(self._form_config, dict)
             and self._form_config.get('side_form') is True
+        )
         return (
             int(self._clip_table_height)
             + int(self._player_height)
