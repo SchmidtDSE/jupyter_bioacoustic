@@ -63,7 +63,9 @@ See the [Getting Started guide](https://github.com/SchmidtDSE/jupyter_bioacousti
 ## Features
 
 - **Player / Visualizer** — browse audio clips with interactive spectrograms and other visualizations (linear, mel, log-frequency, or custom)
-- **Configurable Forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, and conditional sections
+- **Configurable Forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, buttons and toggles (built-in icons, one-click submit), conditional sections, and row / column / grid layouts
+- **Keyboard-driven review** — `j` / `k` between clips, Tab / arrows through the form, and per-element hot keys
+- **Collapsible layout** — collapse the playlist, spectrogram or form to just the row you need
 - **Annotation Tools** — fixed-duration windows, time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
 - **Built-In & Custom Visualizations** — built-in linear and mel spectrograms, log-frequency, bandpass and waveform visualizations. Easily integrate third-party libraries (OpenSoundscape, librosa, SciPy, ...) or write your own
 - **Zoom and Capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
@@ -257,7 +259,7 @@ form_config:
 | `description_title`, `description_text`, `description_path`, `description_open`, `description_height` | | `None` | The `description` dict keys as separate parameters. |
 | `info_card_title` | str | `''` | Info card title — supports `[[column_name]]` templates. Also used for capture filenames. |
 | `info_card_text` | str | `''` | Info card text — supports `[[column_name]]` templates. |
-| `duplicate_entries` | bool | `False` | Allow multiple submissions per row |
+| `duplicate_entries` | bool | `False` | Allow multiple submissions per row. When `False`, re-submitting a clip replaces its earlier entry. |
 | `default_buffer` | int / float | `3` | Default buffer time in seconds around each clip |
 | `capture` | bool / str | `True` | Capture button (`False` to hide, string for custom label) |
 | `capture_dir` | str | `''` | Directory prefix for captures |
@@ -269,6 +271,10 @@ form_config:
 | `clip_table_height` | int | `175` | Clip table height in pixels. |
 | `player_height` | int | `260` | Player/spectrogram height in pixels. |
 | `info_card_height` | int | `34` | Info card height in pixels. |
+| `hide_info_card` | bool | `False` | Hide the info card (the playlist's collapse toggle then gets its own slim row). |
+| `playlist_title`, `spectrogram_title` | bool / str | `False` | Text after the section's collapse chevron: `False` none, `True` the standard name, or a string. |
+| `playlist_open`, `spectrogram_open`, `form_open` | bool | `True` | Whether each section starts expanded. See [Layout and Collapsible Sections](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#layout-and-collapsible-sections). |
+| `freq_min`, `freq_max` | float | `None` | Frequency window (kHz) the spectrogram opens with and Reset returns to. Frequency zooms are kept from clip to clip. |
 | `form_panel_height` | int | `175` | Form panel height in pixels. |
 | `session_args` | list / str / bool | `None` | Which `**kwargs` are allowed: a list of names, one name as a string, `True` (all) or `False` (none). |
 | `**kwargs` | | | Fixed columns in every output row. A name close to a real parameter (e.g. `sort_ordr`) gives a "Did you mean" warning. |
