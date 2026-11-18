@@ -567,11 +567,9 @@ def _collect_layouts(fc: dict) -> list[tuple[str, Any]]:
         """Add the containers among ``elements`` and inside them.
 
         Args:
-            elements: A list of ``{type: config}`` dicts (ignored otherwise).
+            elements: A form section (see ``_section_elements``).
         """
-        if not isinstance(elements, list):
-            return
-        for el in elements:
+        for el in _section_elements(elements):
             if not isinstance(el, dict):
                 continue
             for etype, ecfg in el.items():
@@ -634,14 +632,10 @@ def _collect_buttons(fc: dict) -> list[dict]:
         """Add the buttons among ``elements`` (and inside containers).
 
         Args:
-            elements: A list of ``{type: config}`` dicts, or a ``{type: config}`` mapping.
+            elements: A form section (see ``_section_elements``).
             column: The enclosing container's ``column`` (None outside one).
         """
-        if isinstance(elements, dict):
-            elements = [{k: v} for k, v in elements.items()]
-        if not isinstance(elements, list):
-            return
-        for el in elements:
+        for el in _section_elements(elements):
             if not isinstance(el, dict):
                 continue
             for etype, ecfg in el.items():
@@ -669,9 +663,24 @@ def _layout_items(cfg: Any) -> Any:
         The elements (a list when well-formed; a mapping is converted to one).
     """
     items = cfg.get('items') if isinstance(cfg, dict) else cfg
-    if isinstance(items, dict):
-        items = [{k: v} for k, v in items.items()]
-    return items
+    return _section_elements(items) if isinstance(items, dict) else items
+
+
+def _section_elements(section: Any) -> list[Any]:
+    """Return a form section's elements as a list.
+
+    Sections may be written as a list of ``{type: config}`` dicts or as one mapping
+    (``{select: {...}, textbox: {...}}``, taken in key order).
+
+    Args:
+        section: The section (``form``, a dynamic form, or a container's items).
+
+    Returns:
+        The elements; ``[]`` for anything that is neither a list nor a mapping.
+    """
+    if isinstance(section, dict):
+        return [{k: v} for k, v in section.items()]
+    return section if isinstance(section, list) else []
 
 
 def _collect_elements(fc: dict, etype: str) -> list[dict]:
@@ -682,36 +691,14 @@ def _collect_elements(fc: dict, etype: str) -> list[dict]:
         etype: The element type (``'multiselect'``, ``'button'``, ...).
 
     Returns:
-        The element config dicts, in order.
+        The element config dicts (inside row / column / grid containers too), in order.
     """
-    found: list[dict] = []
-
-    def scan(elements: Any) -> None:
-        """Add the ``etype`` elements among a form section's elements.
-
-        Args:
-            elements: A list of ``{type: config}`` dicts, or a ``{type: config}`` mapping.
-        """
-        if isinstance(elements, dict):
-            elements = [{k: v} for k, v in elements.items()]
-        if not isinstance(elements, list):
-            return
-        for el in flatten_layout(elements):
-            if isinstance(el, dict) and isinstance(el.get(etype), dict):
-                found.append(el[etype])
-
-    if isinstance(fc.get(etype), dict):
-        found.append(fc[etype])
-    scan(fc.get('form'))
-    dyn = fc.get('dynamic_forms')
-    if isinstance(dyn, dict):
-        for section in dyn.values():
-            scan(section)
-    elif isinstance(dyn, list):              # legacy: a list of {name: elements}
-        for item in dyn:
-            if isinstance(item, dict):
-                for section in item.values():
-                    scan(section)
+    found: list[dict] = [fc[etype]] if isinstance(fc.get(etype), dict) else []
+    for section in _form_sections(fc):
+        found.extend(
+            cfg for t, cfg in _walk_elements(_section_elements(section))
+            if t == etype and isinstance(cfg, dict)
+        )
     return found
 
 
@@ -728,11 +715,7 @@ def _validate_hot_keys(fc: dict, errors: list[str]) -> None:
         errors: List that error messages are appended to.
     """
     for section in _form_sections(fc):
-        if isinstance(section, dict):
-            section = [{k: v} for k, v in section.items()]
-        if not isinstance(section, list):
-            continue
-        for top in section:
+        for top in _section_elements(section):
             if not isinstance(top, dict):
                 continue
             seen: dict[str, str] = {}
