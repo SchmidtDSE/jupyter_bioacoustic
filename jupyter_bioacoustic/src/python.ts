@@ -236,23 +236,25 @@ export function writeOutputRow(
 /**
  * Append rows to the output file in ONE kernel call, so a multibox submit is saved
  * all-or-nothing. Rows travel as JSON, so any column name or value is safe (quotes,
- * newlines; NaN/Infinity become None). Python: ``_kernel_helpers.write_output_rows``.
+ * newlines; NaN/Infinity become None). With ``replace``, existing rows whose ``column`` is
+ * ``value`` are dropped in the same write. Python: ``_kernel_helpers.write_output_rows``.
  */
 export function writeOutputRows(
   path: string,
   rows: Record<string, any>[],
+  replace?: { column: string; value: string },
 ): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
   const cols: string[] = [];
   for (const row of rows) {
     for (const k of Object.keys(row)) if (!cols.includes(k)) cols.push(k);
   }
-  const payload = escPy(JSON.stringify({ rows, cols }));
+  const payload = escPy(JSON.stringify({ rows, cols, replace: replace ?? null }));
   return [
     'import json as _j',
     `${HELPERS} write_output_rows as _write_rows`,
     `_p = _j.loads('${payload}')`,
-    `print(_write_rows('${escPy(path)}', _p['rows'], _p['cols'], '${escPy(ext)}'))`,
+    `print(_write_rows('${escPy(path)}', _p['rows'], _p['cols'], '${escPy(ext)}', _p['replace']))`,
   ].join('\n');
 }
 
