@@ -5,7 +5,9 @@
  * DescriptionPanel, InfoCard + ClipTable (the playlist), Player and FormPanel. The playlist,
  * spectrogram (Player) and form collapse with a CollapseToggle at the start of the row they
  * keep: the info card (or, when it is hidden, a bar of its own), the play row and the button
- * row. On attach it reads the
+ * row. Keys anywhere in the widget: j / k = previous / next clip (not while typing, or when the
+ * focused form item gives j / k a hot key), Shift+Tab = next section (description, playlist,
+ * spectrogram, form), Tab = into the form. On attach it reads the
  * ``_BA_*`` config globals from its kernel, validates the form config, hands each section
  * its slice of the config and selects the first row. Sections talk to each other only
  * through this class (Lumino signals in, method calls out).
@@ -33,6 +35,7 @@ import { DIALOG, TOOLTIP } from './text';
 import {
   AudioConfig, Detection, KernelVars, SectionsConfig, SyncConfig, VizMeta,
 } from './types';
+import { hasCommandModifier, isTypingTarget } from './sections/form/hotkeys';
 import { errorMessage, setShown, showDialog } from './util';
 
 
@@ -148,6 +151,8 @@ export class BioacousticWidget extends Widget {
     this._player.setLeading(this._playerToggle.element);
     this._formToggle = new CollapseToggle('', open => this._form.setCollapsed(!open));
     this._form.setLeading(this._formToggle.element);
+
+    this.node.addEventListener('keydown', e => this._onKeyDown(e));
 
     this._playlistBar = document.createElement('div');
     this._playlistBar.style.cssText = barBottomStyle();
@@ -441,6 +446,66 @@ export class BioacousticWidget extends Widget {
     this._selectRow(target);
     this._table.ensurePageShowsSelected();
     void this._player.loadRow(this._table.filtered[target]);
+  }
+
+  // ── Keyboard ─────────────────────────────────────────────────
+
+  /** Widget keys (see the module docstring); the form handles its own keys first. */
+  private _onKeyDown(e: KeyboardEvent): void {
+    if (e.defaultPrevented || hasCommandModifier(e)) return;
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (e.shiftKey) this._focusNextSection();
+      else if (!this._form.element.contains(e.target as Node)) this._form.focusForm();
+      return;
+    }
+    if (isTypingTarget(e.target)) return;
+    if (e.key === 'j' || e.key === 'k') {
+      e.preventDefault();
+      if (e.key === 'j') this._onPrev();
+      else this._onSkip();
+    }
+  }
+
+  /** Focus the section after the one with focus: description, playlist, spectrogram, form. */
+  private _focusNextSection(): void {
+    const sections = this._sections().filter(s => s.shown());
+    if (sections.length === 0) return;
+    const active = document.activeElement;
+    const idx = sections.findIndex(s => s.contains(active));
+    sections[(idx + 1) % sections.length].focus();
+  }
+
+  /** The keyboard sections; a collapsed one focuses its toggle. */
+  private _sections(): Array<{ shown: () => boolean; contains: (el: Element | null) => boolean; focus: () => void }> {
+    const within = (...els: HTMLElement[]) => (el: Element | null) => !!el && els.some(x => x.contains(el));
+    const summary = this._description.element.querySelector('summary');
+    return [
+      {
+        shown: () => this._description.element.style.display !== 'none' && !!summary,
+        contains: within(this._description.element),
+        focus: () => summary?.focus(),
+      },
+      {
+        shown: () => true,
+        contains: within(this._playlistBar, this._infoCard.element, this._table.element),
+        focus: () => (this._playlistToggle.open
+          ? this._table.focusTarget : this._playlistToggle.element).focus(),
+      },
+      {
+        shown: () => true,
+        contains: within(this._player.element),
+        focus: () => (this._playerToggle.open
+          ? this._player.focusTarget : this._playerToggle.element).focus(),
+      },
+      {
+        shown: () => this._form.element.style.display !== 'none',
+        contains: within(this._form.element),
+        focus: () => {
+          if (!this._formToggle.open || !this._form.focusForm()) this._formToggle.element.focus();
+        },
+      },
+    ];
   }
 
   // ── Sync / info panel / status ───────────────────────────────
