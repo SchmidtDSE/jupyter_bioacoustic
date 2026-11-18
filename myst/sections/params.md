@@ -127,6 +127,7 @@ The `form_config` parameter drives the entire form layout. It can be a Python di
 | `annotation` | Spectrogram interaction tools | `start_time`, `end_time`, `min_frequency`, `max_frequency`, `tools`, `form` |
 | `submission_buttons` | Submit, Skip, Prev buttons | `submit`, `next`, `previous` |
 | `dynamic_forms` | List of conditional form sections | `- name: [elements]` |
+| `side_form` | `true`: the form beside the spectrogram (draggable divider) | `side_form_split` (spectrogram's share, default 2/3) |
 
 **Input elements** (inside `form:` list)
 
