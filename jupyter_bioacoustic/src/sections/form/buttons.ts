@@ -7,15 +7,23 @@
  * ``color`` / ``background`` set the icon and fill colours (built-ins have their own, which
  * these override).
  *
- * - ``column`` + ``value``: a click writes ``value`` to the column; buttons sharing a column act
- *   like radio buttons. ``initial_value`` is the column's value before any is clicked (default
- *   null) and ``initial_icon`` / ``initial_image`` how the button looks while not selected.
+ * - ``column`` + ``value``: a click presses / un-presses the button. Buttons are grouped (a
+ *   row / column / grid with ``unique``, else all buttons on one column): in a ``unique`` group
+ *   (the default) pressing one un-presses the others. A column holds its pressed button's
+ *   value, the pressed values joined by ``delimiter`` (non-unique, shared column), or its
+ *   ``initial_value`` (default null) when none is pressed. ``pressed_icon`` / ``pressed_image``
+ *   / ``pressed_color`` / ``pressed_background`` change the look while pressed; a pressed
+ *   button also gets a white ring (and the rest of a unique group fades) unless
+ *   ``highlight: false``.
  * - ``submit: true``: a click submits the form (after writing its value, if it has one).
  * - ``toggle``: a list of 2+ states (``value`` + ``icon`` / ``image``...); each click moves to the
- *   next state, wrapping around. It starts on the first state, or on the state whose value is
- *   ``initial_value``; with an ``initial_icon`` / ``initial_image`` or an ``initial_value`` that
- *   matches no state it starts "unset" (that value, default null) until the first click.
+ *   next state, wrapping around. It starts on the state whose value is ``initial_value``;
+ *   with an ``initial_value`` that matches no state, or the toggle's own ``icon`` / ``image``
+ *   (its "nothing chosen yet" look), it starts unset (that value, default null) until the
+ *   first click; otherwise on the first state.
  * - ``size`` sets width and height (default 25px); ``width`` / ``height`` override it.
+ * - ``hot_key``: a single character that clicks the button while it (or its row / column /
+ *   grid) has keyboard focus; shown as a corner badge unless ``show_hot_key: false``.
  *
  * License: BSD 3-Clause
  */
@@ -23,6 +31,7 @@
 // Imports
 //
 import { COLORS, cssSize } from '../../styles';
+import { normalizeHotKey } from './hotkeys';
 
 
 //
@@ -48,12 +57,16 @@ export const BUILTIN_ICONS: Record<string, { symbol: string; color: string; back
   minus:     { symbol: '−', color: COLORS.textPrimary, background: COLORS.bgSurface1 },
 };
 
+/** The ring around a pressed button. */
+const PRESSED_RING = '#ffffff';
 /** Text-icon font size as a fraction of the button's smaller side. */
 const ICON_FONT_FRACTION = 0.45;
 /** Text-icon font size (px) when the button's size isn't a plain number. */
 const DEFAULT_ICON_FONT_PX = 20;
-/** Opacity of a toggle that hasn't been clicked yet and has no initial_icon / image. */
+/** Opacity of a toggle that hasn't been clicked yet and has no icon / image of its own. */
 const UNSET_OPACITY = 0.45;
+/** Opacity of the un-pressed buttons of a unique group once one is pressed. */
+const FADED_OPACITY = 0.5;
 
 
 //
@@ -87,10 +100,18 @@ export interface FormButtonSpec {
   submit: boolean;
   /** The column must be set before the form can be submitted (plain buttons). */
   required: boolean;
-  /** How the button looks (when selected, for plain buttons in a column). */
+  /** How the button looks (a toggle: before its first click). */
   face: ButtonFace;
-  /** How it looks before it is pressed (``initial_icon`` / ``initial_image``), if set. */
-  initialFace: ButtonFace | null;
+  /** True when the button sets its own ``icon`` / ``image`` (a toggle then starts unset). */
+  hasOwnFace: boolean;
+  /** How it looks while pressed (``face`` with the ``pressed_*`` keys applied). */
+  pressedFace: ButtonFace;
+  /** Pressed ring / faded group (``highlight: false`` turns them off). */
+  highlight: boolean;
+  /** ``hot_key`` (a single character), or null. */
+  hotKey: string | null;
+  /** Show the hot key as a corner badge (``show_hot_key``, default true). */
+  showHotKey: boolean;
   /** True when ``initial_value`` is set (it may be null). */
   hasInitialValue: boolean;
   initialValue: any;
@@ -114,7 +135,6 @@ export interface ToggleStart {
 export function parseFormButton(cfg: any): FormButtonSpec {
   const c = cfg && typeof cfg === 'object' ? cfg : {};
   const size = c.size ?? DEFAULT_BUTTON_SIZE;
-  const colors = { color: c.color, background: c.background };
   const label = c.label != null ? String(c.label) : '';
   const toggle = Array.isArray(c.toggle)
     ? c.toggle
@@ -127,16 +147,27 @@ export function parseFormButton(cfg: any): FormButtonSpec {
           String(st.value ?? '')),
       }))
     : null;
-  const hasInitialFace = c.initial_icon != null || c.initial_image != null;
+  const hasPressedLook = c.pressed_icon != null || c.pressed_image != null;
+  const pressedBuiltin = hasPressedLook && builtinIcon(String(c.pressed_icon ?? ''));
+  const pressed = {
+    icon: hasPressedLook ? c.pressed_icon : c.icon,
+    image: hasPressedLook ? c.pressed_image : c.image,
+    // a pressed built-in brings its own colours unless pressed_color / background are set
+    color: c.pressed_color ?? (pressedBuiltin ? undefined : c.color),
+    background: c.pressed_background ?? (pressedBuiltin ? undefined : c.background),
+    label,
+  };
   return {
     column: c.column != null && c.column !== '' ? String(c.column) : null,
     value: c.value ?? null,
     submit: c.submit === true && !toggle,
     required: c.required === true,
     face: resolveFace({ ...c, label }, String(c.label ?? c.value ?? '')),
-    initialFace: hasInitialFace
-      ? resolveFace({ icon: c.initial_icon, image: c.initial_image, ...colors, label }, '')
-      : null,
+    hasOwnFace: c.icon != null || c.image != null,
+    pressedFace: resolveFace(pressed, String(c.label ?? c.value ?? '')),
+    highlight: c.highlight !== false,
+    hotKey: normalizeHotKey(c.hot_key),
+    showHotKey: c.show_hot_key !== false,
     hasInitialValue: 'initial_value' in c,
     initialValue: c.initial_value ?? null,
     toggle,
@@ -177,10 +208,9 @@ export function toggleStart(spec: FormButtonSpec): ToggleStart {
   const states = spec.toggle ?? [];
   if (spec.hasInitialValue) {
     const idx = states.findIndex(st => st.value === spec.initialValue);
-    if (idx >= 0 && !spec.initialFace) return { index: idx, value: states[idx].value };
-    return { index: -1, value: spec.initialValue };
+    return idx >= 0 ? { index: idx, value: states[idx].value } : { index: -1, value: spec.initialValue };
   }
-  if (spec.initialFace) return { index: -1, value: null };
+  if (spec.hasOwnFace) return { index: -1, value: null };
   return { index: 0, value: states[0]?.value ?? null };
 }
 
@@ -192,6 +222,15 @@ export function nextToggleIndex(spec: FormButtonSpec, index: number): number {
 }
 
 
+/** Inline CSS for a button's hot key badge (top-right corner). */
+export function hotKeyBadgeStyle(): string {
+  return (
+    `position:absolute;top:1px;right:2px;font-size:8px;font-weight:700;line-height:1;` +
+    `opacity:0.75;pointer-events:none;font-family:ui-monospace,monospace;`
+  );
+}
+
+
 /** True when ``src`` can be used as an ``<img src>`` as is (http(s) or data URL). */
 export function isDirectImageSrc(src: string): boolean {
   return /^(https?:|data:)/i.test(src);
@@ -199,11 +238,12 @@ export function isDirectImageSrc(src: string): boolean {
 
 
 /**
- * Inline CSS for a form button showing ``face``: ``selected`` adds the highlight border,
- * ``dimmed`` fades it (an unset toggle without an initial face).
+ * Inline CSS for a form button showing ``face``: ``pressed`` adds the white ring, ``faded``
+ * fades it (the rest of a unique group), ``dimmed`` fades it more (an unset toggle).
  */
 export function formButtonStyle(
-  spec: FormButtonSpec, face: ButtonFace, opts: { selected?: boolean; dimmed?: boolean } = {},
+  spec: FormButtonSpec, face: ButtonFace,
+  opts: { pressed?: boolean; faded?: boolean; dimmed?: boolean } = {},
 ): string {
   const w = typeof spec.width === 'number' ? spec.width : NaN;
   const h = typeof spec.height === 'number' ? spec.height : NaN;
@@ -212,10 +252,11 @@ export function formButtonStyle(
     : Math.max(8, Math.round(Math.min(w, h) * ICON_FONT_FRACTION));
   return (
     `width:${cssSize(spec.width)};height:${cssSize(spec.height)};padding:${face.image ? 3 : 0}px;` +
-    `display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;` +
+    `display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;` +
     `box-sizing:border-box;cursor:pointer;border-radius:6px;overflow:hidden;line-height:1;` +
     `font-size:${fontPx}px;font-weight:700;color:${face.color};background:${face.background};` +
-    `border:2px solid ${opts.selected ? COLORS.blue : 'transparent'};` +
-    `opacity:${opts.dimmed ? UNSET_OPACITY : 1};`
+    `border:2px solid transparent;` +
+    (opts.pressed ? `box-shadow:0 0 0 2px ${PRESSED_RING};` : '') +
+    `opacity:${opts.dimmed ? UNSET_OPACITY : opts.faded ? FADED_OPACITY : 1};`
   );
 }
