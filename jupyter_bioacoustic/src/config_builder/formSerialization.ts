@@ -5,18 +5,30 @@
  * ``start_time_col``); the form YAML the annotator reads uses a different shape (e.g.
  * ``start_time: {column, source_value}``). ``serializeElement`` and ``deserializeElement`` are
  * exact mirrors and are used for EVERY element — top level, inside the ``form:`` list, and in
- * ``dynamic_forms`` — so loading and re-saving a form never changes it.
+ * ``dynamic_forms`` — so loading and re-saving a form never changes it. Layout containers
+ * (``row`` / ``column`` / ``grid``) hold other elements: ``serializeLayout`` /
+ * ``deserializeLayout`` handle their options, the caller their items.
  *
  * License: BSD 3-Clause
  */
 
 
 //
+// Constants
+//
+/** Element types that contain other elements. */
+export const LAYOUT_ELEMENT_TYPES: ReadonlySet<string> = new Set(['row', 'column', 'grid']);
+
+/** A layout container's options, in YAML order (everything except ``items``). */
+const LAYOUT_OPTION_KEYS = ['columns', 'gap', 'align', 'column', 'unique', 'delimiter'];
+
+
+//
 // Types
 //
 export type ElementType = 'title' | 'select' | 'multiselect' | 'textbox' | 'checkbox' | 'number' |
-  'button' | 'annotation' | 'pass_value' | 'fixed_value' | 'submission_buttons' |
-  'break' | 'line' | 'text';
+  'button' | 'row' | 'column' | 'grid' | 'annotation' | 'pass_value' | 'fixed_value' |
+  'submission_buttons' | 'break' | 'line' | 'text';
 
 /** Builder card config for one element (flat; shape depends on the element type). */
 export type CardConfig = Record<string, any>;
@@ -92,6 +104,43 @@ export function deserializeElement(type: ElementType, raw: any): CardConfig {
     default:
       return typeof raw === 'object' && raw !== null ? { ...raw } : { value: raw };
   }
+}
+
+
+/**
+ * The YAML value of a row / column / grid: a plain list of ``items`` when it has no options
+ * (a ``grid`` always has ``columns``), else ``{options..., items}``.
+ *
+ * @param type - ``row``, ``column`` or ``grid``.
+ * @param cfg - The container's card config (its options).
+ * @param items - The serialized child elements (``{type: value}`` dicts).
+ */
+export function serializeLayout(type: ElementType, cfg: CardConfig, items: any[]): any {
+  const opts: Record<string, any> = {};
+  for (const key of LAYOUT_OPTION_KEYS) {
+    const v = cfg[key];
+    if (key === 'unique' ? typeof v === 'boolean' : v !== undefined && v !== null && v !== '') {
+      opts[key] = v;
+    }
+  }
+  if (type !== 'grid') delete opts.columns;
+  return Object.keys(opts).length > 0 ? { ...opts, items } : items;
+}
+
+
+/**
+ * A row / column / grid YAML value as its card config (options) and child elements (the
+ * inverse of ``serializeLayout``; an ``items`` mapping becomes a list).
+ */
+export function deserializeLayout(raw: any): { config: CardConfig; items: any[] } {
+  if (Array.isArray(raw)) return { config: {}, items: raw };
+  if (!raw || typeof raw !== 'object') return { config: {}, items: [] };
+  const config: CardConfig = {};
+  for (const key of LAYOUT_OPTION_KEYS) if (raw[key] !== undefined) config[key] = raw[key];
+  const items = Array.isArray(raw.items) ? raw.items
+    : raw.items && typeof raw.items === 'object'
+      ? Object.entries(raw.items).map(([k, v]) => ({ [k]: v })) : [];
+  return { config, items };
 }
 
 
@@ -181,6 +230,7 @@ function _serializeButton(cfg: CardConfig): CardConfig {
   const out = _withoutEmpty(cfg);
   if ('initial_value' in cfg && cfg.initial_value === null) out.initial_value = null;
   if (cfg.highlight === false) out.highlight = false;
+  if (cfg.show_hot_key === false) out.show_hot_key = false;
   if (Array.isArray(cfg.toggle)) {
     const states = cfg.toggle.map((st: CardConfig) => _withoutEmpty(st));
     if (states.length > 0) out.toggle = states;
