@@ -878,3 +878,20 @@ class TestHotKeys:
             {'row': [{'button': {'column': 'a', 'value': 1, 'icon': 'a', 'hot_key': '1'}}]},
             {'row': [{'button': {'column': 'b', 'value': 1, 'icon': 'b', 'hot_key': '1'}}]},
         ]) == []
+
+
+#
+# side form
+#
+class TestSideForm:
+
+    def test_valid(self):
+        r = validate_config(form_config={'side_form': True, 'side_form_split': 0.6,
+                                         'form': [{'textbox': {'label': 'n'}}]})
+        assert r['valid'], r['errors']
+
+    def test_bad_values(self):
+        errs = validate_config(form_config={'side_form': 'yes', 'side_form_split': 1.5,
+                                            'form': [{'textbox': {'label': 'n'}}]})['errors']
+        assert any('"side_form" must be true or false' in e for e in errs)
+        assert any('"side_form_split" must be a fraction' in e for e in errs)
