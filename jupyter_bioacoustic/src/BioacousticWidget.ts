@@ -4,14 +4,17 @@
  * Orchestrates the sections, top to bottom: header (title, status, ⓘ info panel),
  * DescriptionPanel, InfoCard + ClipTable (the playlist), Player and FormPanel. The playlist,
  * spectrogram (Player) and form collapse with a CollapseToggle at the start of the row they
- * keep: the info card (or, when it is hidden, a bar of its own), the play row and the button
- * row. With ``side_form: true`` in the form config the form sits beside the spectrogram, in
- * a row with a draggable divider (see ``sideForm``). Keys anywhere in the widget: j / k = previous / next clip (not while typing, or when the
+ * keep: the info card (or, when it is hidden, a bar of its own), the play row and the form's
+ * title row. With ``side_form: true`` in the form config the form sits beside the
+ * spectrogram, in a row with a draggable divider (see ``sideForm``).
+ *
+ * Keys anywhere in the widget: j / k = previous / next clip (not while typing, or when the
  * focused form item gives j / k a hot key), Shift+Tab = next section (description, playlist,
- * spectrogram, form), Tab = into the form. On attach it reads the
- * ``_BA_*`` config globals from its kernel, validates the form config, hands each section
- * its slice of the config and selects the first row. Sections talk to each other only
- * through this class (Lumino signals in, method calls out).
+ * spectrogram, form), Tab = into the form.
+ *
+ * On attach it reads the ``_BA_*`` config globals from its kernel, validates the form config,
+ * hands each section its slice of the config and selects the first row. Sections talk to
+ * each other only through this class (Lumino signals in, method calls out).
  *
  * License: BSD 3-Clause
  */
@@ -31,6 +34,7 @@ import { FormPanel } from './sections/FormPanel';
 import { InfoCard } from './sections/InfoCard';
 import { Player } from './sections/Player';
 import { CollapseToggle } from './sections/CollapseToggle';
+import { hasCommandModifier, isTypingTarget } from './sections/form/hotkeys';
 import {
   SIDE_FORM_DIVIDER_PX, SIDE_FORM_STACK_WIDTH, clampSplit, parseSideForm, sideFormSizes,
 } from './sideForm';
@@ -39,7 +43,6 @@ import { DIALOG, TOOLTIP } from './text';
 import {
   AudioConfig, Detection, KernelVars, SectionsConfig, SyncConfig, VizMeta,
 } from './types';
-import { hasCommandModifier, isTypingTarget } from './sections/form/hotkeys';
 import { errorMessage, setShown, showDialog } from './util';
 
 
@@ -53,6 +56,27 @@ const DEFAULT_BUFFER_SEC = 3;
 
 /** Makes widget ids unique: ``jp-bioacoustic-<n>``. */
 let widgetCounter = 0;
+
+
+//
+// Types
+//
+/** The side-form row (``side_form``): its parts, the current split and whether it stacks. */
+interface SideFormState {
+  row: HTMLDivElement;
+  playerCol: HTMLDivElement;
+  divider: HTMLDivElement;
+  split: number;
+  stacked: boolean;
+  observer: ResizeObserver | null;
+}
+
+/** A section Shift+Tab moves through (a collapsed one focuses its toggle). */
+interface KeyboardSection {
+  shown: () => boolean;
+  contains: (el: Element | null) => boolean;
+  focus: () => void;
+}
 
 
 //
@@ -85,10 +109,7 @@ export class BioacousticWidget extends Widget {
   /** Holds the playlist toggle when the info card is hidden. */
   private _playlistBar!: HTMLDivElement;
   /** Side form (``side_form``): the row, the spectrogram column and the divider. */
-  private _side: {
-    row: HTMLDivElement; playerCol: HTMLDivElement; divider: HTMLDivElement;
-    split: number; stacked: boolean; observer: ResizeObserver | null;
-  } | null = null;
+  private _side: SideFormState | null = null;
 
   /**
    * @param source - The kernel or notebook session this widget talks to (fixed for its lifetime).
@@ -442,7 +463,7 @@ export class BioacousticWidget extends Widget {
     playerCol.appendChild(this._player.element);
     row.append(playerCol, divider, this._form.element);
 
-    const side = { row, playerCol, divider, split, stacked: false, observer: null as ResizeObserver | null };
+    const side: SideFormState = { row, playerCol, divider, split, stacked: false, observer: null };
     this._side = side;
     divider.addEventListener('pointerdown', e => this._dragSideDivider(e));
     if (typeof ResizeObserver !== 'undefined') {
@@ -462,7 +483,8 @@ export class BioacousticWidget extends Widget {
   private _layoutSideForm(): void {
     const side = this._side;
     if (!side) return;
-    const sizes = sideFormSizes(side.split, this._playerToggle.open, this._formToggle.open, side.stacked);
+    const sizes = sideFormSizes(
+      side.split, this._playerToggle.open, this._formToggle.open, side.stacked);
     side.row.style.flexDirection = sizes.direction;
     side.playerCol.style.flex = sizes.player;
     this._form.element.style.flex = sizes.form;
@@ -533,7 +555,8 @@ export class BioacousticWidget extends Widget {
     this._selectRow(idx);
     const text = _doneText(filtered.length, filtered.filter(r => this._form.isReviewed(r)).length,
       this._form.duplicateEntries);
-    const todo = this._form.duplicateEntries ? -1 : filtered.findIndex(r => !this._form.isReviewed(r));
+    const todo = this._form.duplicateEntries
+      ? -1 : filtered.findIndex(r => !this._form.isReviewed(r));
     this._form.showNotice(text, todo < 0 ? undefined : {
       label: `Go to clip ${todo + 1} (first not reviewed)`,
       onClick: () => this._goTo(todo),
@@ -594,8 +617,9 @@ export class BioacousticWidget extends Widget {
   }
 
   /** The keyboard sections; a collapsed one focuses its toggle. */
-  private _sections(): Array<{ shown: () => boolean; contains: (el: Element | null) => boolean; focus: () => void }> {
-    const within = (...els: HTMLElement[]) => (el: Element | null) => !!el && els.some(x => x.contains(el));
+  private _sections(): KeyboardSection[] {
+    const within = (...els: HTMLElement[]) =>
+      (el: Element | null) => !!el && els.some(x => x.contains(el));
     const summary = this._description.element.querySelector('summary');
     return [
       {
