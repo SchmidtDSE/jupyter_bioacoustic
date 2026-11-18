@@ -112,6 +112,7 @@ export const DOCS: Record<string, SectionDocs> = {
   },
   form: {
     _intro: `Form defines the annotation interface — the controls users interact with to label each clip. Elements are rendered in order. Each element writes its value to a specified output column.\n\nElement types: title, select, multiselect, textbox, checkbox, number, button, annotation, row, column, grid, pass_value, fixed_value, submission_buttons.`,
+    side_form: `Put the form beside the spectrogram instead of below it (side_form: true) — best for small forms (a few buttons, a select, a checkbox).\n• split — the spectrogram's share of the width (side_form_split, default 0.66). The divider between them can also be dragged in the annotator.\nA narrow widget puts the form back below the spectrogram. Collapsed, the form becomes a narrow strip (toggle + vertical title); a collapsed spectrogram shrinks to its play row.`,
     '_sub:Display': `Static elements that show information but do not collect user input.`,
     title: `Display title at the top of the form. Set "value" for the text.\nEnable "progress_tracker" to show completion percentage.`,
     text: `Static text displayed in the form. Set "value" for the text content.`,
