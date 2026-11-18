@@ -19,6 +19,7 @@ import {
 import {
   MultiselectSpec, addLabel, decodeMultiselect, removeLabel, selectionFull,
 } from './multiselect';
+import { PinnedItem } from './hotkeys';
 import { SelectItem, hasExactItem } from './selectItems';
 
 
@@ -65,6 +66,11 @@ export interface SelectOptions {
   variant: keyof typeof SELECT_VARIANTS;
   /** Called after the user picks (or adds) a value. */
   onChange: () => void;
+  /**
+   * Hot-keyed options shown first, as "key · label" in a "hot keys" group above the full
+   * list (``pin_hot_keys``); not while filtering.
+   */
+  pinned?: PinnedItem[];
 }
 
 /** A built select. */
@@ -85,6 +91,8 @@ export interface MultiselectOptions {
   initial: string[];
   /** Called with the labels after every add / remove (and after ``input`` events). */
   onChange: (selected: string[]) => void;
+  /** Hot-keyed options shown first in the picker (see ``SelectOptions.pinned``). */
+  pinned?: PinnedItem[];
 }
 
 /** A built multiselect. */
@@ -118,14 +126,28 @@ export function buildSelect(opts: SelectOptions): BuiltSelect {
 
   /** Re-fill the options (keeping the empty one), optionally filtered. */
   const rebuildOptions = (filter?: string) => {
-    while (sel.options.length > 1) sel.remove(1);
+    while (sel.children.length > 1) sel.lastElementChild!.remove();
     const f = (filter ?? '').toLowerCase();
+    const pinned = !f ? opts.pinned ?? [] : [];
+    let target: HTMLElement = sel;
+    if (pinned.length > 0) {
+      const hot = document.createElement('optgroup');
+      hot.label = 'hot keys';
+      for (const { key, item } of pinned) {
+        const o = document.createElement('option');
+        o.value = item.val; o.textContent = `${key} · ${item.label}`;
+        hot.appendChild(o);
+      }
+      target = document.createElement('optgroup');
+      (target as HTMLOptGroupElement).label = 'all';
+      sel.append(hot, target);
+    }
     for (const item of items) {
       if (f && !item.label.toLowerCase().includes(f) && !item.val.toLowerCase().includes(f)) continue;
       const o = document.createElement('option');
       o.value = item.val; o.textContent = item.label;
       if (item.isDefault && !f) o.selected = true;
-      sel.appendChild(o);
+      target.appendChild(o);
     }
   };
   rebuildOptions();
@@ -211,6 +233,7 @@ export function buildMultiselect(opts: MultiselectOptions): BuiltMultiselect {
 
   const picker = buildSelect({
     items, filterBox: opts.filterBox, customValue: opts.customValue, variant: opts.variant,
+    pinned: opts.pinned,
     onChange: () => {
       const value = picker.select.value;
       picker.select.value = '';
