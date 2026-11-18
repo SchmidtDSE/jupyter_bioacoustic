@@ -33,7 +33,9 @@ export const LAYOUT_TYPES: ReadonlySet<string> = new Set(['row', 'column', 'grid
 const DEFAULT_GAP: Record<LayoutKind, number> = { row: 8, column: 6, grid: 6 };
 /** Joins the pressed values of a non-unique group's shared column. */
 export const DEFAULT_DELIMITER = ',';
-const FLEX_ALIGN: Record<LayoutAlign, string> = { start: 'flex-start', center: 'center', end: 'flex-end' };
+const FLEX_ALIGN: Record<LayoutAlign, string> = {
+  start: 'flex-start', center: 'center', end: 'flex-end',
+};
 
 
 //
@@ -62,7 +64,7 @@ export interface Layout {
 //
 // Public
 //
-/** Parse a ``row`` / ``column`` / ``grid`` element; null when ``type`` isn't one or has no items. */
+/** Parse a ``row`` / ``column`` / ``grid`` element; null if ``type`` isn't one or has no items. */
 export function parseLayout(type: string, raw: any): Layout | null {
   if (!LAYOUT_TYPES.has(type)) return null;
   const kind = type as LayoutKind;
@@ -96,7 +98,10 @@ export function layoutStyle(layout: Layout): string {
     );
   }
   if (layout.kind === 'row') {
-    return `display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:${align};${gap}`;
+    return (
+      `display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;` +
+      `justify-content:${align};${gap}`
+    );
   }
   return `display:flex;flex-direction:column;align-items:${align};${gap}`;
 }
