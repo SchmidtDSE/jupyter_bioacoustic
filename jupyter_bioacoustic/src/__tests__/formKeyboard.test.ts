@@ -187,9 +187,9 @@ describe('form keyboard navigation', () => {
     expect(document.activeElement!.tagName).toBe('INPUT'); // the notes box: first item
   });
 
-  it('buttons show their hot key unless show_hot_key: false', async () => {
+  it('buttons show their hot key only with show_hot_key: true (always in the tooltip)', async () => {
     const p = await panel({ form: [{ row: { column: 'v', items: [
-      btn('a', { hot_key: '1' }), btn('b', { hot_key: '2', show_hot_key: false }),
+      btn('a', { hot_key: '1', show_hot_key: true }), btn('b', { hot_key: '2' }),
     ] } }] });
     const [a, b] = [...p.element.querySelectorAll('.jp-BA-layout button')] as HTMLElement[];
     expect(a.querySelector('[data-hot-key-badge]')!.textContent).toBe('1');
