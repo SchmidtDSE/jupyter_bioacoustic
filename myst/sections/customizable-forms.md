@@ -119,6 +119,24 @@ form:
 
 See [Layout: row, column, grid](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#layout-row-column-grid).
 
+### Side Form
+
+`side_form: true` at the top of the form config puts a small form beside the spectrogram (the spectrogram takes `side_form_split` of the width, default 2/3; drag the divider to change it). Collapsed, the form becomes a narrow strip with its title running vertically; narrow widgets put it back below.
+
+```yaml
+side_form: true
+side_form_split: 0.66
+title: QUICK REVIEW
+form:
+    - row:
+          column: is_valid
+          items:
+              - button: {value: 'yes', icon: 'jba:check'}
+              - button: {value: 'no',  icon: 'jba:x'}
+```
+
+See [Side Form](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#side-form).
+
 ### Keyboard
 
 `k` / `j` move to the next / previous clip, `Shift+Tab` cycles through the sections, and `Tab` / `←` / `→` move through the form (`Enter` steps into a row, `Esc` steps out). A button's `hot_key` and a select's `hot_keys` work while that item has focus; `pin_hot_keys: true` lists a select's hot-keyed items first. See [Keyboard Shortcuts](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configuration#keyboard-shortcuts) and [Hot Keys](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#hot-keys).
