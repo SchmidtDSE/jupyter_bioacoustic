@@ -106,8 +106,11 @@ Widget layout and behavior:
 - **Info card title** — template with `[[column_name]]` placeholders, shown in the info card and used for capture filenames
 - **Info card text** — template with `[[column_name]]` placeholders, shown below the title
 - **Display columns** — columns shown in the clip table (drag to reorder)
+- **hide_info_card** — hide the info card (the playlist's collapse toggle then gets its own row)
+- **Collapse toggles** — playlist / spectrogram titles (blank = just the chevron) and whether the playlist, spectrogram and form start open
 - **Duplicate entries** — permit multiple submissions per row
 - **Buffer** — seconds of context before/after each audio clip
+- **Freq range (kHz)** — `freq_min` / `freq_max`: the frequency window the spectrogram opens with and Reset returns to
 - **Capture** — enable spectrogram PNG export
 - **Width** — widget width (pixels or percentage)
 - **Heights** — pixel heights for clip table, player, info card, form panel, and capture
@@ -123,10 +126,15 @@ Widget layout and behavior:
 
 Build the annotation interface interactively:
 
-- **Add elements** — click `+ select`, `+ textbox`, `+ checkbox`, `+ number`, `+ annotation`, or other element types
+- **Add elements** — click `+ select`, `+ textbox`, `+ checkbox`, `+ number`, `+ button`, `+ annotation`, or other element types
 - **Configure each element** — set label, output column, items, validation, and other options per-type
+- **Buttons** — icon (text, symbol or `jba:` built-in) or image, column / value / submit, colours and pressed look, size, hot key, and toggle states (`+ state`)
+- **Layout** — `+ row`, `+ column` and `+ grid` add container cards with their own add bar: elements added there go inside (containers nest). Options: grid columns, gap, align, and the button column / unique / delimiter passed on to the buttons inside
+- **Hot keys** — select and multiselect cards list key → item value pairs (`+ hot key`) and can pin those items to the top of the dropdown
 - **Dynamic forms** — conditional sections triggered by select values or checkbox state
 - **Submission buttons** — customize submit/skip/back button labels
+
+See [Buttons](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#buttons), [Layout](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#layout-row-column-grid) and [Hot Keys](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Configurable-Forms#hot-keys) for what each option does.
 
 Each element is shown as a card that can be reordered, edited, or removed. The [side panel](#side-panel) docs highlight the relevant element type as you interact.
 
