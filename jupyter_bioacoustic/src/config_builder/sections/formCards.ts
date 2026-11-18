@@ -127,7 +127,7 @@ export function buildElementFields(
       _addField(ctx, card, cfg, 'pressed_background', 'pressed_background', '100px', 'fill color');
       _addNumField(ctx, card, cfg, 'size', 'size (px)', '60px');
       _addField(ctx, card, cfg, 'hot_key', 'hot_key', '40px', 'key');
-      _addDefaultOnField(ctx, card, cfg, 'show_hot_key', 'show hot key badge');
+      _addCheckboxField(ctx, card, cfg, 'show_hot_key', 'show hot key badge');
       _addDefaultOnField(ctx, card, cfg, 'highlight', 'pressed ring / fade group');
       _addToggleStates(ctx, card, cfg);
       break;
