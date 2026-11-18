@@ -14,10 +14,16 @@
 
 
 //
+// Imports
+//
+import { LAYOUT_TYPES } from '../sections/form/layout';
+
+
+//
 // Constants
 //
-/** Element types that contain other elements. */
-export const LAYOUT_ELEMENT_TYPES: ReadonlySet<string> = new Set(['row', 'column', 'grid']);
+/** Element types that contain other elements (the annotator's row / column / grid). */
+export const LAYOUT_ELEMENT_TYPES: ReadonlySet<string> = LAYOUT_TYPES;
 
 /** A layout container's options, in YAML order (everything except ``items``). */
 const LAYOUT_OPTION_KEYS = ['columns', 'gap', 'align', 'column', 'unique', 'delimiter'];
@@ -88,11 +94,13 @@ export function deserializeElement(type: ElementType, raw: any): CardConfig {
       return _deserializeAnnotation(raw ?? {});
     case 'submission_buttons':
       return _deserializeSubmissionButtons(raw ?? {});
-    case 'button':
+    case 'button': {
+      if (!raw || typeof raw !== 'object') return {};
       // own copies of the toggle states: the card edits them in place
-      return raw && typeof raw === 'object'
-        ? { ...raw, ...(Array.isArray(raw.toggle) ? { toggle: raw.toggle.map((st: any) => ({ ...st })) } : {}) }
-        : {};
+      const cfg: CardConfig = { ...raw };
+      if (Array.isArray(raw.toggle)) cfg.toggle = raw.toggle.map((st: any) => ({ ...st }));
+      return cfg;
+    }
     case 'multiselect':
       // own copy of the nested output dict: the card edits it in place
       return raw && typeof raw === 'object'
@@ -225,7 +233,7 @@ function _serializeMultiselect(cfg: CardConfig): Record<string, any> {
 
 
 /** Copy of ``cfg`` without unset / empty / false values. */
-/** A button without empty keys; ``initial_value: null``, ``highlight: false`` and toggle states are kept. */
+/** A button without empty keys; keeps ``initial_value: null``, ``highlight: false``, toggles. */
 function _serializeButton(cfg: CardConfig): CardConfig {
   const out = _withoutEmpty(cfg);
   if ('initial_value' in cfg && cfg.initial_value === null) out.initial_value = null;
