@@ -425,7 +425,9 @@ def _form_section(fc: dict[str, Any]) -> dict[str, Any]:
     if isinstance(form_list, list) and form_list:
         rows.append(_row(key='FORM', children=_element_rows(form_list, dyn_forms)))
 
-    if fc.get('submission_buttons'):
+    if fc.get('submission_buttons') is False:
+        rows.append(_row('submission buttons', 'none (submit with a button)'))
+    elif fc.get('submission_buttons'):
         sb = fc['submission_buttons']
         parts: list[str] = []
         if sb.get('previous'):
