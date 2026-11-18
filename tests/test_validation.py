@@ -903,3 +903,11 @@ def test_submission_buttons_false_is_valid_other_types_are_not():
     assert ok['valid'], ok['errors']
     bad = validate_config(form_config={'submission_buttons': 'no', 'form': form})
     assert any('"submission_buttons" must be' in e for e in bad['errors'])
+
+
+def test_containers_in_a_mapping_dynamic_form_are_validated():
+    r = validate_config(form_config={
+        'form': [{'select': {'label': 's', 'items': [{'value': 'a', 'form': 'f'}]}}],
+        'dynamic_forms': {'f': {'grid': {'columns': 0, 'items': []}}},
+    })
+    assert any('"columns" must be a whole number' in e for e in r['errors'])
