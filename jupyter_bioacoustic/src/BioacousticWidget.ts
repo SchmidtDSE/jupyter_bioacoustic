@@ -213,7 +213,7 @@ export class BioacousticWidget extends Widget {
       void this._player.loadRow(row);
     });
 
-    this._form.submitted.connect(() => this._onSkip());
+    this._form.submitted.connect(() => this._onSubmitted());
     this._form.prevRequested.connect(() => this._onPrev());
     this._form.nextRequested.connect(() => this._onSkip());
     this._form.reviewDeleted.connect(() => {
@@ -429,6 +429,37 @@ export class BioacousticWidget extends Widget {
     this._player.clearAnnotDisplay();
   }
 
+  /**
+   * After a submit: go to the next clip. On the last clip there is none, so show that clip
+   * as submitted again (its reviewed view without duplicate entries, a reset form with them)
+   * and an "all done" notice, with a jump to the first clip still to review.
+   */
+  private _onSubmitted(): void {
+    const idx = this._table.selectedIdx;
+    const filtered = this._table.filtered;
+    if (idx + 1 < filtered.length) {
+      this._onSkip();
+      return;
+    }
+    this._table.updateCurrentRowStyle();
+    this._selectRow(idx);
+    const text = _doneText(filtered.length, filtered.filter(r => this._form.isReviewed(r)).length,
+      this._form.duplicateEntries);
+    const todo = this._form.duplicateEntries ? -1 : filtered.findIndex(r => !this._form.isReviewed(r));
+    this._form.showNotice(text, todo < 0 ? undefined : {
+      label: `Go to clip ${todo + 1} (first not reviewed)`,
+      onClick: () => this._goTo(todo),
+    });
+    this._setStatus(text);
+  }
+
+  /** Select and load filtered row ``idx``. */
+  private _goTo(idx: number): void {
+    this._selectRow(idx);
+    this._table.ensurePageShowsSelected();
+    void this._player.loadRow(this._table.filtered[idx]);
+  }
+
   /** Go to the previous row (if any) and load its audio. */
   private _onPrev(): void {
     this._step(-1);
@@ -443,9 +474,7 @@ export class BioacousticWidget extends Widget {
   private _step(delta: number): void {
     const target = this._table.selectedIdx + delta;
     if (target < 0 || target >= this._table.filtered.length) return;
-    this._selectRow(target);
-    this._table.ensurePageShowsSelected();
-    void this._player.loadRow(this._table.filtered[target]);
+    this._goTo(target);
   }
 
   // ── Keyboard ─────────────────────────────────────────────────
@@ -545,6 +574,15 @@ export class BioacousticWidget extends Widget {
 /** A section height from the config (px), or undefined for "use the default". */
 function _parseHeight(raw: string): number | undefined {
   return parseInt(raw) || undefined;
+}
+
+
+/** The "last clip submitted" message (reviewed counts only without duplicate entries). */
+function _doneText(total: number, reviewed: number, duplicateEntries: boolean): string {
+  if (duplicateEntries) return `✓ Last clip submitted (${total} clips).`;
+  return reviewed >= total
+    ? `✓ All done: ${reviewed} of ${total} clips reviewed.`
+    : `✓ Last clip submitted: ${reviewed} of ${total} clips reviewed.`;
 }
 
 
