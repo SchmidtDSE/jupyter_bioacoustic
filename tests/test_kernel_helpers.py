@@ -328,6 +328,51 @@ class TestWriteOutputRow:
         assert p.read_text().splitlines() == ['a', '1']
 
 
+class TestWriteOutputRowsReplace:
+    """Issue 14: without duplicate entries a re-submitted clip replaces its rows."""
+
+    REPLACE = {'column': 'id', 'value': '1'}
+
+    def test_csv_replaces_only_that_clip(self, tmp_path):
+        p = str(tmp_path / 'o.csv')
+        write_output_rows(p, [{'id': 1, 'v': 'a'}, {'id': 2, 'v': 'b'}], ['id', 'v'], 'csv')
+        write_output_rows(p, [{'id': 1, 'v': 'z', 'note': 'n'}], ['id', 'v', 'note'], 'csv',
+                          self.REPLACE)
+        with open(p) as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        assert reader.fieldnames == ['id', 'v', 'note']
+        assert rows == [{'id': '2', 'v': 'b', 'note': ''}, {'id': '1', 'v': 'z', 'note': 'n'}]
+
+    def test_csv_multibox_rows_replaced_together(self, tmp_path):
+        p = str(tmp_path / 'o.csv')
+        write_output_rows(p, [{'id': 1, 'box': 'a'}, {'id': 1, 'box': 'b'}], ['id', 'box'], 'csv')
+        write_output_rows(p, [{'id': 1, 'box': 'c'}], ['id', 'box'], 'csv', self.REPLACE)
+        with open(p) as f:
+            assert [r['box'] for r in csv.DictReader(f)] == ['c']
+
+    def test_replace_on_a_new_file_just_writes(self, tmp_path):
+        p = str(tmp_path / 'o.csv')
+        write_output_rows(p, [{'id': 1}], ['id'], 'csv', self.REPLACE)
+        with open(p) as f:
+            assert [r['id'] for r in csv.DictReader(f)] == ['1']
+
+    def test_jsonl(self, tmp_path):
+        p = str(tmp_path / 'o.jsonl')
+        write_output_rows(p, [{'id': 1, 'v': 'a'}, {'id': 2, 'v': 'b'}], ['id', 'v'], 'jsonl')
+        write_output_rows(p, [{'id': 1, 'v': 'z'}], ['id', 'v'], 'jsonl', self.REPLACE)
+        with open(p) as f:
+            assert [json.loads(line) for line in f] == [{'id': 2, 'v': 'b'}, {'id': 1, 'v': 'z'}]
+
+    def test_parquet(self, tmp_path):
+        pd = pytest.importorskip('pandas')
+        pytest.importorskip('pyarrow')
+        p = str(tmp_path / 'o.parquet')
+        write_output_rows(p, [{'id': 1, 'v': 'a'}, {'id': 2, 'v': 'b'}], ['id', 'v'], 'parquet')
+        write_output_rows(p, [{'id': 1, 'v': 'z'}], ['id', 'v'], 'parquet', self.REPLACE)
+        assert pd.read_parquet(p).to_dict('records') == [{'id': 2, 'v': 'b'}, {'id': 1, 'v': 'z'}]
+
+
 class TestWriteOutputRows:
     """H11: a multibox submit writes all its rows in one call."""
 
