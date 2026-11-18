@@ -84,6 +84,8 @@ export class FormSection extends CollapsibleSection {
   private _dynFormsContainer: HTMLDivElement;
   private _dragSrcCard: HTMLDivElement | null = null;
   private _sideFormCb: HTMLInputElement;
+  /** ``submission_buttons: false``: no Prev / Skip / Submit row. */
+  private _noButtonsCb: HTMLInputElement;
   private _sideSplitInput: HTMLInputElement;
   private _ctx: FormCardContext;
 
@@ -110,7 +112,7 @@ export class FormSection extends CollapsibleSection {
     this._sideSplitInput.type = 'number';
     this._sideSplitInput.step = '0.01';
     this._sideSplitInput.min = '0.2';
-    this._sideSplitInput.max = '0.85';
+    this._sideSplitInput.max = '0.95';
     this._sideSplitInput.title = "The spectrogram's share of the width";
     const syncSide = () => {
       this._sideSplitInput.disabled = !cb.checked;
@@ -124,6 +126,12 @@ export class FormSection extends CollapsibleSection {
     sideRow.append(...[...cbRow.childNodes], splitLbl, this._sideSplitInput);
     this._sideSplitInput.disabled = true;
     this._body.appendChild(sideRow);
+
+    const { row: noButtonsRow, input: noButtonsCb } = this._makeCheckbox(
+      'no submission buttons (submit with a button\'s "submit")');
+    this._noButtonsCb = noButtonsCb;
+    noButtonsCb.addEventListener('change', () => this._emitChanged());
+    this._body.appendChild(noButtonsRow);
 
     this._addBar = this._makeAddBar();
     this._body.appendChild(this._addBar);
@@ -180,7 +188,8 @@ export class FormSection extends CollapsibleSection {
       }
     }
     if (formList.length > 0) result.form = formList;
-    if (submissionButtons) result.submission_buttons = submissionButtons;
+    if (this._noButtonsCb.checked) result.submission_buttons = false;
+    else if (submissionButtons) result.submission_buttons = submissionButtons;
 
     if (this._dynForms.length > 0) {
       const dynDict: Record<string, any[]> = {};
@@ -195,6 +204,7 @@ export class FormSection extends CollapsibleSection {
   /** Rebuild the cards from form YAML (every element goes through ``deserializeElement``). */
   setData(data: Record<string, any>): void {
     this._sideFormCb.checked = data.side_form === true;
+    this._noButtonsCb.checked = data.submission_buttons === false;
     this._sideSplitInput.value = data.side_form_split != null ? String(data.side_form_split) : '';
     this._sideSplitInput.disabled = !this._sideFormCb.checked;
     this._elements = [];
