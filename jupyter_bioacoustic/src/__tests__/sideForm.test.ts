@@ -75,3 +75,13 @@ describe('builder: side_form round-trip', () => {
     expect('side_form' in section.getData()).toBe(false);
   });
 });
+
+
+describe('builder: submission_buttons false', () => {
+  it('round-trips', () => {
+    const section = new FormSection();
+    const form = { form: [{ textbox: { label: 'n', column: 'n' } }], submission_buttons: false };
+    section.setData(JSON.parse(JSON.stringify(form)));
+    expect(section.getData()).toEqual(form);
+  });
+});
