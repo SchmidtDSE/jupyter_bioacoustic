@@ -215,6 +215,9 @@ export function injectGlobalStyles(): void {
        strip — only the toggle and the title, running vertically. */
     .jp-BA-side-divider { cursor: col-resize; background: ${COLORS.bgSurface0}; }
     .jp-BA-side-divider:hover, .jp-BA-side-divider.jp-BA-dragging { background: ${COLORS.blue}; }
+    .jp-BA-side-form:not(.jp-BA-form-collapsed) [data-form-heading][data-collapse-keep] {
+      border-bottom: 1px solid ${COLORS.bgSurface1}; padding-bottom: 6px;
+    }
     .jp-BA-side-form.jp-BA-form-collapsed { padding: 8px 4px !important; }
     .jp-BA-side-form.jp-BA-form-collapsed [data-collapse-keep] {
       flex-direction: column !important; align-items: center !important; gap: 8px; width: auto;
