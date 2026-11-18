@@ -323,6 +323,31 @@ export class FormPanel {
     return true;
   }
 
+  /**
+   * Show a notice at the top of the form (below its title), e.g. "all done" after the last
+   * clip, with an optional action button. Removed when another row is shown.
+   */
+  showNotice(text: string, action?: { label: string; onClick: () => void }): void {
+    this._dynFormEl.querySelector(':scope > [data-form-notice]')?.remove();
+    const notice = document.createElement('div');
+    notice.dataset.formNotice = '';
+    notice.style.cssText =
+      `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 10px;` +
+      `border-radius:4px;background:${COLORS.bgReviewed};color:${COLORS.green};font-size:12px;`;
+    notice.append(text);
+    if (action) {
+      const btn = document.createElement('button');
+      btn.textContent = action.label;
+      btn.style.cssText = btnStyle() + `font-size:12px;`;
+      btn.addEventListener('click', action.onClick);
+      notice.appendChild(btn);
+      notice.dataset.formItem = '';
+    }
+    const heading = this._dynFormEl.querySelector(':scope > [data-form-heading]');
+    if (heading) heading.after(notice);
+    else this._dynFormEl.prepend(notice);
+  }
+
   /** Collapse to the row holding the toggle (title / progress, else buttons), or expand. */
   setCollapsed(collapsed: boolean): void {
     this._dynFormEl.classList.toggle('jp-BA-collapsed', collapsed);
@@ -552,6 +577,11 @@ export class FormPanel {
   /** True if a row has been reviewed and duplicate_entries is off. */
   isReviewed(row: Detection): boolean {
     return this._isRowReviewed(row);
+  }
+
+  /** ``duplicate_entries``: several submissions per clip allowed (no reviewed view). */
+  get duplicateEntries(): boolean {
+    return this._duplicateEntries;
   }
 
   /** True while the reviewed view replaces the form. */
@@ -1608,6 +1638,7 @@ export class FormPanel {
    */
   private _applyRow(row: Detection): void {
     this._currentRow = row;
+    this._dynFormEl.querySelector(':scope > [data-form-notice]')?.remove();
     this._multiboxEntries = [];
     this._activeBoxIndex = -1;
     // multibox: clear the box cards. The single annotation sub-form is NOT rebuilt per row
@@ -1932,8 +1963,12 @@ export class FormPanel {
     const rows = (multibox
       ? this._multiboxEntries.map(entry => this._multiboxRow(entry))
       : [{ ...this._formValues }]).map(row => encodeRow(row, specs));
+    // without duplicate entries a clip keeps exactly one entry: a re-submit replaces it
+    const clipKey = activeRow[this._dataIndexCol];
+    const replace = !this._duplicateEntries && this._outputIndexCol && clipKey != null
+      ? { column: this._outputIndexCol, value: String(clipKey) } : undefined;
     try {
-      await this._kernel.exec(writeOutputRows(this._outputPath, rows));
+      await this._kernel.exec(writeOutputRows(this._outputPath, rows, replace));
     } catch (e: unknown) {
       if (e instanceof KernelError) console.error('[JBA] Write failed:', e.traceback);
       this.statusChanged.emit({ message: `❌ Write failed: ${errorMessage(e)}`, error: true });
@@ -1946,7 +1981,8 @@ export class FormPanel {
         : `✓ Saved clip ${clipId} → ${this._outputPath}`,
       error: false,
     });
-    this._sessionCount++;
+    // a replaced entry isn't a new one: it doesn't add to the progress count
+    if (!(replace && this._reviewedMap.has(clipId))) this._sessionCount++;
     if (!this._duplicateEntries) {
       this._reviewedMap.set(clipId, rows.map(r => ({ ...r })));
     }
