@@ -331,7 +331,7 @@ curl -o audio/test3.flac https://dse-soundhub.s3.us-west-2.amazonaws.com/public/
 
 ### 3. Open a demo notebook
 
-Open `simple-examples.ipynb` from the JupyterLab file browser. The notebook demonstrates both review and annotation workflows.
+Open `simple-examples.ipynb` from the JupyterLab file browser. The notebook demonstrates both review and annotation workflows. `review-workflows.ipynb` has ready-to-use review setups (one-click validation, quick labelling with hot keys, multilabel regions) and `layout-examples.ipynb` shows the layout options (side form, collapsed sections, row / column / grid forms). See the [Demo](https://github.com/SchmidtDSE/jupyter_bioacoustic/wiki/Demo) wiki page for every notebook.
 
 ## License
 
