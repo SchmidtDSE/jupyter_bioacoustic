@@ -1348,11 +1348,14 @@ class BioacousticAnnotator:
             The height in pixels.
         """
         has_form = self._form_config is not None
+        side_form = has_form and isinstance(self._form_config, dict) \
+            and self._form_config.get('side_form') is True
         return (
             int(self._clip_table_height)
             + int(self._player_height)
             + (_PLAYLIST_BAR_PX if self._hide_info_card else int(self._info_card_height))
-            + (int(self._form_panel_height) if has_form else 0)
+            # a side form sits beside the spectrogram, not below it
+            + (int(self._form_panel_height) if has_form and not side_form else 0)
             + self._description_panel_px()
             + _TOOLBAR_AND_PADDING_PX
         )
