@@ -136,6 +136,9 @@ The `form_config` parameter drives the entire form layout. It can be a Python di
 | `textbox` | Text input. `multiline: true` for textarea | `label`, `column`, `default`, `multiline` |
 | `checkbox` | Boolean. `checked_value`/`unchecked_value` for custom values. `checked_form`/`unchecked_form` for conditional sections | `label`, `column`, `checked_value`, `unchecked_value`, `checked_form`, `unchecked_form` |
 | `number` | Numeric input | `label`, `column`, `min`, `max`, `step` |
+| `multiselect` | Several labels (tags) per clip; same `items` as `select` | `label`, `column`, `items`, `min`, `max`, `output` |
+| `button` | Button: writes a value, cycles `toggle` states, and/or submits. `jba:` built-in icons | `icon` / `image`, `column`, `value`, `submit`, `toggle`, `initial_value`, `pressed_*`, `hot_key`, `size` |
+| `row` / `column` / `grid` | Layout containers (nestable); `column` / `unique` / `delimiter` group the buttons inside | `items`, `columns` (grid), `gap`, `align` |
 | `break` | Visual break | (no fields) |
 | `line` | Horizontal line | (no fields) |
 | `text` | Static text | `value` |
@@ -191,6 +194,8 @@ dynamic_forms:
 | `custom_value: true` | Shows "+ Add" button when no exact match |
 | `not_available: true` | Prepends a fallback option (string or `{label, value}` dict) |
 | `selected::value` | Prefix to mark the default selection |
+| `hot_keys: {1: owl}` | On the select (not `items`): keys that pick an item while the select has keyboard focus |
+| `pin_hot_keys: true` | On the select: list the hot-keyed items first, in a "hot keys" group |
 
 
 ## Other Parameters
@@ -204,7 +209,7 @@ dynamic_forms:
 | `display_columns` | `[]` | Columns for the clip table |
 | `sort` | `None` | Column to sort the clip table by (`None` = input/file order) |
 | `sort_order` | `'asc'` | Sort direction when `sort` is set (`'asc'` or `'desc'`) |
-| `duplicate_entries` | `False` | Allow multiple submissions per row |
+| `duplicate_entries` | `False` | Allow multiple submissions per row. When `False`, re-submitting a clip replaces its earlier entry |
 | `default_buffer` | `3` | Buffer time in seconds |
 | `capture` | `True` | Capture button (`False` to hide, string for label) |
 | `capture_dir` | `''` | Directory for captures |
@@ -216,6 +221,10 @@ dynamic_forms:
 | `clip_table_height` | `175` | Clip table height (px) |
 | `player_height` | `260` | Player/spectrogram height (px). **Sets spectrogram resolution height.** |
 | `info_card_height` | `34` | Info card height (px) |
+| `hide_info_card` | `False` | Hide the info card |
+| `playlist_title`, `spectrogram_title` | `False` | Text after the section's collapse chevron (`True` = standard name, or a string) |
+| `playlist_open`, `spectrogram_open`, `form_open` | `True` | Whether each section starts expanded |
+| `freq_min`, `freq_max` | `None` | Frequency window (kHz) the spectrogram opens with and Reset returns to |
 | `form_panel_height` | `175` | Form panel height (px) |
 | `output` | `''` | Output file path, or `{path, uri, sync_button, recursive, secrets, index_column}`. Auto-generated (`outputs/annotation_output-<timestamp>.csv`) if a form is configured |
 | `description` | `None` | Collapsible description panel: markdown text, a `.md` path, or `{title, text, path, open, height}` |
