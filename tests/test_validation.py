@@ -895,3 +895,11 @@ class TestSideForm:
                                             'form': [{'textbox': {'label': 'n'}}]})['errors']
         assert any('"side_form" must be true or false' in e for e in errs)
         assert any('"side_form_split" must be a fraction' in e for e in errs)
+
+
+def test_submission_buttons_false_is_valid_other_types_are_not():
+    form = [{'textbox': {'label': 'n'}}]
+    ok = validate_config(form_config={'submission_buttons': False, 'form': form})
+    assert ok['valid'], ok['errors']
+    bad = validate_config(form_config={'submission_buttons': 'no', 'form': form})
+    assert any('"submission_buttons" must be' in e for e in bad['errors'])
