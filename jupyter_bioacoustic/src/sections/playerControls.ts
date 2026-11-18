@@ -144,15 +144,18 @@ export function buildPlayerDom(h: PlayerControlHandlers, canvasHeight: number): 
 
   // ── Playback bar ──────────────────────────────────────────────
   const playBar = document.createElement('div');
+  playBar.className = 'jp-BA-play-bar';
   playBar.style.cssText = barBottomStyle();
 
   const playBtn = _button('▶', btnStyle() + `font-size:15px;width:34px;height:28px;`, h.onTogglePlay);
 
   const timeDisplay = document.createElement('span');
+  timeDisplay.className = 'jp-BA-play-time';
   timeDisplay.style.cssText = monoTextStyle();
   timeDisplay.textContent = '0:00.00 / 0:00.00';
 
   const signalTimeDisplay = document.createElement('span');
+  signalTimeDisplay.className = 'jp-BA-play-signal';
   signalTimeDisplay.style.cssText =
     `margin-left:auto;font-size:11px;color:${COLORS.mauve};font-family:ui-monospace,monospace;`;
   signalTimeDisplay.textContent = '';
