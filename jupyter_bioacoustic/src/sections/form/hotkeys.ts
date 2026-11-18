@@ -15,9 +15,7 @@ import { SelectItem } from './selectItems';
 // Constants
 //
 /** ``<input>`` types that take typed text. */
-const TEXT_INPUT_TYPES = new Set([
-  'text', 'number', 'search', 'email', 'url', 'password', 'tel', '',
-]);
+const TEXT_INPUT_TYPES = new Set(['text', 'number', 'search', 'email', 'url', 'password', 'tel']);
 
 
 //
