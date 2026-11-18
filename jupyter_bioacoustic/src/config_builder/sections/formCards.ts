@@ -48,6 +48,9 @@ export function defaultElementConfig(type: ElementType): CardConfig {
     case 'checkbox': return { label: '', column: '' };
     case 'number': return { label: '', column: '', min: 0, max: 1, step: 0.1 };
     case 'button': return { icon: '', column: '', value: '', submit: false };
+    case 'row': return {};
+    case 'column': return {};
+    case 'grid': return { columns: 2 };
     case 'annotation': return { tools: ['start_end_time_select'] };
     case 'pass_value': return { source_column: '', column: '' };
     case 'fixed_value': return { column: '', value: '' };
@@ -80,6 +83,7 @@ export function buildElementFields(
       _addLabelColumnFields(ctx, card, cfg);
       _addCheckboxField(ctx, card, cfg, 'required', 'required');
       addSelectItemsBuilder(ctx, card, cfg);
+      _addHotKeys(ctx, card, cfg);
       break;
     case 'multiselect':
       _addMultiselectLabelAndOutput(ctx, card, cfg);
@@ -87,6 +91,7 @@ export function buildElementFields(
       _addNumField(ctx, card, cfg, 'min', 'min tags', '60px');
       _addNumField(ctx, card, cfg, 'max', 'max tags', '60px');
       addSelectItemsBuilder(ctx, card, cfg, { idColumn: true });
+      _addHotKeys(ctx, card, cfg);
       break;
     case 'textbox':
       _addLabelColumnFields(ctx, card, cfg);
@@ -122,7 +127,14 @@ export function buildElementFields(
       _addField(ctx, card, cfg, 'pressed_background', 'pressed_background', '100px', 'fill color');
       _addNumField(ctx, card, cfg, 'size', 'size (px)', '60px');
       _addField(ctx, card, cfg, 'hot_key', 'hot_key', '40px', 'key');
+      _addDefaultOnField(ctx, card, cfg, 'show_hot_key', 'show hot key badge');
+      _addDefaultOnField(ctx, card, cfg, 'highlight', 'pressed ring / fade group');
       _addToggleStates(ctx, card, cfg);
+      break;
+    case 'row':
+    case 'column':
+    case 'grid':
+      _addLayoutFields(ctx, card, type, cfg);
       break;
     case 'annotation': {
       buildAnnotationToolList(ctx, card, cfg);
@@ -251,6 +263,94 @@ function _imageInput(
   browse.addEventListener('click', () => ctx.browse(set));
   wrap.append(inp, browse);
   return wrap;
+}
+
+
+/** A checkbox for an option that is on unless set to ``false`` (unchecking writes ``false``). */
+function _addDefaultOnField(
+  ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig, key: string, label: string,
+): void {
+  const { row, input } = ctx.checkbox(label, cfg[key] !== false);
+  input.addEventListener('change', () => {
+    if (input.checked) delete cfg[key];
+    else cfg[key] = false;
+    ctx.changed();
+  });
+  card.appendChild(row);
+}
+
+
+/**
+ * A row / column / grid's options: grid columns, gap, align, and the button keys passed on
+ * to the buttons inside (column, unique, delimiter). Its items are cards of their own.
+ */
+function _addLayoutFields(
+  ctx: FormCardContext, card: HTMLDivElement, type: ElementType, cfg: CardConfig,
+): void {
+  if (type === 'grid') _addNumField(ctx, card, cfg, 'columns', 'columns', '60px');
+  _addValueField(ctx, card, cfg, 'gap', 'gap (px)');
+  const align = makeSelect(['start', 'center', 'end'], cfg.align ?? 'start');
+  align.addEventListener('change', () => {
+    if (align.value === 'start') delete cfg.align;
+    else cfg.align = align.value;
+    ctx.changed();
+  });
+  card.appendChild(ctx.fieldRow('align', align));
+  _addField(ctx, card, cfg, 'column', 'button column', '150px', 'column (for buttons inside)');
+  const uniqueOpts = ['(per column)', 'true', 'false'];
+  const unique = makeSelect(
+    uniqueOpts, typeof cfg.unique === 'boolean' ? String(cfg.unique) : uniqueOpts[0]);
+  unique.addEventListener('change', () => {
+    if (unique.value === uniqueOpts[0]) delete cfg.unique;
+    else cfg.unique = unique.value === 'true';
+    ctx.changed();
+  });
+  card.appendChild(ctx.fieldRow('unique', unique));
+  _addField(ctx, card, cfg, 'delimiter', 'delimiter', '50px', ',');
+}
+
+
+/**
+ * A select / multiselect's ``hot_keys`` (one row per key: key, item value, remove; "+ hot
+ * key") and ``pin_hot_keys``. Empty rows are left out of the YAML.
+ */
+function _addHotKeys(ctx: FormCardContext, card: HTMLDivElement, cfg: CardConfig): void {
+  const pairs: Array<[string, string]> = Object.entries(cfg.hot_keys ?? {})
+    .map(([k, v]) => [k, String(v)]);
+  const list = document.createElement('div');
+  list.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
+  const sync = () => {
+    const map: Record<string, string> = {};
+    for (const [k, v] of pairs) if (k && v) map[k] = v;
+    if (Object.keys(map).length > 0) cfg.hot_keys = map;
+    else delete cfg.hot_keys;
+    ctx.changed();
+  };
+  const render = () => {
+    list.innerHTML = '';
+    pairs.forEach((pair, i) => {
+      const row = makeRow();
+      const key = makeInput('key', '40px');
+      key.maxLength = 1;
+      key.value = pair[0];
+      key.addEventListener('input', () => { pair[0] = key.value; sync(); });
+      const value = makeInput('item value', '160px');
+      value.value = pair[1];
+      value.addEventListener('input', () => { pair[1] = value.value; sync(); });
+      const remove = makeButton('×');
+      remove.addEventListener('click', () => { pairs.splice(i, 1); sync(); render(); });
+      row.append(key, value, remove);
+      list.appendChild(row);
+    });
+  };
+  const add = makeButton('+ hot key');
+  add.addEventListener('click', () => { pairs.push(['', '']); render(); });
+  render();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `display:flex;flex-direction:column;gap:4px;`;
+  wrap.append(list, add);
+  card.appendChild(ctx.fieldRow('hot keys', wrap));
+  _addCheckboxField(ctx, card, cfg, 'pin_hot_keys', 'pin hot-keyed items first');
 }
 
 
