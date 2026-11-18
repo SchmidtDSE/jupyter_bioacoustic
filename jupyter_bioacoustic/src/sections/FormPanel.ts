@@ -5,12 +5,18 @@
  * tracker, annotation tool UI (incl. multibox cards), the reviewed view (for
  * already-submitted rows), and output file writing.
  *
+ * Keyboard: the form is a list of focusable items (each top-level element; a whole row /
+ * column / grid; the button row). The focused item gets a grey background; ← / → and Tab move
+ * between items, Enter steps into a container (or a textbox) and Esc steps back out, Enter / Space
+ * click a focused button or checkbox, and hot keys (a button's ``hot_key``, a select's
+ * ``hot_keys``) work while their item is focused.
+ *
  * Communicates with the rest of the widget via Lumino signals. Related modules under
  * ``form/``: ``annotationConfig`` (parsing the annotation element), ``selectItems`` /
  * ``inputs`` (select parsing and DOM), ``multiselect`` (tags: selection rules and output
  * encoding), ``multiboxCards`` (box cards and per-box forms),
  * ``reviewed`` (reviewed view), ``progress`` (progress text / accuracy), ``buttons`` (the
- * ``button`` element), ``formConfig``.
+ * ``button`` element), ``layout`` (``row`` / ``column`` / ``grid`` containers), ``formConfig``.
  *
  * License: BSD 3-Clause
  */
@@ -47,11 +53,13 @@ import {
 } from '../util';
 import { parseAnnotationConfig } from './form/annotationConfig';
 import {
-  ButtonFace, ToggleStart, formButtonStyle, isDirectImageSrc, nextToggleIndex, parseFormButton,
-  toggleStart,
+  ButtonFace, ToggleStart, formButtonStyle, hotKeyBadgeStyle, isDirectImageSrc, nextToggleIndex,
+  parseFormButton, toggleStart,
 } from './form/buttons';
 import { asElementList, requiredColumns } from './form/formConfig';
 import { buildMultiselect, buildSelect } from './form/inputs';
+import { hasCommandModifier, isTypingTarget, resolveHotKeys } from './form/hotkeys';
+import { DEFAULT_DELIMITER, flattenLayout, layoutStyle, parseLayout } from './form/layout';
 import { buildBoxCard, buildBoxForm } from './form/multiboxCards';
 import {
   MultiselectSpec, decodeStored, encodeRow, multiselectItemsConfig, prepareMultiselect,
@@ -68,6 +76,12 @@ import {
 // Constants
 //
 const DEFAULT_FORM_MIN_HEIGHT = 140;
+/** Selector for the controls inside an item that keyboard focus can land on. */
+const FOCUSABLE = 'button, select, textarea, input:not([type=hidden])';
+/** Class on the focused form item (greyed by the global stylesheet). */
+const ITEM_FOCUS_CLASS = 'jp-BA-item-focus';
+/** Height of the collapse toggle's own row (forms without a title / progress row). */
+const TOGGLE_ROW_PX = 12;
 
 /** Input types allowed directly at the top level of a form config. */
 const TOPLEVEL_INPUTS = new Set(['select', 'multiselect', 'textbox', 'checkbox', 'number']);
@@ -86,8 +100,33 @@ type InputEl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 interface FormButton {
   el: HTMLButtonElement;
   spec: ReturnType<typeof parseFormButton>;
-  /** A toggle's current state (-1: not clicked yet, with an initial value / face). */
+  /** A toggle's current state (-1: not clicked yet). */
   toggleIdx: number;
+  /** A plain button with a column: pressed or not. */
+  pressed: boolean;
+  /** Its group (plain buttons with a column), else null. */
+  group: ButtonGroup | null;
+}
+
+/** A hot key and what it does (click a button, pick a select / multiselect option). */
+interface HotKeyTarget {
+  el: HTMLElement;
+  key: string;
+  act: () => void;
+}
+
+/** Buttons that press / un-press together (a container with ``unique``, or one column). */
+interface ButtonGroup {
+  unique: boolean;
+  buttons: FormButton[];
+}
+
+/** What a row / column / grid passes on to the buttons inside it. */
+interface LayoutContext {
+  column: string | null;
+  /** The group set by the nearest container with ``unique`` (null: group per column). */
+  group: ButtonGroup | null;
+  delimiter: string;
 }
 
 
@@ -146,10 +185,14 @@ export class FormPanel {
   private readonly _boxMultiselects: Map<string, MultiselectSpec> = new Map();
   private _passValueDefs: Array<{ sourceCol: string; col: string }> = [];
   private _templateElements: Array<{ el: HTMLElement | Text; template: string }> = [];
-  /** ``button`` elements that set a column, by output column (one selected per column). */
-  private readonly _buttonGroups: Map<string, FormButton[]> = new Map();
-  /** A button column's ``initial_value`` (its value before any of its buttons is clicked). */
+  /** Plain ``button`` elements with a column, by output column. */
+  private readonly _columnButtons: Map<string, FormButton[]> = new Map();
+  /** A button column's ``initial_value`` (its value while none of its buttons is pressed). */
   private readonly _buttonInitial: Map<string, any> = new Map();
+  /** Delimiter joining the pressed values of a non-unique shared button column. */
+  private readonly _buttonDelimiter: Map<string, string> = new Map();
+  /** Per-column groups of buttons outside any container with ``unique``. */
+  private readonly _columnGroups: Map<string, ButtonGroup> = new Map();
   /** ``button`` elements with a ``toggle`` (each owns its column). */
   private _toggleBtns: FormButton[] = [];
   /** ``button`` elements with ``submit: true``. */
@@ -161,6 +204,12 @@ export class FormPanel {
   private _minHeight = `${DEFAULT_FORM_MIN_HEIGHT}px`;
   /** The collapse toggle, kept at the start of the button row across rebuilds. */
   private _leading: HTMLElement | null = null;
+  /** Hot keys of the current form (looked up within the focused item). */
+  private _hotKeys: HotKeyTarget[] = [];
+  /** The highlighted (focused) item. */
+  private _focusedItem: HTMLElement | null = null;
+  /** Item index to focus after the next row is shown (null: leave focus alone). */
+  private _pendingFocus: number | null = null;
 
   // ── Progress tracking ────────────────────────────────────────
   private _sessionCount = 0;
@@ -219,25 +268,10 @@ export class FormPanel {
     this._dynFormEl.style.cssText = `display:flex;flex-direction:column;gap:10px;`;
     this.element.append(this._dynFormEl);
 
-    // Enter on a focused button or checkbox clicks it (like the mouse); elsewhere it submits
-    // (when allowed) — except in textareas and text inputs
-    this.element.addEventListener('keydown', e => {
-      if (e.key !== 'Enter' || e.shiftKey) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      const isCheckbox = tag === 'INPUT' && (target as HTMLInputElement).type === 'checkbox';
-      if (tag === 'BUTTON' || isCheckbox) {
-        e.preventDefault();
-        if (!(target as HTMLButtonElement | HTMLInputElement).disabled) target!.click();
-        return;
-      }
-      if (tag === 'TEXTAREA') return;
-      if (tag === 'INPUT' && (target as HTMLInputElement).type === 'text') return;
-      const btn = this._submitBtns.find(b => !b.disabled);
-      if (btn) {
-        e.preventDefault();
-        btn.click();
-      }
+    this.element.addEventListener('keydown', e => this._onKeyDown(e));
+    this.element.addEventListener('focusin', e => this._setFocusedItem(this._itemOf(e.target)));
+    this.element.addEventListener('focusout', e => {
+      if (!this.element.contains(e.relatedTarget as Node | null)) this._setFocusedItem(null);
     });
   }
 
@@ -280,6 +314,15 @@ export class FormPanel {
     this._placeLeading();
   }
 
+  /** Focus the form: its highlighted item if any, else the first one. False when it has none. */
+  focusForm(): boolean {
+    const items = this._items();
+    const item = this._focusedItem && items.includes(this._focusedItem) ? this._focusedItem : items[0];
+    if (!item) return false;
+    this._focusItem(item);
+    return true;
+  }
+
   /** Collapse to the row holding the toggle (title / progress, else buttons), or expand. */
   setCollapsed(collapsed: boolean): void {
     this._dynFormEl.classList.toggle('jp-BA-collapsed', collapsed);
@@ -288,6 +331,7 @@ export class FormPanel {
 
   /** Build the form from the current form config (top-level keys in config order). */
   async build(): Promise<void> {
+    this._keepFocusAcrossRebuild();
     this._resetFormState();
 
     if (this._dataIndexCol) {
@@ -535,16 +579,197 @@ export class FormPanel {
 
   // ── Private: form building ───────────────────────────────────
 
+  // ── Private: keyboard navigation ─────────────────────────────
+
+  /**
+   * Form keys (see the module docstring). Text boxes keep their keys except Esc (back to the
+   * item) and Tab (next item); handled keys are stopped so the widget's j / k don't fire.
+   */
+  private _onKeyDown(e: KeyboardEvent): void {
+    if (hasCommandModifier(e)) return;
+    const target = e.target as HTMLElement | null;
+    const item = this._itemOf(target);
+    const handled = () => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    if (e.key === 'Escape') {
+      if (item && target !== item) {
+        handled();
+        this._focusItemElement(item);
+      }
+      return;
+    }
+    if (e.key === 'Tab' && !e.shiftKey) {
+      handled();
+      this._moveItem(item, 1);
+      return;
+    }
+    if (isTypingTarget(target)) {
+      // Enter in a number box submits (as before); in a text box / textarea it doesn't
+      if (e.key === 'Enter' && (target as HTMLInputElement).type === 'number') this._onEnter(e, target);
+      return;
+    }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      handled();
+      const step = e.key === 'ArrowRight' ? 1 : -1;
+      if (item && target !== item && this._isContainerItem(item)) this._moveInner(item, target!, step);
+      else this._moveItem(item, step);
+      return;
+    }
+    if (e.key.length === 1 && e.key !== ' ' && item) {
+      const hot = this._hotKeys.find(h => h.key === e.key && item.contains(h.el));
+      if (hot) {
+        handled();
+        hot.act();
+        return;
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey && item && target === item && !item.matches(FOCUSABLE)) {
+      handled();
+      this._innerFocusables(item)[0]?.focus();      // step into a container / label item
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey) this._onEnter(e, target);
+  }
+
+  /** Enter on a button / checkbox clicks it; elsewhere it submits (when allowed). */
+  private _onEnter(e: KeyboardEvent, target: HTMLElement | null): void {
+    const tag = target?.tagName;
+    const isCheckbox = tag === 'INPUT' && (target as HTMLInputElement).type === 'checkbox';
+    if (tag === 'BUTTON' || isCheckbox) {
+      e.preventDefault();
+      if (!(target as HTMLButtonElement | HTMLInputElement).disabled) target!.click();
+      return;
+    }
+    const btn = this._submitBtns.find(b => !b.disabled);
+    if (btn) {
+      e.preventDefault();
+      btn.click();
+    }
+  }
+
+  /** Mark the elements added to ``container`` after ``before`` as items (skip text, lines...). */
+  private _markItems(container: HTMLElement, before: Element | null): void {
+    let el = before ? before.nextElementSibling : container.firstElementChild;
+    for (; el; el = el.nextElementSibling) {
+      const d = (el as HTMLElement).dataset;
+      if (!d || el.tagName === 'BR') continue;
+      if (d.formSection !== undefined || d.formLine !== undefined || d.formHeading !== undefined
+        || d.formText !== undefined || d.formToggleRow !== undefined) continue;
+      if (!el.querySelector(FOCUSABLE) && !el.matches(FOCUSABLE)) continue;
+      d.formItem = '';
+    }
+  }
+
+  /** The shown items, in order (an item that holds items, e.g. the annotation host, is skipped). */
+  private _items(): HTMLElement[] {
+    return [...this.element.querySelectorAll<HTMLElement>('[data-form-item]')].filter(
+      el => this._isShown(el) && !el.querySelector('[data-form-item]'));
+  }
+
+  /** The item holding ``target``, or null. */
+  private _itemOf(target: EventTarget | null): HTMLElement | null {
+    if (!(target instanceof HTMLElement)) return null;
+    const items = this._items();
+    return items.find(it => it === target || it.contains(target)) ?? null;
+  }
+
+  /** False when ``el`` (or a parent up to the panel) is hidden or collapsed away. */
+  private _isShown(el: HTMLElement): boolean {
+    const collapsed = this._dynFormEl.classList.contains('jp-BA-collapsed');
+    for (let e: HTMLElement | null = el; e && e !== this.element; e = e.parentElement) {
+      if (e.style.display === 'none') return false;
+      if (collapsed && e.parentElement === this._dynFormEl && e.dataset.collapseKeep === undefined) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** True for an item that holds several controls (row / column / grid, a button row). */
+  private _isContainerItem(item: HTMLElement): boolean {
+    return item.classList.contains('jp-BA-layout') || item.dataset.formButtons !== undefined;
+  }
+
+  /** The enabled, shown controls of ``item``, in order. */
+  private _innerFocusables(item: HTMLElement): HTMLElement[] {
+    const all = item.matches(FOCUSABLE) ? [item] : [...item.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    return all.filter(el => !(el as HTMLButtonElement).disabled && this._isShown(el)
+      && !el.closest('[data-collapse-toggle]'));
+  }
+
+  /** Focus an item: a single control directly (a textbox gets the cursor), else the item. */
+  private _focusItem(item: HTMLElement): void {
+    const controls = this._innerFocusables(item);
+    if (!this._isContainerItem(item) && controls.length === 1) controls[0].focus();
+    else this._focusItemElement(item);
+  }
+
+  /** Focus the item element itself (highlighted, no control focused). */
+  private _focusItemElement(item: HTMLElement): void {
+    if (item.tabIndex < 0 || !item.hasAttribute('tabindex')) item.tabIndex = -1;
+    item.focus();
+  }
+
+  /** Move to the item ``step`` away from ``item`` (wrapping); the first item when none. */
+  private _moveItem(item: HTMLElement | null, step: number): void {
+    const items = this._items();
+    if (items.length === 0) return;
+    const idx = item ? items.indexOf(item) : -1;
+    const next = idx < 0 ? 0 : (idx + step + items.length) % items.length;
+    this._focusItem(items[next]);
+  }
+
+  /** Move between the controls inside a container item (stopping at its ends). */
+  private _moveInner(item: HTMLElement, target: HTMLElement, step: number): void {
+    const controls = this._innerFocusables(item);
+    const idx = controls.findIndex(c => c === target || c.contains(target));
+    const next = controls[Math.max(0, Math.min(controls.length - 1, idx + step))];
+    next?.focus();
+  }
+
+  /** Highlight ``item`` (and un-highlight the previous one). */
+  private _setFocusedItem(item: HTMLElement | null): void {
+    if (item === this._focusedItem) return;
+    this._focusedItem?.classList.remove(ITEM_FOCUS_CLASS);
+    this._focusedItem = item;
+    item?.classList.add(ITEM_FOCUS_CLASS);
+  }
+
+  /** Before the form is replaced: if it has focus, refocus the same item afterwards. */
+  private _keepFocusAcrossRebuild(): void {
+    if (this._pendingFocus !== null || !this.element.contains(document.activeElement)) return;
+    const idx = this._focusedItem ? this._items().indexOf(this._focusedItem) : 0;
+    this._pendingFocus = Math.max(0, idx);
+  }
+
+  /** Focus the item saved by ``_keepFocusAcrossRebuild`` / a submit (clamped). */
+  private _restoreFocus(): void {
+    if (this._pendingFocus === null) return;
+    const items = this._items();
+    const idx = Math.min(this._pendingFocus, items.length - 1);
+    this._pendingFocus = null;
+    if (idx >= 0) this._focusItem(items[idx]);
+  }
+
   /**
    * Put the collapse toggle at the start of the form's first title / progress row (the
-   * reviewed view's REVIEWED title), or of the button row when there is none. That row is
-   * the one a collapsed form keeps.
+   * reviewed view's REVIEWED title), or, without one, in a slim row of its own at the top.
+   * That row is the one a collapsed form keeps.
    */
   private _placeLeading(): void {
     if (!this._leading) return;
-    const row = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-heading]')
-      ?? this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-buttons]');
-    if (!row) return;
+    let row = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-heading]');
+    if (!row) {
+      row = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-toggle-row]');
+      if (!row) {
+        row = document.createElement('div');
+        row.dataset.formToggleRow = '';
+        row.style.cssText = `display:flex;align-items:center;height:${TOGGLE_ROW_PX}px;`;
+        this._dynFormEl.prepend(row);
+      }
+    }
     for (const el of this._dynFormEl.querySelectorAll<HTMLElement>(':scope > [data-collapse-keep]')) {
       delete el.dataset.collapseKeep;
     }
@@ -570,8 +795,11 @@ export class FormPanel {
     this._boxMultiselects.clear();
     this._passValueDefs = [];
     this._templateElements = [];
-    this._buttonGroups.clear();
+    this._columnButtons.clear();
     this._buttonInitial.clear();
+    this._buttonDelimiter.clear();
+    this._columnGroups.clear();
+    this._hotKeys = [];
     this._toggleBtns = [];
     this._submitFormBtns = [];
     this._annotConfig = null;
@@ -604,34 +832,64 @@ export class FormPanel {
     }
   }
 
-  /** Build a list of form elements (inputs, text, lines, titles...) into ``container``. */
-  private async _buildFormSection(elements: any[], container: HTMLElement): Promise<void> {
+  /**
+   * Build a list of form elements (inputs, text, lines, titles, row / column / grid
+   * containers...) into ``container``. Inside a container, the named sections an input can
+   * reveal are collected in ``deferred`` and placed after the outermost container instead.
+   */
+  private async _buildFormSection(
+    elements: any[], container: HTMLElement, deferred?: HTMLElement[], ctx?: LayoutContext,
+  ): Promise<void> {
     for (const item of elements) {
       if (!item || typeof item !== 'object') continue;
-      const [type] = Object.keys(item);
-      const config = item[type];
-      if (type === 'pass_value') {
-        this._registerPassValue(config);
-      } else if (type === 'title') {
-        this._appendTitleEntry(config, container);
-      } else if (type === 'progress_tracker') {
-        if (!this._accuracyConfig) this._accuracyConfig = parseAccuracyConfig(config);
-        this._appendProgressTracker(container);
-      } else if (type === 'annotation') {
-        await this._buildAnnotationElement(config, container);
-      } else if (type === 'break') {
-        container.appendChild(document.createElement('br'));
-      } else if (type === 'line') {
-        const d = document.createElement('div');
-        d.style.cssText = fullWidthDividerStyle();
-        container.appendChild(d);
-      } else if (type === 'text') {
-        container.appendChild(this._textElement(config));
-      } else if (type === 'button') {
-        container.appendChild(this._buildButton(config));
-      } else {
-        await this._buildInputElement(type, config, container);
-      }
+      const before = container.lastElementChild;
+      await this._buildFormElement(item, container, deferred, ctx);
+      if (!ctx) this._markItems(container, before);
+    }
+  }
+
+  /** Build one form element of a section (see ``_buildFormSection``). */
+  private async _buildFormElement(
+    item: any, container: HTMLElement, deferred?: HTMLElement[], ctx?: LayoutContext,
+  ): Promise<void> {
+    const [type] = Object.keys(item);
+    const config = item[type];
+    const layout = parseLayout(type, config);
+    if (layout) {
+      const box = document.createElement('div');
+      box.className = `jp-BA-layout jp-BA-layout-${layout.kind}`;
+      box.style.cssText = layoutStyle(layout);
+      const sections = deferred ?? [];
+      const inner: LayoutContext = {
+        column: layout.column ?? ctx?.column ?? null,
+        group: layout.unique !== null ? { unique: layout.unique, buttons: [] } : ctx?.group ?? null,
+        delimiter: layout.delimiter ?? ctx?.delimiter ?? DEFAULT_DELIMITER,
+      };
+      await this._buildFormSection(layout.items, box, sections, inner);
+      container.appendChild(box);
+      if (!deferred) for (const sec of sections) container.appendChild(sec);
+    } else if (type === 'pass_value') {
+      this._registerPassValue(config);
+    } else if (type === 'title') {
+      this._appendTitleEntry(config, container);
+    } else if (type === 'progress_tracker') {
+      if (!this._accuracyConfig) this._accuracyConfig = parseAccuracyConfig(config);
+      this._appendProgressTracker(container);
+    } else if (type === 'annotation') {
+      await this._buildAnnotationElement(config, container);
+    } else if (type === 'break') {
+      container.appendChild(document.createElement('br'));
+    } else if (type === 'line') {
+      const d = document.createElement('div');
+      d.style.cssText = fullWidthDividerStyle();
+      d.dataset.formLine = '';
+      container.appendChild(d);
+    } else if (type === 'text') {
+      container.appendChild(this._textElement(config));
+    } else if (type === 'button') {
+      container.appendChild(this._buildButton(config, ctx));
+    } else {
+      await this._buildInputElement(type, config, container, deferred);
     }
   }
 
@@ -640,6 +898,7 @@ export class FormPanel {
     const d = document.createElement('div');
     d.style.cssText = mutedTextStyle({ width: '100%' });
     const textStr = String(config && typeof config === 'object' ? (config.value ?? '') : config);
+    d.dataset.formText = '';
     d.textContent = textStr;
     if (textStr.includes('\n')) d.style.whiteSpace = 'pre-wrap';
     if (hasTemplatePlaceholders(textStr)) this._templateElements.push({ el: d, template: textStr });
@@ -651,7 +910,9 @@ export class FormPanel {
    * register it, and
    * append it plus any named sections it can reveal.
    */
-  private async _buildInputElement(type: string, rawConfig: any, container: HTMLElement): Promise<void> {
+  private async _buildInputElement(
+    type: string, rawConfig: any, container: HTMLElement, deferred?: HTMLElement[],
+  ): Promise<void> {
     const cfg = (rawConfig === true || rawConfig === null || rawConfig === undefined) ? {} : rawConfig;
     const labelText: string = cfg.label ?? type;
     const col: string = cfg.column ?? labelText;
@@ -680,7 +941,8 @@ export class FormPanel {
     container.appendChild(lbl);
     for (const name of built.sections) {
       const sec = this._namedSections.get(name);
-      if (sec) container.appendChild(sec);
+      if (sec && deferred) deferred.push(sec);
+      else if (sec) container.appendChild(sec);
     }
   }
 
@@ -714,8 +976,10 @@ export class FormPanel {
     for (const item of items) if (item.formRef) formRefs.set(item.val, item.formRef);
     const allFormSections = new Set(formRefs.values());
 
+    const hotKeyed = resolveHotKeys(cfg.hot_keys, items);
     const built = buildSelect({
       items, filterBox: flags.filterBox, customValue: flags.customValue, variant: 'main',
+      pinned: cfg.pin_hot_keys ? hotKeyed : undefined,
       onChange: () => {
         const sel = built.select;
         this._formValues[col] = sel.value;
@@ -723,6 +987,15 @@ export class FormPanel {
         this._validateForm();
       },
     });
+    for (const { key, item } of hotKeyed) {
+      this._hotKeys.push({
+        el: built.select, key,
+        act: () => {
+          built.select.value = item.val;
+          built.select.dispatchEvent(new Event('change'));
+        },
+      });
+    }
     if (cfg.width) built.select.style.width = cssSize(cfg.width);
     if (cfg.default != null) built.select.value = String(cfg.default);
     this._formValues[col] = cfg.default ?? selectedDefault;
@@ -741,9 +1014,10 @@ export class FormPanel {
     const formRefs = new Map<string, string>();
     for (const item of items) if (item.formRef) formRefs.set(item.val, item.formRef);
     const allFormSections = new Set(formRefs.values());
+    const hotKeyed = resolveHotKeys(cfg.hot_keys, items);
     const built = buildMultiselect({
       items, spec, initial, filterBox: flags.filterBox, customValue: flags.customValue,
-      variant: 'main',
+      variant: 'main', pinned: cfg.pin_hot_keys ? hotKeyed : undefined,
       onChange: selected => {
         this._formValues[col] = selected;
         if (allFormSections.size > 0) {
@@ -752,6 +1026,22 @@ export class FormPanel {
         this._validateForm();
       },
     });
+    for (const { key, item } of hotKeyed) {
+      // toggle the tag: remove it (its × button) when tagged, else pick it
+      this._hotKeys.push({
+        el: built.element, key,
+        act: () => {
+          const tag = [...built.element.querySelectorAll<HTMLElement>('[data-tag]')]
+            .find(t => t.dataset.tag === item.val);
+          const picker = built.element.querySelector('select');
+          if (tag) tag.querySelector('button')?.click();
+          else if (picker && !picker.disabled) {
+            picker.value = item.val;
+            picker.dispatchEvent(new Event('change'));
+          }
+        },
+      });
+    }
     this._formValues[col] = initial;
     return { input: built.input, element: built.element, sections: [...allFormSections] };
   }
@@ -798,42 +1088,46 @@ export class FormPanel {
   }
 
   /**
-   * A ``button`` element (see ``form/buttons``). A plain button with a column sets it (its
-   * column's other buttons are deselected; clicking the selected one goes back to the
-   * column's ``initial_value``); a toggle moves to its next state; ``submit`` submits.
+   * A ``button`` element (see ``form/buttons``). A plain button with a column is pressed /
+   * un-pressed (in a unique group, pressing it un-presses the others) and its column is
+   * recomputed; a toggle moves to its next state; ``submit`` submits (after pressing).
+   * ``ctx`` (the enclosing row / column / grid) gives the column, group and delimiter.
    */
-  private _buildButton(rawConfig: any): HTMLButtonElement {
+  private _buildButton(rawConfig: any, ctx?: LayoutContext): HTMLButtonElement {
     const spec = parseFormButton(rawConfig);
+    if (!spec.column && ctx?.column) spec.column = ctx.column;
     const el = document.createElement('button');
     el.type = 'button';
-    const btn: FormButton = { el, spec, toggleIdx: -1 };
+    const btn: FormButton = { el, spec, toggleIdx: -1, pressed: false, group: null };
     const col = spec.column;
 
     if (spec.toggle && col) {
       this._toggleBtns.push(btn);
       this._setToggle(btn, toggleStart(spec));
     } else if (col) {
-      const group = this._buttonGroups.get(col);
-      if (group) group.push(btn);
-      else this._buttonGroups.set(col, [btn]);
+      btn.group = ctx?.group ?? this._columnGroup(col);
+      btn.group.buttons.push(btn);
+      const colButtons = this._columnButtons.get(col);
+      if (colButtons) colButtons.push(btn);
+      else this._columnButtons.set(col, [btn]);
       if (spec.hasInitialValue && !this._buttonInitial.has(col)) {
         this._buttonInitial.set(col, spec.initialValue);
       }
+      if (ctx?.group && !ctx.group.unique) this._buttonDelimiter.set(col, ctx.delimiter);
       if (spec.required) this._requiredInputs.push({ col, el });
-      this._selectButtonValue(col, this._buttonInitial.get(col) ?? null);
+      this._resetButtonGroup(btn.group);
     } else {
       this._renderButton(btn);
     }
     if (spec.submit) this._submitFormBtns.push(btn);
+    if (spec.hotKey) this._hotKeys.push({ el, key: spec.hotKey, act: () => el.click() });
 
     el.addEventListener('click', () => {
       if (spec.toggle && col) {
         const next = nextToggleIndex(spec, btn.toggleIdx);
         this._setToggle(btn, { index: next, value: spec.toggle[next].value });
-      } else if (col) {
-        const initial = this._buttonInitial.get(col) ?? null;
-        const deselect = !spec.submit && this._formValues[col] === spec.value;
-        this._selectButtonValue(col, deselect ? initial : spec.value);
+      } else if (btn.group) {
+        this._pressButton(btn, spec.submit ? true : !btn.pressed);
       }
       this._validateForm();
       if (spec.submit && !el.disabled) void this._onVerify();
@@ -841,10 +1135,60 @@ export class FormPanel {
     return el;
   }
 
-  /** Set a button column's value and re-render its buttons (the one holding it selected). */
-  private _selectButtonValue(col: string, value: any): void {
-    this._formValues[col] = value;
-    for (const btn of this._buttonGroups.get(col) ?? []) this._renderButton(btn);
+  /** The per-column group of ``col`` (buttons outside any container with ``unique``). */
+  private _columnGroup(col: string): ButtonGroup {
+    let group = this._columnGroups.get(col);
+    if (!group) {
+      group = { unique: true, buttons: [] };
+      this._columnGroups.set(col, group);
+    }
+    return group;
+  }
+
+  /** Press / un-press a grouped button (a unique group un-presses the rest); update columns. */
+  private _pressButton(btn: FormButton, pressed: boolean): void {
+    const group = btn.group!;
+    if (group.unique && pressed) for (const b of group.buttons) b.pressed = false;
+    btn.pressed = pressed;
+    this._refreshButtonGroup(group);
+  }
+
+  /** Press the buttons of ``group`` that hold their column's initial value; update columns. */
+  private _resetButtonGroup(group: ButtonGroup): void {
+    for (const b of group.buttons) {
+      const col = b.spec.column!;
+      const initial = this._buttonInitial.get(col);
+      const delimiter = this._buttonDelimiter.get(col);
+      b.pressed = initial != null && b.spec.value != null && (
+        delimiter && typeof initial === 'string'
+          ? initial.split(delimiter).includes(String(b.spec.value))
+          : initial === b.spec.value);
+    }
+    if (group.unique) {
+      // at most one pressed in a unique group: keep the first
+      let seen = false;
+      for (const b of group.buttons) {
+        if (b.pressed && seen) b.pressed = false;
+        seen ||= b.pressed;
+      }
+    }
+    this._refreshButtonGroup(group);
+  }
+
+  /** Recompute the columns of ``group``'s buttons and redraw them. */
+  private _refreshButtonGroup(group: ButtonGroup): void {
+    const cols = new Set(group.buttons.map(b => b.spec.column!));
+    for (const col of cols) this._formValues[col] = this._buttonColumnValue(col);
+    for (const b of group.buttons) this._renderButton(b);
+  }
+
+  /** A button column's value: the pressed value(s) (joined when several), else its initial value. */
+  private _buttonColumnValue(col: string): any {
+    const pressed = (this._columnButtons.get(col) ?? []).filter(b => b.pressed);
+    if (pressed.length === 0) return this._buttonInitial.get(col) ?? null;
+    if (pressed.length === 1) return pressed[0].spec.value;
+    return pressed.map(b => String(b.spec.value))
+      .join(this._buttonDelimiter.get(col) ?? DEFAULT_DELIMITER);
   }
 
   /** Put a toggle in a state (or unset) and write its value. */
@@ -854,31 +1198,42 @@ export class FormPanel {
     this._renderButton(btn);
   }
 
-  /** Draw a button for its current state: face, colours, selection border. */
+  /** Draw a button for its current state: face, colours, pressed ring / faded group. */
   private _renderButton(btn: FormButton): void {
     const { el, spec } = btn;
-    let face: ButtonFace;
-    let selected = false;
+    let face: ButtonFace = spec.face;
+    let pressed = false;
+    let faded = false;
     let dimmed = false;
     if (spec.toggle) {
-      face = btn.toggleIdx >= 0
-        ? spec.toggle[btn.toggleIdx].face
-        : spec.initialFace ?? spec.toggle[0].face;
-      dimmed = btn.toggleIdx < 0 && !spec.initialFace;
-    } else {
-      selected = !!spec.column && spec.value !== null
-        && this._formValues[spec.column] === spec.value;
-      face = selected || !spec.column ? spec.face : spec.initialFace ?? spec.face;
+      face = btn.toggleIdx >= 0 ? spec.toggle[btn.toggleIdx].face
+        : spec.hasOwnFace ? spec.face : spec.toggle[0].face;
+      dimmed = btn.toggleIdx < 0 && !spec.hasOwnFace;
+    } else if (btn.group) {
+      face = btn.pressed ? spec.pressedFace : spec.face;
+      pressed = btn.pressed && spec.highlight;
+      faded = spec.highlight && !btn.pressed && btn.group.unique
+        && btn.group.buttons.some(b => b.pressed);
     }
     const disabled = el.disabled;
-    el.style.cssText = formButtonStyle(spec, face, { selected, dimmed });
+    el.style.cssText = formButtonStyle(spec, face, { pressed, faded, dimmed });
     if (disabled) el.style.opacity = '0.4';
-    el.title = face.label;
+    const keyHint = spec.hotKey ? `(${spec.hotKey})` : '';
+    el.title = [face.label, keyHint].filter(Boolean).join(' ');
     if (face.label) el.setAttribute('aria-label', face.label);
     else el.removeAttribute('aria-label');
+    if (spec.hotKey) el.setAttribute('aria-keyshortcuts', spec.hotKey);
+    el.setAttribute('aria-pressed', String(btn.pressed));
     el.textContent = '';
     if (face.image) this._setButtonImage(el, face);
     else el.textContent = face.icon;
+    if (spec.hotKey && spec.showHotKey) {
+      const badge = document.createElement('span');
+      badge.dataset.hotKeyBadge = '';
+      badge.textContent = spec.hotKey;
+      badge.style.cssText = hotKeyBadgeStyle();
+      el.appendChild(badge);
+    }
   }
 
   /** Put ``face``'s image in the button: URLs as is, file paths read in the kernel (cached). */
@@ -939,6 +1294,7 @@ export class FormPanel {
     const btnContainer = document.createElement('div');
     btnContainer.style.cssText = `display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px;`;
     btnContainer.dataset.formButtons = '';
+    btnContainer.dataset.formItem = '';
 
     for (const [key, val] of Object.entries(cfg)) {
       if (key === 'pass_value') {
@@ -1274,9 +1630,11 @@ export class FormPanel {
       }
     }
 
-    for (const col of this._buttonGroups.keys()) {
-      this._selectButtonValue(col, this._buttonInitial.get(col) ?? null);
+    const groups = new Set<ButtonGroup>();
+    for (const buttons of this._columnButtons.values()) {
+      for (const b of buttons) groups.add(b.group!);
     }
+    for (const group of groups) this._resetButtonGroup(group);
     for (const btn of this._toggleBtns) this._setToggle(btn, toggleStart(btn.spec));
 
     for (const { col, sourceCol } of this._sourceValueFields) {
@@ -1305,6 +1663,7 @@ export class FormPanel {
     // Annotation rendering on the canvas depends on these values
     this.annotationChanged.emit(void 0);
     this._validateForm();
+    this._restoreFocus();
   }
 
   /**
@@ -1410,7 +1769,7 @@ export class FormPanel {
         allSatisfied = false;
       } else if (this._multiboxFormName) {
         const formCfg = asElementList(this._formConfig?.dynamic_forms?.[this._multiboxFormName]);
-        const cols = formCfg ? requiredColumns(formCfg) : [];
+        const cols = formCfg ? requiredColumns(flattenLayout(formCfg)) : [];
         if (!this._multiboxEntries.every(e => cols.every(c => filled(e.formValues[c])))) {
           allSatisfied = false;
         }
@@ -1524,6 +1883,7 @@ export class FormPanel {
 
   /** Replace the form with the saved values of ``row`` and draw its saved annotation. */
   private _showReviewedResult(row: Detection): void {
+    this._keepFocusAcrossRebuild();
     this._dynFormEl.innerHTML = '';
     this._submitBtns = [];
     this._submitFormBtns = [];
@@ -1538,7 +1898,10 @@ export class FormPanel {
       onNext: () => this.nextRequested.emit(void 0),
       onDelete: () => void this._onDeleteReview(row),
     }));
+    this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-buttons]')
+      ?.setAttribute('data-form-item', '');
     this._placeLeading();
+    this._restoreFocus();
 
     const ann = reviewedAnnotation(rows, this._annotConfig);
     this._reviewedTool = ann.tool;
@@ -1590,6 +1953,7 @@ export class FormPanel {
     void this._refreshAccuracy().then(() => this._updateProgress());
     void this._kernel.exec(INVALIDATE_OUTPUT_CACHE).catch(() => {});
     this.setSyncBusy(false);
+    if (this.element.contains(document.activeElement)) this._pendingFocus = 0;
     this.submitted.emit(multibox ? { _multibox: true, count: rows.length } : rows[0]);
   }
 
