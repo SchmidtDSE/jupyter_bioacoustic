@@ -644,3 +644,43 @@ class TestRowHelpers:
         assert _label({'label': 'L', 'column': 'c'}) == 'L'
         assert _label({'column': 'c'}) == 'c'
         assert _label({}) == ''
+
+
+#
+# layout containers and buttons
+#
+class TestLayoutSummary:
+
+    @staticmethod
+    def _form_rows(fc):
+        sections = build_summary(project={}, config={}, form_config=fc, merged={})
+        form = next(sec for sec in sections if any(r['key'] == 'FORM' for r in sec['rows']))
+        return next(r for r in form['rows'] if r['key'] == 'FORM')['children']
+
+    def test_containers_nest_their_items(self):
+        rows = self._form_rows({'form': [
+            {'column': [
+                {'row': [{'button': {'icon': 'a', 'column': 'c', 'value': 1}},
+                         {'button': {'icon': 'b', 'column': 'c', 'value': 2}}]},
+                {'grid': {'columns': 3, 'items': [{'textbox': {'label': 'notes'}}]}},
+            ]},
+        ]})
+        col = rows[0]
+        assert (col['tag'], col['value']) == ('column', '2 items')
+        assert [c['tag'] for c in col['children']] == ['row', 'grid']
+        assert col['children'][1]['value'] == '3 columns, 1 items'
+        assert col['children'][0]['children'][1]['value'] == 'b c=2'
+
+    def test_dynamic_form_referenced_inside_a_row(self):
+        rows = self._form_rows({
+            'form': [{'row': [{'select': {'label': 's', 'items': [{'value': 'a', 'form': 'f'}]}}]}],
+            'dynamic_forms': {'f': [{'textbox': {'label': 'why'}}]},
+        })
+        select_row = rows[0]['children'][0]
+        assert select_row['children'][0]['value'] == 'dynamic form: f'
+
+    def test_button_lines(self):
+        assert _summarize_form_element('button', {'icon': 'jba:check', 'submit': True}) == \
+            'jba:check (submit)'
+        assert _summarize_form_element(
+            'button', {'column': 'p', 'toggle': [{'value': 1}, {'value': 0}]}) == 'p toggle: 1 / 0'
