@@ -263,12 +263,17 @@ def write_output_rows(
     rows: list[dict[str, Any]],
     columns: list[str],
     ext: str,
+    replace: Optional[dict[str, Any]] = None,
 ) -> str:
     """Append rows to an output file in one write: all of them, or none if it fails.
 
     CSV: a missing or empty file gets a header first. If the rows have columns the file
     doesn't (the form gained a field mid-project), the file is rewritten with the combined
     header and existing rows get blanks in the new columns.
+
+    With ``replace`` (``{'column': ..., 'value': ...}``), existing rows whose ``column``
+    equals ``value`` (compared as text) are dropped in the same atomic rewrite, so a clip
+    re-submitted without ``duplicate_entries`` keeps exactly one entry.
 
     Holds the file's lock for the whole read-modify-write, so annotators in other kernels
     writing the same file can't interleave or lose rows; full rewrites are atomic.
@@ -278,6 +283,7 @@ def write_output_rows(
         rows: Rows to append (e.g. one per multibox box).
         columns: Column order for a new file (row keys not listed are appended).
         ext: ``'csv'``, ``'parquet'``, or anything else for JSON Lines.
+        replace: Rows to replace: ``{'column': name, 'value': value}``, or None to append.
 
     Returns:
         ``'ok'`` on success.
@@ -293,7 +299,13 @@ def write_output_rows(
         if d:
             os.makedirs(d, exist_ok=True)
         with _file_lock(path):
-            if ext == 'csv':
+            if replace and os.path.exists(path):
+                col, value = replace['column'], str(replace['value'])
+                _replace_rows(
+                    path, rows, list(dict.fromkeys(list(columns) + row_keys)), ext,
+                    lambda r: str(r.get(col, '')) == value,
+                )
+            elif ext == 'csv':
                 rows = [_csv_cells(row) for row in rows]
                 _append_csv(path, rows, list(dict.fromkeys(list(columns) + row_keys)))
             elif ext == 'parquet':
@@ -541,6 +553,47 @@ def _append_csv(path: str, rows: list[dict[str, Any]], new_file_columns: list[st
     else:
         with open(path, 'a', newline='') as f:
             csv.DictWriter(f, fieldnames=header).writerows(rows)
+
+
+def _replace_rows(
+    path: str,
+    rows: list[dict[str, Any]],
+    columns: list[str],
+    ext: str,
+    match_fn: Callable[[Any], bool],
+) -> None:
+    """Rewrite an existing output file without the rows ``match_fn`` picks, plus ``rows``.
+
+    One atomic rewrite (caller holds the lock). CSV keeps its header order and adds any new
+    columns at the end.
+
+    Args:
+        path: Output file path (must exist).
+        rows: Rows to add.
+        columns: Column order for the new rows.
+        ext: ``'csv'``, ``'parquet'``, or anything else for JSON Lines.
+        match_fn: Returns True for existing rows to drop.
+    """
+    if ext == 'csv':
+        with open(path, newline='') as f:
+            reader = csv.DictReader(f)
+            kept = [r for r in reader if not match_fn(r)]
+            header = list(reader.fieldnames or [])
+        new = [_csv_cells(row) for row in rows]
+        fieldnames = list(dict.fromkeys(header + columns))
+        _write_csv(path, fieldnames, kept + new)
+    elif ext == 'parquet':
+        import pandas as pd
+        df = pd.read_parquet(path)
+        df = df[~df.apply(match_fn, axis=1)] if len(df) else df
+        out = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
+        _replace_atomically(path, lambda tmp: out.to_parquet(tmp, index=False))
+    else:
+        with open(path) as f:
+            kept = [json.loads(line) for line in f if line.strip()]
+        text = ''.join(json.dumps(r) + '\n' for r in kept if not match_fn(r))
+        text += ''.join(json.dumps(r) + '\n' for r in rows)
+        _replace_atomically(path, lambda tmp: _write_text(tmp, text))
 
 
 def _csv_cells(row: dict[str, Any]) -> dict[str, Any]:
