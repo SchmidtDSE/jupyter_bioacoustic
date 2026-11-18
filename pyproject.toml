@@ -141,7 +141,7 @@ ruff = "*"
 lint = "ruff check"
 
 [tool.pixi.feature.dev.dependencies]
-twine = "*"
+twine = ">=7"           # 7+ reads Metadata-Version 2.5 wheels (hatchling); 6.x rejects them
 
 [tool.pixi.feature.dev.pypi-dependencies]
 build = "*"
