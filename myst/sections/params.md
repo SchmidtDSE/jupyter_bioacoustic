@@ -121,7 +121,7 @@ The `form_config` parameter drives the entire form layout. It can be a Python di
 
 | Element | Description | Key fields |
 |---|---|---|
-| `title` | Section header. String or `{value, progress_tracker}` | `value`, `progress_tracker` |
+| `title` | Section header. String or `{value, progress_tracker}`; supports `[[column]]` templates | `value`, `progress_tracker` |
 | `pass_value` | Copies a column from input to output | `source_column`, `column` |
 | `fixed_value` | Constant value in every output row | `column`, `value` |
 | `annotation` | Spectrogram interaction tools | `start_time`, `end_time`, `min_frequency`, `max_frequency`, `tools`, `form` |
