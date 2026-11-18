@@ -44,7 +44,7 @@ export const DEFAULT_BUTTON_SIZE = 30;
 export const BUILTIN_PREFIX = 'jba:';
 
 /** The built-in icons: symbol, icon colour and fill. */
-export const BUILTIN_ICONS: Record<string, { symbol: string; color: string; background: string }> = {
+export const BUILTIN_ICONS: Record<string, BuiltinIcon> = {
   check:     { symbol: '✓', color: COLORS.bgBase, background: COLORS.green },
   x:         { symbol: '✗', color: COLORS.bgBase, background: COLORS.red },
   unsure:    { symbol: '?', color: COLORS.bgBase, background: COLORS.yellow },
@@ -72,6 +72,13 @@ const FADED_OPACITY = 0.5;
 //
 // Types
 //
+/** A built-in icon: its symbol and colours. */
+export interface BuiltinIcon {
+  symbol: string;
+  color: string;
+  background: string;
+}
+
 /** How a button looks: an icon (text) or an image, its colours and its tooltip. */
 export interface ButtonFace {
   /** Text shown ('' when ``image`` is used). Built-ins are already resolved to their symbol. */
@@ -197,7 +204,7 @@ export function resolveFace(raw: any, fallbackText: string): ButtonFace {
 
 
 /** The built-in for ``icon`` (``jba:<name>``), or null when it isn't one. */
-export function builtinIcon(icon: string): (typeof BUILTIN_ICONS)[string] | null {
+export function builtinIcon(icon: string): BuiltinIcon | null {
   if (!icon.startsWith(BUILTIN_PREFIX)) return null;
   return BUILTIN_ICONS[icon.slice(BUILTIN_PREFIX.length)] ?? null;
 }
@@ -208,7 +215,8 @@ export function toggleStart(spec: FormButtonSpec): ToggleStart {
   const states = spec.toggle ?? [];
   if (spec.hasInitialValue) {
     const idx = states.findIndex(st => st.value === spec.initialValue);
-    return idx >= 0 ? { index: idx, value: states[idx].value } : { index: -1, value: spec.initialValue };
+    return idx >= 0
+      ? { index: idx, value: states[idx].value } : { index: -1, value: spec.initialValue };
   }
   if (spec.hasOwnFace) return { index: -1, value: null };
   return { index: 0, value: states[0]?.value ?? null };
@@ -255,7 +263,8 @@ export function formButtonStyle(
     : Math.max(8, Math.round(Math.min(w, h) * ICON_FONT_FRACTION));
   return (
     `width:${cssSize(spec.width)};height:${cssSize(spec.height)};padding:${face.image ? 3 : 0}px;` +
-    `display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;` +
+    `display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;` +
+    `position:relative;` +
     `box-sizing:border-box;cursor:pointer;border-radius:6px;overflow:hidden;line-height:1;` +
     `font-size:${fontPx}px;font-weight:700;color:${face.color};background:${face.background};` +
     `border:2px solid transparent;` +
