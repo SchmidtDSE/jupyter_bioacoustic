@@ -65,7 +65,7 @@ See the [Getting Started guide](https://github.com/SchmidtDSE/jupyter_bioacousti
 - **Player / Visualizer** — browse audio clips with interactive spectrograms and other visualizations (linear, mel, log-frequency, or custom)
 - **Configurable Forms** — YAML-driven annotation and review forms with selects, textboxes, checkboxes, buttons and toggles (built-in icons, one-click submit), conditional sections, and row / column / grid layouts
 - **Keyboard-driven review** — `j` / `k` between clips, Tab / arrows through the form, and per-element hot keys
-- **Collapsible layout** — collapse the playlist, spectrogram or form to just the row you need
+- **Collapsible layout** — collapse the playlist, spectrogram or form to just the row you need; put a small form beside the spectrogram (`side_form`) with a draggable divider
 - **Annotation Tools** — fixed-duration windows, time markers, start/end lines, bounding boxes, and multibox (multiple labeled regions per clip)
 - **Built-In & Custom Visualizations** — built-in linear and mel spectrograms, log-frequency, bandpass and waveform visualizations. Easily integrate third-party libraries (OpenSoundscape, librosa, SciPy, ...) or write your own
 - **Zoom and Capture** — keyboard/mouse zoom, drag-to-pan, zoom-to-selection box, and PNG export
