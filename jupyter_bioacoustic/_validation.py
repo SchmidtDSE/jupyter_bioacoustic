@@ -23,6 +23,7 @@ _log = logging.getLogger('jupyter_bioacoustic.validation')
 VALID_FORM_KEYS = frozenset({
     'title', 'progress_tracker', 'pass_value', 'fixed_value',
     'submission_buttons', '_fixed_kwargs', 'dynamic_forms', 'form',
+    'side_form', 'side_form_split',
     'annotation',
     'select', 'multiselect', 'textbox', 'checkbox', 'number',
     'break', 'line', 'text',
@@ -131,6 +132,7 @@ def validate_config(
     fc = form_config or {}
 
     _validate_form_keys(fc, errors)
+    _validate_side_form(fc, errors)
 
     if project:
         _validate_config_keys(project, 'project', errors)
@@ -201,6 +203,24 @@ def _validate_form_keys(fc: dict, errors: list[str]) -> None:
             )
         else:
             errors.append(f'Unknown form config key "{key}"')
+
+
+def _validate_side_form(fc: dict, errors: list[str]) -> None:
+    """Check ``side_form`` (a bool) and ``side_form_split`` (a fraction of the width).
+
+    Args:
+        fc: The form configuration dict.
+        errors: List that error messages are appended to.
+    """
+    if 'side_form' in fc and not isinstance(fc['side_form'], bool):
+        errors.append('"side_form" must be true or false')
+    if 'side_form_split' in fc:
+        split = fc['side_form_split']
+        if isinstance(split, bool) or not isinstance(split, (int, float)) or not 0 < split < 1:
+            errors.append(
+                '"side_form_split" must be a fraction between 0 and 1 '
+                '(the spectrogram\'s share of the width, e.g. 0.66)',
+            )
 
 
 def _validate_config_keys(
