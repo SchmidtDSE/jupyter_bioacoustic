@@ -53,8 +53,8 @@ import {
 } from '../util';
 import { parseAnnotationConfig } from './form/annotationConfig';
 import {
-  BADGE_ICON_OFFSET, ButtonFace, ToggleStart, formButtonStyle, hotKeyBadgeStyle, isDirectImageSrc,
-  nextToggleIndex, parseFormButton, toggleStart,
+  BADGE_ICON_OFFSET, ButtonFace, FormButtonSpec, ToggleStart, formButtonStyle, hotKeyBadgeStyle,
+  isDirectImageSrc, nextToggleIndex, parseFormButton, toggleStart,
 } from './form/buttons';
 import { asElementList, requiredColumns } from './form/formConfig';
 import { buildMultiselect, buildSelect } from './form/inputs';
@@ -101,7 +101,7 @@ type InputEl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 /** A built ``button`` element. */
 interface FormButton {
   el: HTMLButtonElement;
-  spec: ReturnType<typeof parseFormButton>;
+  spec: FormButtonSpec;
   /** A toggle's current state (-1: not clicked yet). */
   toggleIdx: number;
   /** A plain button with a column: pressed or not. */
@@ -265,7 +265,8 @@ export class FormPanel {
   constructor(private readonly _kernel: KernelBridge) {
     this.element = document.createElement('div');
     this.element.style.cssText =
-      `flex:0 0 auto;min-height:${DEFAULT_FORM_MIN_HEIGHT}px;padding:${FORM_PADDING};background:${COLORS.bgMantle};` +
+      `flex:0 0 auto;min-height:${DEFAULT_FORM_MIN_HEIGHT}px;padding:${FORM_PADDING};` +
+      `background:${COLORS.bgMantle};` +
       `border-top:1px solid ${COLORS.bgSurface0};display:none;flex-direction:column;gap:10px;`;
 
     this._dynFormEl = document.createElement('div');
@@ -321,7 +322,8 @@ export class FormPanel {
   /** Focus the form: its highlighted item if any, else the first one. False when it has none. */
   focusForm(): boolean {
     const items = this._items();
-    const item = this._focusedItem && items.includes(this._focusedItem) ? this._focusedItem : items[0];
+    const focused = this._focusedItem;
+    const item = focused && items.includes(focused) ? focused : items[0];
     if (!item) return false;
     this._focusItem(item);
     return true;
@@ -332,7 +334,7 @@ export class FormPanel {
    * clip, with an optional action button. Removed when another row is shown.
    */
   showNotice(text: string, action?: { label: string; onClick: () => void }): void {
-    this._dynFormEl.querySelector(':scope > [data-form-notice]')?.remove();
+    this._topLevel('data-form-notice')?.remove();
     const notice = document.createElement('div');
     notice.dataset.formNotice = '';
     notice.style.cssText =
@@ -347,7 +349,7 @@ export class FormPanel {
       notice.appendChild(btn);
       this._makeItem(notice);
     }
-    const heading = this._dynFormEl.querySelector(':scope > [data-form-heading]');
+    const heading = this._topLevel('data-form-heading');
     if (heading) heading.after(notice);
     else this._dynFormEl.prepend(notice);
   }
@@ -662,14 +664,19 @@ export class FormPanel {
     }
     if (isTypingTarget(target)) {
       // Enter in a number box submits (as before); in a text box / textarea it doesn't
-      if (e.key === 'Enter' && (target as HTMLInputElement).type === 'number') this._onEnter(e, target);
+      if (e.key === 'Enter' && (target as HTMLInputElement).type === 'number') {
+        this._onEnter(e, target);
+      }
       return;
     }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       handled();
       const step = e.key === 'ArrowRight' ? 1 : -1;
-      if (item && target !== item && this._isContainerItem(item)) this._moveInner(item, target!, step);
-      else this._moveItem(item, step);
+      if (item && target !== item && this._isContainerItem(item)) {
+        this._moveInner(item, target!, step);
+      } else {
+        this._moveItem(item, step);
+      }
       return;
     }
     if (e.key.length === 1 && e.key !== ' ' && item) {
@@ -744,7 +751,8 @@ export class FormPanel {
     const collapsed = this._dynFormEl.classList.contains('jp-BA-collapsed');
     for (let e: HTMLElement | null = el; e && e !== this.element; e = e.parentElement) {
       if (e.style.display === 'none') return false;
-      if (collapsed && e.parentElement === this._dynFormEl && e.dataset.collapseKeep === undefined) {
+      const topLevel = e.parentElement === this._dynFormEl;
+      if (collapsed && topLevel && e.dataset.collapseKeep === undefined) {
         return false;
       }
     }
@@ -758,7 +766,8 @@ export class FormPanel {
 
   /** The enabled, shown controls of ``item``, in order. */
   private _innerFocusables(item: HTMLElement): HTMLElement[] {
-    const all = item.matches(FOCUSABLE) ? [item] : [...item.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    const all = item.matches(FOCUSABLE)
+      ? [item] : [...item.querySelectorAll<HTMLElement>(FOCUSABLE)];
     return all.filter(el => !(el as HTMLButtonElement).disabled && this._isShown(el)
       && !el.closest('[data-collapse-toggle]'));
   }
@@ -817,6 +826,11 @@ export class FormPanel {
     if (idx >= 0) this._focusItem(items[idx]);
   }
 
+  /** The form's top-level element carrying the ``attr`` data attribute, if any. */
+  private _topLevel(attr: string): HTMLElement | null {
+    return this._dynFormEl.querySelector<HTMLElement>(`:scope > [${attr}]`);
+  }
+
   /**
    * Put the collapse toggle at the start of the form's first title / progress row (the
    * reviewed view's REVIEWED title), or, without one, in a slim row of its own at the top.
@@ -824,9 +838,9 @@ export class FormPanel {
    */
   private _placeLeading(): void {
     if (!this._leading) return;
-    let row = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-heading]');
+    let row = this._topLevel('data-form-heading');
     if (!row) {
-      row = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-toggle-row]');
+      row = this._topLevel('data-form-toggle-row');
       if (!row) {
         row = document.createElement('div');
         row.dataset.formToggleRow = '';
@@ -834,9 +848,8 @@ export class FormPanel {
         this._dynFormEl.prepend(row);
       }
     }
-    for (const el of this._dynFormEl.querySelectorAll<HTMLElement>(':scope > [data-collapse-keep]')) {
-      delete el.dataset.collapseKeep;
-    }
+    const kept = this._dynFormEl.querySelectorAll<HTMLElement>(':scope > [data-collapse-keep]');
+    for (const el of kept) delete el.dataset.collapseKeep;
     row.dataset.collapseKeep = '';
     if (row.dataset.formHeading !== undefined) {
       row.style.display = 'flex';
@@ -1246,7 +1259,7 @@ export class FormPanel {
     for (const b of group.buttons) this._renderButton(b);
   }
 
-  /** A button column's value: the pressed value(s) (joined when several), else its initial value. */
+  /** A button column's value: the pressed value(s) (joined when several), else its initial. */
   private _buttonColumnValue(col: string): any {
     const pressed = (this._columnButtons.get(col) ?? []).filter(b => b.pressed);
     if (pressed.length === 0) return this._buttonInitial.get(col) ?? null;
@@ -1673,7 +1686,7 @@ export class FormPanel {
    */
   private _applyRow(row: Detection): void {
     this._currentRow = row;
-    this._dynFormEl.querySelector(':scope > [data-form-notice]')?.remove();
+    this._topLevel('data-form-notice')?.remove();
     this._multiboxEntries = [];
     this._activeBoxIndex = -1;
     // multibox: clear the box cards. The single annotation sub-form is NOT rebuilt per row
@@ -1966,7 +1979,7 @@ export class FormPanel {
       onNext: () => this.nextRequested.emit(void 0),
       onDelete: () => void this._onDeleteReview(row),
     }));
-    const reviewedButtons = this._dynFormEl.querySelector<HTMLElement>(':scope > [data-form-buttons]');
+    const reviewedButtons = this._topLevel('data-form-buttons');
     if (reviewedButtons) this._makeItem(reviewedButtons);
     this._placeLeading();
     this._restoreFocus();
