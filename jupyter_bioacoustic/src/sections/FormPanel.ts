@@ -53,8 +53,8 @@ import {
 } from '../util';
 import { parseAnnotationConfig } from './form/annotationConfig';
 import {
-  ButtonFace, ToggleStart, formButtonStyle, hotKeyBadgeStyle, isDirectImageSrc, nextToggleIndex,
-  parseFormButton, toggleStart,
+  BADGE_ICON_OFFSET, ButtonFace, ToggleStart, formButtonStyle, hotKeyBadgeStyle, isDirectImageSrc,
+  nextToggleIndex, parseFormButton, toggleStart,
 } from './form/buttons';
 import { asElementList, requiredColumns } from './form/formConfig';
 import { buildMultiselect, buildSelect } from './form/inputs';
@@ -1292,6 +1292,7 @@ export class FormPanel {
     if (face.image) this._setButtonImage(el, face);
     else el.textContent = face.icon;
     if (spec.hotKey && spec.showHotKey) {
+      if (!face.image) el.style.cssText += BADGE_ICON_OFFSET;
       const badge = document.createElement('span');
       badge.dataset.hotKeyBadge = '';
       badge.textContent = spec.hotKey;
