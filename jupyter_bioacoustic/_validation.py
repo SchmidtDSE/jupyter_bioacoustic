@@ -133,6 +133,9 @@ def validate_config(
 
     _validate_form_keys(fc, errors)
     _validate_side_form(fc, errors)
+    sb = fc.get('submission_buttons')
+    if sb is not None and sb is not False and not isinstance(sb, dict):
+        errors.append('"submission_buttons" must be a mapping of buttons, or false for none')
 
     if project:
         _validate_config_keys(project, 'project', errors)
